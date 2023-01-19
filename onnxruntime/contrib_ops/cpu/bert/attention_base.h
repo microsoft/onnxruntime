@@ -71,7 +71,7 @@ class AttentionBase {
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
   float mask_filter_value_;                // the value to be used for filtered out positions
-  float scale_;                    // the scale to be used for softmax
+  float scale_;                            // the scale to be used for softmax
 };
 
 }  // namespace contrib

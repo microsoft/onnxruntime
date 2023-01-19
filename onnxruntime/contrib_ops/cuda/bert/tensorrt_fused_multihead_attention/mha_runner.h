@@ -40,7 +40,7 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mSoftmaxScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
+        mScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
                       : scale),
         mHasCausalMask(causal_mask) {
   }
@@ -84,7 +84,7 @@ class MHARunner {
   int mLdOut;
   int mStrideOut;
 
-  float mSoftmaxScale;
+  float mScale;
   bool mHasCausalMask;
 };
 
