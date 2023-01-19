@@ -35,7 +35,7 @@ void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 *
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step=1);
 
 void GetCrossAttentionData_HeadSize40(AttentionTestData& data);
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d);
 void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data);
 #endif
 

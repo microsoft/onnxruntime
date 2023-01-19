@@ -109,15 +109,12 @@ size_t GetAttentionWorkspaceSize(
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
 
   if (use_memory_efficient_attention) {
-    size_t q_sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), false);  // Q has no padding
-    size_t k_sequence_offset_bytes = q_sequence_offset_bytes;                                     // K has no padding
-
     size_t fmha_buffer_bytes = 0;
     if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
       fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
     }
 
-    return qkv_bytes + q_sequence_offset_bytes + k_sequence_offset_bytes + fmha_buffer_bytes;
+    return qkv_bytes + fmha_buffer_bytes;
   }
 
   if (fused_runner != nullptr) {
@@ -558,43 +555,29 @@ Status QkvToContext(
     return Status::OK();
   }
 
-  // Run memory efficient attention if applicale.
   if (use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-    int* q_sequence_offset = reinterpret_cast<int*>(scratch1);
-    LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    DUMP_ATTENTION_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
-
-    int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
-    LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, parameters.total_sequence_length, stream);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    DUMP_ATTENTION_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
-
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
-    p.batch_size = parameters.batch_size;
+    p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
     p.num_heads = parameters.num_heads;
     p.sequence_length = parameters.sequence_length;
     p.kv_sequence_length = parameters.total_sequence_length;
     p.qk_head_size = parameters.head_size;
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
-    p.cu_seqlens_q = q_sequence_offset;
-    p.cu_seqlens_k = kv_sequence_offset;
+    p.cu_seqlens_q = nullptr;
+    p.cu_seqlens_k = nullptr;
     p.query = q;
     p.key = k;
     p.value = v;
-
     p.output = data.output;
-    p.workspace = scratch1 + GetSequenceOffsetSize(batch_size, false) * 2;
+    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     ORT_RETURN_IF_ERROR(run_memory_efficient_attention(p));
 

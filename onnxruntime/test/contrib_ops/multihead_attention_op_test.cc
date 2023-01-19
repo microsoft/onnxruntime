@@ -276,13 +276,19 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
   RunMultiHeadAttentionTests(data);
 }
 
-TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding) {
+TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
   AttentionTestData data;
-  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data);
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true);
   RunMultiHeadAttentionTests(data);
 }
 
-TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding) {
+TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
+  AttentionTestData data;
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false);
+  RunMultiHeadAttentionTests(data);
+}
+
+TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Mask2D) {
   AttentionTestData data;
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data);
   RunMultiHeadAttentionTests(data);

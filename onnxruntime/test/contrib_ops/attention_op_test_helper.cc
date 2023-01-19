@@ -1903,7 +1903,7 @@ void GetCrossAttentionData_HeadSize40(AttentionTestData& data) {
   }
 }
 
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data) {
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d) {
   data.hidden_size = 64;
   data.v_hidden_size = 64;
   data.num_heads = 2;
@@ -1911,10 +1911,18 @@ void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData&
   data.sequence_length = 2;
   data.kv_sequence_length = 3;
 
-  data.mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  data.key_padding_mask_data = {1, 2};
+  if (is_mask_1d) {
+    data.mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+    data.key_padding_mask_data = {1, 2};
+  } else {
+    data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+    data.key_padding_mask_data = {1, 0, 0,
+                                  1, 1, 0};
+  }
 
-  data.skip_kernel_types = {};
+  data.skip_kernel_types = {AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+                            AttentionKernelType::AttentionKernel_TrtFusedAttention,
+                            AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
 
   {
     data.query_data = {
@@ -2155,7 +2163,9 @@ void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& 
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
-      AttentionKernelType::AttentionKernel_TrtFusedAttention};
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention
+      };
 
   {
     data.query_data = {
