@@ -515,7 +515,9 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return len(nodes) > 1
 
-    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None):
+    def fuse_gpt2(
+        self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None
+    ):
         # graph checks
         # gpt2 has optional segment embedding, subgraph pattern is like
         #                      input_ids  position_ids
@@ -693,7 +695,9 @@ class FusionEmbedLayerNoMask(Fusion):
                 add_before_layernorm = node  # Add is fused into SkipLayerNormalization
                 optional_segment_gather = None
 
-        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather):
+        if self.fuse_gpt2(
+            node, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather
+        ):
             return
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):

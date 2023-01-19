@@ -49,5 +49,6 @@ class TestFusion(unittest.TestCase):
 
         self.verify_fusion(optimized_model, "gpt2_embedlayer_one_attn_opt.onnx")
 
+
 if __name__ == "__main__":
     unittest.main()
