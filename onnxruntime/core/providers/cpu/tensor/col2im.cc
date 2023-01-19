@@ -20,7 +20,7 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   const auto* image_shape = context->Input<Tensor>(1);
   const auto* kernel_shape = context->Input<Tensor>(2);
 
-  size_t image_dim_number = image_shape->Shape().Size();
+  size_t image_dim_number = onnxruntime::narrow<size_t>(image_shape->Shape().Size());
   TensorShapeVector dilations;
   if (dilations_.empty()) {
     dilations.resize(image_dim_number, 1);
