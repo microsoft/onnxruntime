@@ -8,8 +8,8 @@
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/utils.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 
