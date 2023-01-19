@@ -14,9 +14,6 @@ The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution p
 ## Contents
 {: .no_toc }
 
-* TOC placeholder
-{:toc}
-
 ## Install
 
 **NOTE** Please make sure to install the proper version of Pytorch specified here [PyTorch Version](../install/#training-install-table-for-all-languages).
@@ -50,8 +47,6 @@ Ort::SessionOptions so;
 int device_id = 0;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(so, device_id));
 ```
-
-You can check [here](https://github.com/scxiao/ort_test/tree/master/char_rnn) for a specific c/c++ program.
 
 The C API details are [here](../get-started/with-c.md).
 
