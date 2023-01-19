@@ -35,8 +35,8 @@
 #endif
 
 #ifdef ENABLE_TRAINING_APIS
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/lr_scheduler.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/lr_scheduler.h"
 
 #endif
 
