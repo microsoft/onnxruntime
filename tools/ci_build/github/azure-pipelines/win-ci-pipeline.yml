@@ -146,7 +146,7 @@ stages:
         isTraining: true
         ORT_EP_NAME: CPU
         GenerateDocumentation: false
-        WITH_CACHE: false
+        WITH_CACHE: true
         MachinePool: 'onnxruntime-Win2019-CPU-training'
 
 - stage: training_x64_release
