@@ -1115,10 +1115,7 @@ static void MsftQuantizedModels() {
   std::wstring filePath = FileHelpers::GetModulePath() + L"coreml_Resnet50_ImageNet-dq.onnx";
   LearningModel model = LearningModel::LoadFromFilePath(filePath);
 
-  auto device = LearningModelDevice(LearningModelDeviceKind::DirectX);
-  device.as<IMetacommandsController>()->SetMetacommandsEnabled(false);
-
-  LearningModelSession session(model, device);
+  LearningModelSession session(model, LearningModelDevice(LearningModelDeviceKind::DirectX));
   // create a binding set
   LearningModelBinding binding(session);
   // bind the input and the output buffers by name

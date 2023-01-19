@@ -328,11 +328,6 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
 
   // Validate Tensor Resource
   {
-    D3D12_HEAP_PROPERTIES outputHeapProperties;
-    D3D12_HEAP_FLAGS outputHeapFlags;
-
-    WINML_THROW_IF_FAILED(pOutputResource->GetHeapProperties(&outputHeapProperties, &outputHeapFlags));
-
     UINT64 ullNumElementsTensor = 1;
     for (UINT uiIdx = 0; uiIdx < kImageTensorDimensionCountMax; uiIdx++) {
       WINML_THROW_IF_FAILED(ULongLongMult(ullNumElementsTensor, tensorDesc.sizes[uiIdx], &ullNumElementsTensor));
@@ -347,8 +342,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     if (outputDesc.Width < ullTensorSize ||
         outputDesc.Height != 1 ||
         outputDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
-        !(outputDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) ||
-        outputHeapProperties.Type != D3D12_HEAP_TYPE_DEFAULT) {
+        !(outputDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)) {
       WINML_THROW_IF_FAILED(E_INVALIDARG);
     }
   }
@@ -533,7 +527,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   command_list_->ResourceBarrier(1, &barrier);
 
   command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
-  
+
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
   device_cache.GetCommandQueue()->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
@@ -570,9 +564,9 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
       gpu_buffer_span);
 
   upload_heap_->Unmap(0, &CD3DX12_RANGE(0, buffer_size_in_bytes));
-  
+
   ResetCommandList(device_cache);
-  
+
   auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(output_resource, D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST);
   command_list_->ResourceBarrier(1, &barrier1);
   command_list_->CopyBufferRegion(output_resource, 0, upload_heap_.Get(), 0, buffer_size_in_bytes);
