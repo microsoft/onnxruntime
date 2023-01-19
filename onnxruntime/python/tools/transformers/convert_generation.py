@@ -1428,7 +1428,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     gpt2_init_decoder_generated = False
     gpt2_init_decoder_onnx_path = None
-    if not args.disable_separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
+    if (
+        not args.disable_separate_gpt2_decoder_for_init_run
+        and is_gpt2
+        and (is_beamsearch or is_greedysearch or is_sampling)
+    ):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
