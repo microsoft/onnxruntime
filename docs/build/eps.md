@@ -629,7 +629,7 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
