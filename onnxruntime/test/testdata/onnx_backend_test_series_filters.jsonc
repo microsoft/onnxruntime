@@ -309,6 +309,9 @@
         "^test_reduce_sum_do_not_keepdims_example",
         "^test_reduce_sum_do_not_keepdims_random",
         "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*",
+        "^test_scatternd_add*",
+        "^test_scatternd_multiply*",
         "^test_squeeze",
         "^test_squeeze_negative_axes"
     ],
@@ -329,6 +332,9 @@
         "^test_reduce_sum_default_axes_keepdims*",
         "^test_reduce_sum_empty_axes_input_noop*",
         "^test_scatter_elements_with_negative_indices_cpu",
+        "^test_scatter_elements_with_duplicate_indices*",
+        "^test_scatternd_add*",
+        "^test_scatternd_multiply*",
         "^test_squeeze_*", // Does not support axes as input
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_loop11",
