@@ -46,7 +46,6 @@ import os
 import timeit
 from datetime import datetime
 from enum import Enum
-from packaging import version
 
 import numpy
 import onnx
@@ -72,6 +71,7 @@ from onnx_exporter import (
     export_onnx_model_from_tf,
     load_pretrained_model,
 )
+from packaging import version
 from quantize_helper import QuantizeHelper
 
 logger = logging.getLogger("")
