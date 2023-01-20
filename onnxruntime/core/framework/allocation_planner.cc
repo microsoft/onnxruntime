@@ -1831,12 +1831,8 @@ class PlannerImpl {
                       plan_.notification_owners.push_back(i);
                     }
 
-                    auto wait_it = node_to_wait.find(it->Index());
-                    if (wait_it == node_to_wait.end()) {
-                      node_to_wait[it->Index()] = std::map<NodeIndex, WaitNotificationFn>{{node_index, wait_handle}};
-                    } else if (wait_it->second.find(node_index) == wait_it->second.end()) {
-                      wait_it->second.insert({node_index, wait_handle});
-                    }
+                    // if node_index is already in the map, it will NOT be overwritten by insert()
+                    node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
               }
