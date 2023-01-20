@@ -734,9 +734,12 @@ endif()
 set(test_all_args)
 if (onnxruntime_USE_TENSORRT)
     if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
-       # TRT EP package pipelines takes much longer time to run tests with TRT 8.5. We can't use placeholder to reduce testing time due to application test deadlock.
-       # Therefore we only run filtered TRT EP tests.
-      list(APPEND test_all_args "--gtest_filter=*tensorrt_*:*TensorrtExecutionProviderTest*" )
+      # Due to the size increase of TRT kernel library, the load time has increased from upgrading 8.4 -> 8.5 by a somewhat significant amount.
+      # This impacts every TRT EP test, especially the significant test time increase for gpu package pipeline which includes TRT EP 
+      # (we can't use builder placeholder to reduce test time for its deadlock issue found on Windows).
+      # Therefore we only run a portion of the tests for gpu package pipeline. But still we enable all the tests in regular CIs to avoid regressions.
+      list(APPEND test_all_args "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*" )
+
       #list(APPEND test_all_args "--gtest_filter=-*cpu_*:*cuda_*:*ContribOpTest*:*QuantGemmTest*:*QLinearConvTest*:*MurmurHash3OpTest*:*PadOpTest*:*QLinearConvTest*" )
     else()
       # TRT EP CI takes much longer time when updating to TRT 8.2

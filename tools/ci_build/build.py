@@ -1746,7 +1746,24 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_customopregistration_test")
 
                 for exe in executables:
-                    run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
+                    if args.use_tensorrt and not args.tensorrt_placeholder_builder: 
+                        # Due to the size increase of TRT kernel library, the load time has increased from
+                        # upgrading 8.4 -> 8.5 by a somewhat significant amount.
+                        # This impacts every TRT EP test, especially the significant test time increase
+                        # for gpu package pipeline which includes TRT EP (we can't use builder placeholder
+                        # to reduce test time for its deadlock issue found on Windows).
+                        # Therefore we only run a portion of the tests for gpu package pipeline. But still
+                        # we enable all the tests in regular CIs to avoid regressions.
+                        run_subprocess(
+                            [
+                                os.path.join(cwd, exe), 
+                                "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*"
+                            ],
+                            cwd=cwd,
+                            dll_path=dll_path
+                        )
+                    else:
+                        run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
         else:
             ctest_cmd = [ctest_path, "--build-config", config, "--verbose", "--timeout", args.test_all_timeout]
