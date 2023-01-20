@@ -72,6 +72,12 @@ Status Gemm<T>::ComputeInternal(OpKernelContext* ctx) const {
   int N = gsl::narrow_cast<int>(helper.N());
   int K = gsl::narrow_cast<int>(helper.K());
   auto* Y = ctx->Output(0, {M, N});
+
+  // Bail out early if the output is going to be empty
+  if (Y->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);

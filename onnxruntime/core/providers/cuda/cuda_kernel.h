@@ -3,11 +3,16 @@
 
 #pragma once
 
+
+#include <chrono>
+#include<iostream>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include "core/platform/ort_mutex.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
+
+using namespace std::chrono;
 
 namespace onnxruntime {
 namespace cuda {
@@ -21,10 +26,21 @@ class CudaKernel : public OpKernel {
       : OpKernel(info),
         // Is this OK to have a non-const execution provider?
         provider_(const_cast<CUDAExecutionProvider*>(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider()))) {
+        name_ = info.node().OpType();  
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
+    // auto start = high_resolution_clock::now();
     auto s = ComputeInternal(p_op_kernel_context);
+    // cudaStreamSynchronize(Stream());
+    // auto stop = high_resolution_clock::now();
+
+    // auto duration = duration_cast<microseconds>(stop - start);
+    
+    // To get the value of duration use the count()
+    // member function on the duration object
+    //std::cout << name_ << " : " << duration.count() << std::endl;
+
     // use this to precisely locate the node where CUDA failure comes from
     //  if (cudaSuccess != cudaDeviceSynchronize())
     //    __debugbreak();
@@ -180,6 +196,7 @@ class CudaKernel : public OpKernel {
 
  private:
   CUDAExecutionProvider* provider_;
+  std::string name_;
 };
 
 }  // namespace cuda

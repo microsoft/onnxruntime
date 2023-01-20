@@ -493,6 +493,8 @@ Status QkvToContext(
 
     DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported");
   }
 
   // Run TRT fused attention.

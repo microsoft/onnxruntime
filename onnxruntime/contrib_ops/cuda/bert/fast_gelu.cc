@@ -37,6 +37,7 @@ FastGelu<T>::FastGelu(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel
 
 template <typename T>
 Status FastGelu<T>::ComputeInternal(OpKernelContext* context) const {
+
   ORT_RETURN_IF_ERROR(bias_gelu_helper::CheckInputs(context));
 
   const Tensor* input = context->Input<Tensor>(0);

@@ -143,6 +143,7 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
                                ldc,
                                device_prop));
     return Status::OK();
+
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
     CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(GetCublasHandle(ctx),
