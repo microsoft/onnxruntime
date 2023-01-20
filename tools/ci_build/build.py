@@ -1756,7 +1756,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         # we enable all the tests in regular CIs to avoid regressions.
                         run_subprocess(
                             [
-                                os.path.join(cwd, exe), 
+                                os.path.join(cwd, exe),
                                 "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*",
                             ],
                             cwd=cwd,
