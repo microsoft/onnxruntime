@@ -6,7 +6,7 @@
 #include "core/platform/path_lib.h"
 #include "core/platform/env.h"
 #include "core/framework/tensorprotoutils.h"
-#include "orttraining/training_api/include/checkpoint_property.h"
+#include "orttraining/training_api/checkpoint_property.h"
 
 namespace onnxruntime {
 namespace training {
