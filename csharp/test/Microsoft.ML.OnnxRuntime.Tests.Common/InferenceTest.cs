@@ -28,7 +28,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestSessionOptions()
         {
             // get instance to setup logging
-            using(var ortEnvInstance = OrtEnv.Instance())
+            using(var ortEnvInstance = OrtEnv.OrtEnvInstanceScoper.Instance())
             using (SessionOptions opt = new SessionOptions())
             {
                 Assert.NotNull(opt);
@@ -224,23 +224,23 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
         public void EnablingAndDisablingTelemetryEventCollection()
         {
-            using (var ortEnvInstance = OrtEnv.Instance())
+            using (var ortEnvInstance = OrtEnv.OrtEnvInstanceScoper.Instance())
             {
-                ortEnvInstance.DisableTelemetryEvents();
+                ortEnvInstance.Env.DisableTelemetryEvents();
 
                 // no-op on non-Windows builds
                 // may be no-op on certain Windows builds based on build configuration
 
-                ortEnvInstance.EnableTelemetryEvents();
+                ortEnvInstance.Env.EnableTelemetryEvents();
             }
         }
 
         [Fact(DisplayName = "GetAvailableProviders")]
         public void GetAvailableProviders()
         {
-            using (var ortEnvInstance = OrtEnv.Instance())
+            using (var ortEnvInstance = OrtEnv.OrtEnvInstanceScoper.Instance())
             {
-                string[] providers = ortEnvInstance.GetAvailableProviders();
+                string[] providers = ortEnvInstance.Env.GetAvailableProviders();
 
                 Assert.True(providers.Length > 0);
                 Assert.Equal("CPUExecutionProvider", providers[providers.Length - 1]);
@@ -257,10 +257,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Fact(DisplayName = "TestUpdatingEnvWithCustomLogLevel")]
         public void TestUpdatingEnvWithCustomLogLevel()
         {
-            using (var ortEnvInstance = OrtEnv.Instance())
+            using (var wrapper = OrtEnv.OrtEnvInstanceScoper.Instance())
             {
-                ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
-                Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
+                var env = wrapper.Env;
+                env.EnvLogLevel = LogLevel.Verbose;
+                Assert.Equal(LogLevel.Verbose, env.EnvLogLevel);
             }
         }
         
@@ -268,9 +269,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestUpdatingEnvWithThreadingOptions()
         {
             using (var opt = new ThreadingOptions())
-            using (var env = OrtEnv.GetEnvironment(opt))
+            using (var wrapper = OrtEnv.OrtEnvInstanceScoper.GetEnvironment(opt))
             {
+                var env = wrapper.Env;
                 Assert.NotNull(env);
+                Assert.False(env.IsInvalid);
             }
         }
         
@@ -278,27 +281,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestUpdateEnvMultipleTimesExpectException()
         {
             using (var opt = new ThreadingOptions())
-            using (var env = OrtEnv.GetEnvironment(opt))
+            using (var wrapper = OrtEnv.OrtEnvInstanceScoper.GetEnvironment(opt))
             {
+                var env = wrapper.Env;
                 Assert.NotNull(env);
-                Assert.Throws<InvalidOperationException>(() => OrtEnv.GetEnvironment(opt));
-            }
-        }
-        
-        [Fact(DisplayName = "TestCanReleaseAndRecreateOrtEnv")]
-        public void TestCanReleaseAndRecreateOrtEnv()
-        {
-            using (var opt = new ThreadingOptions())
-            {
-                Assert.NotNull(opt);
-                using (var env = OrtEnv.GetEnvironment(opt))
-                {
-                    Assert.NotNull(env);
-                }
-                using (var env = OrtEnv.GetEnvironment(opt))
-                {
-                    Assert.NotNull(env);
-                }
+                Assert.False(env.IsInvalid);
+                Assert.Throws<InvalidOperationException>(() => OrtEnv.OrtEnvInstanceScoper.GetEnvironment(opt));
             }
         }
         
@@ -311,12 +299,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                        GlobalInterOpNumThreads = 1,
                        GlobalIntraOpNumThreads = 1
                    })
-            using (var env = OrtEnv.GetEnvironment(opt))
+            using (var wrapper = OrtEnv.OrtEnvInstanceScoper.GetEnvironment(opt))
             {
-                    
                 var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
                 using (var sessionOptions = new SessionOptions()) 
-                using (var session = new InferenceSession(model, sessionOptions, env))
+                using (var session = new InferenceSession(model, sessionOptions, wrapper.Env))
                 {
                     Assert.NotNull(session);
                     Assert.NotNull(session.InputMetadata);
@@ -1942,10 +1929,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var memInfo = new OrtMemoryInfo(OrtMemoryInfo.allocatorCPU,
                                                    OrtAllocatorType.ArenaAllocator, 0, OrtMemType.Default))
             using (var arenaCfg = new OrtArenaCfg(0, -1, -1, -1))
-            using (var env = OrtEnv.Instance())
+            using (var env = OrtEnv.OrtEnvInstanceScoper.Instance())
             {
                 // Create and register the arena based allocator
-                env.CreateAndRegisterAllocator(memInfo, arenaCfg);
+                env.Env.CreateAndRegisterAllocator(memInfo, arenaCfg);
 
                 using (var sessionOptions = new SessionOptions())
                 {

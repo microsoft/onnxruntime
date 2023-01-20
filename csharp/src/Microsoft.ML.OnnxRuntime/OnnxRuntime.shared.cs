@@ -48,6 +48,7 @@ namespace Microsoft.ML.OnnxRuntime
     {
         private static OrtEnv _instance;
         private static LogLevel envLogLevel = LogLevel.Warning;
+        private static readonly object Lock  = new object();
         public const string DefaultName = @"CSharpOnnxRuntime";
         
         #region private methods
@@ -104,8 +105,19 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
         public static OrtEnv Instance()
-        {
-            return _instance ?? (_instance = new OrtEnv());
+        {           
+            if (_instance == null)
+            {
+                lock (Lock)
+                {
+                    if (_instance == null)
+                    {
+                        return _instance = new OrtEnv();
+                    }
+                }
+            }
+
+            return _instance;
         }
 
         /// <summary>
@@ -119,7 +131,13 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (_instance == null)
             {
-                return _instance = new OrtEnv(threadingOptions);
+                lock (Lock)
+                {
+                    if (_instance == null)
+                    {
+                        return _instance = new OrtEnv(threadingOptions);
+                    }
+                }
             }
 
             throw new InvalidOperationException(
@@ -216,18 +234,49 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Destroy the singleton instance
+        /// </summary>
+        private void ClearInstance()
+        {
+            _instance = null;
+        }
+
+        /// <summary>
         /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of OrtEnv. This will also destroy the singleton.
+        /// the native instance of OrtEnv. 
         /// </summary>
         /// <returns>always returns true</returns>
         protected override bool ReleaseHandle()
         {
             NativeMethods.OrtReleaseEnv(handle);
             handle = IntPtr.Zero;
-            _instance = null;
             return true;
         }
 
+        #endregion
+
+        #region TestWrapper
+        
+        /// <summary>
+        /// Test class - wraps OrtEnv in disposable 
+        /// </summary>
+        internal class OrtEnvInstanceScoper : IDisposable
+        {
+            public OrtEnv Env { get; }
+            public static OrtEnvInstanceScoper Instance() => new OrtEnvInstanceScoper();
+            public static OrtEnvInstanceScoper GetEnvironment(ThreadingOptions threadingOptions) => new OrtEnvInstanceScoper(threadingOptions);
+
+            public OrtEnvInstanceScoper(ThreadingOptions threadingOptions = null)
+            {
+                Env = threadingOptions == null ? OrtEnv.Instance() : OrtEnv.GetEnvironment(threadingOptions);
+            }
+            public void Dispose()
+            {
+                Env.ReleaseHandle();
+                Env.ClearInstance();
+            }
+        }
+        
         #endregion
     }
 }

@@ -344,7 +344,7 @@ namespace Microsoft.ML.OnnxRuntime
                 _builtInSessionOptions = new SessionOptions();
                 options = _builtInSessionOptions;
             }
-            var envHandle = OrtEnv.Handle;
+            var envHandle = OrtEnv.Instance().Handle;
             try
             {
                 NativeApiStatus.VerifySuccess(NativeTrainingMethods.OrtCreateTrainingSession(envHandle, options.Handle, state.Handle, trainModelPath,

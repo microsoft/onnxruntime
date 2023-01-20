@@ -142,12 +142,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="model"></param>
         /// <param name="options"></param>
-        /// <param name="env"></param>
-        public InferenceSession(byte[] model, SessionOptions options, OrtEnv env)
+        /// <param name="env">Global OrtEnv</param>
+        /// <remarks>For testing - TODO: update all constructors to accept OrtEnv</remarks>
+        internal InferenceSession(byte[] model, SessionOptions options, OrtEnv env)
         {
-            Init(model, options, null, env.DangerousGetHandle());
+            Init(model, options, env: env);
         }
-
+        
         /// <summary>
         /// Constructs an InferenceSession from a model data (in byte array) with some additional
         /// session options and it will use the provided pre-packed weights container to store
@@ -777,24 +778,20 @@ namespace Microsoft.ML.OnnxRuntime
         #region private methods
 
         private void Init(string modelPath, SessionOptions options,
-                          PrePackedWeightsContainer prepackedWeightsContainer = null, IntPtr? envHandle = null)
+                          PrePackedWeightsContainer prepackedWeightsContainer = null, OrtEnv env = null)
         {
-            if (envHandle == null)
-            {
-                envHandle = OrtEnv.Instance().Handle;
-            }
+            var envHandle = env?.Handle ?? OrtEnv.Instance().Handle;
             var session = IntPtr.Zero;
 
             if (prepackedWeightsContainer == null)
             {
-                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle.Value, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
-
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
-                    envHandle.Value, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
+                    envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, prepackedWeightsContainer.Pointer, out session));
             }
 
@@ -802,24 +799,22 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         private void Init(byte[] modelData, SessionOptions options,
-                          PrePackedWeightsContainer prepackedWeightsContainer = null, IntPtr? envHandle = null)
+                          PrePackedWeightsContainer prepackedWeightsContainer = null, OrtEnv env = null)
         {
-            if (envHandle == null)
-            {
-                envHandle = OrtEnv.Instance().Handle;
-            }
+            var envHandle = env?.Handle ?? OrtEnv.Instance().Handle;
+            
             var session = IntPtr.Zero;
 
             if (prepackedWeightsContainer == null)
             {
 
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle.Value, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArray(envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, out session));
             }
 
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionFromArrayWithPrepackedWeightsContainer(
-                    envHandle.Value, modelData, (UIntPtr)modelData.Length, options.Handle, prepackedWeightsContainer.Pointer,
+                    envHandle, modelData, (UIntPtr)modelData.Length, options.Handle, prepackedWeightsContainer.Pointer,
                     out session));
 
             }

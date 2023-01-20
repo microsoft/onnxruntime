@@ -739,9 +739,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 string libFullPath = Path.Combine(Directory.GetCurrentDirectory(), libName);
                 Assert.True(File.Exists(libFullPath), $"Expected lib {libFullPath} does not exist.");
 
-                using (var ortEnvInstance = OrtEnv.Instance())
+                using (var ortEnvInstance = new OrtEnv.OrtEnvInstanceScoper())
                 {
-                    string[] providers = ortEnvInstance.GetAvailableProviders();
+                    string[] providers = ortEnvInstance.Env.GetAvailableProviders();
                     if (Array.Exists(providers, provider => provider == "CUDAExecutionProvider"))
                     {
                         option.AppendExecutionProvider_CUDA(0);
