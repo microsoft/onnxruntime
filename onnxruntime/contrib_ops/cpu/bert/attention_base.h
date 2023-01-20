@@ -38,6 +38,7 @@ class AttentionBase {
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
+    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();
@@ -70,6 +71,7 @@ class AttentionBase {
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer
   float mask_filter_value_;                // the value to be used for filtered out positions
+  float scale_;                            // the scale to be used for softmax
 };
 
 }  // namespace contrib

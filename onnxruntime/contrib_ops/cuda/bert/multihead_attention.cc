@@ -120,7 +120,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
       fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_));
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale));
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.

@@ -18,7 +18,7 @@ void FillAndShuffle(std::vector<float>& values, int32_t batch_size, int32_t voca
   std::mt19937 generator(rd());
   for (int32_t batch = 0; batch < batch_size; batch++) {
     for (int32_t vocab = 0; vocab < vocab_size; vocab++) {
-      values[batch * vocab_size + vocab] = vocab;
+      values[batch * vocab_size + vocab] = static_cast<float>(vocab);
     }
     std::shuffle(values.begin() + batch * vocab_size,
                  values.begin() + batch * vocab_size + vocab_size,

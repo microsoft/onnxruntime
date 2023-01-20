@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
