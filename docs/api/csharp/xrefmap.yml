@@ -1239,6 +1239,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.CreateArenaCfgV2
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.CreateArenaCfgV2
   nameWithType: OrtApi.CreateArenaCfgV2
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.CreateCANNProviderOptions
+  name: CreateCANNProviderOptions
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_CreateCANNProviderOptions
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.CreateCANNProviderOptions
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.CreateCANNProviderOptions
+  nameWithType: OrtApi.CreateCANNProviderOptions
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.CreateCpuMemoryInfo
   name: CreateCpuMemoryInfo
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_CreateCpuMemoryInfo
@@ -1527,6 +1533,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.GetBoundOutputValues
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.GetBoundOutputValues
   nameWithType: OrtApi.GetBoundOutputValues
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.GetCANNProviderOptionsAsString
+  name: GetCANNProviderOptionsAsString
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_GetCANNProviderOptionsAsString
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.GetCANNProviderOptionsAsString
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.GetCANNProviderOptionsAsString
+  nameWithType: OrtApi.GetCANNProviderOptionsAsString
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.GetCUDAProviderOptionsAsString
   name: GetCUDAProviderOptionsAsString
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_GetCUDAProviderOptionsAsString
@@ -1815,6 +1827,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.KernelInfoGetAttributeArray_int64
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.KernelInfoGetAttributeArray_int64
   nameWithType: OrtApi.KernelInfoGetAttributeArray_int64
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.MemoryInfoGetDeviceType
+  name: MemoryInfoGetDeviceType
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_MemoryInfoGetDeviceType
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.MemoryInfoGetDeviceType
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.MemoryInfoGetDeviceType
+  nameWithType: OrtApi.MemoryInfoGetDeviceType
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.MemoryInfoGetId
   name: MemoryInfoGetId
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_MemoryInfoGetId
@@ -1917,6 +1935,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.ReleaseAvailableProviders
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseAvailableProviders
   nameWithType: OrtApi.ReleaseAvailableProviders
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseCANNProviderOptions
+  name: ReleaseCANNProviderOptions
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_ReleaseCANNProviderOptions
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.ReleaseCANNProviderOptions
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseCANNProviderOptions
+  nameWithType: OrtApi.ReleaseCANNProviderOptions
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseCUDAProviderOptions
   name: ReleaseCUDAProviderOptions
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_ReleaseCUDAProviderOptions
@@ -2181,6 +2205,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider
   nameWithType: OrtApi.SessionOptionsAppendExecutionProvider
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider_CANN
+  name: SessionOptionsAppendExecutionProvider_CANN
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_SessionOptionsAppendExecutionProvider_CANN
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider_CANN
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider_CANN
+  nameWithType: OrtApi.SessionOptionsAppendExecutionProvider_CANN
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.SessionOptionsAppendExecutionProvider_CUDA
   name: SessionOptionsAppendExecutionProvider_CUDA
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_SessionOptionsAppendExecutionProvider_CUDA
@@ -2379,12 +2409,24 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.UnregisterAllocator
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.UnregisterAllocator
   nameWithType: OrtApi.UnregisterAllocator
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.UpdateCANNProviderOptions
+  name: UpdateCANNProviderOptions
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_UpdateCANNProviderOptions
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.UpdateCANNProviderOptions
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.UpdateCANNProviderOptions
+  nameWithType: OrtApi.UpdateCANNProviderOptions
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.UpdateCUDAProviderOptions
   name: UpdateCUDAProviderOptions
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_UpdateCUDAProviderOptions
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.UpdateCUDAProviderOptions
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.UpdateCUDAProviderOptions
   nameWithType: OrtApi.UpdateCUDAProviderOptions
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.UpdateEnvWithCustomLogLevel
+  name: UpdateEnvWithCustomLogLevel
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_UpdateEnvWithCustomLogLevel
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.UpdateEnvWithCustomLogLevel
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.UpdateEnvWithCustomLogLevel
+  nameWithType: OrtApi.UpdateEnvWithCustomLogLevel
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.UpdateTensorRTProviderOptions
   name: UpdateTensorRTProviderOptions
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_UpdateTensorRTProviderOptions
@@ -2591,6 +2633,19 @@ references:
   isSpec: "True"
   fullName: Microsoft.ML.OnnxRuntime.OrtEnv.EnableTelemetryEvents
   nameWithType: OrtEnv.EnableTelemetryEvents
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel
+  name: EnvLogLevel
+  href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_EnvLogLevel
+  commentId: P:Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel
+  nameWithType: OrtEnv.EnvLogLevel
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel*
+  name: EnvLogLevel
+  href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_EnvLogLevel_
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel
+  isSpec: "True"
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.EnvLogLevel
+  nameWithType: OrtEnv.EnvLogLevel
 - uid: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
   name: GetAvailableProviders()
   href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_GetAvailableProviders
@@ -3481,6 +3536,19 @@ references:
   isSpec: "True"
   fullName: Microsoft.ML.OnnxRuntime.RunOptions.RunOptions
   nameWithType: RunOptions.RunOptions
+- uid: Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry(System.String,System.String)
+  name: AddRunConfigEntry(String, String)
+  href: api/Microsoft.ML.OnnxRuntime.RunOptions.html#Microsoft_ML_OnnxRuntime_RunOptions_AddRunConfigEntry_System_String_System_String_
+  commentId: M:Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry(System.String,System.String)
+  fullName: Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry(System.String, System.String)
+  nameWithType: RunOptions.AddRunConfigEntry(String, String)
+- uid: Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry*
+  name: AddRunConfigEntry
+  href: api/Microsoft.ML.OnnxRuntime.RunOptions.html#Microsoft_ML_OnnxRuntime_RunOptions_AddRunConfigEntry_
+  commentId: Overload:Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry
+  isSpec: "True"
+  fullName: Microsoft.ML.OnnxRuntime.RunOptions.AddRunConfigEntry
+  nameWithType: RunOptions.AddRunConfigEntry
 - uid: Microsoft.ML.OnnxRuntime.RunOptions.IsInvalid
   name: IsInvalid
   href: api/Microsoft.ML.OnnxRuntime.RunOptions.html#Microsoft_ML_OnnxRuntime_RunOptions_IsInvalid
