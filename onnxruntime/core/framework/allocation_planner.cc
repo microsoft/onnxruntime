@@ -4,6 +4,7 @@
 #include "core/framework/allocation_planner.h"
 #include <list>
 #include <algorithm>
+#include <deque>
 #include <sstream>
 #include <ctime>
 #include <iomanip>
@@ -1720,7 +1721,7 @@ class PlannerImpl {
 
 #ifndef ORT_ENABLE_STREAM
   void PartitionIntoStreams(const logging::Logger& /*logger*/, const ExecutionProviders& /*execution_providers*/,
-                            const std::string& /*partition_config_file*/) {
+                            const PathString& /*partition_config_file*/) {
     stream_nodes_.push_back({});
     node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder()) {

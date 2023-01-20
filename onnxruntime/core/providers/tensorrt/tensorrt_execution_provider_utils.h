@@ -10,7 +10,8 @@
 #include "ort_trt_int8_cal_table.fbs.h"
 #include <NvInferVersion.h>
 #include "core/providers/cuda/cuda_pch.h"
-#include "murmurhash3.h"
+#include "core/common/path_string.h"
+#include "core/framework/murmurhash3.h"
 
 namespace fs = std::experimental::filesystem;
 
@@ -215,34 +216,23 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
     MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
   };
 
-  // Use model name instead of path to avoid cache regeneration if path changes
-  const auto& model_path = main_graph.ModelPath();
-  if (!model_path.IsEmpty()) {
-    // Get model name
-    PathString path_string = model_path.GetComponents().back();
-    char arr[256];
-#ifdef _WIN32
-    wcstombs_s(nullptr, arr, sizeof(arr), path_string.c_str(), sizeof(arr));
-#else
-    strcpy(arr, path_string.c_str());
-#endif
-    std::string model_name(arr);
+  // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
+  const auto& model_path_components = main_graph.ModelPath().GetComponents();
+
+  if (!model_path_components.empty()) {
+    std::string model_name = PathToUTF8String(model_path_components.back());
+
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
     // Ensure enough characters are hashed in case model names are too short
-    int32_t model_name_length = gsl::narrow_cast<int32_t>(model_name.size());
-    constexpr int32_t hash_string_length = 500;
+    const size_t model_name_length = model_name.size();
+    constexpr size_t hash_string_length = 500;
     std::string repeat_model_name = model_name;
-    for (int i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+    for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
       repeat_model_name += model_name;
     }
     hash_str(repeat_model_name);
   } else {
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Model path is empty";
-  }
-
-  // fingerprint the main graph by hashing graph inputs
-  for (const auto* node_arg : main_graph.GetInputsIncludingInitializers()) {
-    hash_str(node_arg->Name());
   }
 
   // fingerprint current graph by hashing graph inputs

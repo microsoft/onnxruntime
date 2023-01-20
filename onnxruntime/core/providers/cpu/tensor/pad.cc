@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/pad.h"
 
 #include "core/framework/op_kernel_type_control_utils.h"
+#include "core/providers/common.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math.h"
@@ -496,13 +497,9 @@ void ComputePadWithAxes(
     PadsVector& pads) {
   size_t axes_size = axes_tensor_raw_data.size();
   for (size_t i = 0; i < axes_size; ++i) {
-    T axis = axes_tensor_raw_data[i];
-    if (axis < 0) {
-      axis = (T)data_rank + axis;  // -1 as data_rank - 1
-    }
-    ORT_ENFORCE(axis >= 0 && axis < (int64_t)data_rank, "values in Axes should be within data_rank.");
-    pads[(unsigned int)axis] = pads_tensor_raw_data[i];                          // xi_begin
-    pads[data_rank + (unsigned int)axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
+    int64_t axis = HandleNegativeAxis(onnxruntime::narrow<int64_t>(axes_tensor_raw_data[i]), data_rank);
+    pads[axis] = pads_tensor_raw_data[i];                          // xi_begin
+    pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
   }
 }
 
@@ -522,7 +519,6 @@ Status Pad::Compute(OpKernelContext* ctx) const {
 
     const Tensor& pads_tensor = *ctx->Input<Tensor>(1);
     auto pads_tensor_dims = pads_tensor.Shape().GetDims();
-    ORT_ENFORCE(pads_tensor.IsDataType<int64_t>(), "Pads tensor should be an INT64 tensor");
     ORT_ENFORCE(pads_tensor_dims.size() == 1 || (pads_tensor_dims.size() == 2 && pads_tensor_dims[0] == 1),
                 "Pads tensor should be a 1D tensor of shape [2 * num_axes] "
                 "or a 2D tensor of shape [1, 2 * num_axes]");
@@ -532,11 +528,9 @@ Status Pad::Compute(OpKernelContext* ctx) const {
 
     const Tensor* axes_tensor = ctx->Input<Tensor>(3);
     if (axes_tensor) {
-      ORT_ENFORCE(axes_tensor->IsDataType<int32_t>() || axes_tensor->IsDataType<int64_t>(), "Axes tensor should be an INT32 or INT64 tensor");
-      auto axes_tensor_dims = axes_tensor->Shape().GetDims();
+      const auto& axes_tensor_dims = axes_tensor->Shape().GetDims();
       ORT_ENFORCE(axes_tensor_dims.size() == 1, "Axes tensor should be a 1D tensor ");
       int64_t axes_size = axes_tensor_dims[0];
-      ORT_ENFORCE((int64_t)pads_size == 2 * axes_size, "Pads tensor size should be [2 * num_axes] ");
 
       pads.resize(2 * data_rank, 0);
       if (axes_tensor->IsDataType<int32_t>()) {

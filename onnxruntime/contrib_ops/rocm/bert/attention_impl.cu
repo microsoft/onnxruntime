@@ -85,6 +85,7 @@ Status QkvToContext(
     T* workspace,
     const int* mask_index,
     gsl::span<const int64_t> mask_index_dims,
+    const float mask_filter_value,
     bool is_unidirectional,
     int past_sequence_length,
     const T* past,
@@ -159,7 +160,7 @@ Status QkvToContext(
         ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
                                       mask_index, nullptr, extra_add_qk, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                                      use_persistent_softmax, persistent_softmax_workspace));
+                                      use_persistent_softmax, persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
@@ -203,6 +204,7 @@ Status LaunchAttentionKernel(
     const void* input,
     const int* mask_index,
     gsl::span<const int64_t> mask_index_dims,
+    const float mask_filter_value,
     const void* past,
     const void* extra_add_qk,
     void* workspace,
@@ -219,6 +221,7 @@ Status LaunchAttentionKernel(
         reinterpret_cast<__half*>(workspace),
         mask_index,
         mask_index_dims,
+        mask_filter_value,
         is_unidirectional,
         past_sequence_length,
         reinterpret_cast<const __half*>(past),
@@ -233,6 +236,7 @@ Status LaunchAttentionKernel(
         reinterpret_cast<float*>(workspace),
         mask_index,
         mask_index_dims,
+        mask_filter_value,
         is_unidirectional,
         past_sequence_length,
         reinterpret_cast<const float*>(past),
@@ -258,6 +262,7 @@ Status DecoderQkvToContext(
     const bool use_past,
     const bool has_layer_state,
     const bool has_key_padding_mask,
+    const float mask_filter_value,
     const T* gemm_query_buffer,
     const T* gemm_kv_buffer,
     const bool* key_padding_mask,
@@ -372,7 +377,7 @@ Status DecoderQkvToContext(
   if (has_key_padding_mask) {
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
                                       num_heads, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
-                                      false, 1, 2, static_cast<int>(0), false, nullptr));
+                                      false, 1, 2, static_cast<int>(0), false, nullptr, mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size,
                            num_heads, nullptr, scratch1, scratch2, false));
@@ -423,6 +428,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,
     const bool has_layer_state,
     const bool has_key_padding_mask,
+    const float mask_filter_value,
     const void* gemm_query_buffer,
     const void* gemm_kv_buffer,
     const bool* key_padding_mask,
@@ -449,6 +455,7 @@ Status LaunchDecoderAttentionKernel(
         use_past,
         has_layer_state,
         has_key_padding_mask,
+        mask_filter_value,
         reinterpret_cast<const half*>(gemm_query_buffer),
         reinterpret_cast<const half*>(gemm_kv_buffer),
         key_padding_mask,
@@ -475,6 +482,7 @@ Status LaunchDecoderAttentionKernel(
         use_past,
         has_layer_state,
         has_key_padding_mask,
+        mask_filter_value,
         reinterpret_cast<const float*>(gemm_query_buffer),
         reinterpret_cast<const float*>(gemm_kv_buffer),
         key_padding_mask,

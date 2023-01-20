@@ -42,7 +42,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
                           ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
 
   enable_flash_attention_ = sizeof(T) == 2 &&
-                            ParseEnvironmentVariableWithDefault<bool>(attention::kEnableFlashAttention, true);
+                            !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
 }
 
 template <typename T>
@@ -85,17 +85,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   MHARunner* fused_runner = nullptr;
 
-#ifndef ENABLE_TRAINING  // Only enable fused kernel on non-training builds
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
   if (is_unidirectional_) {  // GPT
-    // Fused kernels requires left side padding (The mask shall be sequence lengths or no mask)
+    // GPT fused kernels requires left side padding. mask can be:
+    //     none (no padding), 1D sequence lengths or 2d mask.
     // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
     // where past state is empty.
+    bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
     bool use_causal_fused_runner = !disable_fused_runner_ &&
-                                   (nullptr == mask_index || is_mask_1d_seq_len) &&
+                                   (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
                                    nullptr == extra_add_qk &&
                                    parameters.past_sequence_length == 0 &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -105,7 +106,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_causal_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_, enable_flash_attention_));
+        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_flash_attention_));
       }
 
       // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
@@ -117,7 +119,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             nullptr == past &&
                             nullptr == present &&
                             nullptr == extra_add_qk &&
-                            !is_unidirectional_ &&
                             parameters.hidden_size == parameters.v_hidden_size &&
                             parameters.sequence_length == parameters.kv_sequence_length &&
                             FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
@@ -126,7 +127,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_, enable_flash_attention_));
+        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_flash_attention_));
       }
 
       // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -136,7 +138,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       }
     }
   }
-#endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
@@ -185,9 +186,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
+  data.fused_runner = reinterpret_cast<void*>(fused_runner);
+  data.fused_cross_attention_kernel = nullptr;
 
-  return QkvToContext<CudaT>(
-      device_prop, cublas, Stream(context), parameters, data, reinterpret_cast<void*>(fused_runner), past_present_share_buffer_);
+  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }
 
 }  // namespace cuda
