@@ -588,7 +588,7 @@ Status QkvToContext(
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
-    ORT_RETURN_IF_ERROR(run_memory_efficient_attention(p));
+    run_memory_efficient_attention(p);
 
     DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();

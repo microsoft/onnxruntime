@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #pragma once
 
+#if USE_FLASH_ATTENTION
+
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
@@ -9,7 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if USE_FLASH_ATTENTION
 struct MemoryEfficientAttentionParams {
   int32_t sm;
   bool is_half;
@@ -36,13 +37,19 @@ struct MemoryEfficientAttentionParams {
   }
 };
 
-common::Status run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
+void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
-inline bool has_memory_efficient_attention(int32_t sm, bool is_half){
+inline bool has_memory_efficient_attention(int32_t sm, bool is_half) {
   return sm >= (is_half ? 53 : 50);
 }
-#endif
+
+void run_memory_efficient_attention_sm80(const MemoryEfficientAttentionParams& params);
+void run_memory_efficient_attention_sm75(const MemoryEfficientAttentionParams& params);
+void run_memory_efficient_attention_sm70(const MemoryEfficientAttentionParams& params);
+void run_memory_efficient_attention_sm50(const MemoryEfficientAttentionParams& params);
 
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif  // USE_FLASH_ATTENTION
