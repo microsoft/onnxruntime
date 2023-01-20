@@ -1757,10 +1757,10 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         run_subprocess(
                             [
                                 os.path.join(cwd, exe), 
-                                "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*"
+                                "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*",
                             ],
                             cwd=cwd,
-                            dll_path=dll_path
+                            dll_path=dll_path,
                         )
                     else:
                         run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
