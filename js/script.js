@@ -1169,6 +1169,12 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     //Xnnpack
+    "ios,C-API,ARM64,XNNPACK":
+        "Add 'onnxruntime-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "ios,objectivec,ARM64,XNNPACK":
+        "Add 'onnxruntime-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
     "android,C-API,ARM64,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
