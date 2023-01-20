@@ -6,15 +6,16 @@
 <title>OrtSession.RunOptions (onnxruntime 1.14.0 API)</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <link rel="stylesheet" type="text/css" href="../../stylesheet.css" title="Style">
-<link rel="stylesheet" type="text/css" href="../../jquery/jquery-ui.css" title="Style">
+<link rel="stylesheet" type="text/css" href="../../jquery/jquery-ui.min.css" title="Style">
+<link rel="stylesheet" type="text/css" href="../../jquery-ui.overrides.css" title="Style">
 <script type="text/javascript" src="../../script.js"></script>
 <script type="text/javascript" src="../../jquery/jszip/dist/jszip.min.js"></script>
 <script type="text/javascript" src="../../jquery/jszip-utils/dist/jszip-utils.min.js"></script>
 <!--[if IE]>
 <script type="text/javascript" src="../../jquery/jszip-utils/dist/jszip-utils-ie.min.js"></script>
 <![endif]-->
-<script type="text/javascript" src="../../jquery/jquery-3.5.1.js"></script>
-<script type="text/javascript" src="../../jquery/jquery-ui.js"></script>
+<script type="text/javascript" src="../../jquery/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="../../jquery/jquery-ui.min.js"></script>
 </head>
 <body>
 <script type="text/javascript"><!--
@@ -141,7 +142,7 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <pre>public static class <span class="typeNameLabel">OrtSession.RunOptions</span>
 extends java.lang.Object
 implements java.lang.AutoCloseable</pre>
-<div class="block">Used to control logging and termination of a call to <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a>.</div>
+<div class="block">Used to control logging and termination of a call to <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a>.</div>
 </li>
 </ul>
 </div>
@@ -149,7 +150,7 @@ implements java.lang.AutoCloseable</pre>
 <ul class="blockList">
 <li class="blockList">
 <!-- ======== CONSTRUCTOR SUMMARY ======== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="constructor.summary">
 <!--   -->
@@ -172,7 +173,7 @@ implements java.lang.AutoCloseable</pre>
 </ul>
 </section>
 <!-- ========== METHOD SUMMARY =========== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="method.summary">
 <!--   -->
@@ -236,7 +237,7 @@ implements java.lang.AutoCloseable</pre>
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setTerminate(boolean)">setTerminate</a></span>&#8203;(boolean&nbsp;terminate)</code></th>
 <td class="colLast">
-<div class="block">Sets a flag so that all incomplete <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a> calls using this instance of <code>
+<div class="block">Sets a flag so that all incomplete <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a> calls using this instance of <code>
  RunOptions</code> will terminate as soon as possible.</div>
 </td>
 </tr>
@@ -258,7 +259,7 @@ implements java.lang.AutoCloseable</pre>
 <ul class="blockList">
 <li class="blockList">
 <!-- ========= CONSTRUCTOR DETAIL ======== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="constructor.detail">
 <!--   -->
@@ -283,7 +284,7 @@ implements java.lang.AutoCloseable</pre>
 </ul>
 </section>
 <!-- ============ METHOD DETAIL ========== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="method.detail">
 <!--   -->
@@ -399,9 +400,9 @@ implements java.lang.AutoCloseable</pre>
 <h4>setTerminate</h4>
 <pre class="methodSignature">public&nbsp;void&nbsp;setTerminate&#8203;(boolean&nbsp;terminate)
                   throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
-<div class="block">Sets a flag so that all incomplete <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a> calls using this instance of <code>
+<div class="block">Sets a flag so that all incomplete <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a> calls using this instance of <code>
  RunOptions</code> will terminate as soon as possible. If the flag is false, it resets this <code>
- RunOptions</code> so it can be used with other calls to <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a>.</div>
+ RunOptions</code> so it can be used with other calls to <a href="OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a>.</div>
 <dl>
 <dt><span class="paramLabel">Parameters:</span></dt>
 <dd><code>terminate</code> - If true terminate all runs associated with this RunOptions.</dd>

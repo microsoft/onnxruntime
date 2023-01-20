@@ -6,15 +6,16 @@
 <title>All Classes (onnxruntime 1.14.0 API)</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <link rel="stylesheet" type="text/css" href="stylesheet.css" title="Style">
-<link rel="stylesheet" type="text/css" href="jquery/jquery-ui.css" title="Style">
+<link rel="stylesheet" type="text/css" href="jquery/jquery-ui.min.css" title="Style">
+<link rel="stylesheet" type="text/css" href="jquery-ui.overrides.css" title="Style">
 <script type="text/javascript" src="script.js"></script>
 <script type="text/javascript" src="jquery/jszip/dist/jszip.min.js"></script>
 <script type="text/javascript" src="jquery/jszip-utils/dist/jszip-utils.min.js"></script>
 <!--[if IE]>
 <script type="text/javascript" src="jquery/jszip-utils/dist/jszip-utils-ie.min.js"></script>
 <![endif]-->
-<script type="text/javascript" src="jquery/jquery-3.5.1.js"></script>
-<script type="text/javascript" src="jquery/jquery-ui.js"></script>
+<script type="text/javascript" src="jquery/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="jquery/jquery-ui.min.js"></script>
 </head>
 <body>
 <script type="text/javascript"><!--
@@ -26,7 +27,7 @@
     catch(err) {
     }
 //-->
-var data = {"i0":4,"i1":2,"i2":4,"i3":2,"i4":4,"i5":2,"i6":4,"i7":2,"i8":2,"i9":2,"i10":1,"i11":4,"i12":2,"i13":2,"i14":2,"i15":8,"i16":4,"i17":1,"i18":4,"i19":4,"i20":2,"i21":1,"i22":2,"i23":2,"i24":2,"i25":2,"i26":4,"i27":4,"i28":2,"i29":2,"i30":2,"i31":2,"i32":4,"i33":1};
+var data = {"i0":4,"i1":2,"i2":4,"i3":2,"i4":4,"i5":2,"i6":4,"i7":2,"i8":2,"i9":2,"i10":2,"i11":2,"i12":2,"i13":2,"i14":4,"i15":2,"i16":2,"i17":1,"i18":4,"i19":2,"i20":2,"i21":2,"i22":8,"i23":4,"i24":1,"i25":4,"i26":4,"i27":2,"i28":1,"i29":2,"i30":2,"i31":2,"i32":2,"i33":4,"i34":4,"i35":2,"i36":2,"i37":2,"i38":2,"i39":4,"i40":1};
 var tabs = {65535:["t0","All Classes"],1:["t1","Interface Summary"],2:["t2","Class Summary"],4:["t3","Enum Summary"],8:["t4","Exception Summary"]};
 var altColor = "altColor";
 var rowColor = "rowColor";
@@ -164,151 +165,193 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </th>
 </tr>
 <tr id="i9" class="rowColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></td>
+<th class="colLast" scope="row">
+<div class="block">A Java object wrapping an OnnxSparseTensor.</div>
+</th>
+</tr>
+<tr id="i10" class="altColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.BlockSparseTensor</a></td>
+<th class="colLast" scope="row">
+<div class="block">The Java side representation of a block sparse tensor.</div>
+</th>
+</tr>
+<tr id="i11" class="rowColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.COOTensor</a></td>
+<th class="colLast" scope="row">
+<div class="block">The Java side representation of a COO sparse tensor.</div>
+</th>
+</tr>
+<tr id="i12" class="altColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></td>
+<th class="colLast" scope="row">
+<div class="block">The Java side representation of a CSRC sparse tensor.</div>
+</th>
+</tr>
+<tr id="i13" class="rowColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a>&lt;<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="type parameter in OnnxSparseTensor.SparseTensor">T</a> extends java.nio.Buffer&gt;</td>
+<th class="colLast" scope="row">
+<div class="block">Abstract base class for Java sparse tensors</div>
+</th>
+</tr>
+<tr id="i14" class="altColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></td>
+<th class="colLast" scope="row">
+<div class="block">The type of the sparse tensor.</div>
+</th>
+</tr>
+<tr id="i15" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></td>
 <th class="colLast" scope="row">
 <div class="block">A Java object wrapping an OnnxTensor.</div>
 </th>
 </tr>
-<tr id="i10" class="altColor">
+<tr id="i16" class="altColor">
+<td class="colFirst"><a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></td>
+<th class="colLast" scope="row">
+<div class="block">Currently implemented by <a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime"><code>OnnxTensor</code></a>, <a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime"><code>OnnxSparseTensor</code></a>.</div>
+</th>
+</tr>
+<tr id="i17" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime">OnnxValue</a></td>
 <th class="colLast" scope="row">
 <div class="block">Top interface for input and output values from ONNX models.</div>
 </th>
 </tr>
-<tr id="i11" class="rowColor">
+<tr id="i18" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></td>
 <th class="colLast" scope="row">
 <div class="block">The type of the <a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime"><code>OnnxValue</code></a>, mirroring the id in the C API.</div>
 </th>
 </tr>
-<tr id="i12" class="altColor">
+<tr id="i19" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/providers/OrtCUDAProviderOptions.html" title="class in ai.onnxruntime.providers">OrtCUDAProviderOptions</a></td>
 <th class="colLast" scope="row">
 <div class="block">Options for configuring the CUDA execution provider.</div>
 </th>
 </tr>
-<tr id="i13" class="rowColor">
+<tr id="i20" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></td>
 <th class="colLast" scope="row">
 <div class="block">The host object for the onnx-runtime system.</div>
 </th>
 </tr>
-<tr id="i14" class="altColor">
+<tr id="i21" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtEnvironment.ThreadingOptions.html" title="class in ai.onnxruntime">OrtEnvironment.ThreadingOptions</a></td>
 <th class="colLast" scope="row">
 <div class="block">Controls the global thread pools in the environment.</div>
 </th>
 </tr>
-<tr id="i15" class="rowColor">
+<tr id="i22" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtException.html" title="class in ai.onnxruntime">OrtException</a></td>
 <th class="colLast" scope="row">
 <div class="block">An exception which contains the error message and code produced by the native onnxruntime.</div>
 </th>
 </tr>
-<tr id="i16" class="altColor">
+<tr id="i23" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtException.OrtErrorCode.html" title="enum in ai.onnxruntime">OrtException.OrtErrorCode</a></td>
 <th class="colLast" scope="row">
 <div class="block">Maps the OrtErrorCode struct in "onnxruntime_c_api.h" with an additional entry for Java side
  errors.</div>
 </th>
 </tr>
-<tr id="i17" class="rowColor">
+<tr id="i24" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/providers/OrtFlags.html" title="interface in ai.onnxruntime.providers">OrtFlags</a></td>
 <th class="colLast" scope="row">
 <div class="block">An interface for bitset enums that should be aggregated into a single integer.</div>
 </th>
 </tr>
-<tr id="i18" class="altColor">
+<tr id="i25" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a></td>
 <th class="colLast" scope="row">
 <div class="block">The logging level for messages from the environment and session.</div>
 </th>
 </tr>
-<tr id="i19" class="rowColor">
+<tr id="i26" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></td>
 <th class="colLast" scope="row">
 <div class="block">The execution providers available through the Java API.</div>
 </th>
 </tr>
-<tr id="i20" class="altColor">
+<tr id="i27" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtProviderOptions.html" title="class in ai.onnxruntime">OrtProviderOptions</a></td>
 <th class="colLast" scope="row">
 <div class="block">An abstract base class for execution provider options classes.</div>
 </th>
 </tr>
-<tr id="i21" class="rowColor">
+<tr id="i28" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtProviderOptions.OrtProviderSupplier.html" title="interface in ai.onnxruntime">OrtProviderOptions.OrtProviderSupplier</a></td>
 <th class="colLast" scope="row">
 <div class="block">Functional interface mirroring a Java supplier, but can throw OrtException.</div>
 </th>
 </tr>
-<tr id="i22" class="altColor">
+<tr id="i29" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></td>
 <th class="colLast" scope="row">
 <div class="block">Wraps an ONNX model and allows inference calls.</div>
 </th>
 </tr>
-<tr id="i23" class="rowColor">
+<tr id="i30" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.Result.html" title="class in ai.onnxruntime">OrtSession.Result</a></td>
 <th class="colLast" scope="row">
 <div class="block">An <code>AutoCloseable</code> wrapper around a <code>Map</code> containing <a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime"><code>OnnxValue</code></a>s.</div>
 </th>
 </tr>
-<tr id="i24" class="altColor">
+<tr id="i31" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime">OrtSession.RunOptions</a></td>
 <th class="colLast" scope="row">
-<div class="block">Used to control logging and termination of a call to <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a>.</div>
+<div class="block">Used to control logging and termination of a call to <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a>.</div>
 </th>
 </tr>
-<tr id="i25" class="rowColor">
+<tr id="i32" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a></td>
 <th class="colLast" scope="row">
 <div class="block">Represents the options used to construct this session.</div>
 </th>
 </tr>
-<tr id="i26" class="altColor">
+<tr id="i33" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.SessionOptions.ExecutionMode.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.ExecutionMode</a></td>
 <th class="colLast" scope="row">
 <div class="block">The execution mode to use.</div>
 </th>
 </tr>
-<tr id="i27" class="rowColor">
+<tr id="i34" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a></td>
 <th class="colLast" scope="row">
 <div class="block">The optimisation level to use.</div>
 </th>
 </tr>
-<tr id="i28" class="altColor">
+<tr id="i35" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/providers/OrtTensorRTProviderOptions.html" title="class in ai.onnxruntime.providers">OrtTensorRTProviderOptions</a></td>
 <th class="colLast" scope="row">
 <div class="block">Options for configuring the TensorRT execution provider.</div>
 </th>
 </tr>
-<tr id="i29" class="rowColor">
+<tr id="i36" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime">OrtUtil</a></td>
 <th class="colLast" scope="row">
 <div class="block">Util code for interacting with Java arrays.</div>
 </th>
 </tr>
-<tr id="i30" class="altColor">
+<tr id="i37" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/SequenceInfo.html" title="class in ai.onnxruntime">SequenceInfo</a></td>
 <th class="colLast" scope="row">
 <div class="block">Describes an <a href="ai/onnxruntime/OnnxSequence.html" title="class in ai.onnxruntime"><code>OnnxSequence</code></a>, including it's element type if known.</div>
 </th>
 </tr>
-<tr id="i31" class="rowColor">
+<tr id="i38" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/TensorInfo.html" title="class in ai.onnxruntime">TensorInfo</a></td>
 <th class="colLast" scope="row">
 <div class="block">Describes an <a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime"><code>OnnxTensor</code></a>, including it's size, shape and element type.</div>
 </th>
 </tr>
-<tr id="i32" class="altColor">
+<tr id="i39" class="rowColor">
 <td class="colFirst"><a href="ai/onnxruntime/TensorInfo.OnnxTensorType.html" title="enum in ai.onnxruntime">TensorInfo.OnnxTensorType</a></td>
 <th class="colLast" scope="row">
 <div class="block">The native element types supported by the ONNX runtime.</div>
 </th>
 </tr>
-<tr id="i33" class="rowColor">
+<tr id="i40" class="altColor">
 <td class="colFirst"><a href="ai/onnxruntime/ValueInfo.html" title="interface in ai.onnxruntime">ValueInfo</a></td>
 <th class="colLast" scope="row">
 <div class="block">Interface for info objects describing an <a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime"><code>OnnxValue</code></a>.</div>
