@@ -22,7 +22,7 @@ Draw a pipeline
 ===============
 
 There is no other way to look into one model stored
-in ONNX format than looking into its node with 
+in ONNX format than looking into its node with
 *onnx*. This example demonstrates
 how to draw a model and to retrieve it in *json*
 format.
@@ -128,7 +128,7 @@ That's the most simple way.
 
 Draw a model with ONNX
 ++++++++++++++++++++++
-We use `net_drawer.py <https://github.com/onnx/onnx/blob/master/onnx/tools/net_drawer.py>`_
+We use `net_drawer.py <https://github.com/onnx/onnx/blob/main/onnx/tools/net_drawer.py>`_
 included in *onnx* package.
 We use *onnx* to load the model
 in a different way than before.
@@ -226,14 +226,14 @@ Which we display...
  .. code-block:: none
 
 
-    <matplotlib.image.AxesImage object at 0x7f10facab340>
+    <matplotlib.image.AxesImage object at 0x7f3f51301840>
 
 
 
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.191 seconds)
+   **Total running time of the script:** ( 0 minutes  0.322 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_pipeline.py:

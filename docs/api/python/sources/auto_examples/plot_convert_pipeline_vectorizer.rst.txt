@@ -59,7 +59,7 @@ The first step consists in retrieving the boston datset.
 
  .. code-block:: none
 
-    /home/runner/.local/lib/python3.8/site-packages/sklearn/utils/deprecation.py:87: FutureWarning: Function load_boston is deprecated; `load_boston` is deprecated in 1.0 and will be removed in 1.2.
+    /home/runner/.local/lib/python3.10/site-packages/sklearn/utils/deprecation.py:87: FutureWarning: Function load_boston is deprecated; `load_boston` is deprecated in 1.0 and will be removed in 1.2.
 
         The Boston housing prices dataset has an ethical problem. You can refer to
         the documentation of this function for further details.
@@ -151,7 +151,7 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    0.8456228739441438
+    0.8474132062469484
 
 
 
@@ -284,7 +284,7 @@ We compare them to the model's ones.
 
  .. code-block:: none
 
-    0.9999999999999319
+    0.9999999999999123
 
 
 
@@ -297,7 +297,7 @@ that explains the small discrepencies.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  0.915 seconds)
+   **Total running time of the script:** ( 0 minutes  1.374 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_convert_pipeline_vectorizer.py:

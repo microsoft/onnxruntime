@@ -49,7 +49,7 @@ Gallery of examples
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="*ONNX Runtime* extends the  `onnx backend API &lt;https://github.com/onnx/onnx/blob/master/docs/Im...">
+    <div class="sphx-glr-thumbcontainer" tooltip="*ONNX Runtime* extends the `onnx backend API &lt;https://github.com/onnx/onnx/blob/main/docs/Imple...">
 
 .. only:: html
 

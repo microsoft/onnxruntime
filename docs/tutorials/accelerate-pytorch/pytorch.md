@@ -28,7 +28,7 @@ At the heart of PyTorch is the `nn.Module`, a class that represents an entire de
 
 To code an image processing model using PyTorch itself:
 
-```bash
+```python
 import torch
 import torch.nn as nn
 import torchvision.transforms as T

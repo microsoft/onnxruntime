@@ -76,17 +76,15 @@ These dependency versions should reflect what is in the [Dockerfiles](https://gi
 
     This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
 
-## GPU / ROCM
+## GPU / ROCm
 ### Prerequisites
 {: .no_toc }
 
-The default AMD GPU build requires ROCM software toolkit installed on the system:
+The default AMD GPU build requires ROCm software toolkit installed on the system:
 
-* [ROCM](https://rocmdocs.amd.com/en/latest/)
+* [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) 5.2.3
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
   * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
-
-These dependency versions should reflect what is in the [Dockerfiles](https://github.com/pytorch/ort/tree/main/docker).
 
 ### Build instructions
 {: .no_toc }

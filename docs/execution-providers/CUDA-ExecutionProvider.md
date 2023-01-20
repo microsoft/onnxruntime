@@ -1,8 +1,8 @@
 ---
-title: CUDA (NVIDIA)
+title: NVIDIA - CUDA
 description: Instructions to execute ONNX Runtime applications with CUDA
 parent: Execution Providers
-nav_order: 4
+nav_order: 1
 redirect_from: /docs/reference/execution-providers/CUDA-ExecutionProvider
 ---
 
@@ -31,6 +31,7 @@ Please reference [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.c
 
 |ONNX Runtime|CUDA|cuDNN|Notes|
 |---|---|---|---|
+|1.13|11.6|8.2.4 (Linux)<br/>8.5.0.96 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
 |1.12<br/>1.11|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4|
 |1.10|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
 |1.9|11.4|8.2.4 (Linux)<br/>8.2.2.26 (Windows)|libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.1.51<br/>libcublas 11.6.1.51<br/>libcudnn 8.2.4|
@@ -177,3 +178,20 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
+
+### Java
+
+```java
+OrtCUDAProviderOptions cudaProviderOptions = new OrtCUDAProviderOptions(/*device id*/0); // Must be closed after the session closes
+
+cudaProviderOptions.add("gpu_mem_limit","2147483648");
+cudaProviderOptions.add("arena_extend_strategy","kSameAsRequested");
+cudaProviderOptions.add("cudnn_conv_algo_search","DEFAULT");
+cudaProviderOptions.add("do_copy_in_default_stream","1");
+cudaProviderOptions.add("cudnn_conv_use_max_workspace","1");
+cudaProviderOptions.add("cudnn_conv1d_pad_to_nc1d","1");
+
+OrtSession.SessionOptions options = new OrtSession.SessionOptions(); // Must be closed after the session closes
+options.addCUDA(cudaProviderOptions);
+```
+

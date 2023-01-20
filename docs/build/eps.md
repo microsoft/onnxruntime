@@ -17,7 +17,7 @@ redirect_from: /docs/how-to/build/eps
 
 ## Execution Provider Shared Libraries
 
-The oneDNN, TensorRT, and OpenVINO™ providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
+The oneDNN, TensorRT, OpenVINO™, and CANN providers are built as shared libraries vs being statically linked into the main onnxruntime. This enables them to be loaded only when needed, and if the dependent libraries of the provider are not installed onnxruntime will still run fine, it just will not be able to use that provider. For non shared library providers, all dependencies of the provider must exist to load onnxruntime.
 
 ### Built files
 {: .no_toc }
@@ -231,19 +231,19 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 ### Prerequisites
 {: .no_toc }
 
-1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2022.1** for the appropriate OS and target hardware:
+1. Install the OpenVINO™ offline/online installer from Intel<sup>®</sup> Distribution of OpenVINO™<sup>TM</sup> Toolkit **Release 2022.2** for the appropriate OS and target hardware:
    * [Linux - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-linux)
    * [Windows - CPU, GPU, VPU, VAD-M](https://software.intel.com/en-us/openvino-toolkit/choose-download/free-download-windows).
 
    Follow [documentation](https://docs.openvino.ai/latest/index.html) for detailed instructions.
 
-  *2022.1 is the recommended OpenVINO™ version. [OpenVINO™ 2021.3](https://docs.openvinotoolkit.org/2021.3/index.html) is minimal OpenVINO™ version requirement.*
-  *The minimum ubuntu version to support 2022.1 is 18.04.*
+  *2022.2 is the recommended OpenVINO™ version. [OpenVINO™ 2021.4](https://docs.openvinotoolkit.org/2021.4/index.html) is minimal OpenVINO™ version requirement.*
+  *The minimum ubuntu version to support 2022.2 is 18.04.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#Install-GPU), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-GPU-steps)
-   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_linux.html#additional-NCS-steps)
-   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_windows.html#hddl-myriad), [Linux](https://docs.openvino.ai/2021.4/openvino_docs_install_guides_installing_openvino_linux.html#install-VPU). Follow steps 3 and 4 to complete the configuration.
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide)
+   * To configure Intel<sup>®</sup> Movidius<sup>TM</sup> USB, please follow this getting started guide: [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_ncs2.html#ncs-guide)
+   * To configure Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs, please follow this configuration guide: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_installing_openvino_ivad_vpu.html#vpu-guide). Follow steps 3 and 4 to complete the configuration.
 
 3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
    * For Linux run till OpenVINO™ 2021.4 version:
@@ -262,7 +262,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile].(https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino)
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino).
 
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
@@ -454,7 +454,7 @@ The DirectML execution provider supports building for both x64 and x86 architect
 ---
 
 ## ARM Compute Library
-See more information on the ACL Execution Provider [here](../execution-providers/ACL-ExecutionProvider.md).
+See more information on the ACL Execution Provider [here](../execution-providers/community-maintained/ACL-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -521,7 +521,7 @@ onnxruntime_test_all
 
 ## ArmNN
 
-See more information on the ArmNN Execution Provider [here](../execution-providers/ArmNN-ExecutionProvider.md).
+See more information on the ArmNN Execution Provider [here](../execution-providers/community-maintained/ArmNN-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -569,7 +569,7 @@ The ARM Compute Library home directory and build directory must also be availabl
 ---
 
 ## RKNPU
-See more information on the RKNPU Execution Provider [here](../execution-providers/RKNPU-ExecutionProvider.md).
+See more information on the RKNPU Execution Provider [here](../execution-providers/community-maintained/RKNPU-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -608,9 +608,9 @@ set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
 ---
 
 ## Vitis-AI
-See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/Vitis-AI-ExecutionProvider.md).
+See more information on the Xilinx Vitis-AI execution provider [here](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md).
 
-For instructions to setup the hardware environment: [Hardware setup](../execution-providers/Vitis-AI-ExecutionProvider.md#hardware-setup)
+For instructions to setup the hardware environment: [Hardware setup](../execution-providers/community-maintained/Vitis-AI-ExecutionProvider.md#hardware-setup)
 
 ### Linux
 {: .no_toc }
@@ -629,7 +629,7 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
@@ -649,6 +649,27 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ```
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
+
+## AMD ROCm
+
+See more information on the ROCm Execution Provider [here](../execution-providers/ROCm-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.2.3
+
+### Build Instructions
+{: .no_toc }
+
+#### Linux
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo> --use_rocm --rocm_home <path to ROCm home>
+```
+
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#rocm).
 
 ## NNAPI
 
@@ -699,3 +720,85 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 * Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the CoreML EP.
 * Add `--use_coreml` to include the CoreML EP in the build
+
+## XNNPACK
+
+Usage of XNNPACK on Android/Windows/Linux platforms is via the XNNPACK EP.
+
+See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
+
+The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
+
+We don't support XNNPACK on iOS currently.
+
+If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
+
+### Build for Android
+#### Create a minimal build with XNNPACK EP support
+
+Please see [the instructions](./android.md) for setting up the Android environment required to build. The Android build can be cross-compiled on Windows or Linux.
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the XNNPACK EP.
+* Add `--use_xnnpack` to include the XNNPACK EP in the build
+
+##### Example build commands with the XNNPACK EP enabled
+
+Windows example:
+
+```bash
+<ONNX Runtime repository root>.\build.bat --config MinSizeRel --android --android_sdk_path D:\Android --android_ndk_path D:\Android\ndk\21.1.6352462\ --android_abi arm64-v8a --android_api 29 --cmake_generator Ninja --minimal_build extended --use_xnnpack --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>
+```
+
+Linux example:
+
+```bash
+<ONNX Runtime repository root>./build.sh --config MinSizeRel --android --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --minimal_build extended --use_xnnpack --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>`
+```
+If you don't mind MINIMAL build, you can use the following command to build XNNPACK EP for Android:
+Linux example:
+```bash
+./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
+```
+### Build for Windows
+```dos
+<ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack
+```
+### Build for Linux
+```bash
+<ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo> --use_xnnpack
+```
+
+---
+
+## CANN
+
+See more information on the CANN Execution Provider [here](../execution-providers/community-maintained/CANN-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+
+1. Install the CANN Toolkit for the appropriate OS and target hardware by following [documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/51RC1alphaX/softwareinstall/instg/atlasdeploy_03_0017.html) for detailed instructions, please.
+
+2. Initialize the CANN environment by running the script as shown below.
+
+   ```bash
+   # Default path, change it if needed.
+   source /usr/local/Ascend/ascend-toolkit/set_env.sh
+   ```
+
+### Build Instructions
+{: .no_toc }
+
+#### Linux
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --parallel --use_cann
+```
+
+### Notes
+{: .no_toc }
+
+* The CANN execution provider supports building for both x64 and aarch64 architectures.
+* CANN excution provider now is only supported on Linux.

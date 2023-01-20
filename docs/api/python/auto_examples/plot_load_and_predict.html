@@ -6,7 +6,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Load and predict with ONNX Runtime and a very simple model &#8212; ONNX Runtime 1.13.0 documentation</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-156955408-1');
+    </script>
+    
+    <title>Load and predict with ONNX Runtime and a very simple model &#8212; ONNX Runtime 1.14.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -19,6 +28,7 @@
     <script src="../static/underscore.js"></script>
     <script src="../static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../static/doctools.js"></script>
+    <script src="../static/sphinx_highlight.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="ONNX Runtime Backend for ONNX" href="plot_backend.html" />
@@ -52,11 +62,11 @@ retrieve the definition of its inputs and outputs.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
 
 <span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
-<span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="k">import</span> <span class="n">get_example</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
 </pre></div>
 </div>
 <p>Let’s load a very simple model.
-The model is available on github <a class="reference external" href="https://github.com/onnx/onnx/tree/master/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.</p>
+The model is available on github <a class="reference external" href="https://github.com/onnx/onnx/blob/main/onnx/backend/test/data/node/test_sigmoid">onnx…test_sigmoid</a>.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">example1</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;sigmoid.onnx&quot;</span><span class="p">)</span>
 <span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example1</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="n">rt</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">())</span>
 </pre></div>
@@ -98,24 +108,24 @@ output type tensor(float)
 <span class="nb">print</span><span class="p">(</span><span class="n">res</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[array([[[0.72465897, 0.72574586, 0.6371799 , 0.71288747, 0.6594067 ],
-        [0.6177746 , 0.587299  , 0.5193266 , 0.6938682 , 0.64304864],
-        [0.52724993, 0.6042261 , 0.6895429 , 0.6509503 , 0.6616442 ],
-        [0.6763506 , 0.6537579 , 0.6264375 , 0.59437954, 0.5884929 ]],
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[array([[[0.72821426, 0.6339202 , 0.7272735 , 0.6409311 , 0.61518466],
+        [0.7185246 , 0.640914  , 0.60131776, 0.6857518 , 0.70039463],
+        [0.7135308 , 0.65056884, 0.58760184, 0.7135416 , 0.63284004],
+        [0.7188247 , 0.5470599 , 0.58532   , 0.67812634, 0.6893187 ]],
 
-       [[0.6776498 , 0.5767992 , 0.6779048 , 0.67587113, 0.61081856],
-        [0.7236815 , 0.5775631 , 0.61381036, 0.6063235 , 0.62550837],
-        [0.50100976, 0.62944853, 0.70942533, 0.6089567 , 0.63848245],
-        [0.5719551 , 0.68211   , 0.511835  , 0.7158986 , 0.53346515]],
+       [[0.6211655 , 0.554035  , 0.55418974, 0.56652635, 0.62399405],
+        [0.55780345, 0.6938668 , 0.5910147 , 0.59314   , 0.54391265],
+        [0.7126377 , 0.65041703, 0.62936115, 0.69839984, 0.5651956 ],
+        [0.6023196 , 0.6012137 , 0.7164181 , 0.59447944, 0.7121656 ]],
 
-       [[0.6256963 , 0.5512383 , 0.5719546 , 0.6073346 , 0.64393806],
-        [0.6807264 , 0.6192803 , 0.5377599 , 0.5919384 , 0.7111624 ],
-        [0.7152287 , 0.6213895 , 0.7274681 , 0.609508  , 0.59370804],
-        [0.6366582 , 0.5454885 , 0.72254837, 0.55745107, 0.5137241 ]]],
+       [[0.6137416 , 0.65805656, 0.6757898 , 0.7231871 , 0.6186665 ],
+        [0.662174  , 0.61860013, 0.6509645 , 0.57368857, 0.689906  ],
+        [0.7140595 , 0.7226651 , 0.6117408 , 0.5281206 , 0.69103116],
+        [0.7082236 , 0.7197187 , 0.6111821 , 0.6187154 , 0.53502613]]],
       dtype=float32)]
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.009 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.013 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-load-and-predict-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/7c8424f45d0156abd4d0221c65601124/plot_load_and_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_load_and_predict.py</span></code></a></p>
@@ -190,7 +200,7 @@ output type tensor(float)
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.3.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

@@ -6,7 +6,16 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
 
-    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.13.0 documentation</title>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-156955408-1');
+    </script>
+    
+    <title>Common errors with onnxruntime &#8212; ONNX Runtime 1.14.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -19,6 +28,7 @@
     <script src="../static/underscore.js"></script>
     <script src="../static/_sphinx_javascript_frameworks_compat.js"></script>
     <script src="../static/doctools.js"></script>
+    <script src="../static/sphinx_highlight.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Train, convert and predict with ONNX Runtime" href="plot_train_convert_predict.html" />
@@ -56,8 +66,8 @@ a vector of dimension 2 and returns a class among three.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">numpy</span>
 
 <span class="kn">import</span> <span class="nn">onnxruntime</span> <span class="k">as</span> <span class="nn">rt</span>
-<span class="kn">from</span> <span class="nn">onnxruntime.capi.onnxruntime_pybind11_state</span> <span class="k">import</span> <span class="n">InvalidArgument</span>
-<span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="k">import</span> <span class="n">get_example</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.capi.onnxruntime_pybind11_state</span> <span class="kn">import</span> <span class="n">InvalidArgument</span>
+<span class="kn">from</span> <span class="nn">onnxruntime.datasets</span> <span class="kn">import</span> <span class="n">get_example</span>
 
 <span class="n">example2</span> <span class="o">=</span> <span class="n">get_example</span><span class="p">(</span><span class="s2">&quot;logreg_iris.onnx&quot;</span><span class="p">)</span>
 <span class="n">sess</span> <span class="o">=</span> <span class="n">rt</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="n">example2</span><span class="p">,</span> <span class="n">providers</span><span class="o">=</span><span class="n">rt</span><span class="o">.</span><span class="n">get_available_providers</span><span class="p">())</span>
@@ -199,7 +209,7 @@ ERROR with Shape=(1, 1, 3) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
 ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid rank for input: float_input Got: 3 Expected: 2 Please fix either the inputs or the model.
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.008 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 0 minutes  0.014 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-common-errors-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/3a2955e44bf8f95a0eee6e71695ad788/plot_common_errors.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_common_errors.py</span></code></a></p>
@@ -274,7 +284,7 @@ ERROR with Shape=(2, 1, 2) - [ONNXRuntimeError] : 2 : INVALID_ARGUMENT : Invalid
       &copy;2018-2021, Microsoft.
       
       |
-      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.1.1</a>
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 5.3.0</a>
       &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
       
       |

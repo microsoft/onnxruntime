@@ -188,7 +188,7 @@ python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py
 
 The API for executing ORT format models is the same as for ONNX models.
 
-See the [ONNX Runtime API documentation](../../api) for details on individual API usage.
+See the [ONNX Runtime API documentation](../api) for details on individual API usage.
 
 ### APIs by platform
 

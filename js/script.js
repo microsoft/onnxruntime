@@ -1048,6 +1048,15 @@ var validCombos = {
     "linux,C++,X86,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
+    "linux,Python,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+    
+    "linux,C-API,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+    
+    "linux,C++,X86,ROCm":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
+
     "linux,Python,ARM64,ACL":
         "Follow build instructions from <a href='https://aka.ms/build-ort-acl' target='_blank'>here</a>",
     
@@ -1093,20 +1102,39 @@ var validCombos = {
     "linux,C++,ARM64,RockchipNPU":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rknpu' target='_blank'>here</a>",
 
+    //mac m1
     "mac,C-API,ARM64,CoreML":
-        "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
     "mac,C#,ARM64,CoreML":
-      "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a> <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "mac,C++,ARM64,CoreML":
         "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
 
     "mac,Java,ARM64,CoreML":
-      "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
     
     "mac,C-API,ARM64,CoreML":
-      "Download .tgz file from&nbsp;<a href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "mac,Python,ARM64,DefaultCPU":
+        "pip install onnxruntime",
+    
+    "mac,Python,ARM64,DefaultCPU":
+        "pip install onnxruntime",
+
+    "mac,Java,ARM64,DefaultCPU":
+        "Add a dependency on <a href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
+
+    "mac,C#,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "mac,C-API,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
+    "mac,C++,ARM64,DefaultCPU":
+        "Install Nuget package&nbsp;<a href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
     //power
     "linux,C-API,Power,DefaultCPU":
@@ -1120,10 +1148,13 @@ var validCombos = {
 
      //SNPE
     "windows,C-API,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
 
     "windows,C++,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
+    
+    "windows,C#,ARM64,SNPE":
+    "View installation instructions <a href='./winarm.html' target='_blank'>here</a>",
 
     "linux,C-API,ARM64,SNPE":
     "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
@@ -1135,7 +1166,57 @@ var validCombos = {
     "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     "android,C++,ARM64,SNPE":
-    "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>"
+        "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
+
+    //Xnnpack
+    "android,C-API,ARM64,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "android,C++,ARM64,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "android,Java,ARM64,XNNPACK":
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+    "android,C-API,ARM32,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "android,C++,ARM32,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "android,Java,ARM32,XNNPACK":
+        "Add a dependency on <a href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android</a> using Maven/Gradle and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
+
+    "windows,C-API,X86,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "windows,C++,X86,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "linux,C-API,X86,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "linux,C++,X86,XNNPACK":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "linux,Python,ARM64,CANN":
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+    "linux,C-API,ARM64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C++,ARM64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,Python,X64,CANN":
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+
+    "linux,C-API,X64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "linux,C++,X64,CANN":
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 };
 
 function commandMessage(key) {

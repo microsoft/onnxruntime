@@ -25,41 +25,10 @@
     <a class="skip-main" href="#skipMain">Skip to main content</a>
     <div class="main-wrapper">
         <div class="top-banner-bg">
-            <header class="fixed-top header-content">
-                <nav class="navbar navbar-expand-md navbar-custom" aria-label="Main menu">
-                    <a id="ONNXLogo" class="navbar-brand" href="./index.html">
-                        <img src="images/svg/ONNX-Runtime-logo.svg" class="d-inline-block align-top onnx-logo" alt="ONNX Runtime Home" />
-                    </a>
-                    <button class="navbar-toggler p-0" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                        <span class="navbar-toggler-icon"></span>
-                    </button>
-                    <div class="collapse navbar-collapse border-md-top mt-md-0 mt-2" id="navbarNav">
-                        <div class="mr-auto"></div>
-                        <div class="my-md-2 mb-0 mt-2 my-lg-0 pl-3 pl-md-0">
-                            <ul class="navbar-nav navbar-nav mr-auto text-uppercase" id="navigation">
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" href="./index.html#getStartedTable">Get Started</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" href="./docs">Docs</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" target="_blank" href="./news.html">News</a>
-                                </li>
-                                <li class="nav-item active">
-                                    <a class="nav-link pr-3" href="./community.html">Community</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link pr-3" href="./about.html">About</a>
-                                </li>
-                                <li class="nav-item">
-                                    <a class="nav-link" target="_blank" href="http://github.com/microsoft/onnxruntime">GitHub</a>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </nav>
-            </header>
+
+            <!-- Partial header.html Start-->
+            <div w3-include-html="header.html"></div>
+            <!-- Partial header.html End-->
 
             <div id="skipMain" role="main">
                 <div class="outer-container mx-auto py-5">
@@ -210,6 +179,14 @@
                                 </div>
                                 <div class="col-12 col-md-9 quote">&ldquo;The mission of PTW is to guarantee radiation therapy safely. Bringing an AI model from research into the clinic can be a challenge, however. These are very different software and hardware environments. ONNX Runtime bridges the gap and allows us to choose the best possible tools for research and be sure deployment into any environment will just work.&rdquo;<br/><br/>
                                     <div class="quote-attribution text-right">&ndash;Jan Weidner, Research Software Engineer, PTW Dosimetry</div>
+                                </div>						
+                            </div>
+                            <div id = "redis" class="quotebox row col-12 col-md-12 mb-4">
+                                <div class="customer-logo col-12 col-md-3 text-center">
+                                    <img src="./images/logos/redis-logo.png" alt="Redis logo">
+                                </div>
+                                <div class="col-12 col-md-9 quote">&ldquo;ONNX Runtime underpins RedisAI's distinctive capability to run machine-learning and deep-learning model inference seamlessly inside of Redis. This integration allows data scientists to train models in their preferred ML framework (PyTorch, TensorFlow, etc), and serve those models from Redis for low-latency inference.&rdquo;<br/><br/>
+                                    <div class="quote-attribution text-right">&ndash;Sam Partee, Principal Engineer, Applied AI, Redis</div>
                                 </div>						
                             </div>
                             <div id = "rockchip" class="quotebox row col-12 col-md-12 mb-4">

@@ -1209,6 +1209,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.CompareMemoryInfo
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.CompareMemoryInfo
   nameWithType: OrtApi.CompareMemoryInfo
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.CopyKernelInfo
+  name: CopyKernelInfo
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_CopyKernelInfo
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.CopyKernelInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.CopyKernelInfo
+  nameWithType: OrtApi.CopyKernelInfo
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.CreateAllocator
   name: CreateAllocator
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_CreateAllocator
@@ -1695,6 +1701,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.GetTensorTypeAndShape
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.GetTensorTypeAndShape
   nameWithType: OrtApi.GetTensorTypeAndShape
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.GetTrainingApi
+  name: GetTrainingApi
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_GetTrainingApi
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.GetTrainingApi
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.GetTrainingApi
+  nameWithType: OrtApi.GetTrainingApi
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.GetTypeInfo
   name: GetTypeInfo
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_GetTypeInfo
@@ -1929,6 +1941,12 @@ references:
   commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.ReleaseIoBinding
   fullName: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseIoBinding
   nameWithType: OrtApi.ReleaseIoBinding
+- uid: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseKernelInfo
+  name: ReleaseKernelInfo
+  href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_ReleaseKernelInfo
+  commentId: F:Microsoft.ML.OnnxRuntime.OrtApi.ReleaseKernelInfo
+  fullName: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseKernelInfo
+  nameWithType: OrtApi.ReleaseKernelInfo
 - uid: Microsoft.ML.OnnxRuntime.OrtApi.ReleaseMapTypeInfo
   name: ReleaseMapTypeInfo
   href: api/Microsoft.ML.OnnxRuntime.OrtApi.html#Microsoft_ML_OnnxRuntime_OrtApi_ReleaseMapTypeInfo
@@ -3725,19 +3743,6 @@ references:
   isSpec: "True"
   fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nnapi
   nameWithType: SessionOptions.AppendExecutionProvider_Nnapi
-- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
-  name: AppendExecutionProvider_Nuphar(String)
-  href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_AppendExecutionProvider_Nuphar_System_String_
-  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
-  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar(System.String)
-  nameWithType: SessionOptions.AppendExecutionProvider_Nuphar(String)
-- uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar*
-  name: AppendExecutionProvider_Nuphar
-  href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_AppendExecutionProvider_Nuphar_
-  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar
-  isSpec: "True"
-  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_Nuphar
-  nameWithType: SessionOptions.AppendExecutionProvider_Nuphar
 - uid: Microsoft.ML.OnnxRuntime.SessionOptions.AppendExecutionProvider_OpenVINO(System.String)
   name: AppendExecutionProvider_OpenVINO(String)
   href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_AppendExecutionProvider_OpenVINO_System_String_
@@ -3958,19 +3963,6 @@ references:
   isSpec: "True"
   fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithCudaProvider
   nameWithType: SessionOptions.MakeSessionOptionWithCudaProvider
-- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(String)
-  name: MakeSessionOptionWithNupharProvider(String)
-  href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_MakeSessionOptionWithNupharProvider_String_
-  commentId: M:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(String)
-  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider(String)
-  nameWithType: SessionOptions.MakeSessionOptionWithNupharProvider(String)
-- uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider*
-  name: MakeSessionOptionWithNupharProvider
-  href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_MakeSessionOptionWithNupharProvider_
-  commentId: Overload:Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider
-  isSpec: "True"
-  fullName: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithNupharProvider
-  nameWithType: SessionOptions.MakeSessionOptionWithNupharProvider
 - uid: Microsoft.ML.OnnxRuntime.SessionOptions.MakeSessionOptionWithRocmProvider(System.Int32)
   name: MakeSessionOptionWithRocmProvider(Int32)
   href: api/Microsoft.ML.OnnxRuntime.SessionOptions.html#Microsoft_ML_OnnxRuntime_SessionOptions_MakeSessionOptionWithRocmProvider_System_Int32_

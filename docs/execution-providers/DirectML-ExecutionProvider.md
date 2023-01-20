@@ -1,5 +1,5 @@
 ---
-title: DirectML (Windows)
+title: Windows - DirectML
 description: Instructions to execute ONNX Runtime with the DirectML execution provider
 parent: Execution Providers
 nav_order: 5
@@ -122,7 +122,7 @@ However, if a model input contains a free dimension (such as for batch size), ad
 
 ## Samples
 
-A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](https://github.com/microsoft/onnxruntime/tree/master/samples//c_cxx/fns_candy_style_transfer)
+A complete sample of onnxruntime using the DirectML execution provider can be found under [samples/c_cxx/fns_candy_style_transfer](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/fns_candy_style_transfer)
 
 
 ## Additional Resources
