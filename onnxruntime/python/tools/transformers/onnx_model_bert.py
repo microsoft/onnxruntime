@@ -13,6 +13,7 @@ from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
 from fusion_gelu_approximation import FusionGeluApproximation
 from fusion_gemmfastgelu import FusionGemmFastGelu
+from fusion_gemm_gelu import FusionGemmGelu
 from fusion_layernorm import FusionLayerNormalization, FusionLayerNormalizationTF
 from fusion_options import AttentionMaskFormat, FusionOptions
 from fusion_qordered_attention import FusionQOrderedAttention
@@ -75,6 +76,10 @@ class BertOnnxModel(OnnxModel):
 
     def fuse_bias_gelu(self, is_fastgelu):
         fusion = FusionBiasGelu(self, is_fastgelu)
+        fusion.apply()
+
+    def fuse_gemm_gelu(self):
+        fusion = FusionGemmGelu(self)
         fusion.apply()
 
     def gelu_approximation(self):
@@ -427,6 +432,9 @@ class BertOnnxModel(OnnxModel):
         if options is not None and options.enable_gemm_fast_gelu:
             self.fuse_gemm_fast_gelu()
 
+        if (options is None) or options.enable_gemm_gelu:
+            self.fuse_gemm_gelu()
+
         self.remove_unused_constant()
 
         # Use symbolic batch dimension in input and output.
@@ -450,6 +458,8 @@ class BertOnnxModel(OnnxModel):
             "GemmFastGelu",
             "LayerNormalization",
             "SkipLayerNormalization",
+            "QOrderedMatMul",
+            "GemmGelu",
         ]
         q_ops = ["QOrderedAttention", "QOrderedGelu", "QOrderedLayerNormalization", "QOrderedMatMul"]
         for op in ops + q_ops:

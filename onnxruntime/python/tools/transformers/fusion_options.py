@@ -32,6 +32,7 @@ class FusionOptions:
         self.enable_bias_skip_layer_norm = True
         self.enable_bias_gelu = True
         self.enable_gelu_approximation = False
+        self.enable_gemm_gelu = True
         self.enable_qordered_matmul = True
 
         self.enable_shape_inference = True
@@ -68,6 +69,8 @@ class FusionOptions:
             options.enable_bias_gelu = False
         if args.enable_gelu_approximation:
             options.enable_gelu_approximation = True
+        if args.disable_gemm_gelu:
+            options.enable_gemm_gelu = False
         if args.disable_shape_inference:
             options.enable_shape_inference = False
         if args.enable_gemm_fast_gelu:
@@ -119,6 +122,14 @@ class FusionOptions:
             help="disable Add Bias and Gelu/FastGelu fusion",
         )
         parser.set_defaults(disable_bias_gelu=False)
+
+        parser.add_argument(
+            "--disable_gemm_gelu",
+            required=False,
+            action="store_true",
+            help="disable Matmul, Gelu/FastGelu/BiasGelu fusion",
+        )
+        parser.set_defaults(disable_matmul_bias_gelu=False)
 
         parser.add_argument(
             "--disable_layer_norm",
