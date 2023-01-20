@@ -26,10 +26,7 @@ class UnetOnnxModel(BertOnnxModel):
         """
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
 
-        super().__init__(model)
-        self.num_heads = num_heads
-        self.hidden_size = hidden_size
-        self.utils = FusionUtils(self)
+        super().__init__(model, num_heads=num_heads, hidden_size=hidden_size)
 
     def preprocess(self):
         return

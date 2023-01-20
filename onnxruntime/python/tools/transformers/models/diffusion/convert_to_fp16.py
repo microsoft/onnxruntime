@@ -13,8 +13,9 @@
 #    python3 scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path ../stable-diffusion-v1-5
 #
 # Then you can use this script to convert them to float16 like the following:
-#    pip3 install -U onnxruntime-gpu
+#    pip3 install -U onnxruntime-gpu >= 1.14
 #    python3 -m onnxruntime.transformers.models.diffusion.convert_to_fp16 -i ../stable-diffusion-v1-5 -o ../stable-diffusion-v1-5-fp16
+# Note that float16 model is intended for CUDA Execution Provider. It might not run in CPU Execution Provider.
 
 import argparse
 import logging
@@ -32,22 +33,27 @@ logger = logging.getLogger(__name__)
 
 
 def convert_to_fp16(source_dir: Path, target_dir: Path, overwrite: bool, use_external_data_format: bool):
+    """Convert a model to float16
+
+    Args:
+        source_dir (Path): source directory
+        target_dir (Path): target directory
+        overwrite (bool): overwrite if exists
+        use_external_data_format (bool): save model to two files: one for onnx graph, another for weights
+
+    Raises:
+        RuntimeError: input onnx model does not exist
+        RuntimeError: output onnx model path existed
+    """
     dirs_with_onnx = ["vae_encoder", "vae_decoder", "text_encoder", "safety_checker", "unet"]
     for name in dirs_with_onnx:
         onnx_model_path = source_dir / name / "model.onnx"
 
         if not os.path.exists(onnx_model_path):
-            raise RuntimeError(f"onnx model does not exist: {onnx_model_path}")
+            raise RuntimeError(f"input onnx model does not exist: {onnx_model_path}")
 
         num_heads = 0
         hidden_size = 0
-        # TODO(tianleiwu): fix attention fusion for text_encoder and safety_checker
-        # if name == "safety_checker":
-        #     num_heads = 16
-        #     hidden_size = 1024
-        # elif name == "text_encoder":
-        #     num_heads = 12
-        #     hidden_size = 768
 
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
@@ -82,6 +88,17 @@ def convert_to_fp16(source_dir: Path, target_dir: Path, overwrite: bool, use_ext
 
 
 def copy_extra(source_dir: Path, target_dir: Path, overwrite: bool):
+    """Copy extra directory.
+
+    Args:
+        source_dir (Path): source directory
+        target_dir (Path): target directory
+        overwrite (bool): overwrite if exists
+
+    Raises:
+        RuntimeError: source path does not exist
+        RuntimeError: output path exists but overwrite is false.
+    """
     extra_dirs = ["scheduler", "tokenizer", "feature_extractor"]
     for name in extra_dirs:
         source_path = source_dir / name
@@ -113,6 +130,11 @@ def copy_extra(source_dir: Path, target_dir: Path, overwrite: bool):
 
 
 def parse_arguments():
+    """Parse arguments
+
+    Returns:
+        Namespace: arguments
+    """
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
