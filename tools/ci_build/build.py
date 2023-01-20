@@ -1746,7 +1746,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_customopregistration_test")
 
                 for exe in executables:
-                    if args.use_tensorrt and not args.tensorrt_placeholder_builder: 
+                    if exe == "onnxruntime_test_all" and args.use_tensorrt and not args.tensorrt_placeholder_builder:
                         # Due to the size increase of TRT kernel library, the load time has increased from
                         # upgrading 8.4 -> 8.5 by a somewhat significant amount.
                         # This impacts every TRT EP test, especially the significant test time increase
