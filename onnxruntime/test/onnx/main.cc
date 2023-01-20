@@ -685,7 +685,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
-    {"test_col2im_pads", "onnx 18 test data error."},
     {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
