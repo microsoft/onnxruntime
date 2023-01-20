@@ -123,7 +123,7 @@ namespace Dml
 
         const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
 
-        ComPtr<ID3D12Resource> resource = allocInfo->GetResourceInUavState();
+        ComPtr<ID3D12Resource> resource = allocInfo->GetUavResource();
         resource.CopyTo(d3dResource);
         *pooledResource = allocation.Detach();
         return S_OK;
@@ -136,7 +136,7 @@ namespace Dml
         ORT_TRY
         {
             const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(allocation);
-            return allocInfo->GetResourceInUavState();
+            return allocInfo->GetUavResource();
         }
         ORT_CATCH_GENERIC
         {
@@ -342,7 +342,7 @@ namespace Dml
                 {
                     assert(tensor->IsDataInterface());
                     const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(tensor).GetDataInterface().Get());
-                    ID3D12Resource* resource = allocInfo->GetResourceInUavState();
+                    ID3D12Resource* resource = allocInfo->GetUavResource();
                     D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
                     bufferBindings.push_back({ resource, 0, resourceDesc.Width });
                     bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
@@ -433,15 +433,8 @@ namespace Dml
             //
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
-            ID3D12Resource* dstData = dstAllocInfo->GetResourceInCopyDstState() == nullptr
-                ? dstAllocInfo->GetResourceInUavState()
-                : dstAllocInfo->GetResourceInCopyDstState();
-
-            // When resources in dst state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
-            // take the slower path of adding a barrier (e.g. committed resources).
-            const auto dstState = dstAllocInfo->GetResourceInCopyDstState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_DEST;
+            ID3D12Resource* dstData = dstAllocInfo->GetCopyDstResource();
+            const auto dstState = dstAllocInfo->GetDefaultCopyDstState();
 
             const void* srcData = src->GetData();
 
@@ -457,15 +450,8 @@ namespace Dml
             void* dstData = dst->GetData();
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? srcAllocInfo->GetResourceInUavState()
-                : srcAllocInfo->GetResourceInCopySrcState();
-
-            // When resources in src state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
-            // take the slower path of adding a barrier (e.g. committed resources).
-            const auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            ID3D12Resource* srcData = srcAllocInfo->GetCopySrcResource();
+            const auto srcState = srcAllocInfo->GetDefaultCopySrcState();
 
             const uint64_t srcOffset = 0;
 
@@ -480,23 +466,11 @@ namespace Dml
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
 
-            ID3D12Resource* srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? srcAllocInfo->GetResourceInUavState()
-                : srcAllocInfo->GetResourceInCopySrcState();
+            ID3D12Resource* srcData = srcAllocInfo->GetCopySrcResource();
+            const auto srcState = srcAllocInfo->GetDefaultCopySrcState();
 
-            ID3D12Resource* dstData = dstAllocInfo->GetResourceInCopyDstState() == nullptr
-                ? dstAllocInfo->GetResourceInUavState()
-                : dstAllocInfo->GetResourceInCopyDstState();
-
-            // When resources in src and dst state exist (e.g. reserved resources), we can avoid barriers. Otherwise,
-            // take the slower path of adding a barrier (e.g. committed resources).
-            const auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
-
-            const auto dstState = dstAllocInfo->GetResourceInCopyDstState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_DEST;
+            ID3D12Resource* dstData = dstAllocInfo->GetCopyDstResource();
+            const auto dstState = dstAllocInfo->GetDefaultCopyDstState();
 
             m_context->CopyBufferRegion(dstData, 0, dstState, srcData, 0, srcState, dataSizeInBytes);
         }
@@ -522,7 +496,7 @@ namespace Dml
         if (mlTensor != nullptr)
         {
             const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
-            ID3D12Resource* dstData = dstAllocInfo->GetResourceInUavState();
+            ID3D12Resource* dstData = dstAllocInfo->GetUavResource();
             m_context->FillBufferWithPattern(dstData, rawValue);
         }
 
@@ -818,13 +792,8 @@ namespace Dml
             dstDatas.push_back(dstWrapper.GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
 
-            auto srcData = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? srcAllocInfo->GetResourceInUavState()
-                : srcAllocInfo->GetResourceInCopySrcState();
-
-            auto srcState = srcAllocInfo->GetResourceInCopySrcState() == nullptr
-                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+            auto srcData = srcAllocInfo->GetCopySrcResource();
+            auto srcState = srcAllocInfo->GetDefaultCopySrcState();
 
             srcDatas.push_back(srcData);
             srcStates.push_back(srcState);
@@ -886,10 +855,10 @@ namespace Dml
         else
         {
 #ifdef _GAMING_XBOX
-            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetResourceInUavState());
+            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetUavResource());
             *abiData = wrappedResource.Detach();
 #else
-            ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetResourceInUavState();
+            ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetUavResource();
             *abiData = resource.Detach();
 #endif
         }
@@ -1026,7 +995,7 @@ namespace Dml
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
     {
         Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
-        return pAllocationInfo->DecodeDataHandle(ptr)->GetResourceInUavState();
+        return pAllocationInfo->DecodeDataHandle(ptr)->GetUavResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

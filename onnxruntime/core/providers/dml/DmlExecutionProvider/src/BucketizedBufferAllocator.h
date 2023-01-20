@@ -46,19 +46,34 @@ namespace Dml
             return m_owner;
         }
 
-        ID3D12Resource* GetResourceInUavState() const
+        ID3D12Resource* GetUavResource() const
         {
-            return m_resourceWrapper->GetResourceInUavState();
+            return m_resourceWrapper->GetUavResource();
         }
 
-        ID3D12Resource* GetResourceInCopySrcState() const
+        ID3D12Resource* GetCopySrcResource() const
         {
-            return m_resourceWrapper->GetResourceInCopySrcState();
+            return m_resourceWrapper->GetCopySrcResource();
         }
 
-        ID3D12Resource* GetResourceInCopyDstState() const
+        ID3D12Resource* GetCopyDstResource() const
         {
-            return m_resourceWrapper->GetResourceInCopyDstState();
+            return m_resourceWrapper->GetCopyDstResource();
+        }
+
+        D3D12_RESOURCE_STATES GetDefaultUavState() const
+        {
+            return m_resourceWrapper->GetDefaultUavState();
+        }
+
+        D3D12_RESOURCE_STATES GetDefaultCopySrcState() const
+        {
+            return m_resourceWrapper->GetDefaultCopySrcState();
+        }
+
+        D3D12_RESOURCE_STATES GetDefaultCopyDstState() const
+        {
+            return m_resourceWrapper->GetDefaultCopyDstState();
         }
 
         ComPtr<DmlResourceWrapper> DetachResourceWrapper() const

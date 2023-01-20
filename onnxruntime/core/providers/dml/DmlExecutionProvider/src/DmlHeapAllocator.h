@@ -3,9 +3,7 @@
 
 #pragma once
 
-#include "absl/container/flat_hash_map.h"
 #include "DmlSubAllocator.h"
-#include "DmlBufferRegion.h"
 
 namespace Dml
 {
@@ -63,12 +61,6 @@ class D3D12HeapAllocator : public DmlSubAllocator
     // local video memory fragmentation without requiring lots of heaps.
     static constexpr uint64_t kDefaultMaxHeapSizeInTiles = 512;
 
-    // The largest single allocation supported by this allocator. We use 4GB
-    // minus a MB to avoid edge cases in hw/drivers that aren't expecting such
-    // large allocations.
-    static constexpr uint64_t kDefaultMaxAllocationSizeInBytes =
-        (1ull << 32) - (1ull << 20);
-
     D3D12HeapAllocator(
         ID3D12Device* device,
         ID3D12CommandQueue* queue,
@@ -77,20 +69,8 @@ class D3D12HeapAllocator : public DmlSubAllocator
         D3D12_RESOURCE_FLAGS resource_flags,
         D3D12_RESOURCE_STATES initial_state);
 
-    // Creates a reserved or placed resource buffer over the given memory range.
-    // The physical D3D12 resource may be larger than the requested size, so
-    // callers must ensure to use the offset/size returned in the
-    // D3D12BufferRegion else risk out of bounds access. Note that in practice
-    // the ID3D12Resource is cached, so this call typically has a lower cost
-    // than a call to ID3D12Device::CreatePlacedResource or
-    // CreateReservedResource.
-    D3D12BufferRegion CreateBufferRegion(
-        const void* ptr,
-        uint64_t size_in_bytes);
-
     Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size_in_bytes) final;
     uint64_t ComputeRequiredSize(size_t size) final;
-    void Free(void* ptr, uint64_t size_in_bytes);
     bool TilingEnabled() const { return tiling_enabled_; };
 
   private:
@@ -104,25 +84,6 @@ class D3D12HeapAllocator : public DmlSubAllocator
     const D3D12_RESOURCE_STATES initial_state_;
     bool tiling_enabled_;
     uint64_t max_heap_size_in_tiles_;
-
-    // The largest allocation ID we've returned so far (or 0 if we've never done
-    // so). Note that our allocation IDs start at 1 (not 0) to ensure that it
-    // isn't possible for a valid allocation to have a pointer value of
-    // 0x00000000.
-    uint32_t current_allocation_id_ = 0;
-
-    // A list of unused allocation IDs. This is for re-use of IDs once they get
-    // freed. We only bump the max_allocation_id_ once there are no more free
-    // IDs.
-    std::vector<uint32_t> free_allocation_ids_;
-
-    absl::flat_hash_map<uint32_t, Allocation> allocations_by_id_;
-
-    // Retrieves a free allocation ID, or nullopt if no more IDs are available.
-    absl::optional<uint32_t> TryReserveAllocationID();
-
-    // Releases an allocation ID back to the pool of IDs.
-    void ReleaseAllocationID(uint32_t id);
 
   private:
     absl::optional<Allocation> TryCreateTiledAllocation(uint64_t size_in_bytes);

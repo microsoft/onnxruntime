@@ -62,12 +62,15 @@ void DmlCommandRecorder::InitializeOperator(
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
         void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+
+
+
         if (!tempResourceHandle)
         {
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResourceInUavState();
+        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetUavResource();
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.
@@ -145,7 +148,7 @@ void DmlCommandRecorder::ExecuteOperator(
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetResourceInUavState();
+        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetUavResource();
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.

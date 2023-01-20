@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "DmlResourceWrapper.h"
-#include "DmlBufferRegion.h"
 #include "DmlHeapAllocator.h"
 
 namespace Dml
@@ -11,9 +10,13 @@ namespace Dml
     {
     public:
         DmlReservedResourceWrapper(Allocation&& allocation) : m_allocation(std::move(allocation)) {}
-        ID3D12Resource* GetResourceInUavState() const final { return m_allocation.resource_uav_state.Get(); }
-        ID3D12Resource* GetResourceInCopySrcState() const final { return m_allocation.resource_copy_src_state.Get(); }
-        ID3D12Resource* GetResourceInCopyDstState() const final { return m_allocation.resource_copy_dst_state.Get(); }
+        ID3D12Resource* GetUavResource() const final { return m_allocation.resource_uav_state.Get(); }
+        ID3D12Resource* GetCopySrcResource() const final { return m_allocation.resource_copy_src_state.Get(); }
+        ID3D12Resource* GetCopyDstResource() const final { return m_allocation.resource_copy_dst_state.Get(); }
+
+        D3D12_RESOURCE_STATES GetDefaultUavState() const final { return D3D12_RESOURCE_STATE_UNORDERED_ACCESS; }
+        D3D12_RESOURCE_STATES GetDefaultCopySrcState() const final { return D3D12_RESOURCE_STATE_COPY_SOURCE; }
+        D3D12_RESOURCE_STATES GetDefaultCopyDstState() const final { return D3D12_RESOURCE_STATE_COPY_DEST; }
 
     private:
         Allocation m_allocation;

@@ -127,7 +127,7 @@ namespace Dml
         }
 
         assert(resourceWrapper != nullptr);
-        assert(resourceWrapper->GetResourceInUavState()->GetDesc().Width == bucketSize);
+        assert(resourceWrapper->GetUavResource()->GetDesc().Width == bucketSize);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
@@ -167,7 +167,7 @@ namespace Dml
 
         // Free the resource to the pool if its size matches a bucket size
         gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResourceInUavState()->GetDesc().Width)
+        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetUavResource()->GetDesc().Width)
         {
             if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
             {
