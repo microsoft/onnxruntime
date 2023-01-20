@@ -6,15 +6,16 @@
 <title>Index (onnxruntime 1.14.0 API)</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <link rel="stylesheet" type="text/css" href="stylesheet.css" title="Style">
-<link rel="stylesheet" type="text/css" href="jquery/jquery-ui.css" title="Style">
+<link rel="stylesheet" type="text/css" href="jquery/jquery-ui.min.css" title="Style">
+<link rel="stylesheet" type="text/css" href="jquery-ui.overrides.css" title="Style">
 <script type="text/javascript" src="script.js"></script>
 <script type="text/javascript" src="jquery/jszip/dist/jszip.min.js"></script>
 <script type="text/javascript" src="jquery/jszip-utils/dist/jszip-utils.min.js"></script>
 <!--[if IE]>
 <script type="text/javascript" src="jquery/jszip-utils/dist/jszip-utils-ie.min.js"></script>
 <![endif]-->
-<script type="text/javascript" src="jquery/jquery-3.5.1.js"></script>
-<script type="text/javascript" src="jquery/jquery-ui.js"></script>
+<script type="text/javascript" src="jquery/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="jquery/jquery-ui.min.js"></script>
 </head>
 <body>
 <script type="text/javascript"><!--
@@ -198,6 +199,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html#ALL_OPT">ALL_OPT</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensorLike.html#allocatorHandle">allocatorHandle</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProvider.html#ARM_NN">ARM_NN</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -208,6 +211,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dl>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html#BASIC_OPT">BASIC_OPT</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#BLOCK_SPARSE">BLOCK_SPARSE</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">Block sparse tensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html#%3Cinit%3E(java.nio.IntBuffer,long%5B%5D,java.nio.Buffer,long%5B%5D,long%5B%5D,ai.onnxruntime.OnnxJavaType,long)">BlockSparseTensor(IntBuffer, long[], Buffer, long[], long[], OnnxJavaType, long)</a></span> - Constructor for class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.BlockSparseTensor</a></dt>
+<dd>
+<div class="block">Construct a block sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#BOOL">BOOL</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -226,6 +237,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Closes this sequence, releasing the native memory backing it and it's elements.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#close()">close()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#close()">close()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>
 <div class="block">Closes the tensor, releasing it's underlying memory (if it's not backed by an NIO buffer).</div>
@@ -285,6 +298,18 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Constructs a TensorInfo from the supplied multidimensional Java array, used to allocate the
  appropriate amount of native memory.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/TensorInfo.html#constructFromSparseTensor(ai.onnxruntime.OnnxSparseTensor.SparseTensor)">constructFromSparseTensor(OnnxSparseTensor.SparseTensor&lt;T&gt;)</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/TensorInfo.html" title="class in ai.onnxruntime">TensorInfo</a></dt>
+<dd>
+<div class="block">Constructs a TensorInfo from the supplied <a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime"><code>OnnxSparseTensor.SparseTensor</code></a>.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#COO">COO</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">COO sparse tensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html#%3Cinit%3E(java.nio.LongBuffer,long%5B%5D,java.nio.Buffer,long%5B%5D,ai.onnxruntime.OnnxJavaType,long)">COOTensor(LongBuffer, long[], Buffer, long[], OnnxJavaType, long)</a></span> - Constructor for class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.COOTensor</a></dt>
+<dd>
+<div class="block">Creates a COO sparse tensor suitable for constructing an ORT Sparse Tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProvider.html#CORE_ML">CORE_ML</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></dt>
 <dd>&nbsp;</dd>
 <dt><a href="ai/onnxruntime/providers/CoreMLFlags.html" title="enum in ai.onnxruntime.providers"><span class="typeNameLink">CoreMLFlags</span></a> - Enum in <a href="ai/onnxruntime/providers/package-summary.html">ai.onnxruntime.providers</a></dt>
@@ -323,6 +348,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Create a session using the specified <a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default memory
  allocator.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#createSparseTensor(ai.onnxruntime.OrtEnvironment,ai.onnxruntime.OnnxSparseTensor.SparseTensor)">createSparseTensor(OrtEnvironment, OnnxSparseTensor.SparseTensor&lt;T&gt;)</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Creates a Sparse Tensor in ORT from the Java side representation.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#createTensor(ai.onnxruntime.OrtEnvironment,java.lang.Object)">createTensor(OrtEnvironment, Object)</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>
 <div class="block">Create a Tensor from a Java primitive, primitive multidimensional array or String
@@ -359,6 +388,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#createTensor(ai.onnxruntime.OrtEnvironment,java.nio.ShortBuffer,long%5B%5D)">createTensor(OrtEnvironment, ShortBuffer, long[])</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>
 <div class="block">Create an OnnxTensor backed by a direct ShortBuffer.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#CSRC">CSRC</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">CSR or CSC sparse tensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html#%3Cinit%3E(java.nio.LongBuffer,java.nio.LongBuffer,java.nio.Buffer,long%5B%5D,ai.onnxruntime.OnnxJavaType,long)">CSRCTensor(LongBuffer, LongBuffer, Buffer, long[], OnnxJavaType, long)</a></span> - Constructor for class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></dt>
+<dd>
+<div class="block">Creates a CSRC sparse tensor suitable for constructing an ORT Sparse Tensor.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProvider.html#CUDA">CUDA</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></dt>
 <dd>&nbsp;</dd>
@@ -468,6 +505,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Returns Optional.of(value) if the custom metadata has a value for the supplied key, otherwise
  returns <code>Optional.empty()</code>.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getDenseShape()">getDenseShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">Gets the dense shape of the sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxModelMetadata.html#getDescription()">getDescription()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxModelMetadata.html" title="class in ai.onnxruntime">OnnxModelMetadata</a></dt>
 <dd>
 <div class="block">Gets the model description.</div>
@@ -522,6 +563,32 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Gets the int id used in native code for this optimisation level.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getIndices()">getIndices()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">Get the indices buffer.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getIndicesBuffer()">getIndicesBuffer()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets a copy of the indices.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getIndicesShape()">getIndicesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the (outer) indices.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getIndicesShape()">getIndicesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the indices of the sparse tensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html#getIndicesType()">getIndicesType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.BlockSparseTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html#getIndicesType()">getIndicesType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.COOTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html#getIndicesType()">getIndicesType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getIndicesType()">getIndicesType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">The indices type of the sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/NodeInfo.html#getInfo()">getInfo()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/NodeInfo.html" title="class in ai.onnxruntime">NodeInfo</a></dt>
 <dd>
 <div class="block">The type and shape information of this node.</div>
@@ -530,11 +597,29 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSequence.html#getInfo()">getInfo()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSequence.html" title="class in ai.onnxruntime">OnnxSequence</a></dt>
 <dd>&nbsp;</dd>
-<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#getInfo()">getInfo()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
-<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensorLike.html#getInfo()">getInfo()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></dt>
+<dd>
+<div class="block">Returns a <a href="ai/onnxruntime/TensorInfo.html" title="class in ai.onnxruntime"><code>TensorInfo</code></a> for this tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.html#getInfo()">getInfo()</a></span> - Method in interface ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime">OnnxValue</a></dt>
 <dd>
 <div class="block">Gets the type info object associated with this OnnxValue.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html#getInnerIndices()">getInnerIndices()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></dt>
+<dd>
+<div class="block">Gets the inner indices buffer.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getInnerIndicesBuffer()">getInnerIndicesBuffer()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets a copy of the inner indices in a CSRC sparse tensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html#getInnerIndicesShape()">getInnerIndicesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the inner indices.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getInnerIndicesShape()">getInnerIndicesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the inner indices in a CSRC sparse tensor.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#getInputInfo()">getInputInfo()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
@@ -578,6 +663,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Returns the number of inputs this model expects.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getNumNonZeroElements()">getNumNonZeroElements()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">The number of non-zero elements.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#getNumOutputs()">getNumOutputs()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
 <div class="block">Returns the number of outputs this model expects.</div>
@@ -619,10 +708,30 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Returns a copy of the underlying OnnxTensor as a ShortBuffer if the underlying type is int16 or
  uint16, otherwise it returns null.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getSparseTensorType()">getSparseTensorType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Returns the type of this OnnxSparseTensor.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html#getSparsityType()">getSparsityType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.BlockSparseTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html#getSparsityType()">getSparsityType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.COOTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html#getSparsityType()">getSparsityType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.CSRCTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getSparsityType()">getSparsityType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">The sparsity type of the sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxMap.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxMap.html" title="class in ai.onnxruntime">OnnxMap</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSequence.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSequence.html" title="class in ai.onnxruntime">OnnxSequence</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">The data type of the sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.html#getType()">getType()</a></span> - Method in interface ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime">OnnxValue</a></dt>
@@ -637,6 +746,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Extracts a Java list of the <a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime"><code>OnnxValue</code></a>s which can then be further unwrapped.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getValue()">getValue()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#getValue()">getValue()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>
 <div class="block">Either returns a boxed primitive if the Tensor is a scalar, or a multidimensional array of
@@ -658,6 +769,22 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Gets the underlying flag value.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getValues()">getValues()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">Get the value buffer.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getValuesBuffer()">getValuesBuffer()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets a copy of the data buffer.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.html#getValuesShape()">getValuesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the values.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html#getValuesShape()">getValuesShape()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime">OnnxSparseTensor.SparseTensor</a></dt>
+<dd>
+<div class="block">Gets the shape of the values of the sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxModelMetadata.html#getVersion()">getVersion()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxModelMetadata.html" title="class in ai.onnxruntime">OnnxModelMetadata</a></dt>
 <dd>
 <div class="block">Gets the model version.</div>
@@ -676,6 +803,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </a>
 <h2 class="title">I</h2>
 <dl>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensorLike.html#info">info</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#INT16">INT16</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#INT32">INT32</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
@@ -745,6 +874,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Gets the enum type from it's integer id.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#mapFromInt(int)">mapFromInt(int)</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">Maps from an int in native land into a SparseTensorType instance.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtException.OrtErrorCode.html#mapFromInt(int)">mapFromInt(int)</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OrtException.OrtErrorCode.html" title="enum in ai.onnxruntime">OrtException.OrtErrorCode</a></dt>
 <dd>
 <div class="block">Maps from an int in native land into an OrtErrorCode instance.</div>
@@ -794,6 +927,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </a>
 <h2 class="title">N</h2>
 <dl>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensorLike.html#nativeHandle">nativeHandle</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProviderOptions.html#nativeHandle">nativeHandle</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/OrtProviderOptions.html" title="class in ai.onnxruntime">OrtProviderOptions</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtUtil.html#newBooleanArray(long%5B%5D)">newBooleanArray(long[])</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime">OrtUtil</a></dt>
@@ -890,6 +1025,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html#ONNX_TYPE_OPAQUE">ONNX_TYPE_OPAQUE</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html#ONNX_TYPE_OPTIONAL">ONNX_TYPE_OPTIONAL</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html#ONNX_TYPE_SEQUENCE">ONNX_TYPE_SEQUENCE</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html#ONNX_TYPE_SPARSETENSOR">ONNX_TYPE_SPARSETENSOR</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></dt>
@@ -922,9 +1059,37 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">A sequence of <a href="ai/onnxruntime/OnnxValue.html" title="interface in ai.onnxruntime"><code>OnnxValue</code></a>s all of the same type.</div>
 </dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">A Java object wrapping an OnnxSparseTensor.</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.BlockSparseTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor.BlockSparseTensor</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">The Java side representation of a block sparse tensor.</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.COOTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor.COOTensor</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">The Java side representation of a COO sparse tensor.</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.CSRCTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor.CSRCTensor</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">The Java side representation of a CSRC sparse tensor.</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor.SparseTensor</span></a>&lt;<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensor.html" title="type parameter in OnnxSparseTensor.SparseTensor">T</a> extends java.nio.Buffer&gt; - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">Abstract base class for Java sparse tensors</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime"><span class="typeNameLink">OnnxSparseTensor.SparseTensorType</span></a> - Enum in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">The type of the sparse tensor.</div>
+</dd>
 <dt><a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxTensor</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
 <dd>
 <div class="block">A Java object wrapping an OnnxTensor.</div>
+</dd>
+<dt><a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime"><span class="typeNameLink">OnnxTensorLike</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">Currently implemented by <a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime"><code>OnnxTensor</code></a>, <a href="ai/onnxruntime/OnnxSparseTensor.html" title="class in ai.onnxruntime"><code>OnnxSparseTensor</code></a>.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/TensorInfo.html#onnxType">onnxType</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/TensorInfo.html" title="class in ai.onnxruntime">TensorInfo</a></dt>
 <dd>
@@ -1051,7 +1216,7 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </dd>
 <dt><a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime"><span class="typeNameLink">OrtSession.RunOptions</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
 <dd>
-<div class="block">Used to control logging and termination of a call to <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a>.</div>
+<div class="block">Used to control logging and termination of a call to <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a>.</div>
 </dd>
 <dt><a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><span class="typeNameLink">OrtSession.SessionOptions</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
 <dd>
@@ -1099,6 +1264,11 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Registers a library of custom ops for use with <a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime"><code>OrtSession</code></a>s using this SessionOptions.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.html#registerCustomOpsUsingFunction(java.lang.String)">registerCustomOpsUsingFunction(String)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a></dt>
+<dd>
+<div class="block">Registers custom ops for use with <a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime"><code>OrtSession</code></a>s using this SessionOptions by calling
+ the specified native function name.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtUtil.html#reshape(boolean%5B%5D,long%5B%5D)">reshape(boolean[], long[])</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime">OrtUtil</a></dt>
 <dd>
 <div class="block">Reshapes a boolean array into the desired n-dimensional array assuming the boolean array is
@@ -1143,19 +1313,19 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProvider.html#ROCM">ROCM</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></dt>
 <dd>&nbsp;</dd>
-<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)">run(Map&lt;String, OnnxTensor&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)">run(Map&lt;String, ? extends OnnxTensorLike&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
 <div class="block">Scores an input feed dict, returning the map of all inferred outputs.</div>
 </dd>
-<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,ai.onnxruntime.OrtSession.RunOptions)">run(Map&lt;String, OnnxTensor&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,ai.onnxruntime.OrtSession.RunOptions)">run(Map&lt;String, ? extends OnnxTensorLike&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
 <div class="block">Scores an input feed dict, returning the map of all inferred outputs.</div>
 </dd>
-<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,java.util.Set)">run(Map&lt;String, OnnxTensor&gt;, Set&lt;String&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,java.util.Set)">run(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
 <div class="block">Scores an input feed dict, returning the map of requested inferred outputs.</div>
 </dd>
-<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,java.util.Set,ai.onnxruntime.OrtSession.RunOptions)">run(Map&lt;String, OnnxTensor&gt;, Set&lt;String&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.html#run(java.util.Map,java.util.Set,ai.onnxruntime.OrtSession.RunOptions)">run(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime">OrtSession</a></dt>
 <dd>
 <div class="block">Scores an input feed dict, returning the map of requested inferred outputs.</div>
 </dd>
@@ -1268,7 +1438,7 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.RunOptions.html#setTerminate(boolean)">setTerminate(boolean)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime">OrtSession.RunOptions</a></dt>
 <dd>
-<div class="block">Sets a flag so that all incomplete <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ai.onnxruntime.OnnxTensor&gt;)</code></a> calls using this instance of <code>
+<div class="block">Sets a flag so that all incomplete <a href="ai/onnxruntime/OrtSession.html#run(java.util.Map)"><code>OrtSession.run(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a> calls using this instance of <code>
  RunOptions</code> will terminate as soon as possible.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/MapInfo.html#size">size</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/MapInfo.html" title="class in ai.onnxruntime">MapInfo</a></dt>
@@ -1349,6 +1519,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dl>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#UINT8">UINT8</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#UNDEFINED">UNDEFINED</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">Undefined sparse tensor.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#UNKNOWN">UNKNOWN</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/providers/NNAPIFlags.html#USE_FP16">USE_FP16</a></span> - ai.onnxruntime.providers.<a href="ai/onnxruntime/providers/NNAPIFlags.html" title="enum in ai.onnxruntime.providers">NNAPIFlags</a></dt>
@@ -1367,6 +1541,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxJavaType.html#value">value</a></span> - Variable in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxJavaType.html" title="enum in ai.onnxruntime">OnnxJavaType</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#value">value</a></span> - Variable in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
+<dd>
+<div class="block">The int value mirroring OrtSparseFormat.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxValue.OnnxValueType.html#value">value</a></span> - Variable in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxValue.OnnxValueType.html" title="enum in ai.onnxruntime">OnnxValue.OnnxValueType</a></dt>
 <dd>
 <div class="block">The id number of this type in the C API.</div>
@@ -1388,6 +1566,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Returns the enum constant of this type with the specified name.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxMap.OnnxMapValueType.html#valueOf(java.lang.String)">valueOf(String)</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxMap.OnnxMapValueType.html" title="enum in ai.onnxruntime">OnnxMap.OnnxMapValueType</a></dt>
+<dd>
+<div class="block">Returns the enum constant of this type with the specified name.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#valueOf(java.lang.String)">valueOf(String)</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
 <dd>
 <div class="block">Returns the enum constant of this type with the specified name.</div>
 </dd>
@@ -1433,6 +1615,11 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 the order they are declared.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxMap.OnnxMapValueType.html#values()">values()</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxMap.OnnxMapValueType.html" title="enum in ai.onnxruntime">OnnxMap.OnnxMapValueType</a></dt>
+<dd>
+<div class="block">Returns an array containing the constants of this enum type, in
+the order they are declared.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#values()">values()</a></span> - Static method in enum ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
 <dd>
 <div class="block">Returns an array containing the constants of this enum type, in
 the order they are declared.</div>
