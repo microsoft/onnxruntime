@@ -1751,7 +1751,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                         # upgrading 8.4 -> 8.5 by a somewhat significant amount.
                         # This impacts every TRT EP test, especially the significant test time increase
                         # for gpu package pipeline which includes TRT EP (we can't use builder placeholder
-                        # to reduce test time for its deadlock issue found on Windows).
+                        # to reduce test time because of its deadlock issue found on Windows).
                         # Therefore we only run a portion of the tests for gpu package pipeline. But still
                         # we enable all the tests in regular CIs to avoid regressions.
                         run_subprocess(

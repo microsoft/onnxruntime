@@ -736,7 +736,7 @@ if (onnxruntime_USE_TENSORRT)
     if (onnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS)
       # Due to the size increase of TRT kernel library, the load time has increased from upgrading 8.4 -> 8.5 by a somewhat significant amount.
       # This impacts every TRT EP test, especially the significant test time increase for gpu package pipeline which includes TRT EP 
-      # (we can't use builder placeholder to reduce test time for its deadlock issue found on Windows).
+      # (we can't use builder placeholder to reduce test time because of its deadlock issue found on Windows).
       # Therefore we only run a portion of the tests for gpu package pipeline. But still we enable all the tests in regular CIs to avoid regressions.
       list(APPEND test_all_args "--gtest_filter=*cpu_*:*cuda_*:*tensorrt_*:*TensorrtExecutionProviderTest*" )
 
