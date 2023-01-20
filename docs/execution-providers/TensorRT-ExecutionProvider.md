@@ -26,9 +26,8 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
-|master|8.4|11.4|
-|1.13|8.4|11.4|
-|1.12|8.4|11.4|
+|main|8.4|11.4|
+|1.12-1.13|8.4|11.4|
 |1.11|8.2|11.4|
 |1.10|8.0|11.4|
 |1.9|8.0|11.4|
