@@ -151,7 +151,7 @@ and we show the confusion matrix.
 
  .. code-block:: none
 
-    0.8474132062469484
+    0.92310182911155
 
 
 
@@ -284,7 +284,7 @@ We compare them to the model's ones.
 
  .. code-block:: none
 
-    0.9999999999999123
+    0.9999999999999366
 
 
 
@@ -297,7 +297,7 @@ that explains the small discrepencies.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** ( 0 minutes  1.374 seconds)
+   **Total running time of the script:** ( 0 minutes  1.392 seconds)
 
 
 .. _sphx_glr_download_auto_examples_plot_convert_pipeline_vectorizer.py:
