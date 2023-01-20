@@ -498,8 +498,8 @@ void ComputePadWithAxes(
   size_t axes_size = axes_tensor_raw_data.size();
   for (size_t i = 0; i < axes_size; ++i) {
     int64_t axis = HandleNegativeAxis(onnxruntime::narrow<int64_t>(axes_tensor_raw_data[i]), data_rank);
-    pads[axis] = pads_tensor_raw_data[i];                          // xi_begin
-    pads[data_rank + axis] = pads_tensor_raw_data[axes_size + i];  // xi_end
+    pads[onnxruntime::narrow<size_t>(axis)] = pads_tensor_raw_data[i];                          // xi_begin
+    pads[data_rank + onnxruntime::narrow<size_t>(axis)] = pads_tensor_raw_data[axes_size + i];  // xi_end
   }
 }
 
