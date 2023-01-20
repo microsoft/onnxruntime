@@ -8,7 +8,6 @@ from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
 from fusion_options import FusionOptions
-from fusion_utils import FusionUtils
 from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
 
