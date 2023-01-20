@@ -131,10 +131,6 @@ common::Status run_memory_efficient_attention(const MemoryEfficientAttentionPara
   return Status::OK();
 }
 
-bool has_memory_efficient_attention(int32_t sm, bool is_half) {
-  return sm >= (is_half ? 53 : 50);
-}
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
@@ -142,11 +138,5 @@ bool has_memory_efficient_attention(int32_t sm, bool is_half) {
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #endif
-
-#else  // NOT USE_FLASH_ATTENTION
-
-bool has_memory_efficient_attention(int32_t, bool) {
-  return false;
-}
 
 #endif

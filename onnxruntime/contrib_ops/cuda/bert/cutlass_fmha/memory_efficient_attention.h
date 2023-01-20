@@ -32,14 +32,16 @@ struct MemoryEfficientAttentionParams {
   cudaStream_t stream;
 
   static bool need_workspace(size_t v_head_size, bool is_float) {
-    return (v_head_size > 128 and !is_float);
+    return (v_head_size > 128 && !is_float);
   }
 };
 
 common::Status run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
-#endif
 
-bool has_memory_efficient_attention(int32_t sm, bool is_half);
+inline bool has_memory_efficient_attention(int32_t sm, bool is_half){
+  return sm >= (is_half ? 53 : 50);
+}
+#endif
 
 }  // namespace cuda
 }  // namespace contrib

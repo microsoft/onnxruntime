@@ -31,6 +31,8 @@
 
 #pragma once
 
+#if USE_FLASH_ATTENTION
+
 #include <cmath>
 #include <vector>
 
@@ -940,4 +942,6 @@ __global__ void __launch_bounds__(AK::kNumThreads, AK::kMinBlocksPerSm)
 #undef INSTANTIATE_ATTENTION_KERNEL_FORWARD_SM80
 #define INSTANTIATE_ATTENTION_KERNEL_FORWARD_SM80(...) \
   INSTANTIATE_ATTENTION_KERNEL_FORWARD(80, __VA_ARGS__)
+#endif
+
 #endif
