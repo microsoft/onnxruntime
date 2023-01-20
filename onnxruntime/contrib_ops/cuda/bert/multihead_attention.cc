@@ -110,6 +110,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   bool use_fused_runner = !disable_fused_runner_ &&
+                          fused_cross_attention_kernel == nullptr &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
