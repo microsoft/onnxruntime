@@ -1,7 +1,8 @@
 ---
 title: Citing ONNX Runtime
+description: Instructions for citing and using ONNX Runtime logos
 parent: Reference
-nav_exclude: true
+nav_order: 9
 ---
 
 # Citing ONNX Runtime
