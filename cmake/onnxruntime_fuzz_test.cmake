@@ -30,7 +30,7 @@ if (onnxruntime_FUZZ_ENABLED)
 	
 	# Security fuzzing engine src file reference 
 	set(SEC_FUZ_SRC "${SEC_FUZZ_ROOT}/src/BetaDistribution.cpp" 
-					"${SEC_FUZZ_ROOT}/src/OnnxPrediction" 
+					"${SEC_FUZZ_ROOT}/src/OnnxPrediction.cpp" 
 					"${SEC_FUZZ_ROOT}/src/testlog.cpp" 
 					"${SEC_FUZZ_ROOT}/src/test.cpp")
 					
