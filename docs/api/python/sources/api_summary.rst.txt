@@ -210,7 +210,7 @@ API Details
 
 
 InferenceSession
-----------
+----------------
 
 .. autoclass:: onnxruntime.InferenceSession
     :members:
