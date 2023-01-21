@@ -61,5 +61,5 @@ if (onnxruntime_FUZZ_ENABLED)
 	# copy the dlls to the execution directory
 	add_custom_command(TARGET onnxruntime_security_fuzz POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>
-		COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:libprotobuf>  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>)
+		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROTOBUF_LIB}  $<TARGET_FILE_DIR:onnxruntime_security_fuzz>)
 endif()
