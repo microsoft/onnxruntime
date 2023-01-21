@@ -23,4 +23,4 @@ python3 /workspace/onnxruntime/tools/ci_build/github/android/build_aar_package.p
   "${BUILD_SETTINGS_FILE}"
 
 # copy AAR to output directory
-cp -r ${BUILD_DIR}/aar_out ${OUTPUT_DIR}/aar_out
+cp -r ${BUILD_DIR}/aar_out ${OUTPUT_DIR}
