@@ -16,7 +16,7 @@ if (onnxruntime_FUZZ_ENABLED)
 	
 	# add the appropriate include directory and compilation flags
 	# needed by the protobuf-mutator target and the libfuzzer
-	set(PROTOBUF_MUT_INCLUDE_DIRS "external/libprotobuf-mutator")
+	set(PROTOBUF_MUT_INCLUDE_DIRS "external/libprotobuf-mutator/src")
 	onnxruntime_add_include_to_target(protobuf-mutator ${PROTOBUF_LIB} ${INCLUDE_DIRECTORIES} ${PROTOBUF_MUT_INCLUDE_DIRS})
 	onnxruntime_add_include_to_target(protobuf-mutator-libfuzzer ${PROTOBUF_LIB} ${INCLUDE_DIRECTORIES} ${PROTOBUF_MUT_INCLUDE_DIRS})
 	target_compile_options(protobuf-mutator PRIVATE "/wd4244" "/wd4245" "/wd4267" "/wd4100" "/wd4456")
