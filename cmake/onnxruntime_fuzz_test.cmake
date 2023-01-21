@@ -26,7 +26,7 @@ if (onnxruntime_FUZZ_ENABLED)
 	message(STATUS "Building Fuzzing engine")
 	
 	# set Fuzz root directory
-	set(SEC_FUZZ_ROOT ${TEST_SRC_DIR}/fuzzing)
+	set(SEC_FUZZ_ROOT ${ONNXRUNTIME_ROOT}/test/fuzzing)
 	
 	# Security fuzzing engine src file reference 
 	set(SEC_FUZ_SRC "${SEC_FUZZ_ROOT}/src/BetaDistribution.cpp" 
