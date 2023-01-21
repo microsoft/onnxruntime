@@ -41,7 +41,7 @@ if (onnxruntime_FUZZ_ENABLED)
 	target_compile_features(onnxruntime_security_fuzz PUBLIC cxx_std_17)
 	
 	# Security fuzzing engine header file reference
-	onnxruntime_add_include_to_target(onnxruntime_security_fuzz libprotobuf onnx onnxruntime)
+	onnxruntime_add_include_to_target(onnxruntime_security_fuzz onnx onnxruntime)
 	
 	# Assign all include to one variable
 	set(SEC_FUZ_INC "${SEC_FUZZ_ROOT}/include")
@@ -51,10 +51,10 @@ if (onnxruntime_FUZZ_ENABLED)
 	target_include_directories(onnxruntime_security_fuzz PRIVATE ${INCLUDE_FILES})
 	
 	# add link libraries the project
-	target_link_libraries(onnxruntime_security_fuzz libprotobuf onnx_proto onnxruntime protobuf-mutator)
+	target_link_libraries(onnxruntime_security_fuzz onnx_proto onnxruntime protobuf-mutator)
 	
 	# add the dependencies
-	add_dependencies(onnxruntime_security_fuzz libprotobuf onnx_proto onnxruntime protobuf-mutator)
+	add_dependencies(onnxruntime_security_fuzz onnx_proto onnxruntime protobuf-mutator)
 	
 	# copy the dlls to the execution directory
 	add_custom_command(TARGET onnxruntime_security_fuzz POST_BUILD
