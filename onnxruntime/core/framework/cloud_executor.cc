@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include "core/framework/cloud_executor.h"
 #include "core/framework/cloud_invoker.h"
 #include "core/framework/session_state.h"

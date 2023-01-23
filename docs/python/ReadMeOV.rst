@@ -25,12 +25,12 @@ This package supports:
 
 Please Note for VAD-M use Docker installation / Build from Source for Linux.
 
-``pip3 install onnxruntime-openvino==1.12.0``
+``pip3 install onnxruntime-openvino==1.13.1``
 
 Please install OpenVINO™ PyPi Package separately for Windows.
 For installation instructions on Windows please refer to  `OpenVINO™ Execution Provider for ONNX Runtime for Windows <https://github.com/intel/onnxruntime/releases/>`_.
 
-**OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2022.1.0 eliminating the need to install OpenVINO™ separately. The OpenVINO™ libraries are prebuilt with CXX11_ABI flag set to 0.
+**OpenVINO™ Execution Provider for ONNX Runtime** Linux Wheels comes with pre-built libraries of OpenVINO™ version 2022.2.0 eliminating the need to install OpenVINO™ separately. The OpenVINO™ libraries are prebuilt with CXX11_ABI flag set to 0.
 
 The package also includes module that is used by torch-ort-inference to accelerate inference for PyTorch models with OpenVINO Execution Provider.
 See `torch-ort-inference <https://github.com/pytorch/ort#accelerate-inference-for-pytorch-models-with-onnx-runtime-preview>`_ for more details.
@@ -49,18 +49,6 @@ Samples
 ^^^^^^^^
 
 To see what you can do with **OpenVINO™ Execution Provider for ONNX Runtime**, explore the demos located in the  `Examples <https://github.com/microsoft/onnxruntime-inference-examples/tree/main/python/OpenVINO_EP>`_.
-
-Docker Support
-^^^^^^^^^^^^^^
-
-The latest OpenVINO™ EP docker image can be downloaded from DockerHub.
-For more details see  `Docker ReadMe <https://hub.docker.com/r/openvino/onnxruntime_ep_ubuntu18>`_.
-
-
-Prebuilt Images
-^^^^^^^^^^^^^^^^
-
-- Please find prebuilt docker images for Intel® CPU and Intel® iGPU on OpenVINO™ Execution Provider `Release Page <https://github.com/intel/onnxruntime/releases/>`_.
 
 License
 ^^^^^^^^
