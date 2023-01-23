@@ -57,8 +57,7 @@ mod tests {
     use std::env::var;
 
     use super::*;
-    use crate::environment::tests::ONNX_RUNTIME_LIBRARY_PATH;
-    use crate::LoggingLevel;
+    use crate::{environment::tests::ONNX_RUNTIME_LIBRARY_PATH, LoggingLevel};
     use test_log::test;
 
     #[test]

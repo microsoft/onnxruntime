@@ -28,5 +28,4 @@ pub mod ndarray_tensor;
 pub mod ort_input_tensor;
 pub mod ort_output_tensor;
 
-pub use ort_output_tensor::OrtOutputTensor;
-pub use ort_output_tensor::WithOutputTensor;
+pub use ort_output_tensor::{OrtOutputTensor, WithOutputTensor};

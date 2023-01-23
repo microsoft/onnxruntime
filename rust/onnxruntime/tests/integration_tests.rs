@@ -1,5 +1,4 @@
-use onnxruntime::error::OrtDownloadError;
-use onnxruntime::tensor::ndarray_tensor::NdArrayTensor;
+use onnxruntime::{error::OrtDownloadError, tensor::ndarray_tensor::NdArrayTensor};
 use std::{
     fs,
     io::{self, BufRead, BufReader},

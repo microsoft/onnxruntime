@@ -1,8 +1,7 @@
 //! convert module has the trait for conversion of Inputs ConstructTensor.
 
 use crate::{memory::MemoryInfo, OrtError};
-use onnxruntime_sys::OrtAllocator;
-use onnxruntime_sys::OrtValue;
+use onnxruntime_sys::{OrtAllocator, OrtValue};
 use std::fmt::Debug;
 
 /// The Input type for Rust onnxruntime Session::run

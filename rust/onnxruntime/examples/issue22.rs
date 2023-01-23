@@ -4,8 +4,7 @@
 //! https://drive.google.com/file/d/1FmL-Wpm06V-8wgRqvV3Skey_X98Ue4D_/view?usp=sharing
 
 use ndarray::Array2;
-use onnxruntime::LoggingLevel;
-use onnxruntime::{environment::Environment, GraphOptimizationLevel};
+use onnxruntime::{environment::Environment, GraphOptimizationLevel, LoggingLevel};
 use std::env::var;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;

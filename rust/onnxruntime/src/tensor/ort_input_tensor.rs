@@ -204,8 +204,10 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::environment::tests::ONNX_RUNTIME_LIBRARY_PATH;
-    use crate::{environment::Environment, AllocatorType, LoggingLevel, MemType};
+    use crate::{
+        environment::{tests::ONNX_RUNTIME_LIBRARY_PATH, Environment},
+        AllocatorType, LoggingLevel, MemType,
+    };
     use ndarray::{arr0, arr1, arr2, arr3};
     use once_cell::sync::Lazy;
     use std::env::var;

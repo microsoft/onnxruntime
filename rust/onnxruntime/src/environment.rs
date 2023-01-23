@@ -9,8 +9,8 @@ use crate::{
 use once_cell::sync::OnceCell;
 use onnxruntime_sys as sys;
 use onnxruntime_sys::library_filename;
-use std::ffi::CString;
 use std::{
+    ffi::CString,
     ptr::{null, null_mut},
     sync::{Arc, Mutex, MutexGuard},
 };

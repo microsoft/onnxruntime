@@ -1,8 +1,6 @@
 //! Display the input and output structure of an ONNX model.
-use onnxruntime::environment;
-use onnxruntime::LoggingLevel;
-use std::env::var;
-use std::error::Error;
+use onnxruntime::{environment, LoggingLevel};
+use std::{env::var, error::Error};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let path = var("RUST_ONNXRUNTIME_LIBRARY_PATH").ok();
