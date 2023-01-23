@@ -158,6 +158,7 @@ stages:
         ContainerName: '$web'
 
 - stage: AndroidCustomBuildScript
+  dependsOn: []
   jobs:
   - job: AndroidCustomBuildScript
     workspace:
