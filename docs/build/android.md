@@ -121,6 +121,18 @@ To build on Windows with `--build_java` enabled you must also:
 * run the build from an admin window
   * the Java build needs permissions to create a symlink, which requires an admin window
 
+#### Note: Proguard rules for R8 minimization Android app builds to work
+
+There are open issues for this on the [protobuf Github project](https://github.com/protocolbuffers/protobuf/issues/6463) and [R8](https://issuetracker.google.com/issues/144631039).
+
+Until the issue is resolved you need to add the following line to your `proguard-rules.pro` file inside your Android project to use `com.microsoft.onnxruntime:onnxruntime-android` package:
+
+```
+-keep class ai.onnxruntime.** { *; }
+```
+
+*This requirement is for Android consumers using the library with R8-minimized builds to avoid runtime crashes.
+
 ## Android NNAPI Execution Provider
 
 If you want to use NNAPI Execution Provider on Android, see [NNAPI Execution Provider](../execution-providers/NNAPI-ExecutionProvider).
