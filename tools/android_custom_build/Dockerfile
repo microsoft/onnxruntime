@@ -14,16 +14,16 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip
 
 # install Java
-RUN apt-get install --yes --no-install-recommends openjdk-8-jdk-headless
+RUN apt-get install --yes --no-install-recommends openjdk-11-jdk-headless
 
 ENV ANDROID_HOME=/opt/android-sdk
-ENV NDK_VERSION=24.0.8215888
+ENV NDK_VERSION=25.0.8775105
 ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 # install Android command line tools
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \
-  --checksum=sha-256=d71f75333d79c9c6ef5c39d3456c6c58c613de30e6a751ea0dbd433e8f8b9cbf \
-  https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip && \
+  --checksum=sha-256=0bebf59339eaa534f4217f8aa0972d14dc49e7207be225511073c661ae01da0a \
+  https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip && \
   unzip /tmp/cmdline-tools.zip -d /tmp/cmdline-tools && \
   mkdir -p ${ANDROID_HOME}/cmdline-tools && \
   mv /tmp/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest
