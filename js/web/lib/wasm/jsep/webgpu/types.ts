@@ -105,10 +105,12 @@ export interface ComputeContextInputsOutputsMapping {
    */
   readonly inputs?: ReadonlyArray<TensorView|number>;
   /**
-   * specify the mapping to the program's outputs. the value can be a number or undefined.
+   * specify the mapping to the program's outputs. the value must be a number.
    * - if it's a non-negative number, it's the index of the kernel's output
    * - if it's -1, it's an output that will be created as a temporary value. this value will be released after
    * the kernel is executed.
+   * - if it's -2, it's an output that will be created as a persistent value. this value will be released when the
+   * kernel is released.
    *
    * if outputs is not specified, the mapping will be the kernel's outputs in order.
    */
@@ -118,6 +120,7 @@ export interface ComputeContextInputsOutputsMapping {
 export interface ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];
+  readonly customData: {[key: string]: unknown};
   compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
       TensorView[];
   output(index: number, dims: readonly number[]): number;

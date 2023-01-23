@@ -10,6 +10,7 @@ namespace onnxruntime {
 namespace js {
 
 #define POOL_ATTRIBUTES_JS_OBJ_MAPPING ({ \
+    "format": $15 ? "NHWC" : "NCHW",      \
     "auto_pad": $1,                       \
     "ceil_mode": $2,                      \
     "count_include_pad": $3,              \
@@ -34,18 +35,22 @@ namespace js {
   static_cast<int32_t>(pool_attrs_.pads.size() > 2 ? pool_attrs_.pads[2] : 0),                 \
   static_cast<int32_t>(pool_attrs_.pads.size() > 3 ? pool_attrs_.pads[3] : 0),                 \
   static_cast<int32_t>(pool_attrs_.strides.size() > 0 ? pool_attrs_.strides[0] : 0),           \
-  static_cast<int32_t>(pool_attrs_.strides.size() > 1 ? pool_attrs_.strides[1] : 0)
+  static_cast<int32_t>(pool_attrs_.strides.size() > 1 ? pool_attrs_.strides[1] : 0),           \
+  static_cast<int32_t>(is_channels_last)
+
+#define GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING ({ "format": $1 ? "NHWC" : "NCHW" })
+#define GLOBAL_POOL_ATTRIBUTES_PARAM_LIST static_cast<int32_t>(is_channels_last)
 
 
-template <typename T, typename PoolType>
+template <typename T, typename PoolType, bool is_channels_last>
 class Pool : public JsKernel, public PoolBase {
  public:
   Pool(const OpKernelInfo& info) : JsKernel(info), PoolBase(info) {
     if (pool_attrs_.global_pooling) {
       if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
-        JSEP_INIT_KERNEL(GlobalAveragePool);
+        JSEP_INIT_KERNEL_ATTRIBUTE(GlobalAveragePool, GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING, GLOBAL_POOL_ATTRIBUTES_PARAM_LIST);
       } else if constexpr (PoolType::type == onnxruntime::PoolType::kMaxPool) {
-        JSEP_INIT_KERNEL(GlobalMaxPool);
+        JSEP_INIT_KERNEL_ATTRIBUTE(GlobalMaxPool, GLOBAL_POOL_ATTRIBUTES_JS_OBJ_MAPPING, GLOBAL_POOL_ATTRIBUTES_PARAM_LIST);
       } else {
         // TODO: GlobalLpPool
       }
@@ -61,10 +66,10 @@ class Pool : public JsKernel, public PoolBase {
   }
 };
 
-template <typename T>
-class Pool<T, MaxPool<8>> final : public Pool<T, MaxPool<1>> {
+template <typename T, bool is_channels_last>
+class Pool<T, MaxPool<8>, is_channels_last> final : public Pool<T, MaxPool<1>, is_channels_last> {
  public:
-  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>>(info) {}
+  Pool(const OpKernelInfo& info) : Pool<T, MaxPool<1>, is_channels_last>(info) {}
 };
 
 }  // namespace js
