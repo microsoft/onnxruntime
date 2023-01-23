@@ -164,7 +164,7 @@ stages:
       clean: all
     pool: 'Win-CPU-2021'
     variables:
-    - dockerImageTag: onnxruntime-android-custom-build
+      dockerImageTag: onnxruntime-android-custom-build
     steps:
     - checkout: self
       submodules: false
