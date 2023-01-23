@@ -554,7 +554,9 @@ typedef struct OrtMIGraphXProviderOptions {
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{},
+                                 num_of_threads{}, cache_dir{},
+                                 context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
    *
@@ -564,8 +566,7 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;               ///< 0 = Use default number of threads
-  unsigned char use_compiled_network;  ///< 0 = disabled, nonzero = enabled
-  const char* blob_dump_path;          // path is set to empty by default
+  const char* cache_dir;          // path is set to empty by default
   void* context;
   unsigned char enable_opencl_throttling;  ///< 0 = disabled, nonzero = enabled
   unsigned char enable_dynamic_shapes;     ///< 0 = disabled, nonzero = enabled
