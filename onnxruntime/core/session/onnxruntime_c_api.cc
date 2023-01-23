@@ -49,7 +49,7 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 
 #ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
+#include "orttraining/training_api/ort_training_apis.h"
 #endif
 
 #ifdef USE_CANN
@@ -2651,6 +2651,15 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::SetGlobalIntraOpThreadAffinity,
     &OrtApis::RegisterCustomOpsLibrary_V2,
     &OrtApis::RegisterCustomOpsUsingFunction,
+    &OrtApis::KernelInfo_GetInputCount,
+    &OrtApis::KernelInfo_GetOutputCount,
+    &OrtApis::KernelInfo_GetInputName,
+    &OrtApis::KernelInfo_GetOutputName,
+    &OrtApis::KernelInfo_GetInputTypeInfo,
+    &OrtApis::KernelInfo_GetOutputTypeInfo,
+    &OrtApis::KernelInfoGetAttribute_tensor,
+    &OrtApis::HasSessionConfigEntry,
+    &OrtApis::GetSessionConfigEntry,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

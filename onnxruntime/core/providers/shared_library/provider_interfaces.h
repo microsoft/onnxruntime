@@ -885,6 +885,10 @@ struct ProviderHost {
 
   virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
 
+#ifdef _WIN32
+  virtual std::string ToUTF8String(const std::wstring& s) = 0;
+#endif
+
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;
 };
 

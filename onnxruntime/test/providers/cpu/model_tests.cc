@@ -48,10 +48,15 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-#define ASSERT_ORT_STATUS_OK(function)                                        \
-  do {                                                                        \
-    OrtStatus* _tmp_status = (function);                                      \
-    ASSERT_EQ(_tmp_status, nullptr) << OrtApis::GetErrorMessage(_tmp_status); \
+// asserts that the OrtStatus* result of `status_expr` does not indicate an error
+// note: this takes ownership of the OrtStatus* result
+#define ASSERT_ORT_STATUS_OK(status_expr)                                           \
+  do {                                                                              \
+    if (OrtStatus* _status = (status_expr); _status != nullptr) {                   \
+      std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{    \
+          _status, &OrtApis::ReleaseStatus};                                        \
+      FAIL() << "OrtStatus error: " << OrtApis::GetErrorMessage(_rel_status.get()); \
+    }                                                                               \
   } while (false)
 
 using namespace onnxruntime::common;
@@ -673,25 +678,24 @@ TEST_P(ModelTest, Run) {
 
   for (bool is_single_thread : use_single_thread) {
     for (ExecutionMode execution_mode : execution_modes) {
-      OrtSessionOptions* ortso;
-      ASSERT_ORT_STATUS_OK(OrtApis::CreateSessionOptions(&ortso));
+      Ort::SessionOptions ortso{};
       if (!is_single_thread) {
-        ASSERT_ORT_STATUS_OK(OrtApis::DisablePerSessionThreads(ortso));
+        ortso.DisablePerSessionThreads();
       } else {
-        ASSERT_ORT_STATUS_OK(OrtApis::SetIntraOpNumThreads(ortso, 1));
+        ortso.SetIntraOpNumThreads(1);
       }
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionExecutionMode(ortso, execution_mode));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogId(ortso, ToUTF8String(test_case_name).c_str()));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogSeverityLevel(ortso, ORT_LOGGING_LEVEL_ERROR));
+      ortso.SetExecutionMode(execution_mode);
+      ortso.SetLogId(ToUTF8String(test_case_name).c_str());
+      ortso.SetLogSeverityLevel(ORT_LOGGING_LEVEL_ERROR);
       if (provider_name == "cuda") {
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_ROCM(ortso, &ep_options));
+        ortso.AppendExecutionProvider_ROCM(ep_options);
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
@@ -703,26 +707,26 @@ TEST_P(ModelTest, Run) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
                                               0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
+          ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
-          OrtTensorRTProviderOptionsV2* ep_option;
+          OrtTensorRTProviderOptionsV2* ep_option = nullptr;
           ASSERT_ORT_STATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
           std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(&OrtApis::ReleaseTensorRTProviderOptions)>
               rel_cuda_options(ep_option, &OrtApis::ReleaseTensorRTProviderOptions);
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, ep_option));
+          ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {
         OrtMIGraphXProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX(ortso, &ep_options));
+        ortso.AppendExecutionProvider_MIGraphX(ep_options);
       } else if (provider_name == "openvino") {
         OrtOpenVINOProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(ortso, &ep_options));
+        ortso.AppendExecutionProvider_OpenVINO(ep_options);
       }
 #ifdef USE_NNAPI
       else if (provider_name == "nnapi") {
@@ -760,8 +764,7 @@ TEST_P(ModelTest, Run) {
 #ifndef USE_DNNL  // potential crash for DNNL pipeline
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
         LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();  // TODO(leca): change level to INFO or even delete the log once verified parallel test working
-        Ort::SessionOptions ort_session_options(ortso);
-        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ortso, data_count, 1 /*repeat_count*/);
         for (EXECUTE_RESULT res : results->GetExcutionResult()) {
           EXPECT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;
@@ -769,8 +772,6 @@ TEST_P(ModelTest, Run) {
         continue;
       }
 #endif  // !USE_DNNL
-      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-          ortso, &OrtApis::ReleaseSessionOptions);
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 

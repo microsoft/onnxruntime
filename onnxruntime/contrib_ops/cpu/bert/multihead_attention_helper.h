@@ -107,6 +107,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_present_share_buffer = false;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
+    output_parameters->scale = 0.0f;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
