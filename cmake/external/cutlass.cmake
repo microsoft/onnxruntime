@@ -2,7 +2,7 @@ if (onnxruntime_USE_FLASH_ATTENTION)
   include(FetchContent)
   FetchContent_Declare(cutlass
     GIT_REPOSITORY https://github.com/nvidia/cutlass.git
-    GIT_TAG        8b42e751c63ba219755c8ed91af5f6ec1ecc1ee6
+    GIT_TAG        66d9cddc832c1cdc2b30a8755274f7f74640cfe6
   )
 
   FetchContent_GetProperties(cutlass)
