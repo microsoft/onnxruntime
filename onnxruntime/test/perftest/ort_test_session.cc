@@ -267,11 +267,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
     size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of
                                            //  threads with this value at runtime.
-    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled
-                                           // blobs if exists.
-    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to
-                                           // dump and load the blobs for the use_compiled_network(save/load blob)
-                                           // feature. This overrides the default path.
+    std::string cache_dir = "";       // [cache_dir]: specify the path to
+                                           // dump and load the blobs for the model caching/kernel caching (GPU)
+                                           // feature. If blob files are already present, it will be directly loaded.
     bool enable_opencl_throttling = false;    // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                               // device (Reduces CPU Utilization when using GPU)
     bool enable_dynamic_shapes = false;    // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
@@ -323,15 +321,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
-      } else if (key == "use_compiled_network") {
-        if (value == "true" || value == "True") {
-          use_compiled_network = true;
-        } else if (value == "false" || value == "False") {
-          use_compiled_network = false;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'use_compiled_network' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_opencl_throttling") {
+      }  else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True") {
           enable_opencl_throttling = true;
         } else if (value == "false" || value == "False") {
@@ -354,10 +344,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if ((int)num_of_threads <= 0) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
         }
-      } else if (key == "blob_dump_path") {
-        blob_dump_path = value;
+      } else if (key == "cache_dir") {
+        cache_dir = value;
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'enable_opencl_throttling|true'] \n");
       }
     }
     OrtOpenVINOProviderOptions options;
@@ -365,8 +355,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     options.device_id = device_id.c_str();                      // To set the device_id
     options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
     options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
+    options.cache_dir = cache_dir.c_str();                      // sets the cache_dir, default is ""
     options.enable_opencl_throttling = enable_opencl_throttling;    // Enables GPU Throttling (Reduces CPU Utilization)
     options.enable_dynamic_shapes = enable_dynamic_shapes;      // Enables Dynamic Shapes feature
     session_options.AppendExecutionProvider_OpenVINO(options);
