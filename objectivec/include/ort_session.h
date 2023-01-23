@@ -202,7 +202,7 @@ NS_ASSUME_NONNULL_BEGIN
  * See https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
  * for an example of a custom op library registration function.
  *
- * @param registration_func_name The name of the registration function to call.
+ * @param registrationFuncName The name of the registration function to call.
  * @param error Optional error information set if an error occurs.
  * @return Whether the registration function was successfully called.
  */

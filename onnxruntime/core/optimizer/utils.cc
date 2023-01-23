@@ -363,6 +363,34 @@ bool IsScalar(const NodeArg& input_arg) {
   return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
 
+template <typename T>
+bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
+                               bool is_constant) {
+  if (!IsScalar(input_arg)) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (is_constant) {
+    tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
+  const T* val = init_const.data<T>();
+  value = *val;
+
+  return true;
+}
+
+template bool GetScalarInitializerValue<float>(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float& value,
+                                               bool is_constant);
+
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace optimizer_utils

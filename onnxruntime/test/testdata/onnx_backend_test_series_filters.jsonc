@@ -104,8 +104,6 @@
         "^test_identity_opt",
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
-        "^test_scatternd_*",
-        "^test_scatter_elements_with_duplicate_indices",
         //GPU failures
         "^test_batchnorm_epsilon_training_mode_cuda",
         "^test_batchnorm_example_training_mode_cuda",
@@ -127,7 +125,6 @@
         "^test_constant_pad_cpu",
         "^test_edge_pad_cpu",
         "^test_reflect_pad_cpu",
-        "^test_scatter_elements_*",
         "^test_softplus_example_expanded_cpu",
         "^test_softplus_expanded_cpu",
         "^test_split_*",
@@ -312,6 +309,9 @@
         "^test_reduce_sum_do_not_keepdims_example",
         "^test_reduce_sum_do_not_keepdims_random",
         "^test_scatter_elements_with_negative_indices",
+        "^test_scatter_elements_with_duplicate_indices*",
+        "^test_scatternd_add*",
+        "^test_scatternd_multiply*",
         "^test_squeeze",
         "^test_squeeze_negative_axes"
     ],
@@ -332,6 +332,9 @@
         "^test_reduce_sum_default_axes_keepdims*",
         "^test_reduce_sum_empty_axes_input_noop*",
         "^test_scatter_elements_with_negative_indices_cpu",
+        "^test_scatter_elements_with_duplicate_indices*",
+        "^test_scatternd_add*",
+        "^test_scatternd_multiply*",
         "^test_squeeze_*", // Does not support axes as input
         "^test_pow_types_float", // Runs disabled pow tests from the "current_failing_tests" list at the top
         "^test_loop11",

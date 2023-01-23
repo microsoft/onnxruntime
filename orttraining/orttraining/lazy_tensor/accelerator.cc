@@ -36,6 +36,39 @@ namespace py = pybind11;
 namespace aten = torch::jit::aten;
 namespace prim = torch::jit::prim;
 
+bool IsFusable(const torch::jit::Node* node) {
+  // This function checks the fusion restriction inside
+  // mergeNodeIntoGroup(...). When selecting onnx-supported aten ops,
+  // we need to call this function to make sure they are fusable
+  // in mergeNodeIntoGroup(...).
+
+  // Not all inputs are fusable. For example, the fuser
+  // expects all inputs are tensors with a few exceptions.
+  // This flag denotes if we find an unsupported input.
+  bool found_not_fusable = false;
+  for (auto input : node->inputs()) {
+    if (input->type()->isSubtypeOf(*c10::TensorType::get())) {
+      continue;
+    } else if (
+        (input->type()->isSubtypeOf(*c10::FloatType::get()) &&
+         input->node()->kind() != torch::jit::prim::Constant) ||
+        (node->kind() == torch::jit::aten::_grad_sum_to_size &&
+         input->type()->isSubtypeOf(*c10::ListType::ofInts()))) {
+      continue;
+    } else if (
+        input->type()->isSubtypeOf(*c10::IntType::get()) &&
+        input->node()->kind() != torch::jit::prim::Constant) {
+      continue;
+    } else{
+      if (input->node()->kind() == torch::jit::prim::Constant) {
+        continue;
+      }
+      found_not_fusable = true;
+    }
+  }
+  return !found_not_fusable;
+}
+
 bool Accelerator::Supported(const torch::jit::Node* node) {
   if (!node) {
     return false;
@@ -74,7 +107,7 @@ bool Accelerator::Supported(const torch::jit::Node* node) {
         std::cout << "Supported op: "
                   << ToString(*node) << std::endl;
       }
-      return true;
+      return IsFusable(node);
     }
     default: {
       if (DumpAtenOpHistory()) {

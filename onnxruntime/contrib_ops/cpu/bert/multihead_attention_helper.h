@@ -19,6 +19,7 @@ Status CheckInputs(const T* query,
                    const T* key_padding_mask,
                    void* parameters,
                    int num_heads,
+                   float mask_filter_value,
                    int max_threads_per_block) {
   //   query            (Q)       : (B, S, D)
   //   key              (K)       : (B, L, D)
@@ -104,7 +105,9 @@ Status CheckInputs(const T* query,
     output_parameters->num_heads = num_heads;
     output_parameters->is_unidirectional = false;
     output_parameters->past_present_share_buffer = false;
+    output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
+    output_parameters->scale = 0.0f;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
