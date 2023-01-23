@@ -169,7 +169,70 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
-* Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
+#### Set number of intra-op threads
+
+Onnxruntime sessions utilize multi-threading to parallelize computation inside each operator.
+Customer could configure the number of threads like:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+With above configuration, two threads will be created in the pool, so along with the main calling thread, there will be three threads in total to participate in intra-op computation.
+By default, each session will create one thread per phyical core (except the 1st core) and attach the thread to that core.
+However, if customer explicitly set the number of threads like showcased above, there will be no affinity set to any of the created thread.
+
+In addition, Onnxruntime also allow customers to create a global intra-op thread pool to prevent overheated contentions among session thread pools, please find its usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+
+#### Set number of inter-op threads
+
+A inter-op thread pool is for parallelism between operators, and will only be created when session execution mode set to parallel:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.execution_mode  = ExecutionMode.ORT_PARALLEL
+sess_opt.inter_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+By default, inter-op thread pool will also have one thread per physical core.
+
+#### Set intra-op thread affinity
+
+For certain scenarios, it may be beneficial to customize intra-op thread affinities, for example:
+* There are multiple sessions run in parallel, customer might prefer their intra-op thread pools run on separate cores to avoid contention.
+* Customer want to limit a intra-op thread pool to run on only one of the NUMA nodes to reduce overhead of expensive cache miss among nodes.
+
+For session intra-op thread pool, please read the [configuration](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L180) and consume it like:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '1;2')
+sess = ort.InferenceSession('model.onnx', sess_opt, ...)
+```
+
+For global thread pool, please read the [API](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_c_api.h#L3636) and [usage](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+
+#### Numa support and performance tuning
+
+Since release 1.14, Onnxruntime thread pool could utilize all physical cores that are available over NUMA nodes.
+The intra-op thread pool will create a thread on every physical core (except the 1st core). E.g. assume there is a system of 2 NUMA nodes, each has 24 cores.
+Hence intra-op thread pool will create 47 threads, and set thread affinity to each core.
+
+For NUMA systems, it is recommended to test a few thread settings to explore for best performance, in that threads allocated among NUMA nodes might has higher cache-miss overhead when cooperating with each other. For example, when number of intra-op threads has to be 8, there are different ways to set affinity:
+
+```
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 8
+sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '3,4;5,6;7,8;9,10;11,12;13,14;15,16') # set affinities of all 7 threads to cores in the first NUMA node
+# sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '3,4;5,6;7,8;9,10;49,50;51,52;53,54') # set affinities for first 4 threads to the first NUMA node, and others to the second
+sess = ort.InferenceSession('resnet50.onnx', sess_opt, ...)
+```
+
+Test showed that setting affinities to a single NUMA node has nearly 20 percent performance improvement aginst the other case.
 
 #### Custom threading callbacks
 

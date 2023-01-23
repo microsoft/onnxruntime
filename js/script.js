@@ -1223,6 +1223,12 @@ var validCombos = {
 
     "linux,C++,X64,CANN":
         "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "windows,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
+
+    "linux,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
 };
 
 function commandMessage(key) {
