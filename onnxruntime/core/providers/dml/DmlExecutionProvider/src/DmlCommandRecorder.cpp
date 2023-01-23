@@ -5,6 +5,8 @@
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
 #include "BucketizedBufferAllocator.h"
+#include "DmlBufferRegion.h"
+#include "DmlHeapAllocator.h"
 
 using namespace Dml;
 
@@ -22,7 +24,7 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+void DmlCommandRecorder::SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator)
 {
     m_bufferAllocator = allocator;
 }
@@ -61,20 +63,19 @@ void DmlCommandRecorder::InitializeOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
-
-
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
 
         if (!tempResourceHandle)
         {
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetUavResource();
+        // TODO (pavignol): Check if freeing here causes any problems
+        auto bufferRegion = GetBufferForOpaqueData(m_heapAllocator, tempResourceHandle, temporaryResourceSize);
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+        DML_BUFFER_BINDING bufferBinding = bufferRegion.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
     }
@@ -142,17 +143,18 @@ void DmlCommandRecorder::ExecuteOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize), AllocatorRoundingMode::Enabled);
+        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
         if (!tempResourceHandle)
         {
             ORT_THROW_HR(E_OUTOFMEMORY);
         }
 
-        ID3D12Resource* buffer = allocator->DecodeDataHandle(tempResourceHandle)->GetUavResource();
+        // TODO (pavignol): Check if freeing here causes any problems
+        auto bufferRegion = GetBufferForOpaqueData(m_heapAllocator, tempResourceHandle, temporaryResourceSize);
         allocator->Free(tempResourceHandle);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = { buffer, 0, temporaryResourceSize };
+        DML_BUFFER_BINDING bufferBinding = bufferRegion.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
     }
@@ -195,7 +197,7 @@ void DmlCommandRecorder::CopyBufferRegion(
 }
 
 void DmlCommandRecorder::FillBufferWithPattern(
-    ID3D12Resource* dstBuffer,
+    const D3D12BufferRegion& bufferRegion,
     gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
 {
     // The fill pattern for ClearUnorderedAccessViewUint is 16 bytes.
@@ -226,14 +228,15 @@ void DmlCommandRecorder::FillBufferWithPattern(
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
     uavDesc.Format = DXGI_FORMAT_R32_TYPELESS;
-    uavDesc.Buffer.NumElements = gsl::narrow<uint32_t>(dstBuffer->GetDesc().Width / sizeof(uint32_t));
+    uavDesc.Buffer.FirstElement = gsl::narrow<uint32_t>(bufferRegion.Offset() / sizeof(uint32_t));
+    uavDesc.Buffer.NumElements = gsl::narrow<uint32_t>(bufferRegion.SizeInBytes() / sizeof(uint32_t));
     uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
 
     const uint32_t neededDescriptorCount = 1;
     DescriptorRange descriptorRangeCpu = m_descriptorPool.AllocDescriptors(neededDescriptorCount, m_queue->GetNextCompletionEvent(), D3D12_DESCRIPTOR_HEAP_FLAG_NONE);
     DescriptorRange descriptorRangeGpu = m_descriptorPool.AllocDescriptors(neededDescriptorCount, m_queue->GetNextCompletionEvent(), D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
-    m_d3dDevice->CreateUnorderedAccessView(dstBuffer, nullptr, &uavDesc, descriptorRangeCpu.cpuHandle);
-    m_d3dDevice->CreateUnorderedAccessView(dstBuffer, nullptr, &uavDesc, descriptorRangeGpu.cpuHandle);
+    m_d3dDevice->CreateUnorderedAccessView(bufferRegion.GetResourceInUavState(), nullptr, &uavDesc, descriptorRangeCpu.cpuHandle);
+    m_d3dDevice->CreateUnorderedAccessView(bufferRegion.GetResourceInUavState(), nullptr, &uavDesc, descriptorRangeGpu.cpuHandle);
 
     SetDescriptorHeap(descriptorRangeGpu.heap);
 
@@ -241,7 +244,7 @@ void DmlCommandRecorder::FillBufferWithPattern(
     m_currentCommandList->ClearUnorderedAccessViewUint(
         descriptorRangeGpu.gpuHandle,
         descriptorRangeCpu.cpuHandle,
-        dstBuffer,
+        bufferRegion.GetResourceInUavState(),
         fillPattern.integers,
         0,
         nullptr);

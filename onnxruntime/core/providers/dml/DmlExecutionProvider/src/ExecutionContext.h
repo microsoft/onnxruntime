@@ -10,6 +10,7 @@
 namespace Dml
 {
     class CommandQueue;
+    class D3D12BufferRegion;
 
     // Asynchronously performs GPU work, and automatically manages command list recording and submission to queues.
     // Work submitted to the ExecutionContext is typically recorded onto a command list and may not immediately begin
@@ -20,13 +21,13 @@ namespace Dml
     public:
         // Constructs an ExecutionContext that executes on the supplied queue.
         ExecutionContext(
-            ID3D12Device* d3d12Device, 
-            IDMLDevice* dmlDevice, 
+            ID3D12Device* d3d12Device,
+            IDMLDevice* dmlDevice,
             ID3D12CommandQueue* queue);
 
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        void SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator);
 
-        // Waits for flushed work, discards unflushed work, and discards associated references to 
+        // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         void Close();
 
@@ -43,7 +44,7 @@ namespace Dml
             uint64_t byteCount);
 
         void FillBufferWithPattern(
-            ID3D12Resource* dstBuffer,
+            const D3D12BufferRegion& bufferRegion,
             gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
 
         void InitializeOperator(
@@ -75,12 +76,12 @@ namespace Dml
         // Returns an event which will become signaled when everything submitted to the execution context thus far has
         // completed execution on the GPU, including work that has yet to be flushed to the queue.
         GpuEvent GetCurrentCompletionEvent();
-        
+
         // Adds a reference which will be released when queued GPU work is completed
         void QueueReference(IUnknown* object);
 
         // Release any accumulated references who corresponding GPU fence values have
-        // been reached.  
+        // been reached.
         void ReleaseCompletedReferences();
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;

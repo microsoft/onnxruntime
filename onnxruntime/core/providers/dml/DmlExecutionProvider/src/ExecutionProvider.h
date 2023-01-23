@@ -5,6 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
+#include "DmlCpuAllocator.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -133,15 +134,23 @@ namespace Dml
 
         void WaitForOutstandingWork();
 
-        // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
-        STDMETHOD(AllocatePooledResource)(
-            size_t size,
-            AllocatorRoundingMode roundingMode,
-            ID3D12Resource **d3dResource,
-            IUnknown* *pooledResource
-        ) const noexcept final;
+        // Allocate a resource from pools. Calling FreePooledResource returns it to the pool.
+        STDMETHOD(AllocatePooledResource)(size_t size, void** resource) const noexcept final;
+        STDMETHOD(FreePooledResource)(void* resource) const noexcept final;
 
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept final;
+        // Returns a light wrapper over the opaque data
+        STDMETHOD(GetBufferForOpaqueData)(
+            const void* opaque_data,
+            uint64_t unalignedSizeInBytes,
+            D3D12BufferRegion* bufferRegion) const noexcept final;
+
+        STDMETHOD(GetBufferForTensor)(
+            const MLOperatorTensor& tensor,
+            D3D12BufferRegion* bufferRegion) const noexcept final;
+
+        STDMETHOD(GetBufferForTensor)(
+            IMLOperatorTensor* tensor,
+            D3D12BufferRegion* bufferRegion) const noexcept final;
 
         std::shared_ptr<onnxruntime::KernelRegistry> GetKernelRegistry() const
         {
@@ -154,6 +163,7 @@ namespace Dml
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
+        D3D12HeapAllocator* GetHeapAllocator();
 
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
         GetInternalRegistrationInfoMap() const;
@@ -186,13 +196,19 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<BucketizedBufferAllocator> m_allocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_allocator;
         std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
         std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
         bool m_closed = false;
+
+        D3D12BufferRegion GetBufferForTensor(const MLOperatorTensor& tensor) const;
+        D3D12BufferRegion GetBufferForTensor(IMLOperatorTensor* tensor) const;
+
+        // Owned by the BFC allocator
+        std::unique_ptr<D3D12HeapAllocator> m_heapAllocator;
     };
 
     class DataTransfer : public onnxruntime::IDataTransfer

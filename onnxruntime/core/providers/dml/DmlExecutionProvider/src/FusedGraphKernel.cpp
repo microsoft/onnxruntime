@@ -6,6 +6,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
 #include "DmlGraphFusionHelper.h"
+#include "DmlBufferRegion.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -21,7 +22,7 @@ namespace Dml
             ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
             Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
             bool reuseCommandList,
-            std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+            std::vector<D3D12BufferRegion>& nonOwnedGraphInputsFromInitializers,
             std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
             std::vector<DML_BUFFER_BINDING> initInputBindings,
             std::vector<uint8_t>& isInputsUploadedByDmlEP,
@@ -63,13 +64,23 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
+                void* opaquePersistentResource = nullptr;
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+                    persistentResourceSize,
+                    &opaquePersistentResource));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                m_opaquePersistentResource = std::unique_ptr<void,std::function<void(void*)>>(
+                    opaquePersistentResource,
+                    [this](void* opaqueData) {
+                        m_provider->FreePooledResource(opaqueData);
+                    });
+
+                ORT_THROW_IF_FAILED(m_provider->GetBufferForOpaqueData(
+                    opaquePersistentResource,
+                    persistentResourceSize,
+                    &m_persistentResourceBufferRegion));
+
+                m_persistentResourceBinding = m_persistentResourceBufferRegion.GetBufferBinding();
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
@@ -112,7 +123,7 @@ namespace Dml
                 // Get input resources for execution, excluding those which were specified as owned by DML and provided
                 // at initialization instead.
                 std::vector<ComPtr<IMLOperatorTensor>> inputTensors(kernelContext->InputCount());
-                std::vector<ID3D12Resource*> inputPtrs(kernelContext->InputCount());
+                std::vector<D3D12BufferRegion> inputBufferRegions(kernelContext->InputCount());
 
                 for (int i = 0; i < kernelContext->InputCount(); ++i)
                 {
@@ -123,12 +134,12 @@ namespace Dml
 
                     if (m_nonOwnedGraphInputsFromInitializers[i])
                     {
-                        inputPtrs[i] = m_nonOwnedGraphInputsFromInitializers[i].Get();
+                        inputBufferRegions[i] = m_nonOwnedGraphInputsFromInitializers[i];
                     }
                     else if (!m_isInputsUploadedByDmlEP[i])
                     {
                         ORT_THROW_IF_FAILED(contextWrapper.GetInputTensor(i, inputTensors[i].GetAddressOf()));
-                        inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
+                        ORT_THROW_IF_FAILED(m_provider->GetBufferForTensor(inputTensors[i].Get(), &inputBufferRegions[i]));
                     }
                 }
 
@@ -136,7 +147,7 @@ namespace Dml
                 ExecuteOperator(
                     m_compiledExecutionPlanOperator.Get(),
                     m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
-                    inputPtrs,
+                    inputBufferRegions,
                     aux);
 
                 ORT_THROW_IF_FAILED(m_provider->AddUAVBarrier());
@@ -156,7 +167,7 @@ namespace Dml
         void ExecuteOperator(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
-            gsl::span<ID3D12Resource*> inputTensors,
+            gsl::span<D3D12BufferRegion> inputTensors,
             gsl::span<IMLOperatorTensor*> outputTensors) const
         {
             auto FillBindingsFromTensors = [this](auto& bufferBindings, auto& bindingDescs,  gsl::span<IMLOperatorTensor*>& tensors)
@@ -166,9 +177,9 @@ namespace Dml
                     if (tensor)
                     {
                         assert(tensor->IsDataInterface());
-                        ID3D12Resource* resource = m_provider->DecodeResource(MLOperatorTensor(tensor).GetDataInterface().Get());
-                        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                        bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                        D3D12BufferRegion bufferRegion;
+                        ORT_THROW_IF_FAILED(m_provider->GetBufferForTensor(tensor, &bufferRegion));
+                        bufferBindings.push_back(bufferRegion.GetBufferBinding());
                         bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
                     }
                     else
@@ -179,14 +190,13 @@ namespace Dml
                 }
             };
 
-            auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<ID3D12Resource*>& resources)
+            auto FillBindingsFromBuffers = [](auto& bufferBindings, auto& bindingDescs,  gsl::span<D3D12BufferRegion>& bufferRegions)
             {
-                for (ID3D12Resource* resource : resources)
+                for (const auto& bufferRegion : bufferRegions)
                 {
-                    if (resource)
+                    if (bufferRegion.SizeInBytes() != 0)
                     {
-                        D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                        bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                        bufferBindings.push_back(bufferRegion.GetBufferBinding());
                         bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
                     }
                     else
@@ -254,7 +264,7 @@ namespace Dml
                 nullptr,
                 IID_GRAPHICS_PPV_ARGS(m_graphicsCommandList.ReleaseAndGetAddressOf())));
 
-            if (m_persistentResource)
+            if (m_persistentResourceBufferRegion.SizeInBytes() != 0)
             {
                 DML_BINDING_DESC persistentResourceBindingDesc =
                     { DML_BINDING_TYPE_BUFFER, m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr };
@@ -296,8 +306,7 @@ namespace Dml
                 {
                     if (m_nonOwnedGraphInputsFromInitializers[i])
                     {
-                        inputBindings[i].Buffer = m_nonOwnedGraphInputsFromInitializers[i].Get();
-                        inputBindings[i].SizeInBytes = m_nonOwnedGraphInputsFromInitializers[i]->GetDesc().Width;
+                        inputBindings[i] = m_nonOwnedGraphInputsFromInitializers[i].GetBufferBinding();
                         inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
                     }
                     else
@@ -416,8 +425,9 @@ namespace Dml
         ComPtr<ID3D12CommandAllocator> m_commandAllocator;
         ComPtr<ID3D12DescriptorHeap> m_heap;
         ComPtr<IDMLBindingTable> m_bindingTable;
+        D3D12BufferRegion m_persistentResourceBufferRegion;
+        std::unique_ptr<void, std::function<void(void*)>> m_opaquePersistentResource;
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
-        ComPtr<ID3D12Resource> m_persistentResource;
         ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
 
         // Bindings from previous executions of a re-used command list
@@ -431,7 +441,7 @@ namespace Dml
         mutable uint64_t m_completionValue = 0;
 
         std::vector<uint8_t> m_isInputsUploadedByDmlEP;
-        std::vector<ComPtr<ID3D12Resource>> m_nonOwnedGraphInputsFromInitializers;
+        std::vector<D3D12BufferRegion> m_nonOwnedGraphInputsFromInitializers;
     };
 
     onnxruntime::OpKernel* CreateFusedGraphKernel(
@@ -439,7 +449,7 @@ namespace Dml
         ComPtr<IDMLCompiledOperator> compiledExecutionPlanOperator,
         Windows::AI::MachineLearning::Adapter::EdgeShapes& outputShapes,
         bool reuseCommandList,
-        std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
+        std::vector<D3D12BufferRegion>& nonOwnedGraphInputsFromInitializers,
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
         std::vector<DML_BUFFER_BINDING> initInputBindings,
         std::vector<uint8_t>& isInputsUploadedByDmlEP,

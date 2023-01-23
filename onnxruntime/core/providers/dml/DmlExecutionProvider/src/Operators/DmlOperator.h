@@ -4,6 +4,7 @@
 #pragma once
 
 #include "OperatorUtility.h"
+#include "../DmlBufferRegion.h"
 
 namespace Dml
 {
@@ -25,7 +26,9 @@ namespace Dml
         std::vector<TensorDesc> m_outputTensorDescs;
 
         ComPtr<IDMLCompiledOperator> m_compiledOperator;
-        ComPtr<ID3D12Resource> m_persistentResource;
+        D3D12BufferRegion m_persistentResourceBufferRegion;
+
+        std::unique_ptr<void, std::function<void(void*)>> m_opaquePersistentResource;
         ComPtr<IUnknown> m_persistentResourcePoolingUnk; // Controls when the persistent resource is returned to the pool
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
 
@@ -139,6 +142,8 @@ namespace Dml
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlInputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlOutputEdges,
                                    _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
+
+        void AllocatePersistentResource(uint64_t persistentResourceSize);
 
     };
 

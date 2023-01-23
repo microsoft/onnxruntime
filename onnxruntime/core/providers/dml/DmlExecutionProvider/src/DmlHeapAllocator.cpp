@@ -3,7 +3,7 @@
 
 #include "precomp.h"
 #include "DmlHeapAllocator.h"
-#include "DmlReservedResourceWrapper.h"
+#include "DmlTaggerPointer.h"
 
 namespace Dml
 {
@@ -222,7 +222,7 @@ uint64_t D3D12HeapAllocator::ComputeRequiredSize(size_t size)
     return resource_size_in_bytes;
 }
 
-Microsoft::WRL::ComPtr<DmlResourceWrapper> D3D12HeapAllocator::Alloc(size_t size_in_bytes)
+void* D3D12HeapAllocator::Alloc(size_t size_in_bytes)
 {
     if (size_in_bytes == 0)
     {
@@ -235,12 +235,99 @@ Microsoft::WRL::ComPtr<DmlResourceWrapper> D3D12HeapAllocator::Alloc(size_t size
         tiling_enabled_ ? TryCreateTiledAllocation(size_in_bytes)
                         : TryCreateUntiledAllocation(size_in_bytes);
 
-    ORT_THROW_HR_IF(E_UNEXPECTED, !allocation);
+    ORT_THROW_HR_IF(E_INVALIDARG, !allocation);
 
-    auto reservedResourceWrapper = wil::MakeOrThrow<DmlReservedResourceWrapper>(std::move(*allocation));
-    Microsoft::WRL::ComPtr<DmlResourceWrapper> resourceWrapper;
-    reservedResourceWrapper.As(&resourceWrapper);
-    return resourceWrapper;
+    // We need to access (mutable) state after this point, so we need to lock
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    absl::optional<uint32_t> id = TryReserveAllocationID();
+    ORT_THROW_HR_IF(E_INVALIDARG, !id.has_value());
+
+    allocations_by_id_.emplace(*id, std::move(*allocation));
+
+    lock.unlock();
+
+    const uint64_t offset = 0;
+    return TaggedPointer::Pack(*id, offset);
+}
+
+void D3D12HeapAllocator::Free(void* ptr)
+{
+    ORT_THROW_HR_IF(E_UNEXPECTED, ptr == nullptr);
+
+    TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+    ORT_THROW_HR_IF(E_UNEXPECTED, tagged_ptr.offset != 0);
+
+    // We need to access (mutable) state after this point, so we need to lock
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+
+    ORT_THROW_HR_IF(E_UNEXPECTED, it == allocations_by_id_.end());
+
+    ReleaseAllocationID(tagged_ptr.allocation_id);
+
+    // Frees the ID3D12Heap
+    allocations_by_id_.erase(it);
+}
+
+D3D12BufferRegion D3D12HeapAllocator::CreateBufferRegion(
+    const void* ptr,
+    uint64_t size_in_bytes)
+{
+    ORT_THROW_HR_IF(E_UNEXPECTED, ptr == nullptr);
+
+    TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+
+    // We need to access (mutable) state after this point, so we need to lock
+    std::unique_lock<std::mutex> lock(mutex_);
+
+    // Find the allocation corresponding to this pointer
+    auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+    ORT_THROW_HR_IF(E_UNEXPECTED, it == allocations_by_id_.end());
+
+    Allocation* allocation = &it->second;
+
+    return D3D12BufferRegion(
+        tagged_ptr.offset,
+        size_in_bytes,
+        allocation->resource_uav_state.Get(),
+        allocation->resource_copy_src_state.Get(),
+        allocation->resource_copy_dst_state.Get());
+}
+
+absl::optional<uint32_t> D3D12HeapAllocator::TryReserveAllocationID()
+{
+    // The mutex must already be held
+    assert(!mutex_.try_lock());
+
+    if (!free_allocation_ids_.empty())
+    {
+        // Return a free ID from the pool
+        uint32_t id = free_allocation_ids_.back();
+        free_allocation_ids_.pop_back();
+        return id;
+    }
+
+    static constexpr uint32_t kMaxAllocationID =
+        (1 << TaggedPointer::kAllocationIDBits) - 1;
+    if (current_allocation_id_ == kMaxAllocationID)
+    {
+        // We've reached the maximum number of allocations!
+        return absl::nullopt;
+    }
+
+    ++current_allocation_id_;
+    return current_allocation_id_;
+}
+
+void D3D12HeapAllocator::ReleaseAllocationID(uint32_t id)
+{
+    // The mutex must already be held
+    assert(!mutex_.try_lock());
+
+    // Add it to the pool of free IDs
+    free_allocation_ids_.push_back(id);
 }
 
 }

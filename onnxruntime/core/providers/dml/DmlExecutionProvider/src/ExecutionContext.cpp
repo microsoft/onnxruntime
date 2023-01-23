@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "ExecutionContext.h"
 #include "CommandQueue.h"
+#include "DmlBufferRegion.h"
 
 namespace Dml
 {
@@ -18,7 +19,7 @@ namespace Dml
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator)
+    void ExecutionContext::SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator)
     {
         m_dmlRecorder.SetAllocator(allocator);
     }
@@ -67,11 +68,11 @@ namespace Dml
     }
 
     void ExecutionContext::FillBufferWithPattern(
-        ID3D12Resource* dstBuffer,
+        const D3D12BufferRegion& bufferRegion,
         gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */)
     {
         SetCommandRecorder(&m_dmlRecorder);
-        m_dmlRecorder.FillBufferWithPattern(dstBuffer, value);
+        m_dmlRecorder.FillBufferWithPattern(bufferRegion, value);
     }
 
     void ExecutionContext::ExecuteCommandList(

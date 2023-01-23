@@ -37,7 +37,7 @@ namespace Dml
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
-        
+
         STDMETHOD(ExecuteOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
@@ -64,8 +64,21 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const noexcept = 0;
         STDMETHOD_(void, Flush)() const noexcept = 0;
 
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept = 0;
-        STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
+        STDMETHOD(AllocatePooledResource(size_t size, void** resource)) const noexcept = 0;
+        STDMETHOD(FreePooledResource)(void* resource) const noexcept = 0;
+
+        STDMETHOD(GetBufferForOpaqueData)(
+            const void* opaque_data,
+            uint64_t unalignedSizeInBytes,
+            D3D12BufferRegion* bufferRegion) const noexcept = 0;
+
+        STDMETHOD(GetBufferForTensor)(
+            const MLOperatorTensor& tensor,
+            D3D12BufferRegion* bufferRegion) const noexcept = 0;
+
+        STDMETHOD(GetBufferForTensor)(
+            IMLOperatorTensor* tensor,
+            D3D12BufferRegion* bufferRegion) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;

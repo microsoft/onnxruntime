@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "DmlOperator.h"
+#include "../DmlBufferRegion.h"
 
 namespace Dml
 {
@@ -93,13 +94,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                AllocatePersistentResource(persistentResourceSize);
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -192,13 +187,7 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                AllocatePersistentResource(persistentResourceSize);
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -226,17 +215,12 @@ namespace Dml
         UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
         if (persistentResourceSize > 0)
         {
-            if (!m_persistentResource || m_persistentResource->GetDesc().Width < persistentResourceSize)
+            if (m_persistentResourceBufferRegion.SizeInBytes() == 0 || m_persistentResourceBufferRegion.SizeInBytes() < persistentResourceSize)
             {
-                m_persistentResource = nullptr;
-                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
+                AllocatePersistentResource(persistentResourceSize);
             }
 
-            m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+            m_persistentResourceBinding = m_persistentResourceBufferRegion.GetBufferBinding();
         }
 
         ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
@@ -741,6 +725,27 @@ namespace Dml
             dmlIntermediateEdges[i] = DML_GRAPH_EDGE_DESC{DML_GRAPH_EDGE_TYPE_INTERMEDIATE, &operatorGraphDesc.intermediateEdges[i]};
         }
         graphDesc.IntermediateEdges = dmlIntermediateEdges.data();
+    }
+
+    void DmlOperator::AllocatePersistentResource(uint64_t persistentResourceSize)
+    {
+        void* opaquePersistentResource = nullptr;
+        ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+            persistentResourceSize,
+            &opaquePersistentResource));
+
+        m_opaquePersistentResource = std::unique_ptr<void,std::function<void(void*)>>(
+            opaquePersistentResource,
+            [this](void* opaqueData) {
+                m_executionProvider->FreePooledResource(opaqueData);
+            });
+
+        ORT_THROW_IF_FAILED(m_executionProvider->GetBufferForOpaqueData(
+            opaquePersistentResource,
+            persistentResourceSize,
+            &m_persistentResourceBufferRegion));
+
+        m_persistentResourceBinding = m_persistentResourceBufferRegion.GetBufferBinding();
     }
 
 } // namespace Dml
