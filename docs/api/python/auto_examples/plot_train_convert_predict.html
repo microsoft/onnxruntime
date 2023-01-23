@@ -86,16 +86,6 @@ to its use in its converted from.</p>
 <span class="n">clr</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">y_train</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>/home/runner/.local/lib/python3.10/site-packages/sklearn/linear_model/_logistic.py:444: ConvergenceWarning: lbfgs failed to converge (status=1):
-STOP: TOTAL NO. of ITERATIONS REACHED LIMIT.
-
-Increase the number of iterations (max_iter) or scale the data as shown in:
-    https://scikit-learn.org/stable/modules/preprocessing.html
-Please also refer to the documentation for alternative solver options:
-    https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
-  n_iter_i = _check_optimize_result(
-</pre></div>
-</div>
 <div class="output_subarea output_html rendered_html output_result">
 <style>#sk-container-id-2 {color: black;background-color: white;}#sk-container-id-2 pre{padding: 0;}#sk-container-id-2 div.sk-toggleable {background-color: white;}#sk-container-id-2 label.sk-toggleable__label {cursor: pointer;display: block;width: 100%;margin-bottom: 0;padding: 0.3em;box-sizing: border-box;text-align: center;}#sk-container-id-2 label.sk-toggleable__label-arrow:before {content: "▸";float: left;margin-right: 0.25em;color: #696969;}#sk-container-id-2 label.sk-toggleable__label-arrow:hover:before {color: black;}#sk-container-id-2 div.sk-estimator:hover label.sk-toggleable__label-arrow:before {color: black;}#sk-container-id-2 div.sk-toggleable__content {max-height: 0;max-width: 0;overflow: hidden;text-align: left;background-color: #f0f8ff;}#sk-container-id-2 div.sk-toggleable__content pre {margin: 0.2em;color: black;border-radius: 0.25em;background-color: #f0f8ff;}#sk-container-id-2 input.sk-toggleable__control:checked~div.sk-toggleable__content {max-height: 200px;max-width: 100%;overflow: auto;}#sk-container-id-2 input.sk-toggleable__control:checked~label.sk-toggleable__label-arrow:before {content: "▾";}#sk-container-id-2 div.sk-estimator input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 div.sk-label input.sk-toggleable__control:checked~label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 input.sk-hidden--visually {border: 0;clip: rect(1px 1px 1px 1px);clip: rect(1px, 1px, 1px, 1px);height: 1px;margin: -1px;overflow: hidden;padding: 0;position: absolute;width: 1px;}#sk-container-id-2 div.sk-estimator {font-family: monospace;background-color: #f0f8ff;border: 1px dotted black;border-radius: 0.25em;box-sizing: border-box;margin-bottom: 0.5em;}#sk-container-id-2 div.sk-estimator:hover {background-color: #d4ebff;}#sk-container-id-2 div.sk-parallel-item::after {content: "";width: 100%;border-bottom: 1px solid gray;flex-grow: 1;}#sk-container-id-2 div.sk-label:hover label.sk-toggleable__label {background-color: #d4ebff;}#sk-container-id-2 div.sk-serial::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: 0;}#sk-container-id-2 div.sk-serial {display: flex;flex-direction: column;align-items: center;background-color: white;padding-right: 0.2em;padding-left: 0.2em;position: relative;}#sk-container-id-2 div.sk-item {position: relative;z-index: 1;}#sk-container-id-2 div.sk-parallel {display: flex;align-items: stretch;justify-content: center;background-color: white;position: relative;}#sk-container-id-2 div.sk-item::before, #sk-container-id-2 div.sk-parallel-item::before {content: "";position: absolute;border-left: 1px solid gray;box-sizing: border-box;top: 0;bottom: 0;left: 50%;z-index: -1;}#sk-container-id-2 div.sk-parallel-item {display: flex;flex-direction: column;z-index: 1;position: relative;background-color: white;}#sk-container-id-2 div.sk-parallel-item:first-child::after {align-self: flex-end;width: 50%;}#sk-container-id-2 div.sk-parallel-item:last-child::after {align-self: flex-start;width: 50%;}#sk-container-id-2 div.sk-parallel-item:only-child::after {width: 0;}#sk-container-id-2 div.sk-dashed-wrapped {border: 1px dashed gray;margin: 0 0.4em 0.5em 0.4em;box-sizing: border-box;padding-bottom: 0.4em;background-color: white;}#sk-container-id-2 div.sk-label label {font-family: monospace;font-weight: bold;display: inline-block;line-height: 1.2em;}#sk-container-id-2 div.sk-label-container {text-align: center;}#sk-container-id-2 div.sk-container {/* jupyter's `normalize.less` sets `[hidden] { display: none; }` but bootstrap.min.css set `[hidden] { display: none !important; }` so we also need the `!important` here to be able to override the default hidden behavior on the sphinx rendered scikit-learn.org. See: https://github.com/scikit-learn/scikit-learn/issues/21755 */display: inline-block !important;position: relative;}#sk-container-id-2 div.sk-text-repr-fallback {display: none;}</style><div id="sk-container-id-2" class="sk-top-container"><div class="sk-text-repr-fallback"><pre>LogisticRegression()</pre><b>In a Jupyter environment, please rerun this cell to show the HTML representation or trust the notebook. <br />On GitHub, the HTML representation is unable to render, please try loading this page with nbviewer.org.</b></div><div class="sk-container" hidden><div class="sk-item"><div class="sk-estimator sk-toggleable"><input class="sk-toggleable__control sk-hidden--visually" id="sk-estimator-id-4" type="checkbox" checked><label for="sk-estimator-id-4" class="sk-toggleable__label sk-toggleable__label-arrow">LogisticRegression</label><div class="sk-toggleable__content"><pre>LogisticRegression()</pre></div></div></div></div></div>
 </div>
@@ -108,9 +98,9 @@ and we show the confusion matrix.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
- [ 0 13  2]
- [ 0  1 11]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0  8  0]
+ [ 0  3 15]]
 </pre></div>
 </div>
 </section>
@@ -152,9 +142,9 @@ output name=&#39;output_label&#39; and shape=[None]
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[11  0  0]
- [ 0 14  0]
- [ 0  0 13]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0 11  0]
+ [ 0  0 15]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
@@ -169,9 +159,9 @@ scikit-learn.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">prob_sklearn</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.29030347e-03 5.19977113e-01 4.78732584e-01]
- [7.90572203e-04 3.26327127e-01 6.72882300e-01]
- [9.65026010e-01 3.49738628e-02 1.26697184e-07]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[2.84438254e-05 2.76876851e-02 9.72283871e-01]
+ [3.93053588e-02 9.53960627e-01 6.73401437e-03]
+ [8.22028452e-02 9.05171919e-01 1.26252360e-02]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
@@ -184,9 +174,9 @@ The probabilies appear to be</p>
 <span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">prob_rt</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.0012903024908155203, 1: 0.5199770927429199, 2: 0.4787325859069824},
- {0: 0.0007905727834440768, 1: 0.32632729411125183, 2: 0.6728821396827698},
- {0: 0.9650260210037231, 1: 0.034973856061697006, 2: 1.2669713100876834e-07}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 2.844382106559351e-05, 1: 0.0276876799762249, 2: 0.9722838997840881},
+ {0: 0.039305318146944046, 1: 0.9539607167243958, 2: 0.006734013557434082},
+ {0: 0.08220282196998596, 1: 0.9051719903945923, 2: 0.012625232338905334}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
@@ -210,11 +200,11 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 4.4e-05 min=4.25e-05 max=5.47e-05
+Average 4.33e-05 min=4.17e-05 max=5.54e-05
 Execution time for ONNX Runtime
-Average 2.23e-05 min=2.16e-05 max=3.08e-05
+Average 2.33e-05 min=2.27e-05 max=2.89e-05
 
-2.2315799999432783e-05
+2.325732499997457e-05
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
@@ -242,11 +232,11 @@ as opposed to a batch of prediction.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00404 min=0.00402 max=0.00413
+Average 0.00396 min=0.00394 max=0.00405
 Execution time for sess_predict
-Average 0.00101 min=0.000995 max=0.00104
+Average 0.0011 min=0.00109 max=0.00112
 
-0.0010053269700003398
+0.0011013778150000065
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
@@ -263,11 +253,11 @@ Average 0.00101 min=0.000995 max=0.00104
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.00613 min=0.0061 max=0.00616
+Average 0.00594 min=0.00582 max=0.00657
 Execution time for sess_predict_proba
-Average 0.00106 min=0.00106 max=0.0011
+Average 0.00116 min=0.00114 max=0.00118
 
-0.0010642362600015076
+0.0011605704699996977
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -305,11 +295,11 @@ in every case.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.682 min=0.68 max=0.685
+Average 0.654 min=0.652 max=0.659
 Execution time for sess_predict_proba
-Average 0.00132 min=0.0013 max=0.00137
+Average 0.00139 min=0.00137 max=0.00144
 
-0.001315003579999825
+0.0013873463899994932
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
@@ -344,40 +334,40 @@ Average 0.00132 min=0.0013 max=0.00137
 </pre></div>
 </div>
 <img src="../images/sphx_glr_plot_train_convert_predict_001.png" srcset="../images/sphx_glr_plot_train_convert_predict_001.png" alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.0493 min=0.0492 max=0.0495
-Average 0.00102 min=0.001 max=0.00105
+Average 0.0542 min=0.0537 max=0.055
+Average 0.00111 min=0.00109 max=0.00114
 10
-Average 0.0827 min=0.0826 max=0.0828
-Average 0.00103 min=0.00102 max=0.00105
+Average 0.0859 min=0.0857 max=0.0861
+Average 0.00112 min=0.00111 max=0.00115
 15
-Average 0.116 min=0.116 max=0.116
-Average 0.00103 min=0.00102 max=0.00105
+Average 0.117 min=0.117 max=0.118
+Average 0.00115 min=0.00114 max=0.00117
 20
 Average 0.149 min=0.149 max=0.149
-Average 0.00106 min=0.00105 max=0.00108
+Average 0.00115 min=0.00114 max=0.00118
 25
-Average 0.182 min=0.182 max=0.182
-Average 0.00107 min=0.00106 max=0.00109
+Average 0.182 min=0.181 max=0.183
+Average 0.00117 min=0.00116 max=0.00119
 30
-Average 0.215 min=0.215 max=0.215
-Average 0.00109 min=0.00108 max=0.00112
+Average 0.213 min=0.213 max=0.214
+Average 0.00118 min=0.00117 max=0.0012
 35
-Average 0.249 min=0.248 max=0.249
-Average 0.00108 min=0.00107 max=0.00111
+Average 0.244 min=0.244 max=0.245
+Average 0.00118 min=0.00117 max=0.00121
 40
-Average 0.282 min=0.282 max=0.283
-Average 0.00111 min=0.0011 max=0.00113
+Average 0.275 min=0.275 max=0.275
+Average 0.00121 min=0.00119 max=0.00124
 45
-Average 0.315 min=0.314 max=0.315
-Average 0.00112 min=0.0011 max=0.00114
+Average 0.307 min=0.307 max=0.307
+Average 0.0012 min=0.00119 max=0.00124
 50
-Average 0.348 min=0.348 max=0.348
-Average 0.00114 min=0.00113 max=0.00116
+Average 0.338 min=0.338 max=0.338
+Average 0.00122 min=0.00121 max=0.00126
 
-&lt;matplotlib.legend.Legend object at 0x7f94760bd870&gt;
+&lt;matplotlib.legend.Legend object at 0x7f55eaeaa6e0&gt;
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  10.085 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  4.037 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/c647c128e0cf2b3db04ce60b41ef1a14/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
