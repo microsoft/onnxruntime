@@ -2650,9 +2650,6 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
     &OrtApis::RegisterCustomOpsLibrary_V2,
-    // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
-
-    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
     &OrtApis::RegisterCustomOpsUsingFunction,
     &OrtApis::KernelInfo_GetInputCount,
     &OrtApis::KernelInfo_GetOutputCount,
@@ -2663,7 +2660,9 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::KernelInfoGetAttribute_tensor,
     &OrtApis::HasSessionConfigEntry,
     &OrtApis::GetSessionConfigEntry,
+    // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
 
+    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
 
 };
 
