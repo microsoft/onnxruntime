@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "DmlSubAllocator.h"
+#include "DmlResourceWrapper.h"
 
 namespace Dml
 {
@@ -53,7 +53,7 @@ struct Allocation
 // this case it is better make more but smaller allocations (resulting in
 // smaller heaps); this fallback path is only retained as a last resort for
 // older hardware.
-class D3D12HeapAllocator : public DmlSubAllocator
+class D3D12HeapAllocator
 {
   public:
     // Maximum size of a heap (in tiles) when allocations are tiled. Each tile
@@ -69,8 +69,8 @@ class D3D12HeapAllocator : public DmlSubAllocator
         D3D12_RESOURCE_FLAGS resource_flags,
         D3D12_RESOURCE_STATES initial_state);
 
-    Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size_in_bytes) final;
-    uint64_t ComputeRequiredSize(size_t size) final;
+    Microsoft::WRL::ComPtr<DmlResourceWrapper> Alloc(size_t size_in_bytes);
+    uint64_t ComputeRequiredSize(size_t size);
     bool TilingEnabled() const { return tiling_enabled_; };
 
   private:

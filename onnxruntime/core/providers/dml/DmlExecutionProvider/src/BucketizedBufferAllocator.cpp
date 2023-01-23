@@ -6,7 +6,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 #include "BucketizedBufferAllocator.h"
-#include "DmlSubAllocator.h"
+#include "DmlHeapAllocator.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
 namespace Dml
@@ -37,7 +37,7 @@ namespace Dml
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
         std::shared_ptr<ExecutionContext> context,
-        std::unique_ptr<DmlSubAllocator>&& subAllocator
+        std::unique_ptr<D3D12HeapAllocator>&& subAllocator
         )
         : onnxruntime::IAllocator(
             OrtMemoryInfo(

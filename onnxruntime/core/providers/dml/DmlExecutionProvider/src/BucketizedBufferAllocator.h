@@ -9,7 +9,7 @@
 
 namespace Dml
 {
-    class DmlSubAllocator;
+    class D3D12HeapAllocator;
 
     class CPUAllocator : public onnxruntime::IAllocator
     {
@@ -120,7 +120,7 @@ namespace Dml
         BucketizedBufferAllocator(
             ID3D12Device* device,
             std::shared_ptr<ExecutionContext> context,
-            std::unique_ptr<DmlSubAllocator>&& subAllocator);
+            std::unique_ptr<D3D12HeapAllocator>&& subAllocator);
 
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
         const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
@@ -168,7 +168,7 @@ namespace Dml
         uint64_t m_currentResourceId = 0;
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
         std::shared_ptr<ExecutionContext> m_context;
-        std::unique_ptr<DmlSubAllocator> m_subAllocator;
+        std::unique_ptr<D3D12HeapAllocator> m_subAllocator;
 
     #if _DEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet
