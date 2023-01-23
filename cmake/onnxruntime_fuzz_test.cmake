@@ -53,10 +53,10 @@ if (onnxruntime_FUZZ_ENABLED)
 	target_include_directories(onnxruntime_security_fuzz PRIVATE ${INCLUDE_FILES})
 	
 	# add link libraries the project
-	target_link_libraries(onnxruntime_security_fuzz ${PROTOBUF_LIB} onnx_proto onnxruntime protobuf-mutator)
+	target_link_libraries(onnxruntime_security_fuzz onnx_proto onnxruntime protobuf-mutator ${PROTOBUF_LIB})
 	
 	# add the dependencies
-	add_dependencies(onnxruntime_security_fuzz ${PROTOBUF_LIB} onnx_proto onnxruntime protobuf-mutator)
+	add_dependencies(onnxruntime_security_fuzz onnx_proto onnxruntime protobuf-mutator ${PROTOBUF_LIB})
 	
 	# copy the dlls to the execution directory
 	add_custom_command(TARGET onnxruntime_security_fuzz POST_BUILD
