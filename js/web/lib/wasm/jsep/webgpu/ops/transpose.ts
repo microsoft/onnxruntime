@@ -13,7 +13,7 @@ export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
 }
 
-const transposeProgramMetadata = {
+export const transposeProgramMetadata = {
   name: 'Transpose',
   inputTypes: [GpuDataType.default]
 };
@@ -44,7 +44,7 @@ const permFunctionBody = (perm: number[], rank: number): string => {
   return reverseFunc.join('\n');
 };
 
-const createTransposeProgramInfo = (input: TensorView, permAttr: number[]): ProgramInfo => {
+export const createTransposeProgramInfo = (input: TensorView, permAttr: number[]): ProgramInfo => {
   const dataType = 'f32';  // TODO: support other data type
   const inputShape = input.dims;
   const perm = getAdjustedPerm(inputShape, permAttr);
@@ -102,4 +102,4 @@ export const transpose = (context: ComputeContext, attributes: TransposeAttribut
 };
 
 export const parseTransposeAttributes = (attributes: Record<string, unknown>): TransposeAttributes =>
-    createAttributeWithCacheKey({perm: Array.from(attributes.perm as Iterable<number>)});
+    createAttributeWithCacheKey({perm: attributes.perm as number[]});

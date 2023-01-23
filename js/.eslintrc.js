@@ -182,6 +182,12 @@ module.exports = {
       'import/no-extraneous-dependencies': 'off',
       'no-console': 'off'
     }
+  }, {
+    files: ['web/lib/**/3rd-party/**/*.ts'], rules: {
+      'header/header': 'off',
+      'unicorn/filename-case': 'off',
+      '@typescript-eslint/explicit-module-boundary-types': 'off',
+    }
   }],
   extends: [
     'eslint:recommended',

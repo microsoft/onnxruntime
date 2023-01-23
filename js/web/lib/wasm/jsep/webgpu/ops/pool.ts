@@ -29,16 +29,19 @@ const validateInputs = (inputs: readonly TensorView[]): void => {
 
 const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
     inputs: readonly TensorView[], attributes: AttributeType, isGlobalOperator: boolean): [AttributeType, number[]] => {
-  const inputShape = inputs[0].dims.slice();
+  const isChannelsLast = attributes.format === 'NHWC';
+  const inputShapeAsChannelFirst = isChannelsLast ?
+      [inputs[0].dims[0], inputs[0].dims[3], inputs[0].dims[1], inputs[0].dims[2]] :
+      inputs[0].dims.slice();
   const hasDilations = Object.hasOwnProperty.call(attributes, 'dilations');
   const kernelShape = attributes.kernelShape.slice();
   const strides = attributes.strides.slice();
   const dilations: number[] = hasDilations ? (attributes as MaxPoolAttributes).dilations.slice() : [];
   const pads = attributes.pads.slice();
-  PoolConvUtil.adjustPoolAttributes(isGlobalOperator, inputShape, kernelShape, strides, dilations, pads);
+  PoolConvUtil.adjustPoolAttributes(isGlobalOperator, inputShapeAsChannelFirst, kernelShape, strides, dilations, pads);
 
-  const outputShape = PoolConvUtil.computePoolOutputShape(
-      isGlobalOperator, inputShape, strides, dilations, kernelShape, pads, attributes.autoPad);
+  const outputShapeAsChannelFirst = PoolConvUtil.computePoolOutputShape(
+      isGlobalOperator, inputShapeAsChannelFirst, strides, dilations, kernelShape, pads, attributes.autoPad);
 
   const newAttributes = Object.assign({}, attributes);
   if (hasDilations) {
@@ -46,12 +49,21 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
   } else {
     Object.assign(newAttributes, {kernelShape, strides, pads, cacheKey: attributes.cacheKey});
   }
-  return [newAttributes, outputShape];
+  return [
+    newAttributes,
+    isChannelsLast ?
+        [
+          outputShapeAsChannelFirst[0], outputShapeAsChannelFirst[2], outputShapeAsChannelFirst[3],
+          outputShapeAsChannelFirst[1]
+        ] :
+        outputShapeAsChannelFirst
+  ];
 };
 
 const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPoolAttributes>(
     inputDims: readonly number[], outputShape: readonly number[], attributes: AttributeType, op1: string, op2: string,
     dataType: string, start: string): string => {
+  const isChannelsLast = attributes.format === 'NHWC';
   const rank = inputDims.length;
   const outputSize = ShapeUtil.size(outputShape);
   const outputIndicesHelper = createIndicesHelper('output', outputShape);
@@ -62,15 +74,15 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     const sw = attributes.strides[attributes.strides.length - 1];
     const pwStart = attributes.pads[attributes.pads.length / 2 - 1];
     const pwEnd = attributes.pads[attributes.pads.length - 1];
-    const dimW = inputDims[rank - 1];
+    const dimIdxW = rank - (isChannelsLast ? 2 : 1);
     let codeW = '';
     let codeH = '';
     let codeHEnd = '';
     if (pwStart + pwEnd !== 0) {
       codeW = `
               for (var i: u32 = 0u; i < ${kw}u; i++) {
-                xIndices[${rank - 1}] = indices[${rank - 1}] * ${sw} - ${pwStart} + i;
-                if (xIndices[${rank - 1}] < 0 || xIndices[${rank - 1}] >= ${dimW}) {
+                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
+                if (xIndices[${dimIdxW}] < 0 || xIndices[${dimIdxW}] >= ${inputDims[dimIdxW]}) {
                   pad++;
                   continue;
                 }
@@ -80,7 +92,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
     } else {
       codeW = `
               for (var i: u32 = 0u; i < ${kw}u; i++) {
-                xIndices[${rank - 1}] = indices[${rank - 1}] * ${sw} - ${pwStart} + i;
+                xIndices[${dimIdxW}] = indices[${dimIdxW}] * ${sw} - ${pwStart} + i;
                 let x_val = x[${xIndicesHelper.i2oExpression('xIndices')}];
                 ${op1}
               }`;
@@ -91,12 +103,13 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
       const sh = attributes.strides[attributes.strides.length - 2];
       const phStart = attributes.pads[attributes.pads.length / 2 - 2];
       const phEnd = attributes.pads[attributes.pads.length - 2];
-      const dimH = inputDims[rank - 2];
+      const dimIdxH = rank - (isChannelsLast ? 3 : 2);
+      const dimH = inputDims[dimIdxH];
       if (phStart + phEnd !== 0) {
         codeH = `
                 for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${rank - 2}] = indices[${rank - 2}] * ${sh} - ${phStart} + j;
-                  if (xIndices[${rank - 2}] < 0 || xIndices[${rank - 2}] >= ${dimH}) {
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
+                  if (xIndices[${dimIdxH}] < 0 || xIndices[${dimIdxH}] >= ${dimH}) {
                     pad+= ${kw};
                     continue;
                   }
@@ -104,7 +117,7 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
       } else {
         codeH = `
                 for (var j: u32 = 0u; j < ${kh}u; j++) {
-                  xIndices[${rank - 2}] = indices[${rank - 2}] * ${sh} - ${phStart} + j;
+                  xIndices[${dimIdxH}] = indices[${dimIdxH}] * ${sh} - ${phStart} + j;
                 `;
       }
       codeHEnd = `
@@ -144,6 +157,9 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
             }`;
     return poolingCode;
   } else {
+    if (isChannelsLast) {
+      throw new Error('Pooling with kernelShape.length > 2 is not supported for NHWC format.');
+    }
     const kernelSize = ShapeUtil.size(attributes.kernelShape);
     const kernelStrides = ShapeUtil.computeStrides(attributes.kernelShape);
     const stridesRank = kernelStrides.length;
@@ -223,7 +239,11 @@ const generatePoolingCode = <AttributeType extends AveragePoolAttributes|MaxPool
   }
 };
 
-export interface PoolCommonAttributes {
+export interface FormatAttributes {
+  readonly format: 'NHWC'|'NCHW';
+}
+
+export interface PoolCommonAttributes extends FormatAttributes {
   readonly autoPad: string;
   readonly ceilMode: number;
   readonly kernelShape: readonly number[];
@@ -232,6 +252,7 @@ export interface PoolCommonAttributes {
 }
 
 const parsePoolCommonAttributes = (attributes: Record<string, unknown>): PoolCommonAttributes => ({
+  format: attributes.format as FormatAttributes['format'],
   autoPad: ['NOTSET', 'VALID', 'SAME_UPPER', 'SAME_LOWER'][attributes.auto_pad as number],
   ceilMode: attributes.ceil_mode as number,
   kernelShape: attributes.kernel_shape as [number, number],
@@ -298,11 +319,15 @@ const globalPoolAttributes = {
   cacheKey: ''
 };
 
-export const globalAveragePool = (context: ComputeContext): number => {
+export const parseGlobalAveragePoolAttributes = (attributes: Record<string, unknown>): AveragePoolAttributes => {
+  const format = attributes.format as FormatAttributes['format'];
+  return {format, ...globalPoolAttributes, cacheKey: format};
+};
+
+export const globalAveragePool = (context: ComputeContext, attributes: AveragePoolAttributes): number => {
   validateInputs(context.inputs);
-  const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default]};
-  context.compute(
-      {...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, globalPoolAttributes)});
+  const metadata = {name: 'GlobalAveragePool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createAveragePoolProgramInfo(context.inputs, metadata, true, attributes)});
   return 0;
 };
 
@@ -351,16 +376,14 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   return createAttributeWithCacheKey({storageOrder, dilations, ...attr});
 };
 
-const globalMaxPoolMetadata = {
-  name: 'GlobalMaxPool',
-  inputTypes: [GpuDataType.default]
+export const parseGlobalMaxPoolAttributes = (attributes: Record<string, unknown>): MaxPoolAttributes => {
+  const format = attributes.format as FormatAttributes['format'];
+  return {format, ...globalPoolAttributes, cacheKey: format};
 };
 
-export const globalMaxPool = (context: ComputeContext): number => {
+export const globalMaxPool = (context: ComputeContext, attributes: MaxPoolAttributes): number => {
   validateInputs(context.inputs);
-  context.compute({
-    ...globalMaxPoolMetadata,
-    get: () => createMaxPoolProgramInfo(context.inputs, globalMaxPoolMetadata, true, globalPoolAttributes)
-  });
+  const metadata = {name: 'GlobalMaxPool', inputTypes: [GpuDataType.default], cacheHint: attributes.cacheKey};
+  context.compute({...metadata, get: () => createMaxPoolProgramInfo(context.inputs, metadata, true, attributes)});
   return 0;
 };

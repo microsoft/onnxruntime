@@ -1444,6 +1444,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 #endif
 
+#ifndef NDEBUG
+  printf("before SaveInitializedTensors()\n");
+#endif
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
@@ -1462,6 +1465,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
   GetMemoryProfiler()->GetMemoryInfo().RecordInitializerAllocInfo(GetInitializedTensors());
+#endif
+#ifndef NDEBUG
+  printf("after SaveInitializedTensors()\n");
 #endif
 
   // remove weights from the graph now to save memory but in many cases it won't save memory, if the tensor was

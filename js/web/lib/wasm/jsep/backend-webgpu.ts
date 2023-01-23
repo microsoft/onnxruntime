@@ -28,9 +28,10 @@ export class WebGpuBackend {
   programManager: ProgramManager;
 
   temporaryData: GpuData[];
+  currentKernelId: number|null = null;
+  kernelPersistentData: Map<number, GpuData[]>;
 
-  // TODO: remove value[0]. the string is only for debug
-  kernels: Map<number, [string, RunFunction, unknown]>;
+  kernels: Map<number, [string, RunFunction, [((attribute: unknown) => unknown) | undefined, unknown]]>;
 
   commandEncoder: GPUCommandEncoder|null = null;
   computePassEncoder: GPUComputePassEncoder|null = null;
@@ -50,6 +51,7 @@ export class WebGpuBackend {
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
     this.kernels = new Map();
+    this.kernelPersistentData = new Map();
     // TODO: set up flags
 
     this.device.onuncapturederror = ev => {
@@ -128,8 +130,13 @@ export class WebGpuBackend {
     const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
-      const isTemporary = validatedOutputIndices[i] === -1;
-      const tensorView = isTemporary ?
+      if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -2 ||
+          validatedOutputIndices[i] >= programInfo.outputs.length) {
+        throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
+      }
+      const isTemporary = validatedOutputIndices[i] === -2;
+      const isPersistent = validatedOutputIndices[i] === -1;
+      const tensorView = (isTemporary || isPersistent) ?
           createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
       const gpuData = this.gpuDataManager.get(tensorView.data);
@@ -138,6 +145,14 @@ export class WebGpuBackend {
       }
       if (isTemporary) {
         this.temporaryData.push(gpuData);
+      }
+      if (isPersistent) {
+        let persistentData = this.kernelPersistentData.get(this.currentKernelId!);
+        if (!persistentData) {
+          persistentData = [];
+          this.kernelPersistentData.set(this.currentKernelId!, persistentData);
+        }
+        persistentData.push(gpuData);
       }
       outputTensorViews.push(tensorView);
       outputDatas.push(gpuData);
@@ -180,14 +195,17 @@ export class WebGpuBackend {
       throw new Error(`kernel not implemented: ${name}`);
     }
 
-    let processedAttribute = attribute;
-    if (op.length > 1 && typeof op[1] !== 'undefined') {
-      processedAttribute = op[1](attribute);
-    }
-    this.kernels.set(kernelId, [name, op[0], processedAttribute]);
+    this.kernels.set(kernelId, [name, op[0], [op[1], attribute]]);
   }
 
   releaseKernel(kernelId: number): void {
+    const persistentData = this.kernelPersistentData.get(kernelId);
+    if (persistentData) {
+      for (const data of persistentData) {
+        this.gpuDataManager.release(data.id);
+      }
+      this.kernelPersistentData.delete(kernelId);
+    }
     this.kernels.delete(kernelId);
   }
 
@@ -197,6 +215,16 @@ export class WebGpuBackend {
       throw new Error(`kernel not created: ${kernelId}`);
     }
     const [name, kernelEntry, attributes] = kernel;
+    if (this.currentKernelId !== null) {
+      throw new Error(`kernel "${name}" is not allowed to be called recursively`);
+    }
+    this.currentKernelId = kernelId;
+
+    // parse attributes if necessary
+    if (attributes[0]) {
+      attributes[1] = attributes[0](attributes[1]);
+      attributes[0] = undefined;
+    }
 
     if (env.debug) {
       // eslint-disable-next-line no-console
@@ -205,12 +233,13 @@ export class WebGpuBackend {
 
     this.temporaryData = [];
     try {
-      return kernelEntry(context, attributes);
+      return kernelEntry(context, attributes[1]);
     } finally {
       for (const data of this.temporaryData) {
         this.gpuDataManager.release(data.id);
       }
       this.temporaryData = [];
+      this.currentKernelId = null;
     }
   }
 }

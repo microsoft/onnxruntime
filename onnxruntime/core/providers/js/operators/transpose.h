@@ -21,8 +21,10 @@ class Transpose final : public JsKernel, public TransposeBase {
             perm[i] = gsl::narrow_cast<int32_t>(perm_[i]);
         }
     }
+    // printf("Transpose: perm_specified_ = %d, perm.size() = %d, perm[0] = %d, perm[1] = %d, perm[2] = %d, perm[3] = %d\n",
+    //   perm_specified_, static_cast<int32_t>(perm.size()), perm[0], perm[1], perm[2], perm[3]);
     JSEP_INIT_KERNEL_ATTRIBUTE(Transpose, ({
-        "perm": $1 ? Module.HEAP32.subarray($2, $2 + $1) : []
+        "perm": $1 ? Array.from(HEAP32.subarray($2, $2 + $1)) : []
     }),
     gsl::narrow_cast<int32_t>(perm_specified_ ? perm_.size() : 0),
     reinterpret_cast<int32_t>(perm_specified_ && !perm.empty() ? perm.data() : nullptr) >> 2
