@@ -189,4 +189,5 @@ stages:
       displayName: 'Clean up docker image'
       inputs:
         script: docker image rm $(dockerImageTag)
+        workingDirectory: '$(Build.BinariesDirectory)'
       condition: succeededOrFailed()
