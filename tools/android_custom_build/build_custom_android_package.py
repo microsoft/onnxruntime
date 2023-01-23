@@ -7,6 +7,7 @@ import pathlib
 import shlex
 import shutil
 import subprocess
+import sys
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 DEFAULT_OPS_CONFIG_RELATIVE_PATH = "tools/ci_build/github/android/mobile_package.required_operators.config"
@@ -146,20 +147,27 @@ def main():
         else f"/workspace/onnxruntime/{DEFAULT_BUILD_SETTINGS_RELATIVE_PATH}"
     )
 
-    docker_container_build_cmd = [
-        args.docker_path,
-        "run",
-        "-it",
-        f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
-        f"--volume={working_dir}:/workspace/shared",
-        args.docker_image_tag,
-        "/bin/bash",
-        "/workspace/scripts/build.sh",
-        args.config,
-        container_ops_config_file,
-        container_build_settings_file,
-        "/workspace/shared/output",
-    ]
+    # enable use of Ctrl-C to stop when running interactively
+    docker_run_interactive_args = ["-it"] if sys.stdin.isatty() else []
+
+    docker_container_build_cmd = (
+        [
+            args.docker_path,
+            "run",
+        ]
+        + docker_run_interactive_args
+        + [
+            f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
+            f"--volume={working_dir}:/workspace/shared",
+            args.docker_image_tag,
+            "/bin/bash",
+            "/workspace/scripts/build.sh",
+            args.config,
+            container_ops_config_file,
+            container_build_settings_file,
+            "/workspace/shared/output",
+        ]
+    )
 
     run(docker_container_build_cmd)
 
