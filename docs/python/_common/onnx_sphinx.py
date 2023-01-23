@@ -1,4 +1,4 @@
-# pylint: disable=C0415,R0912,R0913,R0914,R0915
+# pylint: disable=C0103,C0415,R0912,R0913,R0914,R0915
 """
 Automates the generation of ONNX operators.
 """

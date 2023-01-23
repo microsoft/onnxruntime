@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=C0411,C0412,C0413
 
 """
 
@@ -22,18 +23,15 @@ The first step consists in retrieving the iris datset.
 """
 
 from sklearn.datasets import load_iris
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
 
 iris = load_iris()
 X, y = iris.data, iris.target
-
-from sklearn.model_selection import train_test_split
-
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 
 ####################################
 # Then we fit a model.
-
-from sklearn.linear_model import LogisticRegression
 
 clr = LogisticRegression()
 clr.fit(X_train, y_train)
