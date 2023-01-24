@@ -13,15 +13,12 @@ import textwrap
 from difflib import Differ
 
 import numpy as np
-from sphinx.util import logging
-
 import onnx
 from onnx.backend.test.case.base import _Exporter
 from onnx.defs import OpSchema, get_all_schemas_with_history, get_schema
 from onnx.numpy_helper import to_array
-from onnx.onnx_cpp2py_export.defs import (  # pylint: disable=E1101,E0611,E0401
-    SchemaError,
-)
+from onnx.onnx_cpp2py_export.defs import SchemaError  # pylint: disable=E1101,E0611,E0401
+from sphinx.util import logging
 
 
 def get_template():  # type: ignore
