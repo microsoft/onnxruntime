@@ -28,12 +28,12 @@ Returns an instance of the singlton class `OrtEnv`.
 ```cs
 void EnableTelemetryEvents();
 ```
-Enables platform-specific telemetry collection where applicable. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) for more details.    
+Enables platform-specific telemetry collection where applicable. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md) for more details.    
 
 ```cs
 void DisableTelemetryEvents();
 ```
-Disables platform-specific telemetry collection. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/master/docs/Privacy.md) for more details.    
+Disables platform-specific telemetry collection. Please see [Privacy](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md) for more details.    
 
 ### InferenceSession
 ```cs

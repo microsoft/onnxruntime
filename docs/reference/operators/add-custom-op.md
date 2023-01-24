@@ -16,7 +16,7 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 {:toc}
 
 ## Register a custom operator
-A new op can be registered with ONNX Runtime using the Custom Operator API in [onnxruntime_c_api](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_c_api.h).
+A new op can be registered with ONNX Runtime using the Custom Operator API in [onnxruntime_c_api](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h).
 
 1. Create an OrtCustomOpDomain with the domain name used by the custom ops.
 2. Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add.
@@ -26,11 +26,11 @@ A new op can be registered with ONNX Runtime using the Custom Operator API in [o
 ## Examples
 {: .no_toc}
 
-* [C++ helper API](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/shared_lib/test_inference.cc): custom ops `MyCustomOp` and `SliceCustomOp` use the [C++ helper API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h). The test file also demonstrates an option to  compile the custom ops into a shared library to be used to run a model via the C++ API.
+* [C++ helper API](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/shared_lib/test_inference.cc): custom ops `MyCustomOp` and `SliceCustomOp` use the [C++ helper API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h). The test file also demonstrates an option to  compile the custom ops into a shared library to be used to run a model via the C++ API.
 
-* [Custom op shared library](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc): sample custom op shared library containing two custom kernels.
+* [Custom op shared library](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc): sample custom op shared library containing two custom kernels.
 
-* [Custom op shared library with Python API](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/test/python/onnxruntime_test_python.py): `testRegisterCustomOpsLibrary` uses the Python API to register a shared library with custom op kernels. Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are CUDA and CPU.
+* [Custom op shared library with Python API](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/python/onnxruntime_test_python.py): `testRegisterCustomOpsLibrary` uses the Python API to register a shared library with custom op kernels. Currently, the only supported Execution Providers (EPs) for custom ops registered via this approach are CUDA and CPU.
 
 * [E2E example: Export PyTorch model with custom ONNX operators](../../tutorials/export-pytorch-model.md).
 
@@ -55,11 +55,11 @@ For example, see how the afore-mentioned `MyCustomOp` is being launched and how 
 
 ## Contrib ops
 
-The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/contrib_ops) contains ops that are built in to the runtime by default. However most new operators should not be added here to avoid increasing binary size of the core runtime package.
+The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops) contains ops that are built in to the runtime by default. However most new operators should not be added here to avoid increasing binary size of the core runtime package.
 
 See for example the Inverse op added in [#3485](https://github.com/microsoft/onnxruntime/pull/3485).
 
-The custom op's schema and shape inference function should be added in [contrib_defs.cc](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/core/graph/contrib_ops/contrib_defs.cc) using `ONNX_CONTRIB_OPERATOR_SCHEMA`.
+The custom op's schema and shape inference function should be added in [contrib_defs.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc) using `ONNX_CONTRIB_OPERATOR_SCHEMA`.
 
 ```c++
 ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
@@ -71,16 +71,16 @@ ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
 A new operator should have complete reference implementation tests and shape inference tests.
 
 Reference implementation python tests should be added in
-[onnxruntime/test/python/contrib_ops](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/python/contrib_ops).
-E.g., [onnx_test_trilu.py](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/python/contrib_ops/onnx_test_trilu.py)
+[onnxruntime/test/python/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops).
+E.g., [onnx_test_trilu.py](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops/onnx_test_trilu.py)
 
 Shape inference C++ tests should be added in
-[onnxruntime/test/contrib_ops](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/contrib_ops).
-E.g., [trilu_shape_inference_test.cc](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/contrib_ops/trilu_shape_inference_test.cc)
+[onnxruntime/test/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops).
+E.g., [trilu_shape_inference_test.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops/trilu_shape_inference_test.cc)
 
 The operator kernel should be implemented using `Compute` function
-under contrib namespace in [onnxruntime/contrib_ops/cpu/](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/contrib_ops/cpu/)
-for CPU and [onnxruntime/contrib_ops/cuda/](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/contrib_ops/cuda/) for CUDA.
+under contrib namespace in [onnxruntime/contrib_ops/cpu/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu/)
+for CPU and [onnxruntime/contrib_ops/cuda/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cuda/) for CUDA.
 
 ```c++
 namespace onnxruntime {
@@ -112,13 +112,13 @@ Status Inverse::Compute(OpKernelContext* ctx) const {
 }  // namespace onnxruntime
 ```
 
-The kernel should be registered in [cpu_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/contrib_ops/cpu_contrib_kernels.cc) for CPU and [cuda_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/contrib_ops/cuda_contrib_kernels.cc) for CUDA.
+The kernel should be registered in [cpu_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu_contrib_kernels.cc) for CPU and [cuda_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cuda_contrib_kernels.cc) for CUDA.
 
 Now you should be able to build and install ONNX Runtime to start using your custom op.
 
 ### Contrib Op Tests
 
-Tests should be added in [onnxruntime/test/contrib_ops/](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/contrib_ops/).
+Tests should be added in [onnxruntime/test/contrib_ops/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops/).
 For example:
 
 ```c++

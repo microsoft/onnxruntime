@@ -68,7 +68,7 @@ If an operator called multiple kernels during execution, the performance numbers
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
 
-ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
+ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/main/tools/perf_view) to render the statistics as a summarized view in the browser.
 
 ## Using different Execution Providers
 
@@ -140,7 +140,7 @@ Performance is dependent on the specific model you're trying to run, the session
 
 The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
 
-Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/master/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
+Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/main/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
 
 ### TensorRT or CUDA?
 
@@ -237,7 +237,7 @@ Test showed that setting affinities to a single NUMA node has nearly 20 percent 
 #### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
-hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
 ```c++
   std::vector<std::thread> threads;
@@ -311,7 +311,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
 * Graph Optimization Level
-  * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](graph-optimizations.md) documentation.
+  * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](graph-optimizations.md) documentation.
 
 ### MKL_DNN/nGraph Execution Provider
 
@@ -356,7 +356,7 @@ Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python).
 
 * C#
 
-Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
+Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
 
 ### Convolution-heavy models and the CUDA EP
 
@@ -585,11 +585,11 @@ Here is a list of things to check when assessing performance issues:
 
 ### I need help performance tuning for BERT models
 
-For BERT models, sometimes ONNX Runtime cannot apply the best optimizations due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
+For BERT models, sometimes ONNX Runtime cannot apply the best optimizations due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
-The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may prevent some of the graph optimizations like const folding, operator fusion etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with the latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may prevent some of the graph optimizations like const folding, operator fusion etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with the latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/main/tools/python/remove_initializer_from_input.py).
 
 ### Why is my model running slower on GPU than on CPU?
 

@@ -38,4 +38,4 @@ The C API details are [here](../../get-started/with-c.html).
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../../performance/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest){:target="_blank"}, use the flag -e acl
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest){:target="_blank"}, use the flag -e acl

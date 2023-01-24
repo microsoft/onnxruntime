@@ -66,7 +66,7 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#cuda).
+A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#cuda).
 
 ### Notes
 {: .no_toc }
@@ -129,7 +129,7 @@ git checkout 7.2.1
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#tensorrt)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
 
 ---
 
@@ -262,7 +262,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino).
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
 
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
@@ -404,7 +404,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#nuphar).
 
 
 ---
@@ -648,7 +648,7 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#migraphx).
 
 ## AMD ROCm
 
