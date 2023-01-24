@@ -48,7 +48,7 @@ export class ProgramManager {
     computePassEncoder.setBindGroup(0, bindGroup);
 
     const {x, y, z} = dispatchGroup;
-    computePassEncoder.dispatch(x, y, z);
+    computePassEncoder.dispatchWorkgroups(x, y, z);
 
     this.backend.pendingDispatchNumber++;
 
@@ -68,7 +68,8 @@ export class ProgramManager {
       console.log('WebGpuProgram: ' + programInfo.shaderSource);
     }
 
-    const computePipeline = device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}});
+    const computePipeline =
+        device.createComputePipeline({compute: {module: shaderModule, entryPoint: 'main'}, layout: 'auto'});
 
     return {programInfo, computePipeline};
   }
