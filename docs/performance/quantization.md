@@ -80,7 +80,7 @@ a model size greater than 2GB. So for large models, optimization must be skipped
 
 Pre-processing API is in Python module `onnxruntime.quantization.shape_inference`,
 function `quant_pre_process()`. See
-[`shape_inference.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/shape_inference.py).
+[`shape_inference.py`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/shape_inference.py).
 To read about additional options and finer controls available to pre-processing,
 run the following command:
 
@@ -112,12 +112,12 @@ During these runs, we compute the quantization parameters for each activations. 
 parameters are written as constants to the quantized model and used for all inputs. Our
 quantization tool supports three calibration methods: MinMax, Entropy and Percentile. Please refer
 to
-[`calibrate.py`](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/calibrate.py)
+[`calibrate.py`](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/calibrate.py)
 for details.
 
 Python API for static quantization is in module `onnxruntime.quantization.quantize`, function
 `quantize_static()`.
-Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py)
+Please refer to [quantize.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/quantize.py)
 for details.
 
 ### <a name="qdqdebug"></a>Quantization Debugging
@@ -192,14 +192,14 @@ ONNX Runtime quantization on GPU only supports S8S8.
 #### When and why do I need to try U8U8?
 {: .no_toc }
 
-On x86-64 machines with AVX2 and AVX512 extensions, ONNX Runtime uses the VPMADDUBSW instruction for U8S8 for performance. This instruction might suffer from saturation issues: it can happen that the output does not fit into a 16-bit integer and has to be clamped (saturated) to fit. Generally, this is not a big issue for the final result. However, if you do encounter a large accuracy drop, it may be caused by saturation. In this case, you can either try [reduce_range](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/quantize.py) or the U8U8 format which doesn't have saturation issues.
+On x86-64 machines with AVX2 and AVX512 extensions, ONNX Runtime uses the VPMADDUBSW instruction for U8S8 for performance. This instruction might suffer from saturation issues: it can happen that the output does not fit into a 16-bit integer and has to be clamped (saturated) to fit. Generally, this is not a big issue for the final result. However, if you do encounter a large accuracy drop, it may be caused by saturation. In this case, you can either try [reduce_range](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/quantize.py) or the U8U8 format which doesn't have saturation issues.
 
 There is no such issue on other CPU architectures (x64 with VNNI and ARM).
 
 ### List of Supported Quantized Ops
 {: .no_toc}
 
-Please refer to the [registry](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/quantization/registry.py) for the list of supported Ops.
+Please refer to the [registry](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/registry.py) for the list of supported Ops.
 
 ### Quantization and model opset versions
 {: .no_toc}
@@ -207,7 +207,7 @@ Please refer to the [registry](https://github.com/microsoft/onnxruntime/blob/mas
 Models must be opset10 or higher to be quantized. Models with opset < 10 must be reconverted to ONNX from their original framework using a later opset.
 
 ## Transformer-based models
-There are specific optimizations for transformer-based models, such as QAttention for quantization of attention layers. In order to leverage these optimizations, you need to optimize your models using the [Transformer Model Optimization Tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers) before quantizing the model.
+There are specific optimizations for transformer-based models, such as QAttention for quantization of attention layers. In order to leverage these optimizations, you need to optimize your models using the [Transformer Model Optimization Tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) before quantizing the model.
 
 This [notebook](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/notebooks/bert) demonstrates the process.
 

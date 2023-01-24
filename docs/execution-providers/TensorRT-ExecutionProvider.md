@@ -58,7 +58,7 @@ Ort::Session session(env, model_path, sf);
 The C API details are [here](../get-started/with-c.md).
 
 #### Shape Inference for TensorRT Subgraphs
-If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py).
+If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py).
 
 
 ### Python
@@ -216,7 +216,7 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
 
 ## Samples
 
@@ -224,7 +224,7 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
 
 1. Download the Faster R-CNN onnx model from the ONNX model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
 
-2. Infer shapes in the model by running the [shape inference script](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py)
+2. Infer shapes in the model by running the [shape inference script](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py)
     ```
     python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
     ```
@@ -235,5 +235,5 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
     ./onnx_test_runner -e tensorrt /path/to/onnx/model/
     ```
 
-Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/master/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
+Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
 
