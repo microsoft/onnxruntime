@@ -8,9 +8,9 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
-#include "orttraining/training_api/include/training_session.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/ort_training_apis.h"
+#include "orttraining/training_api/training_session.h"
 
 namespace {
 

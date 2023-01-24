@@ -20,10 +20,15 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::transformers::ICons
   void Print(const char* name, const float* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const size_t* tensor, int dim0, int dim1) const override;
+  void Print(const char* name, const half* tensor, int dim0, int dim1) const;
   void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const override;
+  void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const;
   void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const override;
+  void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const;
+  void Print(const char* name, const half* tensor, int dim0, int dim1, int dim2) const;
+  void Print(const char* name, const half* tensor, int dim0, int dim1, int dim2, int dim3) const;
   void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const override;
   void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const override;
   void Print(const char* name, const Tensor& value) const override;
