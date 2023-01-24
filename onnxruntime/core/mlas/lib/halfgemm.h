@@ -37,6 +37,7 @@ Abstract:
 #include <string>
 
 #include "mlasi.h"
+#include "mlas_float16.h"
 
 
 /**
@@ -173,13 +174,13 @@ MlasHalfGemmKernel(
     const size_t CountM,
     const size_t CountN,
     const size_t CountK,
+    _mlas_fp16_* C,
+    size_t ldc,
+    const _mlas_fp16_* Bias,
     const _mlas_fp16_* A,
     const size_t lda,
     const _mlas_fp16_* B,
     const size_t ldb,
-    _mlas_fp16_* C,
-    size_t ldc,
-    const _mlas_fp16_* Bias,
     const bool ZeroMode
 );
 
@@ -233,13 +234,13 @@ MlasHalfGemmNoPackOperation(
             RowsRemaining,
             RangeCountN,
             K,
+            c,
+            ldc,
+            Bias,
             pa,
             lda,
             pb,
             ldb,
-            c,
-            ldc,
-            Bias,
             true);
 
         size_t RowsHandled = std::min(RowsRemaining, KernelType::KernelMaxM);
@@ -408,13 +409,13 @@ MlasHalfGemmOperation(
                         RowsRemaining,
                         CountN,
                         CountK,
+                        c,
+                        ldc,
+                        ZeroMode ? pbias : nullptr,
                         pa,
                         ld_pa,
                         pb,
                         ld_pb,
-                        c,
-                        ldc,
-                        ZeroMode ? pbias : nullptr,
                         ZeroMode);
 
                     size_t RowsHandled = std::min(RowsRemaining, KernelType::KernelMaxM);
@@ -486,9 +487,17 @@ struct MLAS_HALF_GEMM_DISPATCH {
 
 extern const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchDefault;
 
+#if defined(MLAS_TARGET_ARM64)
+extern const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchNeon;
+#endif
+
 MLAS_FORCEINLINE
 const MLAS_HALF_GEMM_DISPATCH*
 MlasHalfGemmGetDispatch()
 {
+#if defined(MLAS_TARGET_ARM64)
+    return &MlasHalfGemmDispatchNeon;
+#else
     return &MlasHalfGemmDispatchDefault;
+#endif
 }

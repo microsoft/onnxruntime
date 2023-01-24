@@ -211,13 +211,13 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
     size_t CountM,
     size_t CountN,
     size_t CountK,
+    _mlas_fp16_* C,
+    size_t ldc,
+    const _mlas_fp16_* Bias,
     const _mlas_fp16_* A,
     size_t lda,
     const _mlas_fp16_* B,
     size_t ldb,
-    _mlas_fp16_* C,
-    size_t ldc,
-    const _mlas_fp16_* Bias,
     const bool ZeroMode)
 {
     for (size_t m = 0; m < CountM; m++) {
