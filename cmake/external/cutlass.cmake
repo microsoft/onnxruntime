@@ -6,6 +6,8 @@ if (onnxruntime_USE_FLASH_ATTENTION)
     URL_HASH SHA1=${DEP_SHA1_cutlass}
   )
 
-  onnxruntime_fetchcontent_makeavailable(cutlass)
   FetchContent_GetProperties(cutlass)
+  if(NOT cutlass_POPULATED)
+    FetchContent_Populate(cutlass)
+  endif()
 endif()
