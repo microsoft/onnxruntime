@@ -15,9 +15,6 @@
 
 #if defined (OV_API_20)
 using Exception = ov::Exception;
-#elif defined (OPENVINO_2021_4)
-using Exception = InferenceEngine::Exception;
-using WaitMode = InferenceEngine::InferRequest::WaitMode;
 #else
 using Exception = InferenceEngine::details::InferenceEngineException;
 using WaitMode = InferenceEngine::IInferRequest::WaitMode;
@@ -45,37 +42,6 @@ bool IsCILogEnabled() {
   return false;
 }
 
-bool UseCompiledNetwork() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("OV_USE_COMPILED_NETWORK");
-  if (!env_name.empty()) {
-    return true;
-  }
-  return false;
-}
-
-std::string GetCurrentWorkingDir() {
-  std::string curr_dir;
-  ORT_UNUSED_PARAMETER(curr_dir);
-  char buff[FILENAME_MAX];
-  curr_dir = GetCurrentDir(buff, FILENAME_MAX);
-  std::string current_working_dir(buff);
-  return current_working_dir;
-}
-
-bool IsDirExists(const std::string& pathname) {
-  struct stat info;
-  if(stat(pathname.c_str(), &info) != 0) {
-    LOGS_DEFAULT(INFO) << log_tag << "cannot access pathname: " << pathname;
-	  return false;
-  } else if(info.st_mode & S_IFDIR) {
-      LOGS_DEFAULT(INFO) << log_tag << "pathname exists: " << pathname;
-	    return true;
-  } else {
-      LOGS_DEFAULT(INFO) << log_tag << "pathname: " << pathname << ": doesn't contain the directory 'ov_compiled_blobs' ";
-  }
-  return false;
-}
-
 struct static_cast_int64 {
   template <typename T1>  // T1 models type statically convertible to T
   int64_t operator()(const T1& x) const { return static_cast<int64_t>(x); }
@@ -83,7 +49,7 @@ struct static_cast_int64 {
 
 std::shared_ptr<OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context,
-              const SubGraphContext& subgraph_context, 
+              const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map) {
   if(IsCILogEnabled()) {
     std::cout << "CreateNgraphFunc" << std::endl;
