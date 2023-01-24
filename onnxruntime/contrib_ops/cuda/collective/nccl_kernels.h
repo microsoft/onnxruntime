@@ -10,6 +10,7 @@
 #endif
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 #if defined(ORT_USE_NCCL)
@@ -43,7 +44,7 @@ class NcclContext final {
   int world_size_;
 };
 
-class NcclKernel : public CudaKernel {
+class NcclKernel : public ::onnxruntime::cuda::CudaKernel {
  public:
   explicit NcclKernel(const OpKernelInfo& info);
 
@@ -73,4 +74,5 @@ class AllGather final : public NcclKernel {
 };
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

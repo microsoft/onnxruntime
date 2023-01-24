@@ -2,6 +2,7 @@
 #include "mpi_include.h"
 
 namespace onnxruntime {
+namespace contrib {
 namespace cuda {
 
 static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
@@ -95,7 +96,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllReduce(input_data, output_data, input_count, dtype, ncclSum, comm, Stream(context)));
 #endif
   return Status::OK();
 }
@@ -119,21 +120,17 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
 
   ncclDataType_t dtype = GetNcclDataType(input_tensor->DataType());
 #ifdef ORT_USE_NCCL
-  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream()));
+  NCCL_RETURN_IF_ERROR(ncclAllGather(input_data, output_data, input_count, dtype, comm, Stream(context)));
 #endif
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
-    AllReduce,
-    kMSDomain,
-    1,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
-        .AllocateInputsContiguously()
-        .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
-    AllReduce);
+ONNX_OPERATOR_KERNEL_EX(AllReduce, kMSDomain, 1, kCudaExecutionProvider,
+                        (*KernelDefBuilder::Create())
+                            .VariadicAlias(0, 0)  // outputs and inputs are mapped one to one
+                            .AllocateInputsContiguously()
+                            .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes()),
+                        AllReduce);
 
 ONNX_OPERATOR_KERNEL_EX(
     AllGather,
@@ -146,4 +143,5 @@ ONNX_OPERATOR_KERNEL_EX(
     AllGather);
 
 }  // namespace cuda
+}  // namespace contrib
 }  // namespace onnxruntime

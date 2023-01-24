@@ -501,14 +501,15 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
-    if(onnxruntime_USE_MPI)
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    endif()
+  endif()
 
-    if (onnxruntime_USE_NCCL)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
-    endif()
+  if(onnxruntime_USE_MPI)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  endif()
+
+  if (onnxruntime_USE_NCCL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
   endif()
 
   if (WIN32)
