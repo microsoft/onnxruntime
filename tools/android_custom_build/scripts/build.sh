@@ -18,9 +18,9 @@ BUILD_DIR=/workspace/build
 # build ORT AAR
 python3 /workspace/onnxruntime/tools/ci_build/github/android/build_aar_package.py \
   --build_dir="${BUILD_DIR}" \
-  --config=${BUILD_CONFIG} \
+  --config="${BUILD_CONFIG}" \
   --include_ops_by_config="${OPS_CONFIG_FILE}" \
   "${BUILD_SETTINGS_FILE}"
 
 # copy AAR to output directory
-cp -r ${BUILD_DIR}/aar_out ${OUTPUT_DIR}
+cp -r "${BUILD_DIR}/aar_out" "${OUTPUT_DIR}"
