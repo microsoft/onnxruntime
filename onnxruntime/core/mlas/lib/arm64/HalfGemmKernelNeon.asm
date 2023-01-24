@@ -70,29 +70,30 @@ Arguments:
         ldr     x8,[sp,#HGemmKernelFrame_B]
         ldr     x15,[sp,#HGemmKernelFrame_ldb]
         CMP     x0, 2                   // if M < 2
-        ADD     x9, x6, x7              // a1 = a0 + lda
-        ADD     x16, x3, x4             // c1 = c0 + ldc
+        add     x9,x6,x7,lsl #1         // a1 = a0 + lda
+        add     x16,x3,x4,lsl #1        // c1 = c0 + ldc
         CSEL    x9, x6, x9, LO          //     a1 = a0
         CSEL    x16, x3, x16, LO        //     c1 = c0
-        ADD     x10, x9, x7             // a2 = a1 + lda
-        ADD     x17, x16, x4            // c2 = c1 + ldc
+        add     x10,x9,x7,lsl #1        // a2 = a1 + lda
+        add     x17,x16,x4,lsl #1       // c2 = c1 + ldc
         CSEL    x10, x9, x10, LS        // if M <= 2  a2 = a1
         CSEL    x17, x16, x17, LS       //            c2 = c1
         CMP     x0, 4                   // if M < 4
-        ADD     x11, x10, x7            // a3 = a2 + lda
-        ADD     x14, x17, x4            // c3 = c2 + ldc
+        add     x11,x10,x7,lsl #1       // a3 = a2 + lda
+        add     x14,x17,x4,lsl #1       // c3 = c2 + ldc
         CSEL    x11, x10, x11, LO       //     a3 = a2
         CSEL    x14, x17, x14, LO       //     c3 = c2
-        ADD     x12, x11, x7            // a4 = a3 + lda
-        ADD     x13, x14, x4            // c4 = c3 + ldc
+        add     x12,x11,x7,lsl #1       // a4 = a3 + lda
+        add     x13,x14,x4,lsl #1       // c4 = c3 + ldc
         CSEL    x12, x11, x12, LS       // if M <= 4  a4 = a3
         CSEL    x13, x14, x13, LS       //            c4 = c3
         CMP     x0, 6                   // if M < 6
-        ADD     x7, x12, x7             // a5 = a4 + lda
-        ADD     x4, x13, x4             // c5 = c4 + ldc
+        add     x7,x12,x7,lsl #1        // a5 = a4 + lda
+        add     x4,x13,x4,lsl #1        // c5 = c4 + ldc
         CSEL    x7, x12, x7, LO         //     a5 = a4
         CSEL    x4, x13, x4, LO         //     c5 = c4
-        sub     x15,x15,16
+        lsl     x15,x15,#1              // ldb *= sizeof(fp16)
+        sub     x15,x15,16              // ldb -= 16
         ldrb    w19,[sp,#HGemmKernelFrame_ZeroMode]
 
 /****
@@ -284,8 +285,30 @@ M6N16NextIterN
         B.LO    M6StoreRemainderN
 
         ldr     x8,[sp,#HGemmKernelFrame_B]
-        add     x8,x8,16                // B <- next 16 columns
+        add     x8,x8,32                // B <- next 16 columns
         str     x8,[sp,#HGemmKernelFrame_B]
+
+        cbnz    x19,M6N16SkipAccumulateOutput
+        ldp     q0,q1,[x3]
+        ldp     q2,q3,[x16]
+        ldp     q4,q5,[x17]
+        ldp     q6,q7,[x14]
+        ldp     q16,q17,[x13]
+        ldp     q18,q19,[x4]
+        fadd    v20.8h,v20.8h,v0.8h
+        fadd    v21.8h,v21.8h,v1.8h
+        fadd    v22.8h,v22.8h,v2.8h
+        fadd    v23.8h,v23.8h,v3.8h
+        fadd    v24.8h,v24.8h,v4.8h
+        fadd    v25.8h,v25.8h,v5.8h
+        fadd    v26.8h,v26.8h,v6.8h
+        fadd    v27.8h,v27.8h,v7.8h
+        fadd    v28.8h,v28.8h,v16.8h
+        fadd    v29.8h,v29.8h,v17.8h
+        fadd    v30.8h,v30.8h,v18.8h
+        fadd    v31.8h,v31.8h,v19.8h
+
+M6N16SkipAccumulateOutput
         ST1     {v20.16b, v21.16b},  [x3], 32
         SUB     x6,  x6, x2             // a0 -= k
         ST1     {v22.16b, v23.16b}, [x16], 32
@@ -368,6 +391,21 @@ M6N16RemainderK1
 
 M6StoreRemainderN
         TBZ     x1, 3, M6StoreRemainderN
+        cbnz    x19,M6N8SkipAccumulateOutput
+        ldr     q0,[x3]
+        ldr     q1,[x16]
+        ldr     q2,[x17]
+        ldr     q3,[x14]
+        ldr     q4,[x13]
+        ldr     q5,[x4]
+        fadd    v20.8h,v20.8h,v0.8h
+        fadd    v22.8h,v22.8h,v1.8h
+        fadd    v24.8h,v24.8h,v2.8h
+        fadd    v26.8h,v26.8h,v3.8h
+        fadd    v28.8h,v28.8h,v4.8h
+        fadd    v30.8h,v30.8h,v5.8h
+
+M6N8SkipAccumulateOutput
         STR     q20,  [x3], 16
         MOV     v20.16b, v21.16b
         STR     q22, [x16], 16
@@ -383,6 +421,21 @@ M6StoreRemainderN
 
 M6StoreRemainderN4
         TBZ     x1, 2, M6StoreRemainderN2
+        cbnz    x19,M6N4SkipAccumulateOutput
+        ldr     d0,[x3]
+        ldr     d1,[x16]
+        ldr     d2,[x17]
+        ldr     d3,[x14]
+        ldr     d4,[x13]
+        ldr     d5,[x4]
+        fadd    v20.4h,v20.4h,v0.4h
+        fadd    v22.4h,v22.4h,v1.4h
+        fadd    v24.4h,v24.4h,v2.4h
+        fadd    v26.4h,v26.4h,v3.4h
+        fadd    v28.4h,v28.4h,v4.4h
+        fadd    v30.4h,v30.4h,v5.4h
+
+M6N4SkipAccumulateOutput
         STR     d20,  [x3], 8
         STR     d22, [x16], 8
         DUP     d20, v20.d[1]
@@ -398,6 +451,21 @@ M6StoreRemainderN4
 
 M6StoreRemainderN2
         TBZ     x1, 1, M6StoreRemainderN1
+        cbnz    x19,M6N2SkipAccumulateOutput
+        ldr     s0,[x3]
+        ldr     s1,[x16]
+        ldr     s2,[x17]
+        ldr     s3,[x14]
+        ldr     s4,[x13]
+        ldr     s5,[x4]
+        fadd    v20.4h,v20.4h,v0.4h
+        fadd    v22.4h,v22.4h,v1.4h
+        fadd    v24.4h,v24.4h,v2.4h
+        fadd    v26.4h,v26.4h,v3.4h
+        fadd    v28.4h,v28.4h,v4.4h
+        fadd    v30.4h,v30.4h,v5.4h
+
+M6N2SkipAccumulateOutput
         STR     s20,  [x3], 4
         STR     s22, [x16], 4
         DUP     s20, v20.s[1]
@@ -413,6 +481,21 @@ M6StoreRemainderN2
 
 M6StoreRemainderN1
         TBZ     x1, 0, ExitKernel
+        cbnz    x19,M6N1SkipAccumulateOutput
+        ldr     h0,[x3]
+        ldr     h1,[x16]
+        ldr     h2,[x17]
+        ldr     h3,[x14]
+        ldr     h4,[x13]
+        ldr     h5,[x4]
+        fadd    v20.4h,v20.4h,v0.4h
+        fadd    v22.4h,v22.4h,v1.4h
+        fadd    v24.4h,v24.4h,v2.4h
+        fadd    v26.4h,v26.4h,v3.4h
+        fadd    v28.4h,v28.4h,v4.4h
+        fadd    v30.4h,v30.4h,v5.4h
+
+M6N1SkipAccumulateOutput
         STR     h20,  [x3]
         STR     h22, [x16]
         STR     h24, [x17]
