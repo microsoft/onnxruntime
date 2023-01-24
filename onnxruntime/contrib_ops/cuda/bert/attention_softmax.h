@@ -197,7 +197,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
       //              and [end_unid, valid_start) and [valid_end, all_seq_len) has -20000.
       // So [0, end_unid) will also have value after softmax.
       // KEEP SMALL KERNEL CODE LOGIC HERE as COMMENT
-      // is_valid = thx < end_unid; // is_valid initialized with false
+      // is_valid = threadIdx.x < end_unid; // is_valid initialized with false
     } else {
       end = min(valid_end, end_unid);
     }
@@ -207,9 +207,9 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
 
   float thread_data_max = -CUDART_INF_F;
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
-    const int index = offset + thx;
-    bool is_valid = (thx < end_unid) || (thx >= valid_start && thx < end);
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
+    const int index = offset + seq_idx;
+    bool is_valid = (seq_idx < end_unid) || (seq_idx >= valid_start && seq_idx < end);
 
     // e^x is represented as infinity if x is large enough, like 100.f.
     // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
@@ -218,7 +218,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
     float input_data = is_valid
                            ? (add_before_softmax ? float(input[index] + add_before_softmax[index]) : float(input[index]))
                            : float(-CUDART_INF_F);
-    cached_data[thx] = input_data;
+    cached_data[seq_idx] = input_data;
     thread_data_max = max(thread_data_max, input_data);
   }
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
@@ -230,10 +230,10 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
   __syncthreads();
 
   float thread_data_exp(0.f);
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
-    bool is_valid = (thx < end_unid) || (thx >= valid_start && thx < end);
-    cached_data[thx] = is_valid ? expf(cached_data[thx] - max_block) : 0.0f;
-    thread_data_exp += cached_data[thx];
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
+    bool is_valid = (seq_idx < end_unid) || (seq_idx >= valid_start && seq_idx < end);
+    cached_data[seq_idx] = is_valid ? expf(cached_data[seq_idx] - max_block) : 0.0f;
+    thread_data_exp += cached_data[seq_idx];
   }
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
 
@@ -244,8 +244,8 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
   __syncthreads();
 
   // threadIdx.x might be larger than all_sequence_length due to alignment to 32x.
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
-    output[offset + thx] = T(cached_data[thx] * sum_reverse_block);
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
+    output[offset + seq_idx] = T(cached_data[seq_idx] * sum_reverse_block);
   }
 }
 
@@ -275,9 +275,9 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int base_index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
     float thread_data = -CUDART_INF_F;
-    int index = base_index + thx;
+    int index = base_index + seq_idx;
     if (add_before_softmax == nullptr) {
       thread_data = float(input[index]) * rsqrt_head_size;
     } else {
@@ -287,7 +287,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     const int sequence_index = blockIdx.x % sequence_length;
     if (is_unidirectional) {
       int from_index = all_sequence_length - sequence_length + sequence_index;  // offset in all sequence length.
-      if (thx > from_index) {
+      if (seq_idx > from_index) {
         thread_data = mask_filter_value;
       }
     }
@@ -295,12 +295,12 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     int mask_offset = 0;
     const int batch_index = blockIdx.y;
     if (mask_dimension == 2) {
-      mask_offset = batch_index * all_sequence_length + thx;
+      mask_offset = batch_index * all_sequence_length + seq_idx;
     } else if (mask_dimension == 3) {
-      mask_offset = (batch_index * sequence_length + sequence_index) * all_sequence_length + thx;
+      mask_offset = (batch_index * sequence_length + sequence_index) * all_sequence_length + seq_idx;
     } else if (mask_dimension == 4) {
       int from_index = all_sequence_length - sequence_length + sequence_index;
-      mask_offset = (batch_index * max_sequence_length + from_index) * max_sequence_length + thx;
+      mask_offset = (batch_index * max_sequence_length + from_index) * max_sequence_length + seq_idx;
     }
 
     if (nullptr == key_padding_mask) {
@@ -317,7 +317,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     if (skip_softmax) {
       output[index] = T(thread_data);
     }
-    cached_data[thx] = thread_data;
+    cached_data[seq_idx] = thread_data;
     max_thread_data = max(max_thread_data, thread_data);
   }
 
@@ -334,9 +334,9 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
   __syncthreads();
 
   float sum_thread_data_exp = 0.0f;
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
-    auto ev = expf(cached_data[thx] - max_block);
-    cached_data[thx] = ev;
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
+    auto ev = expf(cached_data[seq_idx] - max_block);
+    cached_data[seq_idx] = ev;
     sum_thread_data_exp += ev;
   }
   const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, cub::Sum(), TPB);
@@ -347,8 +347,8 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
   }
   __syncthreads();
 
-  for (int thx = threadIdx.x; thx < all_sequence_length; thx += TPB) {
-    output[base_index + thx] = T(cached_data[thx] * sum_reverse_block);
+  for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
+    output[base_index + seq_idx] = T(cached_data[seq_idx] * sum_reverse_block);
   }
 }
 
