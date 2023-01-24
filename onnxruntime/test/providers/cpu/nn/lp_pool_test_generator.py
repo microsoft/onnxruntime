@@ -18,7 +18,7 @@ def generate_lppool_1d_test_cases() -> None:
 
     print(x)
     kernel_sizes = [2, 3]
-    strides = [[1],[2]]
+    strides = [[1], [2]]
     for kernel_size in kernel_sizes:
         for stride in strides:
             print(kernel_size)
@@ -44,10 +44,10 @@ def generate_lppool_2d_test_cases() -> None:
     ).astype(np.float32)
 
     print(x)
-    kernel_sizes = [[2, 2],[3, 3]]
-    strides = [[1, 1],[2, 2]]
+    kernel_sizes = [[2, 2], [3, 3]]
+    strides = [[1, 1], [2, 2]]
     for kernel_size in kernel_sizes:
-        for stride in strides: 
+        for stride in strides:
             m2 = nn.LPPool2d(p, kernel_size=kernel_size, stride=stride)
             pt_y = m2(torch.from_numpy(x))
             print(kernel_size)
