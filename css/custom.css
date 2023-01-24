@@ -144,7 +144,7 @@ a.link:active .link-arrow{
     transition:all 200ms ease-in-out;
 }
 .get-started-section h2{
-    font-size:34px;
+    font-size:30px;
 }
 .tab-wrapper{
     margin: 3rem auto;
@@ -314,7 +314,7 @@ transition:all 200ms ease-in-out;
     background-color: #333333;
 }
 .footer h2{
-    font-size: 34px;
+    font-size: 30px;
 }
 .footer .footer-heading{
     color:#ffffff;
@@ -336,6 +336,9 @@ transition:all 200ms ease-in-out;
 .footer a:focus,
 .footer a:active{
     color:#a0dcf9;
+}
+.footer a .link-content {
+    box-shadow: 0 2px  #1fa2ff;
 }
 .footer a:hover .link-content,
 .footer a:focus .link-content,
@@ -712,7 +715,7 @@ a .abbr[data-original-title], a abbr[title]{
     cursor: pointer;
 }
 .section-heading{
-    font-size: 34px;
+    font-size: 30px;
 }
 .blue-title-columns h3{
     font-size: 24px;
