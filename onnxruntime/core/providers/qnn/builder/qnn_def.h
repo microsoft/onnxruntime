@@ -300,12 +300,10 @@ class QnnOpConfigWrapper {
 
   bool QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                             const Qnn_BackendHandle_t& backend_handle,
-                            const std::string qnn_node_name,
                             std::string& error_msg);
 
   bool CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                         const Qnn_GraphHandle_t& graph,
-                        const std::string& qnn_node_name,
                         std::string& error_msg);
 
  private:

@@ -59,6 +59,12 @@ class BaseOpBuilder : public IOpBuilder {
                                 bool is_quantized_model,
                                 bool do_op_validation) const ORT_MUST_USE_RESULT;
 
+  Status ProcessInput(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeUnitIODef& input,
+                      const logging::Logger& logger,
+                      bool is_quantized_model,
+                      std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   bool OnnxDataTypeToQnnDataType(const int32_t data_type, Qnn_DataType_t& qnn_data_type, bool is_quantized = false) const;
 
   Status GetQnnDataType(const bool is_quantized_node, const ONNX_NAMESPACE::TypeProto* type_proto,

@@ -198,7 +198,7 @@ bool QnnModelWrapper::CreateQnnNode(const std::string& qnn_node_name,
     LOGS(logger_, VERBOSE) << op_config_wrapper;
 
     std::string error_msg;
-    bool rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, qnn_node_name, error_msg);
+    bool rt = op_config_wrapper.QnnGraphOpValidation(qnn_interface_, backend_handle_, error_msg);
     if (!rt) {
       LOGS(logger_, WARNING) << error_msg;
     }
@@ -245,7 +245,7 @@ bool QnnModelWrapper::ComposeQnnGraph() {
     LOGS(logger_, VERBOSE) << op_config_wrapper;
 
     std::string error_msg;
-    bool rt = op_config_wrapper.CreateQnnGraphOp(qnn_interface_, graph_, op_property.GetNodeName(), error_msg);
+    bool rt = op_config_wrapper.CreateQnnGraphOp(qnn_interface_, graph_, error_msg);
     if (!rt) {
       LOGS(logger_, ERROR) << error_msg;
       return false;

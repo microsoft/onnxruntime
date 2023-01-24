@@ -367,11 +367,10 @@ void QnnOpConfigWrapper::SetData(Qnn_Tensor_t* input_tensors,
 
 bool QnnOpConfigWrapper::QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                               const Qnn_BackendHandle_t& backend_handle,
-                                              const std::string qnn_node_name,
                                               std::string& error_msg) {
   auto validation_status = qnn_interface.backendValidateOpConfig(backend_handle, op_config_);
   if (QNN_SUCCESS != validation_status) {
-    error_msg = "Validating node failed for: " + qnn_node_name;
+    error_msg = "Validating node failed for: " + name_;
     return false;
   }
 
@@ -380,11 +379,10 @@ bool QnnOpConfigWrapper::QnnGraphOpValidation(const QNN_INTERFACE_VER_TYPE& qnn_
 
 bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                           const Qnn_GraphHandle_t& graph,
-                                          const std::string& qnn_node_name,
                                           std::string& error_msg) {
   auto status = qnn_interface.graphAddNode(graph, op_config_);
   if (QNN_GRAPH_NO_ERROR != status) {
-    error_msg = "Adding node failed for: " + qnn_node_name;
+    error_msg = "Adding node failed for: " + name_;
     return false;
   }
 
