@@ -12,18 +12,9 @@
 
 using onnxruntime::Status;
 
-static std::unique_ptr<onnxruntime::concurrency::ThreadPool> default_pool;
-static std::once_flag default_pool_init;
-
-PThreadPool TestEnv::GetDefaultThreadPool(onnxruntime::Env& env) {
-  std::call_once(default_pool_init, [&env] {
-    using namespace onnxruntime::concurrency;
+std::unique_ptr<OrtThreadPool> TestEnv::CreateThreadPool(onnxruntime::Env& env) {
     int core_num = env.GetNumPhysicalCpuCores();
-
-    onnxruntime::ThreadOptions t_opts;
-    default_pool = std::make_unique<ThreadPool>(&env, t_opts, ORT_TSTR("onnx_runner_tp"), core_num, false);
-  });
-  return default_pool.get();
+    return std::make_unique<OrtThreadPool>(&env, onnxruntime::ThreadOptions{}, ORT_TSTR("onnx_runner_tp"), core_num, false);
 }
 
 TestEnv::TestEnv(Ort::Env& env, Ort::SessionOptions& so, PThreadPool tp,

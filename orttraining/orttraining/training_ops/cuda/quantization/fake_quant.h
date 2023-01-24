@@ -25,5 +25,14 @@ class FakeQuant final : public CudaKernel {
   int64_t quant_max_;
 };
 
+template <typename T>
+class FakeQuantGrad final : public CudaKernel {
+ public:
+  FakeQuantGrad(const OpKernelInfo& info) : CudaKernel(info) {
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
+
 }  // namespace cuda
 }  // namespace onnxruntime

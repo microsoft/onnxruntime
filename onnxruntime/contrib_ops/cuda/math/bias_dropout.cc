@@ -124,10 +124,11 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   }
 
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
-  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer]() {
+  auto* ort_stream = context->GetComputeStream();
+  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, ort_stream]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)));
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), ort_stream);
     return temp_mask_buffer.get();
   }();
 
@@ -135,7 +136,7 @@ Status BiasDropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(GetDeviceProp(), Stream(), N, mask_element_count, fdm_dim,
+  return t_disp.InvokeRet<Status, BiasDropoutComputeImpl>(GetDeviceProp(), Stream(context), N, mask_element_count, fdm_dim,
                                                           ratio_data, generator, *X, *bias, residual, *Y, mask_data,
                                                           has_same_shape_bias, UseBitmask);
 }

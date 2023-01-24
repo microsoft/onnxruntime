@@ -27,7 +27,6 @@ class BeamSearch : public IControlFlowKernel {
       : IControlFlowKernel(info),
         encoder_feeds_fetches_manager_(nullptr),
         decoder_feeds_fetches_manager_(nullptr),
-        cuda_stream_(nullptr),
         dumper_(nullptr) {
     Init(info);
   }
@@ -41,7 +40,6 @@ class BeamSearch : public IControlFlowKernel {
                                     const SessionState& subgraph_session_state) override;
 
  protected:
-  void SetComputeStream(void* stream) { cuda_stream_ = stream; }
   void SetConsoleDumper(IConsoleDumper* dumper) { dumper_ = dumper; }
 
   // device helpers that is same for both GPT and encoder-decoder models.
@@ -119,17 +117,32 @@ class BeamSearch : public IControlFlowKernel {
   //------------------------------------------------------------
   // Subgraph and FeedsFetchesManager re-used for each subgraph execution.
   //------------------------------------------------------------
+
+  // Relevant only for GPT2
+  // The init_run_gpt_subgraph_ (if the `init_decoder` attribute is present) will be
+  // used for the first decoding run and the gpt_subgraph_ will be used
+  // for subsequent runs.
+  // If the `init_decoder` attribute is missing, the `gpt_subgraph_` will be
+  // used for all decoding runs.
+  std::unique_ptr<GptSubgraph> init_run_gpt_subgraph_;
   std::unique_ptr<GptSubgraph> gpt_subgraph_;
+
+  // Relevant only for T5
+  // Same concept as above.
+  // The encoder will be used for the first run and the decoder will
+  // be used for subsequent runs.
   std::unique_ptr<T5EncoderSubgraph> t5_encoder_subgraph_;
   std::unique_ptr<T5DecoderSubgraph> t5_decoder_subgraph_;
+
   FeedsFetchesManager* encoder_feeds_fetches_manager_;
   FeedsFetchesManager* decoder_feeds_fetches_manager_;
-
-  void* cuda_stream_;
+  FeedsFetchesManager* init_run_decoder_feeds_fetches_manager_;
 
   IConsoleDumper* dumper_;
 
   BeamSearchParameters parameters_;
+
+  bool has_init_decoder_ = false;
 };
 
 }  // namespace transformers

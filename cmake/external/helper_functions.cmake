@@ -1,7 +1,13 @@
 # Distributed under the OSI-approved BSD 3-Clause License.  See accompanying
 # file Copyright.txt or https://cmake.org/licensing for details.
 
-# This file was copied from cmake source with modifications
+# This file was copied from cmake source with modifications:
+# 1. Add the EXCLUDE_FROM_ALL keyword when this function calls add_subdirectory. It will also resolve the
+#    'make install' issue.
+# 2. Group the VC projects into the "external" folder. We can do it at there in a centralized way instead
+#    of doing it one by one.
+# 3. Set the cmake property COMPILE_WARNING_AS_ERROR to OFF for these external projects.
+
 macro(onnxruntime_fetchcontent_makeavailable)
 
   # We must append an item, even if the variable is unset, so prefix its value.
@@ -157,11 +163,11 @@ macro(onnxruntime_fetchcontent_makeavailable)
           get_property(subdir_import_targets DIRECTORY "${__cmake_srcdir}" PROPERTY BUILDSYSTEM_TARGETS)
           foreach(subdir_target ${subdir_import_targets})
             if(TARGET ${subdir_target})
-              get_target_property(subdir_target_type ${subdir_target} TYPE)            
+              get_target_property(subdir_target_type ${subdir_target} TYPE)
               if(subdir_target_type STREQUAL "EXECUTABLE")
                 get_target_property(subdir_target_osx_arch ${subdir_target} OSX_ARCHITECTURES)
                 if (subdir_target_osx_arch)
-                  if (NOT ${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST subdir_target_osx_arch)                              
+                  if (NOT ${CMAKE_HOST_SYSTEM_PROCESSOR} IN_LIST subdir_target_osx_arch)
                     message("Added an executable target ${subdir_target} but it can not run natively on ${CMAKE_HOST_SYSTEM_PROCESSOR}, we will try to modify it")
                   endif()
                 endif()
@@ -169,7 +175,19 @@ macro(onnxruntime_fetchcontent_makeavailable)
               set_target_properties(${subdir_target} PROPERTIES FOLDER "External")
               set_target_properties(${subdir_target} PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
             endif()
-          endforeach()          
+          endforeach()
+          if(MSVC)
+            # Replace /Zi and /ZI with /Z7
+            if(MSVC_Z7_OVERRIDE)
+              foreach(flag_var
+                CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
+                CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+                if(${flag_var} MATCHES "/Z[iI]")
+                  string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
+                endif(${flag_var} MATCHES "/Z[iI]")
+              endforeach(flag_var)
+            endif(MSVC_Z7_OVERRIDE)
+        endif()
       endif()
 
       unset(__cmake_srcdir)

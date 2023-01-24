@@ -6,6 +6,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 #include "BucketizedBufferAllocator.h"
+#include "DmlSubAllocator.h"
 // #define PRINT_OUTSTANDING_ALLOCATIONS
 
 namespace Dml
@@ -39,7 +40,8 @@ namespace Dml
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
-        D3D12_RESOURCE_STATES initialState
+        D3D12_RESOURCE_STATES initialState,
+        std::unique_ptr<DmlSubAllocator>&& subAllocator
         )
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
@@ -53,7 +55,8 @@ namespace Dml
         m_heapFlags(heapFlags),
         m_resourceFlags(resourceFlags),
         m_initialState(initialState),
-        m_context(context)
+        m_context(context),
+        m_subAllocator(std::move(subAllocator))
     {
     }
 
@@ -86,8 +89,8 @@ namespace Dml
     {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
-        
-        ComPtr<ID3D12Resource> resource;
+
+        ComPtr<DmlResourceWrapper> resourceWrapper;
         uint64_t resourceId = 0;
         uint64_t bucketSize = 0;
 
@@ -98,7 +101,7 @@ namespace Dml
 
             // Find the bucket for this allocation size
             gsl::index bucketIndex = GetBucketIndexFromSize(size);
-        
+
             if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
             {
                 // Ensure there are sufficient buckets
@@ -107,26 +110,17 @@ namespace Dml
 
             bucket = &m_pool[bucketIndex];
             bucketSize = GetBucketSizeFromIndex(bucketIndex);
-            
+
             if (bucket->resources.empty())
             {
                 // No more resources in this bucket - allocate a new one
-                auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
-                ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
-                    &m_heapProperties,
-                    m_heapFlags,
-                    &buffer,
-                    m_initialState,
-                    nullptr,
-                    IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
-                ));
-
+                resourceWrapper = m_subAllocator->Alloc(bucketSize);
                 resourceId = ++m_currentResourceId;
             }
             else
             {
                 // Retrieve a resource from the bucket
-                resource = std::move(bucket->resources.back().resource);
+                resourceWrapper = std::move(bucket->resources.back().resource);
                 resourceId = bucket->resources.back().resourceId;
                 bucket->resources.pop_back();
             }
@@ -135,28 +129,18 @@ namespace Dml
         {
             // The allocation will not be pooled.  Construct a new one
             bucketSize = (size + 3) & ~3;
-
-            auto buffer = CD3DX12_RESOURCE_DESC::Buffer(bucketSize, m_resourceFlags);
-            ORT_THROW_IF_FAILED(m_device->CreateCommittedResource(
-                &m_heapProperties,
-                m_heapFlags,
-                &buffer,
-                m_initialState,
-                nullptr,
-                IID_GRAPHICS_PPV_ARGS(resource.ReleaseAndGetAddressOf())
-            ));
-
+            resourceWrapper = m_subAllocator->Alloc(bucketSize);
             resourceId = ++m_currentResourceId;
         }
 
-        assert(resource->GetDesc().Width == bucketSize);
-        assert(resource != nullptr);
+        assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
+        assert(resourceWrapper != nullptr);
 
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
             ++m_currentAllocationId,
             resourceId,
-            resource.Get(),
+            resourceWrapper.Get(),
             size
         );
 
@@ -196,8 +180,8 @@ namespace Dml
 
             // Return the resource to the bucket
             Bucket* bucket = &m_pool[bucketIndex];
-            
-            Resource resource = {allocInfo->DetachResource(), pooledResourceId};
+
+            Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
             bucket->resources.push_back(resource);
         }
         else
@@ -208,14 +192,14 @@ namespace Dml
 #else
             m_context->QueueReference(allocInfo->GetResource());
 #endif
-            allocInfo->DetachResource();
+            allocInfo->DetachResourceWrapper();
         }
 
     #if _DEBUG
         assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
         m_outstandingAllocationsById.erase(allocInfo->GetId());
     #endif
-        
+
         // The allocation info is already destructing at this point
     }
 
@@ -239,7 +223,7 @@ namespace Dml
 
         return allocInfo;
     }
-    
+
     void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
         m_defaultRoundingMode = roundingMode;

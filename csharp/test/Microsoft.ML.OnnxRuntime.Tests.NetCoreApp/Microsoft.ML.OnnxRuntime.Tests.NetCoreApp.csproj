@@ -17,10 +17,18 @@
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
     <Configurations>Debug;Release;RelWithDebInfo</Configurations>
     <!-- end -->
-    <DefineConstants>__NET_CORE_APP__;$(DefineConstants)</DefineConstants>
 
-    <!-- Training build property. With Visual Studio, change to true to enable. -->
-    <OnDeviceTraining Condition="'$(OnDeviceTraining)' == ''">false</OnDeviceTraining>
+    <!-- Training build property.
+    Should be set to true when training is enabled in onnxruntime native binary -->
+    <TrainingEnabledNativeBuild Condition="'$(TrainingEnabledNativeBuild)' == ''">false</TrainingEnabledNativeBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TrainingEnabledNativeBuild)'=='true'">
+    <ExtraDefineConstants>$(ExtraDefineConstants);__TRAINING_ENABLED_NATIVE_BUILD__</ExtraDefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <DefineConstants>__NET_CORE_APP__;$(DefineConstants);$(ExtraDefineConstants)</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -95,12 +103,12 @@
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\ArrayTensorExtensionsTests.cs">
       <Link>ArrayTensorExtensionsTests.cs</Link>
     </Compile>
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(OnDeviceTraining)' == 'true'">
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TrainingTest.cs">
       <Link>TrainingTest.cs</Link>
     </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\training_api\**\*.*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>

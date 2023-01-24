@@ -8,6 +8,7 @@ This file contains generated CGManifest entries.
 It covers these dependencies:
 - git submodules
 - dependencies from the Dockerfile `tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11`
+- the entries in [../cmake/deps.txt](../cmake/deps.txt)
 
 If any of these dependencies change, this file should be updated.
 **When updating, please regenerate instead of editing manually.**
@@ -20,8 +21,10 @@ If any of these dependencies change, this file should be updated.
     ```
 3. Run the generator script:
     ```
-    $ python cgmanifests/generate_cgmanifest.py
+    $ python cgmanifests/generate_cgmanifest.py --username <xxx> --token <your_access_token>
     ```
+
+Please supply your github username and access token to the script. If you don't have a token, you can generate one at https://github.com/settings/tokens. This is for authenticating with Github REST API so that you would not hit the rate limit.
 
 ## `cgmanifests/cgmanifest.json`
 This file contains non-generated CGManifest entries. Please edit directly as needed.

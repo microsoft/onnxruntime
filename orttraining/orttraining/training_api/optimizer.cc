@@ -6,8 +6,8 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
-#include "orttraining/training_api/include/utils.h"
-#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/utils.h"
+#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -19,7 +19,7 @@ namespace {
 constexpr char GROUP_ZERO_NAME[] = "group0";
 
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
-// TODO: Conolidate with frontend tooling
+// TODO: Consolidate with frontend tooling
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
 constexpr std::array AdamWOptimizerInputs = {

@@ -43,6 +43,7 @@ class Subgraph {
   int head_size;
   int vocab_size;
   int num_layers;
+  bool past_present_share_buffer_;
 
   // Setup execution
   Status Setup(const SessionState& session_state,

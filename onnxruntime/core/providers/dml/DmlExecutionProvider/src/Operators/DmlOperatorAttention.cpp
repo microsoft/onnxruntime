@@ -146,7 +146,7 @@ public:
         valueSlicedOperatorDesc.InputWindowStrides = strides.data();
         const DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
 
-        TensorDesc castedMaskIndexTensorDesc = TensorDesc::ConstructDefaultTensorDesc(MLOperatorTensorDataType::Float, desiredMaskIndexShape);
+        TensorDesc castedMaskIndexTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredMaskIndexShape);
         DML_TENSOR_DESC namedCastedMaskIndexTensorDesc = castedMaskIndexTensorDesc.GetDmlDesc();
 
         DML_CAST_OPERATOR_DESC castMaskIndexOperatorDesc = {};

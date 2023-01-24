@@ -13,7 +13,6 @@ import ai.onnxruntime.OrtSession.RunOptions;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import android.net.Uri;
 import android.os.Build;
-import android.util.Base64;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -32,7 +31,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -48,13 +46,6 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   private static OrtEnvironment ortEnvironment = OrtEnvironment.getEnvironment();
   private static Map<String, OrtSession> sessionMap = new HashMap<>();
 
-  private static BigInteger nextSessionId = new BigInteger("0");
-  private static String getNextSessionKey() {
-    String key = nextSessionId.toString();
-    nextSessionId = nextSessionId.add(BigInteger.valueOf(1));
-    return key;
-  }
-
   public OnnxruntimeModule(ReactApplicationContext context) {
     super(context);
     reactContext = context;
@@ -69,11 +60,11 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   /**
    * React native binding API to load a model using given uri.
    *
-   * @param uri a model file location
+   * @param uri a model file location. it's used as a key when multiple sessions are created, i.e. multiple models are
+   *     loaded.
    * @param options onnxruntime session options
    * @param promise output returning back to react native js
-   * @note the value provided to `promise` includes a key representing the session.
-   *       when run() is called, the key must be passed into the first parameter.
+   * @note when run() is called, the same uri must be passed into the first parameter.
    */
   @ReactMethod
   public void loadModel(String uri, ReadableMap options, Promise promise) {
@@ -86,29 +77,9 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   }
 
   /**
-   * React native binding API to load a model using the BASE64 encoded model data.
-   *
-   * @param data the BASE64 encoded model data.
-   * @param options onnxruntime session options
-   * @param promise output returning back to react native js
-   * @note the value provided to `promise` includes a key representing the session.
-   *       when run() is called, the key must be passed into the first parameter.
-   */
-  @ReactMethod
-  public void loadModelFromBase64EncodedBuffer(String data, ReadableMap options, Promise promise) {
-    try {
-      byte[] modelData = Base64.decode(data, Base64.DEFAULT);
-      WritableMap resultMap = loadModel(modelData, options);
-      promise.resolve(resultMap);
-    } catch (Exception e) {
-      promise.reject("Can't load model from buffer: " + e.getMessage(), e);
-    }
-  }
-
-  /**
    * React native binding API to run a model using given uri.
    *
-   * @param key session key representing a session given at loadModel()
+   * @param key a model file location given at loadModel()
    * @param input an input tensor
    * @param output an output names to be returned
    * @param options onnxruntime run options
@@ -132,49 +103,39 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
    * @return model loading information, such as key, input names, and output names
    */
   public WritableMap loadModel(String uri, ReadableMap options) throws Exception {
-    return loadModelImpl(uri, null, options);
+    InputStream modelStream = reactContext.getApplicationContext().getContentResolver().openInputStream(Uri.parse(uri));
+    WritableMap resultMap = loadModel(uri, modelStream, options);
+    modelStream.close();
+    return resultMap;
   }
 
   /**
-   * Load a model from buffer.
+   * Load a model from raw resource directory.
    *
-   * @param modelData the model data buffer
+   * @param uri uri parameter from react native loadModel() or dummy string for unit testing purpose
+   * @param modelStream a input stream to read a model
    * @param options onnxruntime session options
    * @return model loading information, such as key, input names, and output names
    */
-  public WritableMap loadModel(byte[] modelData, ReadableMap options) throws Exception {
-    return loadModelImpl("", modelData, options);
-  }
+  public WritableMap loadModel(String uri, InputStream modelStream, ReadableMap options) throws Exception {
+    OrtSession ortSession = null;
 
-  /**
-   * Load model implementation method for either from model path or model data buffer.
-   *
-   * @param uri uri parameter from react native loadModel()
-   * @param modelData model data buffer
-   * @param options onnxruntime session options
-   * @return model loading information map, such as key, input names, and output names
-   */
-  private WritableMap loadModelImpl(String uri, byte[] modelData, ReadableMap options) throws Exception {
-    OrtSession ortSession;
-    SessionOptions sessionOptions = parseSessionOptions(options);
+    if (!sessionMap.containsKey(uri)) {
+      byte[] modelArray = null;
 
-    if (modelData != null && modelData.length > 0) { // load model via model data array
-      ortSession = ortEnvironment.createSession(modelData, sessionOptions);
-    } else { // load model via model path string uri
-      InputStream modelStream =
-          reactContext.getApplicationContext().getContentResolver().openInputStream(Uri.parse(uri));
       Reader reader = new BufferedReader(new InputStreamReader(modelStream));
-      byte[] modelArray = new byte[modelStream.available()];
+      modelArray = new byte[modelStream.available()];
       modelStream.read(modelArray);
-      modelStream.close();
+
+      SessionOptions sessionOptions = parseSessionOptions(options);
       ortSession = ortEnvironment.createSession(modelArray, sessionOptions);
+      sessionMap.put(uri, ortSession);
+    } else {
+      ortSession = sessionMap.get(uri);
     }
 
-    String key = getNextSessionKey();
-    sessionMap.put(key, ortSession);
-
     WritableMap resultMap = Arguments.createMap();
-    resultMap.putString("key", key);
+    resultMap.putString("key", uri);
     WritableArray inputNames = Arguments.createArray();
     for (String inputName : ortSession.getInputNames()) {
       inputNames.pushString(inputName);
@@ -192,7 +153,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   /**
    * Run a model using given uri.
    *
-   * @param key a session key representing the session given at loadModel()
+   * @param key a model file location given at loadModel()
    * @param input an input tensor
    * @param output an output names to be returned
    * @param options onnxruntime run options
@@ -201,7 +162,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule {
   public WritableMap run(String key, ReadableMap input, ReadableArray output, ReadableMap options) throws Exception {
     OrtSession ortSession = sessionMap.get(key);
     if (ortSession == null) {
-      throw new Exception("Model is not loaded.");
+      throw new Exception("Model is not loaded: " + key);
     }
 
     RunOptions runOptions = parseRunOptions(options);

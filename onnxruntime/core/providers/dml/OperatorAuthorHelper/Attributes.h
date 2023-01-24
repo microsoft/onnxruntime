@@ -69,6 +69,7 @@ namespace AttrName
     static constexpr const char* OutputWidth = "output_width";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
+    static constexpr const char* Reduction = "reduction";
     static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
     static constexpr const char* SamplingRatio = "sampling_ratio";
