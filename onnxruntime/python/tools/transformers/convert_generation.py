@@ -178,22 +178,22 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
-        "-pvs",
-        "--pad_vocab_size",
+        "-dpvs",
+        "--disable_pad_vocab_size",
         required=False,
         action="store_true",
-        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
+        help="Do not pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size. The logits MatMul may hence be of poor performance for fp16 precision.",
     )
-    output_group.set_defaults(pad_vocab_size=True)
+    output_group.set_defaults(disable_pad_vocab_size=False)
 
     output_group.add_argument(
-        "-sgd",
-        "--separate_gpt2_decoder_for_init_run",
+        "-dsgd",
+        "--disable_separate_gpt2_decoder_for_init_run",
         required=False,
         action="store_true",
-        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
+        help="Do not create separate decoder subgraphs for initial and remaining runs. This does not allow for optimizations based on sequence lengths in each subgraph",
     )
-    output_group.set_defaults(separate_gpt2_decoder_for_init_run=True)
+    output_group.set_defaults(disable_separate_gpt2_decoder_for_init_run=False)
 
     output_group.add_argument(
         "-i",
@@ -1411,7 +1411,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
     if (
-        args.pad_vocab_size
+        not args.disable_pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
@@ -1428,7 +1428,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     gpt2_init_decoder_generated = False
     gpt2_init_decoder_onnx_path = None
-    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
+    if (
+        not args.disable_separate_gpt2_decoder_for_init_run
+        and is_gpt2
+        and (is_beamsearch or is_greedysearch or is_sampling)
+    ):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(

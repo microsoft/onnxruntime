@@ -500,11 +500,6 @@ def parse_arguments():
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
-    parser.add_argument(
-        "--skip_and_perform_filtered_tests",
-        action="store_true",
-        help="Skip time-consuming and only perform filtered tests for TensorRT EP",
-    )
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
@@ -894,7 +889,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if args.test_all_timeout == "10800" else "OFF"),
+        + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM

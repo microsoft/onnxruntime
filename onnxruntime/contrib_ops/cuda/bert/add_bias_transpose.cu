@@ -321,6 +321,110 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
 }
 
 template <typename T>
+__global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size) {
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSx(NxH + NxH + NxH_v)  (Packed QKV where K and V has different hidden sizes)
+  //     Output: BxNxSxH + BxNxSxH + BxNxSxH_v
+  // B is batch_size, S is sequence_length, N is num_heads, H is qk_head_size, H_v is v_head_size
+  int n = threadIdx.y;        // head_num_id
+  int s = blockIdx.x;         // sequence_id
+  int b = blockIdx.y;         // batch_id
+  int m = blockIdx.z;         // matrix id (Q=0, K=1, V=2)
+  const int h = threadIdx.x;  // head_element_id
+
+  const int qk_head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+
+  const int head_size = (m == 2 ? v_head_size : qk_head_size);
+
+  const int total_head_size = num_heads * (qk_head_size + qk_head_size + v_head_size);
+
+  int in_offset;
+  int out_offset;
+  int bias_offset;
+  in_offset = b * (total_head_size * sequence_length) +  // B
+              s * (total_head_size) +                    // S
+              m * (qk_head_size * num_heads) +           // M
+              n * head_size +                            // N
+              h;                                         // H
+
+  out_offset = m * (num_heads * qk_head_size * sequence_length * batch_size) +  // M
+               b * (num_heads * head_size * sequence_length) +                  // B
+               s * (num_heads * head_size) +                                    // S
+               n * (head_size) +                                                // N
+               h;                                                               // H
+
+  bias_offset = m * (num_heads * qk_head_size) +  // M
+                n * (head_size) +                 // N
+                h;                                // H
+
+  if (h < head_size) {
+    output[out_offset] = input[in_offset] + biases[bias_offset];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeCutlass(int M, const T* input, const T* biases, T* output) {
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSxMxNxH
+  //     Output: MxBxSxNxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  int in_offset = n * head_size + (m + s * M) * NH + b * NHS * M;
+  const int out_offset = n * head_size + s * NH + b * NHS + m * NHS * batch_size;
+
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeCutlassLarge(const int head_size, const T* input, const T* biases, T* output,
+                                             const int M) {
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSxMxNxH (Packed QKV)
+  //     Output: MxBxSxNxH
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int stride = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * H;
+  const int NHS = NH * sequence_length;
+  int in_offset = n * H + (m + s * M) * NH + b * NHS * M;
+  const int out_offset = n * H + s * NH + b * NHS + m * NHS * batch_size;
+
+  int h = threadIdx.x;
+  while (h < H) {
+    output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    h += stride;
+  }
+}
+
+template <typename T>
 __global__ void AddBiasTranspose(const T* input, const T* biases, T* output) {
   // Format 0 for Separated Q, K, V (N*H <= 1024)
   //    Input:  MxBxSxNxH
@@ -395,6 +499,13 @@ void InvokeAddBiasTranspose(
         ORT_ENFORCE(total_matrix_count == 3);
         AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
       }
+    } else if (format == 3) {
+      if (v_head_size == -1 || qk_head_size == v_head_size) {
+        AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+      } else {
+        ORT_ENFORCE(total_matrix_count == 3);
+        AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
+      }
     } else { // format == 0
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
@@ -409,6 +520,13 @@ void InvokeAddBiasTranspose(
       } else {
         // It is rare for hidden size > 4096 (for half precision) and qk_head_size != v_head_size.
         ORT_THROW("AddBiasTranspose (format 1) not implemented for hidden_size > max_threads_per_block when qk_head_size != v_head_size");
+      }
+    } else if (format == 3) {
+      if (v_head_size == -1 || qk_head_size == v_head_size) {
+        AddBiasTransposeCutlassLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output,
+                                                                    total_matrix_count);
+      } else {
+        ORT_THROW("AddBiasTranspose (format 3) not implemented for hidden_size > max_threads_per_block when qk_head_size != v_head_size");
       }
     } else {  // format 0
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
