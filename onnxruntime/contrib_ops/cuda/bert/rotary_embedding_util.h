@@ -41,6 +41,28 @@ struct Float4_ {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+struct __align__(8) Half4 {
+  half2 x;
+  half2 y;
+};
+
+__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
+  Half4 r;
+  r.x = a.x + b.x;
+  r.y = a.y + b.y;
+  return r;
+}
+
+__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
+  return make_float2(a.x + b.x, a.y + b.y);
+}
+
+__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
+  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 template<typename T>
 struct num_elems;
 template<>
@@ -79,36 +101,45 @@ struct num_elems<uint4> {
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template<typename T, int N>
-struct packed_type;
 template<typename T>
-struct packed_type<T, 1> {
-    using type = T;
-};
-template<>
-struct packed_type<int8_t, 2> {
-    using type = int16_t;
-};
-template<>
-struct packed_type<int8_t, 4> {
-    using type = int32_t;
-};
-template<>
-struct packed_type<int8_t, 8> {
-    using type = int64_t;
+struct Vec_t {
+    static constexpr int size = 0;
 };
 
 template<>
-struct packed_type<float, 2> {
-    using type = float2;
+struct Vec_t<float> {
+    using Type = float2;
+    static constexpr int size = 2;
 };
+
 template<>
-struct packed_type<float, 4> {
-    using type = float4;
+struct Vec_t<float2> {
+    using Type = float4;
+    static constexpr int size = 4;
 };
+
 template<>
-struct packed_type<float, 8> {
-    using type = Float8_;
+struct Vec_t<float4> {
+    using Type = Float8_;
+    static constexpr int size = 8;
+};
+
+template<>
+struct Vec_t<half> {
+    using Type = uint32_t;
+    static constexpr int size = 2;
+};
+
+template<>
+struct Vec_t<half2> {
+    using Type = uint2;
+    static constexpr int size = 4;
+};
+
+template<>
+struct Vec_t<Half4> {
+    using Type = uint4;
+    static constexpr int size = 8;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +169,13 @@ inline __device__ float4 add(float4 a, float4 b)
     c.z = add(a.z, b.z);
     c.w = add(a.w, b.w);
     return c;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+inline __device__ Float8_ add(Float8_ a, Float8_ b)
+{
+    return;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -872,6 +910,11 @@ inline __device__ void apply_rotary_embedding(float& q, float& k, int zid, int r
     return;
 }
 
+inline __device__ void apply_rotary_embedding(Float8_& q, Float8_& k, int zid, int rot_embed_dim, int t_step)
+{
+    return;
+}
+
 inline __device__ void apply_rotary_embedding(float2& q, int tid, int rot_embed_dim, int t_step)
 {
     if (2 * tid >= rot_embed_dim) {
@@ -1007,6 +1050,30 @@ __device__ __inline__ void vec_from_smem_transpose(float& vec, float* smem, int 
 }
 
 template<>
+__device__ __inline__ void vec_from_smem_transpose(float4& vec, float2* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void vec_from_smem_transpose(Float8_& vec, float4* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void vec_from_smem_transpose(uint2& vec, half2* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void vec_from_smem_transpose(uint4& vec, Half4* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
 __device__ __inline__ void vec_from_smem_transpose(uint32_t& vec, uint16_t* smem, int transpose_idx, int smem_pitch)
 {
     union {
@@ -1106,6 +1173,30 @@ __device__ __inline__ void write_smem_transpose(const float& vec, float* smem, i
 }
 
 template<>
+__device__ __inline__ void write_smem_transpose(const float4& vec, float2* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void write_smem_transpose(const Float8_& vec, float4* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void write_smem_transpose(const uint2& vec, half2* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
+__device__ __inline__ void write_smem_transpose(const uint4& vec, Half4* smem, int transpose_idx, int smem_pitch)
+{
+    return;
+}
+
+template<>
 __device__ __inline__ void write_smem_transpose(const uint4& vec, uint16_t* smem, int transpose_idx, int smem_pitch)
 {
     union {
@@ -1198,5 +1289,3 @@ __device__ __inline__ void write_smem_transpose(const float2& vec, float* smem, 
 }   // namespace onnxruntime
 }   // namespace contrib
 }   // namespace cuda
-
-

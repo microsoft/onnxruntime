@@ -40,6 +40,7 @@ struct AttentionParameters {
   int sequence_length;
   int kv_sequence_length;            // input sequence length of K or V
   int past_sequence_length;          // sequence length in past state of K or V
+  int original_past_sequence_length; // original sequence length in past state of K or V
   int total_sequence_length;         // total sequence length of K or V
   int max_sequence_length;           // max sequence length from 4D mask
   int input_hidden_size;             // first dimension of weights for input projection
@@ -50,6 +51,7 @@ struct AttentionParameters {
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
+  bool do_rotary;
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
