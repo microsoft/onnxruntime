@@ -9,6 +9,7 @@
 #include "ReadbackHeap.h"
 #include "ExecutionContext.h"
 #include "BucketizedBufferAllocator.h"
+#include "DmlCpuAllocator.h"
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorHelper.h"
 #include "core/providers/dml/OperatorAuthorHelper/OperatorHelper.h"
@@ -18,7 +19,10 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
 #include "DmlCommittedResourceWrapper.h"
-#include "DmlHeapAllocator.h"
+#include "DmlBufferRegion.h"
+#include "DmlManagedBufferRegion.h"
+#include "DmlBfcAllocator.h"
+#include "DmlGpuAllocator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -111,32 +115,32 @@ namespace Dml
 
     HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
         size_t size,
-        AllocatorRoundingMode roundingMode,
-        ID3D12Resource **d3dResource,
-        IUnknown** pooledResource
+        DmlManagedBufferRegion** managedBufferRegion
     ) const noexcept
     {
         ORT_TRY
         {
-        ComPtr<IUnknown> allocation;
-        allocation.Attach(static_cast<IUnknown* >(m_allocator->Alloc(size, roundingMode)));
-
-        const auto* allocInfo = m_allocator->DecodeDataHandle(allocation.Get());
-
-        ComPtr<ID3D12Resource> resource = allocInfo->GetUavResource();
-        resource.CopyTo(d3dResource);
-        *pooledResource = allocation.Detach();
+        void* opaqueData = m_bfcAllocator->Alloc(size);
+        auto bufferRegion = m_subAllocator->CreateManagedBufferRegion(opaqueData, size);
+        bufferRegion.CopyTo(managedBufferRegion);
         return S_OK;
         }
         ORT_CATCH_RETURN
     }
 
-    ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(void* allocation) const noexcept
+    D3D12BufferRegion ExecutionProviderImpl::GetBufferForTensor(IMLOperatorTensor* tensor) const
+    {
+        MLOperatorTensor mlOperatorTensor(tensor);
+        void* data = mlOperatorTensor.GetByteData();
+        auto sizeInBytes = mlOperatorTensor.GetUnalignedTensorByteSize();
+        return m_subAllocator->CreateBufferRegion(data, sizeInBytes);
+    }
+
+    ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(IMLOperatorTensor* tensor) const noexcept
     {
         ORT_TRY
         {
-            const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(allocation);
-            return allocInfo->GetUavResource();
+            return GetBufferForTensor(tensor).ResourceInUavState();
         }
         ORT_CATCH_GENERIC
         {
@@ -178,7 +182,7 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        auto heapAllocator = std::make_unique<D3D12HeapAllocator>(
+        m_subAllocator = std::make_shared<BucketizedBufferAllocator>(
             m_d3d12Device.Get(),
             queue,
             CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -186,21 +190,25 @@ namespace Dml
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
-        // Create an allocator for D3D12 buffers used to hold tensor data. The returned buffers from the allocator
-        // should be DEFAULT heap buffers which can be used as UAVs, and which start in UAV state.
-        m_allocator = std::make_shared<BucketizedBufferAllocator>(
-            m_d3d12Device.Get(),
-            m_context,
-            std::move(heapAllocator));
+        // Create a BFC allocator that encapsulates our allocator
+        onnxruntime::AllocatorCreationInfo memoryInfo(
+            [this](OrtDevice::DeviceId id) {
+                return std::make_unique<DmlBfcAllocator>(m_subAllocator.get());
+            });
 
-        m_context->SetAllocator(m_allocator);
+        m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);
+
+        // Wrap the BFC allocator into our own allocator
+        m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_subAllocator.get());
+
+        m_context->SetAllocator(m_bfcAllocator);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
 
         // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-        m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
-        m_cpuOutputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUOutput);
+        m_cpuInputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUInput);
+        m_cpuOutputAllocator = std::make_shared<DmlCpuAllocator>(OrtMemType::OrtMemTypeCPUOutput);
 
         CreateDmlKernelRegistry(&m_kernelRegistry, &m_internalRegInfoMap);
     }
@@ -341,10 +349,8 @@ namespace Dml
                 if (tensor)
                 {
                     assert(tensor->IsDataInterface());
-                    const AllocationInfo* allocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(tensor).GetDataInterface().Get());
-                    ID3D12Resource* resource = allocInfo->GetUavResource();
-                    D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
-                    bufferBindings.push_back({ resource, 0, resourceDesc.Width });
+                    auto bufferRegion = GetBufferForTensor(tensor);
+                    bufferBindings.push_back(bufferRegion.GetBufferBinding());
                     bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
                 }
                 else
@@ -431,46 +437,61 @@ namespace Dml
             //
             // CPU -> GPU copy (upload)
             //
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
+            auto dstBufferRegion = GetBufferForTensor(dst);
 
-            ID3D12Resource* dstData = dstAllocInfo->GetCopyDstResource();
-            const auto dstState = dstAllocInfo->GetDefaultCopyDstState();
+            ID3D12Resource* dstData = dstBufferRegion.ResourceInCopyDstState() == nullptr
+                ? dstBufferRegion.ResourceInUavState()
+                : dstBufferRegion.ResourceInCopyDstState();
 
-            const void* srcData = src->GetData();
+            const auto dstState = dstBufferRegion.ResourceInCopyDstState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_DEST;
 
-            const uint64_t dstOffset = 0;
-            m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(srcData, dataSizeInBytes));
+            const uint64_t dstOffset = dstBufferRegion.Offset();
+            m_uploadHeap->BeginUploadToGpu(dstData, dstOffset, dstState, AsByteSpan(src->GetData(), dataSizeInBytes));
         }
         else if (!src->IsCpuData() && dst->IsCpuData())
         {
             //
             // GPU -> CPU copy (readback)
             //
+            auto srcBufferRegion = GetBufferForTensor(src);
 
-            void* dstData = dst->GetData();
-            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? srcBufferRegion.ResourceInUavState()
+                : srcBufferRegion.ResourceInCopySrcState();
 
-            ID3D12Resource* srcData = srcAllocInfo->GetCopySrcResource();
-            const auto srcState = srcAllocInfo->GetDefaultCopySrcState();
+            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
 
-            const uint64_t srcOffset = 0;
-
-            // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-            m_readbackHeap->ReadbackFromGpu(AsByteSpan(dstData, dataSizeInBytes), srcData, srcOffset, srcState);
+            const uint64_t srcOffset = srcBufferRegion.Offset();
+            m_readbackHeap->ReadbackFromGpu(AsByteSpan(dst->GetData(), dataSizeInBytes), srcData, srcOffset, srcState);
         }
         else if (!src->IsCpuData() && !dst->IsCpuData())
         {
             //
             // GPU -> GPU copy
             //
-            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src).GetDataInterface().Get());
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(dst).GetDataInterface().Get());
+            auto srcBufferRegion = GetBufferForTensor(src);
 
-            ID3D12Resource* srcData = srcAllocInfo->GetCopySrcResource();
-            const auto srcState = srcAllocInfo->GetDefaultCopySrcState();
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? srcBufferRegion.ResourceInUavState()
+                : srcBufferRegion.ResourceInCopySrcState();
 
-            ID3D12Resource* dstData = dstAllocInfo->GetCopyDstResource();
-            const auto dstState = dstAllocInfo->GetDefaultCopyDstState();
+            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
+
+            auto dstBufferRegion = GetBufferForTensor(dst);
+
+            ID3D12Resource* dstData = dstBufferRegion.ResourceInCopyDstState() == nullptr
+                ? dstBufferRegion.ResourceInUavState()
+                : dstBufferRegion.ResourceInCopyDstState();
+
+            const auto dstState = dstBufferRegion.ResourceInCopyDstState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_DEST;
 
             m_context->CopyBufferRegion(dstData, 0, dstState, srcData, 0, srcState, dataSizeInBytes);
         }
@@ -495,9 +516,8 @@ namespace Dml
         auto mlTensor = MLOperatorTensor(dst).GetDataInterface();
         if (mlTensor != nullptr)
         {
-            const AllocationInfo* dstAllocInfo = m_allocator->DecodeDataHandle(mlTensor.Get());
-            ID3D12Resource* dstData = dstAllocInfo->GetUavResource();
-            m_context->FillBufferWithPattern(dstData, rawValue);
+            auto dstBufferRegion = GetBufferForTensor(dst);
+            m_context->FillBufferWithPattern(dstBufferRegion.ResourceInUavState(), dstBufferRegion.Offset(), rawValue);
         }
 
         return S_OK;
@@ -747,6 +767,9 @@ namespace Dml
         std::vector<D3D12_RESOURCE_STATES> srcStates;
         srcStates.reserve(src_dst_pairs.size());
 
+        std::vector<uint64_t> srcOffsets;
+        srcOffsets.reserve(src_dst_pairs.size());
+
         std::vector<void*> dstDatas;
         dstDatas.reserve(src_dst_pairs.size());
 
@@ -790,19 +813,24 @@ namespace Dml
             ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
 
             dstDatas.push_back(dstWrapper.GetData());
-            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
 
-            auto srcData = srcAllocInfo->GetCopySrcResource();
-            auto srcState = srcAllocInfo->GetDefaultCopySrcState();
+            auto srcBufferRegion = GetBufferForTensor(&srcWrapper);
+
+            ID3D12Resource* srcData = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? srcBufferRegion.ResourceInUavState()
+                : srcBufferRegion.ResourceInCopySrcState();
+
+            const auto srcState = srcBufferRegion.ResourceInCopySrcState() == nullptr
+                ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                : D3D12_RESOURCE_STATE_COPY_SOURCE;
 
             srcDatas.push_back(srcData);
             srcStates.push_back(srcState);
+            srcOffsets.push_back(srcBufferRegion.Offset());
         }
 
-        const uint64_t srcOffset = 0;
-
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcStates);
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcOffsets, srcStates);
 
         return onnxruntime::common::Status::OK();
     }
@@ -815,7 +843,7 @@ namespace Dml
 
     void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        m_allocator->SetDefaultRoundingMode(roundingMode);
+        m_subAllocator->SetDefaultRoundingMode(roundingMode);
     }
 
     void ExecutionProviderImpl::ReleaseCompletedReferences()
@@ -840,36 +868,22 @@ namespace Dml
         data->AddRef();
     }
 
-    void ExecutionProviderImpl::GetABIDataInterface(
-        bool isInternalOperator,
-        IUnknown* data,
-        IUnknown** abiData) const
+    void ExecutionProviderImpl::GetABIDataInterface(void* data, IUnknown** abiData) const
     {
         assert(!m_closed);
-
-        if (isInternalOperator)
-        {
-            *abiData = data;
-            data->AddRef();
-        }
-        else
-        {
-#ifdef _GAMING_XBOX
-            ComPtr<GraphicsUnknownWrapper> wrappedResource = Microsoft::WRL::Make<GraphicsUnknownWrapper>(m_allocator->DecodeDataHandle(data)->GetUavResource());
-            *abiData = wrappedResource.Detach();
-#else
-            ComPtr<ID3D12Resource> resource = m_allocator->DecodeDataHandle(data)->GetUavResource();
-            *abiData = resource.Detach();
-#endif
-        }
+        *abiData = m_subAllocator->GetAllocationInfo(data)->GetUavResource();
     }
 
-    uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(
-        IUnknown* data,
-        bool isInternalOperator)
+    void ExecutionProviderImpl::GetManagedBufferRegion(void* data, uint64_t size, DmlManagedBufferRegion** abiData) const
+    {
+        auto managedBufferRegion = m_subAllocator->CreateManagedBufferRegion(data, size);
+        ORT_THROW_IF_FAILED(managedBufferRegion.CopyTo(abiData));
+    }
+
+    uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(void* data, bool isInternalOperator)
     {
         assert(!isInternalOperator);
-        return m_allocator->DecodeDataHandle(data)->GetPooledResourceId();
+        return m_subAllocator->GetAllocationInfo(data)->GetPooledResourceId();
     }
 
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
@@ -957,7 +971,7 @@ namespace Dml
 
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator()
     {
-        return m_allocator;
+        return m_bfcAllocator;
     }
 
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuInputAllocator()
@@ -994,8 +1008,8 @@ namespace Dml
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
     {
-        Dml::BucketizedBufferAllocator* pAllocationInfo = static_cast<Dml::BucketizedBufferAllocator*>(allocator);
-        return pAllocationInfo->DecodeDataHandle(ptr)->GetUavResource();
+        Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
+        return pAllocationInfo->GetSubAllocator()->GetAllocationInfo(ptr)->GetUavResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

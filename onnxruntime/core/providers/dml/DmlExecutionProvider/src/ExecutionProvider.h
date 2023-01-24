@@ -5,6 +5,7 @@
 
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
+#include "DmlBufferRegion.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -23,8 +24,10 @@ namespace Dml
     class ReadbackHeap;
     class ExecutionContext;
     class BucketizedBufferAllocator;
-    class CPUAllocator;
+    class DmlCpuAllocator;
     class ExecutionProvider;
+    class DmlManagedBufferRegion;
+    class DmlGpuAllocator;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
                                   Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider>
@@ -100,13 +103,15 @@ namespace Dml
             IUnknown** dataCopy) const override;
 
         void GetABIDataInterface(
-            bool isInternalOperator,
-            IUnknown* data,
+            void* data,
             IUnknown** abiData) const override;
 
-       uint64_t TryGetPooledAllocationId(
-            IUnknown* data,
-            bool isInternalOperator) override;
+        void GetManagedBufferRegion(
+            void* data,
+            uint64_t size,
+            DmlManagedBufferRegion** abiData) const;
+
+       uint64_t TryGetPooledAllocationId(void* data, bool isInternalOperator) override;
 
         void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,
@@ -136,12 +141,10 @@ namespace Dml
         // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
         STDMETHOD(AllocatePooledResource)(
             size_t size,
-            AllocatorRoundingMode roundingMode,
-            ID3D12Resource **d3dResource,
-            IUnknown* *pooledResource
+            DmlManagedBufferRegion** managedBufferRegion
         ) const noexcept final;
 
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept final;
+        STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept final;
 
         std::shared_ptr<onnxruntime::KernelRegistry> GetKernelRegistry() const
         {
@@ -179,6 +182,8 @@ namespace Dml
             uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         ) const;
 
+        D3D12BufferRegion GetBufferForTensor(IMLOperatorTensor* tensor) const;
+
         ComPtr<ID3D12Device> m_d3d12Device;
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
@@ -186,9 +191,11 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
-        std::shared_ptr<CPUAllocator> m_cpuOutputAllocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
+        std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
+        std::shared_ptr<DmlCpuAllocator> m_cpuInputAllocator;
+        std::shared_ptr<DmlCpuAllocator> m_cpuOutputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;

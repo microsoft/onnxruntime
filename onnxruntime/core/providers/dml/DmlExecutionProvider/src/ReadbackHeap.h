@@ -27,6 +27,7 @@ namespace Dml
             gsl::span<void*> dst,
             gsl::span<const uint32_t > dstSizes,
             gsl::span<ID3D12Resource*> src,
+            gsl::span<uint64_t> srcOffsets,
             gsl::span<const D3D12_RESOURCE_STATES> srcStates);
 
     private:

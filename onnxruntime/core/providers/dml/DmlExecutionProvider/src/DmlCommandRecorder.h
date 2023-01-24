@@ -5,6 +5,7 @@
 
 #include "ICommandRecorder.h"
 #include "CommandAllocatorRing.h"
+#include "core/framework/allocator.h"
 
 namespace Dml
 {
@@ -16,7 +17,7 @@ namespace Dml
     public:
         DmlCommandRecorder(
             ID3D12Device* d3dDevice,
-            IDMLDevice* device, 
+            IDMLDevice* device,
             std::shared_ptr<CommandQueue> commandQueue);
 
         void InitializeOperator(
@@ -39,6 +40,7 @@ namespace Dml
 
         void FillBufferWithPattern(
             ID3D12Resource* dstBuffer,
+            uint64_t offset,
             gsl::span<const std::byte> value /* Data type agnostic value, treated as raw bits */);
 
         void ExecuteCommandList(
@@ -47,14 +49,15 @@ namespace Dml
             _Out_ uint64_t* completionValue);
 
         ComPtr<ID3D12GraphicsCommandList> GetCommandList();
-        
+
         void ResourceBarrier(gsl::span<const D3D12_RESOURCE_BARRIER> barriers);
         void AddUAVBarrier();
 
         void Open() final;
         void CloseAndExecute() final;
-        
-        void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+
+        void SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator);
+        void SetSubAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
         bool HasUnsubmittedWork() override
         {
@@ -81,7 +84,8 @@ namespace Dml
         ID3D12DescriptorHeap* m_currentDescriptorHeap = nullptr;
 
         // The weak pointer avoids a circular reference from context->recorder->allocator->context
-        std::weak_ptr<BucketizedBufferAllocator> m_bufferAllocator;
+        std::weak_ptr<onnxruntime::IAllocator> m_allocator;
+        std::weak_ptr<BucketizedBufferAllocator> m_subAllocator;
 
         CommandAllocatorRing<2> m_commandAllocatorRing;
 
@@ -89,7 +93,7 @@ namespace Dml
         ComPtr<ID3D12GraphicsCommandList> m_currentCommandList;
         bool m_operationsRecordedInCurrentCommandList = false;
 
-        // Command lists which have been batched up for execution.  The values in 
+        // Command lists which have been batched up for execution.  The values in
         // m_pendingCommandListsCacheable indicate whether they can be moved into this
         // class's cache after execution, versus if they belong to the caller and were
         // passed to ExecuteCommandList.

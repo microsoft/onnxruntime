@@ -31,12 +31,12 @@ namespace Dml
         bool enableMetacommands = true);
 
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
-    void FlushContext(onnxruntime::IExecutionProvider* provider);    
+    void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);
-    
+
     onnxruntime::common::Status CopyTensor(
-        onnxruntime::IExecutionProvider* provider, 
+        onnxruntime::IExecutionProvider* provider,
         const onnxruntime::Tensor& src, onnxruntime::Tensor& dst
     );
 

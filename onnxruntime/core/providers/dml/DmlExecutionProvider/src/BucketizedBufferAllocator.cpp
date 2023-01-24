@@ -4,21 +4,13 @@
 #include "precomp.h"
 
 #include "core/session/onnxruntime_c_api.h"
-
 #include "BucketizedBufferAllocator.h"
-#include "DmlHeapAllocator.h"
-// #define PRINT_OUTSTANDING_ALLOCATIONS
+#include "DmlReservedResourceWrapper.h"
+#include "DmlBufferRegion.h"
+#include "DmlManagedBufferRegion.h"
 
 namespace Dml
 {
-    AllocationInfo::~AllocationInfo()
-    {
-        if (m_owner)
-        {
-            m_owner->FreeResource(this, m_pooledResourceId);
-        }
-    }
-
     BucketizedBufferAllocator::~BucketizedBufferAllocator()
     {
 #ifdef PRINT_OUTSTANDING_ALLOCATIONS
@@ -32,24 +24,6 @@ namespace Dml
             printf("\n");
         }
 #endif
-    }
-
-    BucketizedBufferAllocator::BucketizedBufferAllocator(
-        ID3D12Device* device,
-        std::shared_ptr<ExecutionContext> context,
-        std::unique_ptr<D3D12HeapAllocator>&& subAllocator
-        )
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
-        m_device(device),
-        m_context(context),
-        m_subAllocator(std::move(subAllocator))
-    {
     }
 
     /*static*/ gsl::index BucketizedBufferAllocator::GetBucketIndexFromSize(uint64_t size)
@@ -72,88 +46,287 @@ namespace Dml
         return (1ull << (index + c_minResourceSizeExponent));
     }
 
-    void* BucketizedBufferAllocator::Alloc(size_t size)
+    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        return Alloc(size, m_defaultRoundingMode);
+        m_defaultRoundingMode = roundingMode;
     }
 
-    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
+    static bool GetTilingEnabled(ID3D12Device* device)
+    {
+        D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};
+        if (SUCCEEDED(device->CheckFeatureSupport(
+                D3D12_FEATURE_D3D12_OPTIONS,
+                &options,
+                sizeof(options))))
+        {
+            return options.TiledResourcesTier >= D3D12_TILED_RESOURCES_TIER_1;
+        }
+
+        return false;
+    }
+
+    static uint64_t GetMaxHeapSizeInTiles()
+    {
+        return BucketizedBufferAllocator::kDefaultMaxHeapSizeInTiles;
+    }
+
+    BucketizedBufferAllocator::BucketizedBufferAllocator(
+        ID3D12Device* device,
+        ID3D12CommandQueue* queue,
+        const D3D12_HEAP_PROPERTIES& heap_props,
+        D3D12_HEAP_FLAGS heap_flags,
+        D3D12_RESOURCE_FLAGS resource_flags,
+        D3D12_RESOURCE_STATES initial_state)
+        : device_(device),
+        queue_(queue),
+        heap_properties_(heap_props),
+        heap_flags_(heap_flags),
+        resource_flags_(resource_flags),
+        initial_state_(initial_state),
+        tiling_enabled_(GetTilingEnabled(device)),
+        max_heap_size_in_tiles_(GetMaxHeapSizeInTiles())
+    {
+    }
+
+    absl::optional<DmlHeapAllocation> BucketizedBufferAllocator::TryCreateTiledAllocation(uint64_t size_in_bytes)
+    {
+        DmlHeapAllocation allocation = {};
+
+        // The allocation may be larger than the requested size to ensure a whole
+        // number of tiles.
+        const uint64_t resource_size_in_tiles =
+            1 + (size_in_bytes - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        const uint64_t resource_size_in_bytes =
+            resource_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        auto resource_desc =
+            CD3DX12_RESOURCE_DESC::Buffer(resource_size_in_bytes, resource_flags_);
+
+        ID3D12Resource** resources[] = {
+            &allocation.resource_uav_state,
+            &allocation.resource_copy_src_state,
+            &allocation.resource_copy_dst_state};
+
+        D3D12_RESOURCE_STATES states[] = {
+            initial_state_,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COPY_DEST};
+
+        for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
+        {
+            HRESULT create_resource_hr = device_->CreateReservedResource(
+                &resource_desc,
+                states[i],
+                nullptr,
+                IID_PPV_ARGS(resources[i]));
+
+            if (create_resource_hr == E_OUTOFMEMORY)
+            {
+                return absl::nullopt;
+            }
+            ORT_THROW_IF_FAILED(create_resource_hr);
+        }
+
+        // Reserve enough heaps to store all tiles in the resource.
+        const uint64_t heap_count =
+            1 + (resource_size_in_tiles - 1) / max_heap_size_in_tiles_;
+        allocation.heaps.resize(heap_count);
+
+        // Create heaps and map them to the primary reserved resource.
+        D3D12_TILED_RESOURCE_COORDINATE resource_region_start_coordinates = {};
+        uint64_t unmapped_resource_tiles = resource_size_in_tiles;
+        for (uint64_t i = 0; i < heap_count; i++)
+        {
+            // Create heap. The last heap of the allocation may have fewer tiles to
+            // avoid wasting space.
+            uint64_t heap_size_in_tiles = std::min<uint64_t>(
+                unmapped_resource_tiles,
+                max_heap_size_in_tiles_);
+            uint64_t heap_size_in_bytes =
+                heap_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+            auto heap_desc = CD3DX12_HEAP_DESC(
+                heap_size_in_bytes,
+                heap_properties_,
+                0,
+                heap_flags_);
+
+            HRESULT create_heap_hr =
+                device_->CreateHeap(&heap_desc, IID_PPV_ARGS(&allocation.heaps[i]));
+            if (create_heap_hr == E_OUTOFMEMORY)
+            {
+                return absl::nullopt;
+            }
+            ORT_THROW_IF_FAILED(create_heap_hr);
+
+            // Source region in the resource to map.
+            D3D12_TILE_REGION_SIZE resource_region_size = {};
+            resource_region_size.NumTiles = static_cast<uint32_t>(heap_size_in_tiles);
+
+            // Target range in the current heap to map.
+            const D3D12_TILE_RANGE_FLAGS tile_range_flags =
+                D3D12_TILE_RANGE_FLAG_NONE;
+            const uint32_t heap_range_start_offset = 0;
+            const uint32_t heap_range_tile_count = static_cast<uint32_t>(heap_size_in_tiles);
+
+            constexpr uint32_t numResourceRegions = 1;
+            constexpr uint32_t numHeapRanges = 1;
+
+            // This is a brand new allocation/resource, so the tile mappings are
+            // guaranteed to be set (on the GPU timeline) by the time any code can
+            // reference the returned resource. We only execute operations on a
+            // single hardware queue so there is no need to wait or signal.
+            //
+            // All resources have identical tile mappings. The repeated call to
+            // UpdateTileMappings on all resources instead of using CopyTileMappings
+            // is intentional: the latter API is not supported by all versions of
+            // PIX.
+            for (auto resource :
+                {allocation.resource_uav_state.Get(),
+                allocation.resource_copy_src_state.Get(),
+                allocation.resource_copy_dst_state.Get()})
+            {
+                queue_->UpdateTileMappings(
+                    resource,
+                    numResourceRegions,
+                    &resource_region_start_coordinates,
+                    &resource_region_size,
+                    allocation.heaps[i].Get(),
+                    numHeapRanges,
+                    &tile_range_flags,
+                    &heap_range_start_offset,
+                    &heap_range_tile_count,
+                    D3D12_TILE_MAPPING_FLAG_NONE);
+            }
+
+            resource_region_start_coordinates.X += static_cast<uint32_t>(heap_size_in_tiles);
+            unmapped_resource_tiles -= heap_size_in_tiles;
+        }
+
+        assert(unmapped_resource_tiles == 0);
+
+        return allocation;
+    }
+
+    absl::optional<DmlHeapAllocation> BucketizedBufferAllocator::TryCreateUntiledAllocation(uint64_t size_in_bytes)
+    {
+        DmlHeapAllocation allocation = {};
+
+        // Create the allocation's sole heap. The allocation may be larger than the
+        // requested size to ensure a whole number of tiles.
+        allocation.heaps.resize(1);
+        D3D12_HEAP_DESC heap_desc =
+            CD3DX12_HEAP_DESC(size_in_bytes, heap_properties_, 0, heap_flags_);
+        HRESULT create_heap_hr = device_->CreateHeap(
+            &heap_desc,
+            IID_PPV_ARGS(&allocation.heaps.front()));
+        if (create_heap_hr == E_OUTOFMEMORY)
+        {
+            return absl::nullopt;
+        }
+
+        // Create large placed resource that spans the heap.
+        D3D12_RESOURCE_DESC resource_desc =
+            CD3DX12_RESOURCE_DESC::Buffer(size_in_bytes, resource_flags_);
+
+        ID3D12Resource** resources[] = {
+            &allocation.resource_uav_state,
+            &allocation.resource_copy_src_state,
+            &allocation.resource_copy_dst_state};
+        D3D12_RESOURCE_STATES states[] = {
+            initial_state_,
+            D3D12_RESOURCE_STATE_COPY_SOURCE,
+            D3D12_RESOURCE_STATE_COPY_DEST};
+
+        for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
+        {
+            HRESULT create_resource_hr = device_->CreatePlacedResource(
+                allocation.heaps.front().Get(),
+                0,
+                &resource_desc,
+                states[i],
+                nullptr,
+                IID_PPV_ARGS(resources[i]));
+            if (create_resource_hr == E_OUTOFMEMORY)
+            {
+                return absl::nullopt;
+            }
+            ORT_THROW_IF_FAILED(create_resource_hr);
+        }
+
+        return allocation;
+    }
+
+    uint64_t BucketizedBufferAllocator::ComputeRequiredSize(size_t size)
+    {
+        const uint64_t resource_size_in_tiles =
+            1 + (size - 1) / D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+        const uint64_t resource_size_in_bytes =
+            resource_size_in_tiles * D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES;
+
+        return resource_size_in_bytes;
+    }
+
+    void* BucketizedBufferAllocator::Alloc(size_t size_in_bytes)
     {
         // For some reason lotus likes requesting 0 bytes of memory
-        size = std::max<size_t>(1, size);
+        size_in_bytes = std::max<size_t>(1, size_in_bytes);
 
-        ComPtr<DmlResourceWrapper> resourceWrapper;
-        uint64_t resourceId = 0;
+        // The D3D12 device is thread-safe so we don't need to hold the lock while
+        // creating an allocation.
+        absl::optional<DmlHeapAllocation> allocation =
+            tiling_enabled_ ? TryCreateTiledAllocation(size_in_bytes)
+                            : TryCreateUntiledAllocation(size_in_bytes);
 
-        // Find the bucket for this allocation size
-        gsl::index bucketIndex = GetBucketIndexFromSize(size);
+        ORT_THROW_HR_IF(E_INVALIDARG, !allocation);
 
-        // Some sub allocators have their own rounding mechanisms or alignment requirements of resources
-        uint64_t bucketSize = m_subAllocator->ComputeRequiredSize(GetBucketSizeFromIndex(bucketIndex));
+        // We need to access (mutable) state after this point, so we need to lock
+        std::unique_lock<std::mutex> lock(mutex_);
 
-        // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == bucketSize)
-        {
-            Bucket* bucket = nullptr;
+        absl::optional<uint32_t> allocationId = TryReserveAllocationID();
+        ORT_THROW_HR_IF(E_INVALIDARG, !allocationId);
 
-            if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
-            {
-                // Ensure there are sufficient buckets
-                m_pool.resize(bucketIndex + 1);
-            }
-
-            bucket = &m_pool[bucketIndex];
-
-            if (bucket->resources.empty())
-            {
-                // No more resources in this bucket - allocate a new one
-                resourceWrapper = m_subAllocator->Alloc(bucketSize);
-                resourceId = ++m_currentResourceId;
-            }
-            else
-            {
-                // Retrieve a resource from the bucket
-                resourceWrapper = std::move(bucket->resources.back().resource);
-                resourceId = bucket->resources.back().resourceId;
-                bucket->resources.pop_back();
-            }
-        }
-        else
-        {
-            // The allocation will not be pooled.  Construct a new one
-            bucketSize = m_subAllocator->ComputeRequiredSize(size);
-            resourceWrapper = m_subAllocator->Alloc(bucketSize);
-            resourceId = ++m_currentResourceId;
-        }
-
-        assert(resourceWrapper != nullptr);
-        assert(resourceWrapper->GetUavResource()->GetDesc().Width == bucketSize);
-
+        auto resourceWrapper = wil::MakeOrThrow<DmlReservedResourceWrapper>(std::move(*allocation));
         ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
             this,
             ++m_currentAllocationId,
-            resourceId,
+            ++m_currentResourceId,
             resourceWrapper.Get(),
-            size
+            size_in_bytes
         );
+
+        allocations_by_id_.emplace(*allocationId, allocInfo);
+
+        lock.unlock();
 
     #if _DEBUG
         m_outstandingAllocationsById[allocInfo->GetId()] = allocInfo.Get();
     #endif
 
-        return allocInfo.Detach();
+        // DML only has a single device in ORT at the moment
+        const uint64_t device_id = 0;
+        const uint64_t offset = 0;
+        return TaggedPointer::Pack(device_id, *allocationId, offset);
     }
 
-    void BucketizedBufferAllocator::Free(void* p)
+    void BucketizedBufferAllocator::Free(void* ptr)
     {
-        // Release Lotus's reference on the allocation.  The allocation
-        // also inherits IUnknown, and once its final reference reaches zero
-        // it will call FreeResource
-        ComPtr<AllocationInfo> allocInfo;
-        allocInfo.Attach(static_cast<AllocationInfo*>(p));
+        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
+
+        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+        ORT_THROW_HR_IF(E_INVALIDARG, tagged_ptr.offset != 0);
+
+        // We need to access (mutable) state after this point, so we need to lock
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
+
+        ReleaseAllocationID(tagged_ptr.allocation_id);
+
+        // Frees the ID3D12Heap
+        allocations_by_id_.erase(it);
     }
 
-    void BucketizedBufferAllocator::FreeResource(void* p, uint64_t pooledResourceId)
+   void BucketizedBufferAllocator::FreeResource(void* p, uint64_t pooledResourceId)
     {
         AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
 
@@ -165,31 +338,12 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
 
-        // Free the resource to the pool if its size matches a bucket size
-        gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetUavResource()->GetDesc().Width)
-        {
-            if (gsl::narrow_cast<gsl::index>(m_pool.size()) <= bucketIndex)
-            {
-                // Ensure there are sufficient buckets
-                m_pool.resize(bucketIndex + 1);
-            }
-
-            // Return the resource to the bucket
-            Bucket* bucket = &m_pool[bucketIndex];
-
-            Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
-            bucket->resources.push_back(resource);
-        }
-        else
-        {
-            // Free the underlying allocation once queued work has completed.
+        // Free the underlying allocation once queued work has completed.
 #ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->DetachResourceWrapper().Get()).Get());
+        m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->DetachResourceWrapper().Get()).Get());
 #else
-            m_context->QueueReference(allocInfo->DetachResourceWrapper().Get());
+        m_context->QueueReference(allocInfo->DetachResourceWrapper().Get());
 #endif
-        }
 
     #if _DEBUG
         assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
@@ -199,58 +353,100 @@ namespace Dml
         // The allocation info is already destructing at this point
     }
 
-
-    const AllocationInfo* BucketizedBufferAllocator::DecodeDataHandle(const void* opaqueHandle)
+    absl::optional<uint32_t> BucketizedBufferAllocator::TryReserveAllocationID()
     {
-        if (opaqueHandle == nullptr)
-        {
-            // There is no memory allocated which needs to be decoded.
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-        const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
+        // The mutex must already be held
+        assert(!mutex_.try_lock());
 
-        auto owner = allocInfo->GetOwner();
-        //The owner can be null if the resource was wrapped via CreateGPUAllocationFromD3DResource
-        if (owner != nullptr && owner != this)
+        if (!free_allocation_ids_.empty())
         {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
+            // Return a free ID from the pool
+            uint32_t id = free_allocation_ids_.back();
+            free_allocation_ids_.pop_back();
+            return id;
         }
 
-        return allocInfo;
-    }
-
-    void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
-    {
-        m_defaultRoundingMode = roundingMode;
-    }
-
-    CPUAllocator::CPUAllocator(OrtMemType memType)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML CPU",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                0,
-                memType
-            )
-        )
-    {
-    }
-
-    void* CPUAllocator::Alloc(size_t size)
-    {
-        if (size <= 0)
+        static constexpr uint32_t kMaxAllocationID =
+            (1 << TaggedPointer::kAllocationIDBits) - 1;
+        if (current_allocation_id_ == kMaxAllocationID)
         {
-            return nullptr;
+            // We've reached the maximum number of allocations!
+            return absl::nullopt;
         }
-        void* p = malloc(size);
-        return p;
+
+        ++current_allocation_id_;
+        return current_allocation_id_;
     }
 
-    void CPUAllocator::Free(void* p)
+    void BucketizedBufferAllocator::ReleaseAllocationID(uint32_t id)
     {
-        free(p);
+        // The mutex must already be held
+        assert(!mutex_.try_lock());
+
+        // Add it to the pool of free IDs
+        free_allocation_ids_.push_back(id);
+    }
+
+    D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(
+        const void* ptr,
+        uint64_t size_in_bytes)
+    {
+        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
+
+        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+
+        // We need to access (mutable) state after this point, so we need to lock
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        // Find the allocation corresponding to this pointer
+        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
+
+        return D3D12BufferRegion(
+            tagged_ptr.offset,
+            size_in_bytes,
+            it->second->GetUavResource(),
+            it->second->GetCopySrcResource(),
+            it->second->GetCopyDstResource());
+    }
+
+    ComPtr<DmlManagedBufferRegion> BucketizedBufferAllocator::CreateManagedBufferRegion(
+        const void* ptr,
+        uint64_t size_in_bytes)
+    {
+        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
+
+        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+
+        // We need to access (mutable) state after this point, so we need to lock
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        // Find the allocation corresponding to this pointer
+        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
+
+        D3D12BufferRegion bufferRegion(
+            tagged_ptr.offset,
+            size_in_bytes,
+            it->second->GetUavResource(),
+            it->second->GetCopySrcResource(),
+            it->second->GetCopyDstResource());
+
+        return wil::MakeOrThrow<DmlManagedBufferRegion>(it->second, std::move(bufferRegion));
+    }
+
+    AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(const void* ptr)
+    {
+        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
+
+        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
+
+        // We need to access (mutable) state after this point, so we need to lock
+        std::unique_lock<std::mutex> lock(mutex_);
+
+        // Find the allocation corresponding to this pointer
+        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        return it->second.Get();
     }
 
 } // namespace Dml

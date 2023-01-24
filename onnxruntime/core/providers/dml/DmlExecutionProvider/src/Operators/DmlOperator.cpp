@@ -3,6 +3,7 @@
 
 #include "precomp.h"
 #include "DmlOperator.h"
+#include "../DmlManagedBufferRegion.h"
 
 namespace Dml
 {
@@ -93,13 +94,14 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
+                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
+                    managedBufferRegion.GetAddressOf()));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                managedBufferRegion.As(&m_persistentResourcePoolingUnk);
+                m_persistentResource = managedBufferRegion->GetBufferRegion().ResourceInUavState();
+                m_persistentResourceBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -192,13 +194,14 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
+                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
+                    managedBufferRegion.GetAddressOf()));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                managedBufferRegion.As(&m_persistentResourcePoolingUnk);
+                m_persistentResource = managedBufferRegion->GetBufferRegion().ResourceInUavState();
+                m_persistentResourceBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
             }
 
             std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
@@ -229,14 +232,16 @@ namespace Dml
             if (!m_persistentResource || m_persistentResource->GetDesc().Width < persistentResourceSize)
             {
                 m_persistentResource = nullptr;
+
+                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
                 ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Enabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourcePoolingUnk.GetAddressOf()));
-            }
+                    managedBufferRegion.GetAddressOf()));
 
-            m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+                managedBufferRegion.As(&m_persistentResourcePoolingUnk);
+                m_persistentResource = managedBufferRegion->GetBufferRegion().ResourceInUavState();
+                m_persistentResourceBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
+            }
         }
 
         ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(

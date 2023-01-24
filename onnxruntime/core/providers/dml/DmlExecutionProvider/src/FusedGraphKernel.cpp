@@ -6,6 +6,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
 #include "DmlGraphFusionHelper.h"
+#include "DmlManagedBufferRegion.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -63,13 +64,14 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
+                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
                 ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
                     static_cast<size_t>(persistentResourceSize),
-                    AllocatorRoundingMode::Disabled,
-                    m_persistentResource.GetAddressOf(),
-                    m_persistentResourceAllocatorUnk.GetAddressOf()));
+                    managedBufferRegion.GetAddressOf()));
 
-                m_persistentResourceBinding = DML_BUFFER_BINDING { m_persistentResource.Get(), 0, persistentResourceSize };
+                managedBufferRegion.As(&m_persistentResourceAllocatorUnk);
+                m_persistentResource = managedBufferRegion->GetBufferRegion().ResourceInUavState();
+                m_persistentResourceBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
@@ -128,7 +130,7 @@ namespace Dml
                     else if (!m_isInputsUploadedByDmlEP[i])
                     {
                         ORT_THROW_IF_FAILED(contextWrapper.GetInputTensor(i, inputTensors[i].GetAddressOf()));
-                        inputPtrs[i] = m_provider->DecodeResource(MLOperatorTensor(inputTensors[i].Get()).GetDataInterface().Get());
+                        inputPtrs[i] = m_provider->DecodeResource(inputTensors[i].Get());
                     }
                 }
 
@@ -166,7 +168,7 @@ namespace Dml
                     if (tensor)
                     {
                         assert(tensor->IsDataInterface());
-                        ID3D12Resource* resource = m_provider->DecodeResource(MLOperatorTensor(tensor).GetDataInterface().Get());
+                        ID3D12Resource* resource = m_provider->DecodeResource(tensor);
                         D3D12_RESOURCE_DESC resourceDesc = resource->GetDesc();
                         bufferBindings.push_back({ resource, 0, resourceDesc.Width });
                         bindingDescs.push_back({ DML_BINDING_TYPE_BUFFER, &bufferBindings.back() });
@@ -363,13 +365,11 @@ namespace Dml
                 uint64_t tempAllocId = 0;
                 ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
 
-                ComPtr<IUnknown> tempResourceUnk;
-                m_winmlProvider->GetABIDataInterface(false, tempAlloc.Get(), &tempResourceUnk);
+                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
+                m_winmlProvider->GetManagedBufferRegion(tempAlloc.Get(), execBindingProps.TemporaryResourceSize, &managedBufferRegion);
 
                 // Bind the temporary resource.
-                ComPtr<ID3D12Resource> tempResource;
-                ORT_THROW_IF_FAILED(tempResourceUnk->QueryInterface(tempResource.GetAddressOf()));
-                DML_BUFFER_BINDING tempBufferBinding = {tempResource.Get(), 0, execBindingProps.TemporaryResourceSize};
+                DML_BUFFER_BINDING tempBufferBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
                 DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
 
                 if (!tempAllocId || m_tempBindingAllocId != tempAllocId)

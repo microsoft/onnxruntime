@@ -104,20 +104,11 @@ namespace Windows::AI::MachineLearning::Adapter
     // kernels are registered.
     void TranslateAllocationDataToAbi(
         IWinmlExecutionProvider* winmlProvider,
-        bool isInternalOperator,
         const ::OrtMemoryInfo& allocInfo,
-        IUnknown* allocation,
+        void* opaqueData,
         IUnknown** abiAllocation)
     {
-        if (winmlProvider)
-        {
-            winmlProvider->GetABIDataInterface(isInternalOperator, allocation, abiAllocation);
-        }
-        else
-        {
-            ComPtr<IUnknown> tmp = allocation;
-            *abiAllocation = tmp.Detach();
-        }
+        winmlProvider->GetABIDataInterface(opaqueData, abiAllocation);
     }
 
     //
@@ -1143,7 +1134,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (operatorGraphDesc->nodesAsOpDesc)
             {
                 m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
                     assert(node != nullptr);
@@ -1154,7 +1145,7 @@ namespace Windows::AI::MachineLearning::Adapter
             else
             {
                 m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
                     assert(node != nullptr);
@@ -1301,7 +1292,6 @@ namespace Windows::AI::MachineLearning::Adapter
                         // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
                         TranslateAllocationDataToAbi(
                             m_winmlExecutionProvider.Get(),
-                            m_internalOperator,
                             m_impl->Location(),
                             m_dataInterfaceOrShadowCopy ? m_dataInterfaceOrShadowCopy.Get() : m_dataInterface.Get(),
                             m_abiDataInterface.GetAddressOf());
@@ -1667,7 +1657,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
             *allocId = m_winmlProvider->TryGetPooledAllocationId(allocation.Get(), 0);
 
-            TranslateAllocationDataToAbi(m_winmlProvider.Get(), m_internalOperator, alloc->Info(), allocation.Get(), abiAllocation);
+            TranslateAllocationDataToAbi(m_winmlProvider.Get(), alloc->Info(), allocation.Get(), abiAllocation);
 
             if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
             {
@@ -2307,7 +2297,7 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
-        const onnx::TensorProto& initializer, 
+        const onnx::TensorProto& initializer,
         const onnxruntime::Path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;

@@ -22,6 +22,11 @@ namespace onnxruntime
     class Node;
 }
 
+namespace Dml
+{
+    class DmlManagedBufferRegion;
+}
+
 namespace Windows::AI::MachineLearning::Adapter
 {
     interface __declspec(uuid("5b19a18a-5ed5-4df2-a363-21b89380a698"))
@@ -29,7 +34,7 @@ namespace Windows::AI::MachineLearning::Adapter
     {
     public:
         // Hold a reference to an object until preceding work in the queue is complete.  This
-        // only needs to be handled by providers which hide the asynchronous nature of 
+        // only needs to be handled by providers which hide the asynchronous nature of
         // computation, and involve resoures which cannot be automatically by work in the
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
@@ -40,12 +45,16 @@ namespace Windows::AI::MachineLearning::Adapter
             IUnknown** dataCopy) const = 0;
 
         virtual void GetABIDataInterface(
-            bool isInternalOperator,
-            IUnknown* data,
+            void* data,
             IUnknown** abiData) const = 0;
-        
+
+        virtual void GetManagedBufferRegion(
+            void* data,
+            uint64_t size,
+            Dml::DmlManagedBufferRegion** abiData) const = 0;
+
         virtual uint64_t TryGetPooledAllocationId(
-            IUnknown* data,
+            void* data,
             bool isInternalOperator) = 0;
 
         virtual void GetABIExecutionInterfaceAndInvalidateState(
@@ -63,7 +72,7 @@ namespace Windows::AI::MachineLearning::Adapter
             uint32_t resourceCount,
             IUnknown** resources) = 0;
 
-        // Waits for flushed work, discards unflushed work, and discards associated references to 
+        // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.
         virtual void Close() = 0;
     };
@@ -89,7 +98,7 @@ namespace Windows::AI::MachineLearning::Adapter
     };
 
     using GraphNodeFactory = std::function<void(
-        const onnxruntime::Node& node, 
+        const onnxruntime::Node& node,
         MLOperatorTensorGetter& constantInputGetter,
         const void* executionHandle,
         /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo

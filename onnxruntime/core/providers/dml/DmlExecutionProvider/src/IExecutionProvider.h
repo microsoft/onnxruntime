@@ -6,6 +6,8 @@
 
 namespace Dml
 {
+    class DmlManagedBufferRegion;
+
     struct Binding
     {
         // Non-null if required at the stage where it is used, i.e. Initialization
@@ -37,7 +39,7 @@ namespace Dml
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
             gsl::span<const DML_BUFFER_BINDING> inputTensors
             ) const noexcept = 0;
-        
+
         STDMETHOD(ExecuteOperator)(
             IDMLCompiledOperator* op,
             _In_opt_ const DML_BUFFER_BINDING* persistentResourceBinding,
@@ -64,8 +66,8 @@ namespace Dml
         STDMETHOD_(D3D12_COMMAND_LIST_TYPE, GetCommandListTypeForQueue)() const noexcept = 0;
         STDMETHOD_(void, Flush)() const noexcept = 0;
 
-        STDMETHOD_(ID3D12Resource*, DecodeResource)(void* allocation) const noexcept = 0;
-        STDMETHOD(AllocatePooledResource(size_t size, AllocatorRoundingMode roundingMode, ID3D12Resource **d3dResource, IUnknown* *pooledResource)) const noexcept = 0;
+        STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept = 0;
+        STDMETHOD(AllocatePooledResource(size_t size, DmlManagedBufferRegion** pooledResource)) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;

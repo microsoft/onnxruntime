@@ -94,11 +94,11 @@ namespace DmlGraphFusionHelper
         ID3D12Resource** resource,
         uint64_t* allocId)
     {
-        IUnknown* allocationUnk = static_cast<IUnknown*>(const_cast<void*>(tensor->DataRaw()));
+        void* opaqueData = const_cast<void*>(tensor->DataRaw());
         Microsoft::WRL::ComPtr<IUnknown> resourceUnk;
-        winmlProvider->GetABIDataInterface(false, allocationUnk, &resourceUnk);
+        winmlProvider->GetABIDataInterface(opaqueData, &resourceUnk);
 
-        *allocId = winmlProvider->TryGetPooledAllocationId(allocationUnk, 0);
+        *allocId = winmlProvider->TryGetPooledAllocationId(opaqueData, 0);
 
         ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
     }
