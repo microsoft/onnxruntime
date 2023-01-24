@@ -498,7 +498,7 @@ Status ComputeSoftmax(cudaStream_t stream, const int all_sequence_length, const 
     SoftmaxKernel<T, blockSize><<<grid, blockSize, 0, stream>>>(
         all_sequence_length, sequence_length, add_before_softmax, input, output);
   } else {
-    const int blockSize = 1024;
+    const int blockSize = 256;
     const int sh_bytes = sizeof(float) * all_sequence_length;
     SoftmaxLargeKernel<T, blockSize><<<grid, blockSize, sh_bytes, stream>>>(
         all_sequence_length, sequence_length, all_sequence_length, 0, add_before_softmax, input, output, true);
@@ -704,7 +704,7 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
                                          is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
                                          use_persistent_softmax, mask_filter_value);
   } else {
-    const int blockSize = 1024;
+    const int blockSize = 256;
     const int sh_bytes = sizeof(float) * all_sequence_length;
     SoftmaxWithRawMaskLargeKernel<T, blockSize>
         <<<grid, blockSize, sh_bytes, stream>>>(all_sequence_length, sequence_length,
