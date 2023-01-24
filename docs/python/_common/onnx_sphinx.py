@@ -410,9 +410,7 @@ def get_rst_doc(  # type: ignore
         if doc is None:
             doc = ""
         if not isinstance(doc, str):
-            raise TypeError(  # pragma: no cover
-                f"doc must be a string not {type(doc)!r} - {doc + 42!r}."
-            )
+            raise TypeError(f"doc must be a string not {type(doc)!r} - {doc + 42!r}.")  # pragma: no cover
         doc = textwrap.dedent(doc)
         main_docs_url = "https://github.com/onnx/onnx/blob/master/"
         rep = {
@@ -473,9 +471,7 @@ def get_rst_doc(  # type: ignore
         if not attr.default_value.name:
             return ""
         default_value = onnx.helper.get_attribute_value(attr.default_value)
-        if isinstance(default_value, onnx.AttributeProto) and hasattr(
-            default_value, "default_value"
-        ):
+        if isinstance(default_value, onnx.AttributeProto) and hasattr(default_value, "default_value"):
             if attr.type in _attribute_conversion_functions:
                 sval = _attribute_conversion_functions[attr.type](default_value)
                 return f"(default is ``{sval!r}``)"
@@ -518,9 +514,7 @@ def get_rst_doc(  # type: ignore
     d_links = {}
     for schema in schemas:
         sdom = schema.domain.replace(".", "-")
-        d_links[
-            schema.since_version
-        ] = f"l-onnx-op{sdom}-{schema.name.lower()}-{schema.since_version}"
+        d_links[schema.since_version] = f"l-onnx-op{sdom}-{schema.name.lower()}-{schema.since_version}"
 
     if diff:
         lines = docs.split("\n")
@@ -589,12 +583,8 @@ def _insert_diff(folder, docs, split=".. tag-diff-insert.", op_name=None, versio
         v1 = vers1[0][1]
 
         if len(mds) == 0:
-            mds.append(
-                (v1, textwrap.dedent(spl1.strip(" \n\r\t")).splitlines(keepends=True))
-            )
-        mds.append(
-            (v2, textwrap.dedent(spl2.strip(" \n\r\t")).splitlines(keepends=True))
-        )
+            mds.append((v1, textwrap.dedent(spl1.strip(" \n\r\t")).splitlines(keepends=True)))
+        mds.append((v2, textwrap.dedent(spl2.strip(" \n\r\t")).splitlines(keepends=True)))
 
         if len(mds) > 1:
             pieces.extend([".. toctree::", ""])
@@ -717,9 +707,7 @@ def get_onnx_example(op_name):  # type: ignore
                 if sub in code:
                     found = code
             if found is None:
-                raise RuntimeError(  # pragma: no cover
-                    f"Unable to find {sub!r} in\n{code_cls}"
-                )
+                raise RuntimeError(f"Unable to find {sub!r} in\n{code_cls}")  # pragma: no cover
             found = textwrap.dedent(found)
             lines = found.split("\n")
             first = 0
@@ -752,8 +740,9 @@ def is_last_schema(sch: OpSchema) -> bool:
     return last.since_version == sch.since_version
 
 
-def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime",
-                              flog=None, max_opsets=None):  # type: ignore
+def onnx_documentation_folder(
+    folder, title="ONNX Operators in onnxruntime", flog=None, max_opsets=None
+):  # type: ignore
     """
     Creates documentation in a folder for all known
     ONNX operators defined in onnxruntime or a subset.
@@ -795,23 +784,9 @@ def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime",
                 name = op["name"]
                 dom = self.domain.replace(".", "-")
                 table_dom.append(f"    * - :ref:`l-onnx-doc{dom}-{name}`")
-                versions = list(
-                    reversed(
-                        sorted(
-                            (k, v) for k, v in op["links"].items() if isinstance(k, int)
-                        )
-                    )
-                )
+                versions = list(reversed(sorted((k, v) for k, v in op["links"].items() if isinstance(k, int))))
                 col1 = ", ".join(f":ref:`{k} <{v}>`" for k, v in versions)
-                diffs = list(
-                    reversed(
-                        sorted(
-                            (k, v)
-                            for k, v in op["links"].items()
-                            if isinstance(k, tuple)
-                        )
-                    )
-                )
+                diffs = list(reversed(sorted((k, v) for k, v in op["links"].items() if isinstance(k, tuple))))
                 col2 = ", ".join(f":ref:`{k[1]}/{k[0]} <{v}>`" for k, v in diffs)
                 table_dom.append(f"      - {col1}")
                 table_dom.append(f"      - {col2}")
@@ -858,9 +833,7 @@ def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime",
             if flog is not None:
                 flog(f"generate page for onnx {dom!r} - {op!r}")  # pragma: no cover
             page_name = f"onnx_{dom.replace('.', '')}_{op}"
-            doc, d_links = get_rst_doc(
-                folder, op, domain=dom, version=None, example=True, diff=True
-            )
+            doc, d_links = get_rst_doc(folder, op, domain=dom, version=None, example=True, diff=True)
             if dom == "":
                 main = op
             else:
