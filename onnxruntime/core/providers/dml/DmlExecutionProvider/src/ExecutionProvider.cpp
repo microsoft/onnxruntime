@@ -121,7 +121,7 @@ namespace Dml
         ORT_TRY
         {
         void* opaqueData = m_bfcAllocator->Alloc(size);
-        auto bufferRegion = m_subAllocator->CreateManagedBufferRegion(opaqueData, size);
+        auto bufferRegion = m_gpuAllocator->CreateManagedBufferRegion(opaqueData, size);
         bufferRegion.CopyTo(managedBufferRegion);
         return S_OK;
         }
@@ -133,7 +133,7 @@ namespace Dml
         MLOperatorTensor mlOperatorTensor(tensor);
         void* data = mlOperatorTensor.GetByteData();
         auto sizeInBytes = mlOperatorTensor.GetUnalignedTensorByteSize();
-        return m_subAllocator->CreateBufferRegion(data, sizeInBytes);
+        return m_gpuAllocator->CreateBufferRegion(data, sizeInBytes);
     }
 
     ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(IMLOperatorTensor* tensor) const noexcept
@@ -200,7 +200,7 @@ namespace Dml
         m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);
 
         // Wrap the BFC allocator into our own allocator
-        m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_subAllocator.get());
+        m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_subAllocator);
 
         m_context->SetAllocator(m_gpuAllocator);
 
@@ -844,7 +844,7 @@ namespace Dml
 
     void ExecutionProviderImpl::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        m_subAllocator->SetDefaultRoundingMode(roundingMode);
+        m_gpuAllocator->SetDefaultRoundingMode(roundingMode);
     }
 
     void ExecutionProviderImpl::ReleaseCompletedReferences()
@@ -861,21 +861,21 @@ namespace Dml
     void ExecutionProviderImpl::GetABIDataInterface(void* data, IUnknown** abiData) const
     {
         assert(!m_closed);
-        auto uavResource = m_subAllocator->GetAllocationInfo(data)->GetUavResource();
+        auto uavResource = m_gpuAllocator->GetAllocationInfo(data)->GetUavResource();
         uavResource->AddRef();
         *abiData = uavResource;
     }
 
     void ExecutionProviderImpl::GetManagedBufferRegion(void* data, uint64_t size, DmlManagedBufferRegion** abiData) const
     {
-        auto managedBufferRegion = m_subAllocator->CreateManagedBufferRegion(data, size);
+        auto managedBufferRegion = m_gpuAllocator->CreateManagedBufferRegion(data, size);
         ORT_THROW_IF_FAILED(managedBufferRegion.CopyTo(abiData));
     }
 
     uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(void* data, bool isInternalOperator)
     {
         assert(!isInternalOperator);
-        return m_subAllocator->GetAllocationInfo(data)->GetPooledResourceId();
+        return m_gpuAllocator->GetAllocationInfo(data)->GetPooledResourceId();
     }
 
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
