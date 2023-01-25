@@ -23,6 +23,9 @@ public:
     DmlOperatorConcatFromSequence(const MLOperatorKernelCreationContext& kernelInfo)
     :   DmlOperator(kernelInfo)
     {
+        auto new_axis = static_cast<uint32_t>(kernelInfo.GetOptionalAttribute<int>(AttrName::NewAxis, 0));
+        ML_CHECK_VALID_ARGUMENT(1 == new_axis || 0 == new_axis);
+
         // Ensure there is only 1 input, and 1 output
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 1);
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
@@ -33,7 +36,7 @@ public:
         auto sequenceInputDataType = edgeDesc.tensorDataType;
         auto sequenceInputDmlDataType = Dml::GetDmlDataTypeFromMlDataTypeNoThrow(sequenceInputDataType);
 
-        // Ensure there the singular output is a tensors        
+        // Ensure there the singular output is a tensors
         edgeDesc = kernelInfo.GetOutputEdgeDescription(0);
         assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
@@ -56,15 +59,25 @@ public:
                     continue;
                 }
 
+                auto r = static_cast<uint32_t>(shape.size());
+                axis = static_cast<uint32_t>(HandleNegativeAxis(kernelInfo.GetOptionalAttribute<int>(AttrName::Axis, -1), r));
+                if (new_axis)
+                {
+                    ML_CHECK_VALID_ARGUMENT(axis < r + 1);
+                    shape.insert(shape.begin() + axis, 1);
+                }
+                else
+                {
+                    ML_CHECK_VALID_ARGUMENT(axis < r);
+                }
+
                 // When processing the first tensor, initialize output shape, inputDimCount and axis.
                 if (!inputDimCount)
                 {
                     m_outputShape = shape;
-                    inputDimCount = static_cast<uint32_t>(shape.size());
-                    axis = static_cast<uint32_t>(HandleNegativeAxis(kernelInfo.GetOptionalAttribute<int>(AttrName::Axis, -1), *inputDimCount));
-                    ML_CHECK_VALID_ARGUMENT(axis < inputDimCount);
+                    inputDimCount = r + new_axis;
                 }
-                
+
                 ML_CHECK_BOOL(*inputDimCount == shape.size());
                 m_inputTensorDescs.emplace_back(TensorDesc(sequenceInputDmlDataType, shape));
                 m_inputIndices.push_back(i);
