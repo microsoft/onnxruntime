@@ -14,6 +14,8 @@ The [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX/) execution p
 ## Contents
 {: .no_toc }
 
+* TOC placeholder
+{:toc}
 ## Install
 
 **NOTE** Please make sure to install the proper version of Pytorch specified here [PyTorch Version](../install/#training-install-table-for-all-languages).
