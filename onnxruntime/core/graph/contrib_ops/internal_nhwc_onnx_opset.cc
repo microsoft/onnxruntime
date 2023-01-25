@@ -86,6 +86,7 @@ void OpSet_Internal_NHWC_ONNX::ForEachSchema(const std::function<void(ONNX_NAMES
   REGISTER_NHWC_SCHEMA_FROM_MSDOMAIN(fn, QLinearConvTranspose, 1);
 
   REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, GlobalAveragePool, 1);
+  REGISTER_NHWC_SCHEMA_WITH_ACTIVATION(fn, GlobalMaxPool, 1);
 
   // TODO: Add other layout sensitive ops when needed. Those are:
   //   BatchNormalization,
