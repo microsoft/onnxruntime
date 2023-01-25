@@ -156,7 +156,7 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
   const weightWidth = context.inputs[1].dims[3];
 
   const outputShape = calculateOutputShape(
-      context.inputs[0].dims, context.inputs[1].dims, attributes.dilations, attributes.pads, attributes.strides,
+      context.inputs[0].dims, context.inputs[1].dims, attributes.dilations, adjustedAttributes.pads, attributes.strides,
       isChannelsLast);
   const outHeight = outputShape[isChannelsLast ? 1 : 2];
   const outWidth = outputShape[isChannelsLast ? 2 : 3];
