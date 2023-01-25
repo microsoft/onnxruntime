@@ -318,7 +318,7 @@ Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
       break;
     }
     default:
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size : ");
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported kernel dimension : " + std::to_string(kernel_shape.size()));
   }
 
   return Status::OK();
