@@ -98,9 +98,9 @@ and we show the confusion matrix.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[15  0  0]
- [ 0 10  1]
- [ 0  0 12]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0 12  1]
+ [ 0  0 13]]
 </pre></div>
 </div>
 </section>
@@ -142,9 +142,9 @@ output name=&#39;output_label&#39; and shape=[None]
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[15  0  0]
- [ 0 10  0]
- [ 0  0 13]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0 12  0]
+ [ 0  0 14]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
@@ -159,9 +159,9 @@ scikit-learn.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">prob_sklearn</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[3.34857930e-04 1.75161550e-01 8.24503592e-01]
- [2.10495002e-02 9.19659332e-01 5.92911677e-02]
- [9.74472714e-01 2.55271927e-02 9.31101356e-08]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[9.64397638e-01 3.56022281e-02 1.33661432e-07]
+ [1.12861883e-02 7.36931324e-01 2.51782488e-01]
+ [9.71882114e-01 2.81177168e-02 1.68768358e-07]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
@@ -174,9 +174,9 @@ The probabilies appear to be</p>
 <span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">prob_rt</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.00033485802123323083, 1: 0.1751614362001419, 2: 0.8245037198066711},
- {0: 0.02104950323700905, 1: 0.9196593165397644, 2: 0.05929117649793625},
- {0: 0.97447270154953, 1: 0.02552717924118042, 2: 9.311015247703835e-08}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.964397668838501, 1: 0.03560224175453186, 2: 1.3366144457904738e-07},
+ {0: 0.01128618698567152, 1: 0.7369312644004822, 2: 0.25178253650665283},
+ {0: 0.9718821048736572, 1: 0.028117714449763298, 2: 1.6876846586910688e-07}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
@@ -200,11 +200,11 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 4.79e-05 min=4.42e-05 max=7.36e-05
+Average 4.45e-05 min=4.23e-05 max=5.86e-05
 Execution time for ONNX Runtime
-Average 2.24e-05 min=2.16e-05 max=2.83e-05
+Average 2.2e-05 min=2.14e-05 max=2.68e-05
 
-2.244237500065083e-05
+2.1959864999132605e-05
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
@@ -232,11 +232,11 @@ as opposed to a batch of prediction.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00442 min=0.0043 max=0.00603
+Average 0.00412 min=0.00409 max=0.00419
 Execution time for sess_predict
-Average 0.00104 min=0.00103 max=0.00108
+Average 0.00102 min=0.00101 max=0.00105
 
-0.0010441262300000176
+0.0010201415149995795
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
@@ -253,11 +253,11 @@ Average 0.00104 min=0.00103 max=0.00108
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.00643 min=0.0064 max=0.00664
+Average 0.0062 min=0.00618 max=0.00622
 Execution time for sess_predict_proba
-Average 0.00111 min=0.00109 max=0.00113
+Average 0.00108 min=0.00107 max=0.0011
 
-0.0011136213500003577
+0.0010763829249992797
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -295,11 +295,11 @@ in every case.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.699 min=0.697 max=0.702
+Average 0.676 min=0.675 max=0.678
 Execution time for sess_predict_proba
-Average 0.00134 min=0.00131 max=0.00154
+Average 0.00136 min=0.00132 max=0.00164
 
-0.0013375981050003816
+0.0013557706149995852
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
@@ -334,40 +334,40 @@ Average 0.00134 min=0.00131 max=0.00154
 </pre></div>
 </div>
 <img src="../images/sphx_glr_plot_train_convert_predict_001.png" srcset="../images/sphx_glr_plot_train_convert_predict_001.png" alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.0507 min=0.0504 max=0.0513
-Average 0.00105 min=0.00104 max=0.00107
+Average 0.0492 min=0.0491 max=0.0493
+Average 0.00102 min=0.00101 max=0.00104
 10
-Average 0.0849 min=0.0848 max=0.0849
-Average 0.00107 min=0.00107 max=0.00109
+Average 0.0825 min=0.0824 max=0.0827
+Average 0.00105 min=0.00104 max=0.00107
 15
-Average 0.119 min=0.119 max=0.119
-Average 0.00108 min=0.00107 max=0.0011
+Average 0.116 min=0.116 max=0.116
+Average 0.00104 min=0.00103 max=0.00107
 20
-Average 0.153 min=0.153 max=0.153
-Average 0.0011 min=0.00109 max=0.00112
+Average 0.149 min=0.149 max=0.149
+Average 0.00106 min=0.00105 max=0.00108
 25
-Average 0.187 min=0.187 max=0.187
-Average 0.00109 min=0.00108 max=0.00111
+Average 0.182 min=0.182 max=0.184
+Average 0.00108 min=0.00107 max=0.0011
 30
-Average 0.221 min=0.221 max=0.221
-Average 0.00112 min=0.00111 max=0.00115
+Average 0.215 min=0.214 max=0.215
+Average 0.00108 min=0.00108 max=0.0011
 35
-Average 0.255 min=0.255 max=0.256
-Average 0.00111 min=0.0011 max=0.00113
+Average 0.248 min=0.247 max=0.248
+Average 0.0011 min=0.00108 max=0.00113
 40
-Average 0.289 min=0.289 max=0.289
-Average 0.00113 min=0.00112 max=0.00116
+Average 0.281 min=0.281 max=0.281
+Average 0.0011 min=0.00109 max=0.00113
 45
-Average 0.325 min=0.323 max=0.33
-Average 0.00114 min=0.00113 max=0.00117
+Average 0.314 min=0.314 max=0.314
+Average 0.0011 min=0.00109 max=0.00113
 50
-Average 0.357 min=0.357 max=0.357
-Average 0.00117 min=0.00115 max=0.0012
+Average 0.347 min=0.347 max=0.348
+Average 0.00113 min=0.00112 max=0.00116
 
-&lt;matplotlib.legend.Legend object at 0x7f9f18dcf100&gt;
+&lt;matplotlib.legend.Legend object at 0x7eff9f4d4400&gt;
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  15.008 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  8.827 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/c647c128e0cf2b3db04ce60b41ef1a14/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
