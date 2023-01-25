@@ -1444,16 +1444,16 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
                                           const char* func_name, const char* format, ...) const noexcept {
   va_list vargs;
   va_start(vargs, format);
-  int msg_size = vsnprintf(nullptr, 0U, format, vargs);
+  int msg_len = vsnprintf(nullptr, 0U, format, vargs);
   va_end(vargs);
 
-  if (msg_size < 0) {  // Formatting error
+  if (msg_len < 0) {  // Formatting error
     return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
   }
 
   va_start(vargs, format);
   OrtStatus* status = LogFormattedMessageImpl(log_severity_level, file_path, line_number, func_name,
-                                              static_cast<size_t>(msg_size), format, vargs);
+                                              static_cast<size_t>(msg_len + 1), format, vargs);
   va_end(vargs);
 
   return Status{status};
