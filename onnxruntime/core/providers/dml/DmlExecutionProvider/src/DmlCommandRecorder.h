@@ -6,6 +6,7 @@
 #include "ICommandRecorder.h"
 #include "CommandAllocatorRing.h"
 #include "core/framework/allocator.h"
+#include "DmlGpuAllocator.h"
 
 namespace Dml
 {
@@ -56,8 +57,7 @@ namespace Dml
         void Open() final;
         void CloseAndExecute() final;
 
-        void SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator);
-        void SetSubAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
+        void SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator);
 
         bool HasUnsubmittedWork() override
         {
@@ -84,8 +84,7 @@ namespace Dml
         ID3D12DescriptorHeap* m_currentDescriptorHeap = nullptr;
 
         // The weak pointer avoids a circular reference from context->recorder->allocator->context
-        std::weak_ptr<onnxruntime::IAllocator> m_allocator;
-        std::weak_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::weak_ptr<DmlGpuAllocator> m_allocator;
 
         CommandAllocatorRing<2> m_commandAllocatorRing;
 

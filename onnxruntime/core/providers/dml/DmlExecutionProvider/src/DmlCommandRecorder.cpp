@@ -4,7 +4,6 @@
 #include "precomp.h"
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
-#include "BucketizedBufferAllocator.h"
 #include "absl/cleanup/cleanup.h"
 
 using namespace Dml;
@@ -23,15 +22,11 @@ DmlCommandRecorder::DmlCommandRecorder(
     ORT_THROW_IF_FAILED(dmlDevice->CreateCommandRecorder(IID_PPV_ARGS(&m_recorder)));
 }
 
-void DmlCommandRecorder::SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator)
+void DmlCommandRecorder::SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator)
 {
     m_allocator = allocator;
 }
 
-void DmlCommandRecorder::SetSubAllocator(std::weak_ptr<BucketizedBufferAllocator> subAllocator)
-{
-    m_subAllocator = subAllocator;
-}
 
 void DmlCommandRecorder::InitializeOperator(
     IDMLCompiledOperator* op,
@@ -74,7 +69,7 @@ void DmlCommandRecorder::InitializeOperator(
         }
         absl::Cleanup([allocator, tempResourceHandle]() { allocator->Free(tempResourceHandle); });
 
-        auto subAllocator = m_subAllocator.lock();
+        auto subAllocator = m_allocator.lock();
         auto bufferRegion = subAllocator->CreateBufferRegion(tempResourceHandle, temporaryResourceSize);
 
         // Bind the temporary resource.
@@ -154,7 +149,7 @@ void DmlCommandRecorder::ExecuteOperator(
         }
         absl::Cleanup([allocator, tempResourceHandle]() { allocator->Free(tempResourceHandle); });
 
-        auto subAllocator = m_subAllocator.lock();
+        auto subAllocator = m_allocator.lock();
         auto bufferRegion = subAllocator->CreateBufferRegion(tempResourceHandle, temporaryResourceSize);
 
         // Bind the temporary resource.

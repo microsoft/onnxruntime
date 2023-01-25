@@ -10,6 +10,7 @@
 namespace Dml
 {
     class CommandQueue;
+    class DmlGpuAllocator;
 
     // Asynchronously performs GPU work, and automatically manages command list recording and submission to queues.
     // Work submitted to the ExecutionContext is typically recorded onto a command list and may not immediately begin
@@ -24,7 +25,7 @@ namespace Dml
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* queue);
 
-        void SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator);
+        void SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator);
 
         // Waits for flushed work, discards unflushed work, and discards associated references to
         // prevent circular references.  Must be the last call on the object before destruction.

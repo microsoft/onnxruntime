@@ -4,31 +4,25 @@
 #pragma once
 
 #include "core/framework/allocator.h"
-#include "BucketizedBufferAllocator.h"
+#include "DmlBufferRegion.h"
+#include "DmlManagedBufferRegion.h"
 
 namespace Dml
 {
+    class BucketizedBufferAllocator;
+    class AllocationInfo;
+
     class DmlGpuAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<BucketizedBufferAllocator> subAllocator)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
-        m_bfcAllocator(bfcAllocator),
-        m_subAllocator(std::move(subAllocator)) {}
+        DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<BucketizedBufferAllocator> subAllocator);
 
-        void* Alloc(size_t size_in_bytes) final { return m_bfcAllocator->Alloc(size_in_bytes); }
-        void Free(void* ptr) final { m_bfcAllocator->Free(ptr); }
-        D3D12BufferRegion CreateBufferRegion(const void* ptr, uint64_t size_in_bytes) { return m_subAllocator->CreateBufferRegion(ptr, size_in_bytes); }
-        ComPtr<DmlManagedBufferRegion> CreateManagedBufferRegion(const void* ptr, uint64_t size_in_bytes) { return m_subAllocator->CreateManagedBufferRegion(ptr, size_in_bytes); }
-        AllocationInfo* GetAllocationInfo(const void* ptr) { return m_subAllocator->GetAllocationInfo(ptr); }
-        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode) { m_subAllocator->SetDefaultRoundingMode(roundingMode); }
-        BucketizedBufferAllocator* GetSubAllocator() const { return m_subAllocator.get(); }
+        void* Alloc(size_t size_in_bytes) final;
+        void Free(void* ptr) final;
+        D3D12BufferRegion CreateBufferRegion(const void* ptr, uint64_t size_in_bytes);
+        ComPtr<DmlManagedBufferRegion> CreateManagedBufferRegion(const void* ptr, uint64_t size_in_bytes);
+        AllocationInfo* GetAllocationInfo(const void* ptr);
+        void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
     private:
         // This allocator is managed by ORT and should be used to allocate/free memory in order

@@ -120,7 +120,7 @@ namespace Dml
     {
         ORT_TRY
         {
-        void* opaqueData = m_bfcAllocator->Alloc(size);
+        void* opaqueData = m_gpuAllocator->Alloc(size);
         auto bufferRegion = m_gpuAllocator->CreateManagedBufferRegion(opaqueData, size);
         bufferRegion.CopyTo(managedBufferRegion);
         return S_OK;
@@ -182,7 +182,7 @@ namespace Dml
 
         m_context = std::make_shared<ExecutionContext>(m_d3d12Device.Get(), m_dmlDevice.Get(), queue);
 
-        m_subAllocator = std::make_shared<BucketizedBufferAllocator>(
+        auto subAllocator = std::make_shared<BucketizedBufferAllocator>(
             m_d3d12Device.Get(),
             m_context,
             queue,
@@ -193,14 +193,14 @@ namespace Dml
 
         // Create a BFC allocator that encapsulates our allocator
         onnxruntime::AllocatorCreationInfo memoryInfo(
-            [this](OrtDevice::DeviceId id) {
-                return std::make_unique<DmlBfcAllocator>(m_subAllocator.get());
+            [subAllocator](OrtDevice::DeviceId id) {
+                return std::make_unique<DmlBfcAllocator>(subAllocator.get());
             });
 
         m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);
 
         // Wrap the BFC allocator into our own allocator
-        m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_subAllocator);
+        m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), subAllocator);
 
         m_context->SetAllocator(m_gpuAllocator);
 
@@ -1001,7 +1001,7 @@ namespace Dml
     ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
     {
         Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
-        return pAllocationInfo->GetSubAllocator()->GetAllocationInfo(ptr)->GetUavResource();
+        return pAllocationInfo->GetAllocationInfo(ptr)->GetUavResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

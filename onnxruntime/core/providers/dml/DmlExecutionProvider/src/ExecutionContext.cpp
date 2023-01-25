@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "ExecutionContext.h"
 #include "CommandQueue.h"
+#include "DmlGpuAllocator.h"
 
 namespace Dml
 {
@@ -18,7 +19,7 @@ namespace Dml
         ORT_THROW_IF_FAILED(dmlDevice->GetParentDevice(IID_GRAPHICS_PPV_ARGS(m_d3dDevice.GetAddressOf())));
     }
 
-    void ExecutionContext::SetAllocator(std::weak_ptr<onnxruntime::IAllocator> allocator)
+    void ExecutionContext::SetAllocator(std::weak_ptr<DmlGpuAllocator> allocator)
     {
         m_dmlRecorder.SetAllocator(allocator);
     }
