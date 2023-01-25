@@ -360,12 +360,22 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorEdgeDescription ret = {};
 
         ML_CHECK_BOOL(type->value_case() == onnx::TypeProto::kTensorType ||
+            type->value_case() == onnx::TypeProto::kSequenceType ||
             type->value_case() == onnx::TypeProto::VALUE_NOT_SET);
 
         if (type->value_case() == onnx::TypeProto::kTensorType)
         {
             ret.edgeType = MLOperatorEdgeType::Tensor;
             const onnx::TypeProto_Tensor tensorType = type->tensor_type();
+            if (tensorType.has_elem_type())
+            {
+                ret.tensorDataType = ToMLTensorDataType(onnx::TensorProto_DataType(tensorType.elem_type()));
+            }
+        }
+        else if (type->value_case() == onnx::TypeProto::kSequenceType)
+        {
+            ret.edgeType = MLOperatorEdgeType::SequenceTensor;
+            const auto& tensorType = type->sequence_type().elem_type().tensor_type();
             if (tensorType.has_elem_type())
             {
                 ret.tensorDataType = ToMLTensorDataType(onnx::TensorProto_DataType(tensorType.elem_type()));
@@ -379,61 +389,117 @@ namespace Windows::AI::MachineLearning::Adapter
 #pragma warning(disable:4702)
     std::string ToTypeString(MLOperatorEdgeDescription desc)
     {
-        if (desc.edgeType != MLOperatorEdgeType::Tensor)
+        if (desc.edgeType == MLOperatorEdgeType::Tensor)
         {
-            ORT_THROW_HR(E_NOTIMPL);
+            switch (desc.tensorDataType)
+            {
+            case MLOperatorTensorDataType::Float:
+                return "tensor(float)";
+
+            case MLOperatorTensorDataType::UInt8:
+                return "tensor(uint8)";
+
+            case MLOperatorTensorDataType::Int8:
+                return "tensor(int8)";
+
+            case MLOperatorTensorDataType::UInt16:
+                return "tensor(uint16)";
+
+            case MLOperatorTensorDataType::Int16:
+                return "tensor(int16)";
+
+            case MLOperatorTensorDataType::Int32:
+                return "tensor(int32)";
+
+            case MLOperatorTensorDataType::Int64:
+                return "tensor(int64)";
+
+            case MLOperatorTensorDataType::String:
+                return "tensor(string)";
+
+            case MLOperatorTensorDataType::Bool:
+                return "tensor(bool)";
+
+            case MLOperatorTensorDataType::Float16:
+                return "tensor(float16)";
+
+            case MLOperatorTensorDataType::Double:
+                return "tensor(double)";
+
+            case MLOperatorTensorDataType::UInt32:
+                return "tensor(uint32)";
+
+            case MLOperatorTensorDataType::UInt64:
+                return "tensor(uint64)";
+
+            case MLOperatorTensorDataType::Complex64:
+                return "tensor(complext64)";
+
+            case MLOperatorTensorDataType::Complex128:
+                return "tensor(complext128)";
+
+            default:
+                ORT_THROW_HR(E_NOTIMPL);
+                return "";
+            }
         }
-
-        switch (desc.tensorDataType)
+        else if (desc.edgeType == MLOperatorEdgeType::SequenceTensor)
         {
-        case MLOperatorTensorDataType::Float:
-            return "tensor(float)";
+            switch (desc.tensorDataType)
+            {
+            case MLOperatorTensorDataType::Float:
+                return "seq(tensor(float))";
 
-        case MLOperatorTensorDataType::UInt8:
-            return "tensor(uint8)";
+            case MLOperatorTensorDataType::UInt8:
+                return "seq(tensor(uint8))";
 
-        case MLOperatorTensorDataType::Int8:
-            return "tensor(int8)";
+            case MLOperatorTensorDataType::Int8:
+                return "seq(tensor(int8))";
 
-        case MLOperatorTensorDataType::UInt16:
-            return "tensor(uint16)";
+            case MLOperatorTensorDataType::UInt16:
+                return "seq(tensor(uint16))";
 
-        case MLOperatorTensorDataType::Int16:
-            return "tensor(int16)";
+            case MLOperatorTensorDataType::Int16:
+                return "seq(tensor(int16))";
 
-        case MLOperatorTensorDataType::Int32:
-            return "tensor(int32)";
+            case MLOperatorTensorDataType::Int32:
+                return "seq(tensor(int32))";
 
-        case MLOperatorTensorDataType::Int64:
-            return "tensor(int64)";
+            case MLOperatorTensorDataType::Int64:
+                return "seq(tensor(int64))";
 
-        case MLOperatorTensorDataType::String:
-            return "tensor(string)";
+            case MLOperatorTensorDataType::String:
+                return "seq(tensor(string))";
 
-        case MLOperatorTensorDataType::Bool:
-            return "tensor(bool)";
+            case MLOperatorTensorDataType::Bool:
+                return "seq(tensor(bool))";
 
-        case MLOperatorTensorDataType::Float16:
-            return "tensor(float16)";
+            case MLOperatorTensorDataType::Float16:
+                return "seq(tensor(float16))";
 
-        case MLOperatorTensorDataType::Double:
-            return "tensor(double)";
+            case MLOperatorTensorDataType::Double:
+                return "seq(tensor(double))";
 
-        case MLOperatorTensorDataType::UInt32:
-            return "tensor(uint32)";
+            case MLOperatorTensorDataType::UInt32:
+                return "seq(tensor(uint32))";
 
-        case MLOperatorTensorDataType::UInt64:
-            return "tensor(uint64)";
+            case MLOperatorTensorDataType::UInt64:
+                return "seq(tensor(uint64))";
 
-        case MLOperatorTensorDataType::Complex64:
-            return "tensor(complext64)";
+            case MLOperatorTensorDataType::Complex64:
+                return "seq(tensor(complext64))";
 
-        case MLOperatorTensorDataType::Complex128:
-            return "tensor(complext128)";
+            case MLOperatorTensorDataType::Complex128:
+                return "seq(tensor(complext128))";
 
-        default:
+            default:
+                ORT_THROW_HR(E_NOTIMPL);
+                return "";
+            }
+        }
+        else
+        {
             ORT_THROW_HR(E_NOTIMPL);
-            return "";
         }
 #pragma warning(pop)
     }
@@ -741,8 +807,7 @@ namespace Windows::AI::MachineLearning::Adapter
             *edgeDesc = ToMLEdgeDesc(type);
 
             assert(edgeDesc->edgeType != MLOperatorEdgeType::Undefined);
-            assert((edgeDesc->edgeType != MLOperatorEdgeType::Tensor /*&& edgeDesc->edgeType != MLOperatorEdgeType::TensorSequence*/) ||
-                    edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
+            assert(edgeDesc->tensorDataType != MLOperatorTensorDataType::Undefined);
 
             return S_OK;
         }
@@ -2314,7 +2379,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
             MLOperatorEdgeDescription edgeDesc;
             ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
-            ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Undefined || edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+            ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
             // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
             // This is done here in case the dimension count is zero (scalar)

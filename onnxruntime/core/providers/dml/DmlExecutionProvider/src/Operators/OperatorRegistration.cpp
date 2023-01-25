@@ -854,7 +854,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 };
 
 template<typename T>
-MLOperatorEdgeDescription EdgeDesc()
+MLOperatorEdgeDescription TensorEdgeDesc()
 {
     return {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLTypeTraits<T>::TensorType)};
 }
@@ -929,19 +929,19 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             std::vector<MLOperatorTensorDataType> supportedTypeList;
             SupportedTensorDataTypes supportedTypes = information.supportedTensorDataTypes[i];
 
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(EdgeDesc<float>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(EdgeDesc<uint8_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(EdgeDesc<int8_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(EdgeDesc<uint16_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int16  )) edgeDescs.push_back(EdgeDesc<int16_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int32  )) edgeDescs.push_back(EdgeDesc<int32_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int64  )) edgeDescs.push_back(EdgeDesc<int64_t>());
-            //if (bool(supportedTypes & SupportedTensorDataTypes::String )) edgeDescs.push_back(EdgeDesc<std::string>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Bool   )) edgeDescs.push_back(EdgeDesc<bool>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(EdgeDesc<::MLFloat16>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float64)) edgeDescs.push_back(EdgeDesc<double>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt32 )) edgeDescs.push_back(EdgeDesc<uint32_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt64 )) edgeDescs.push_back(EdgeDesc<uint64_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(TensorEdgeDesc<float>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(TensorEdgeDesc<uint8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(TensorEdgeDesc<int8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(TensorEdgeDesc<uint16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int16  )) edgeDescs.push_back(TensorEdgeDesc<int16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int32  )) edgeDescs.push_back(TensorEdgeDesc<int32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int64  )) edgeDescs.push_back(TensorEdgeDesc<int64_t>());
+            //if (bool(supportedTypes & SupportedTensorDataTypes::String )) edgeDescs.push_back(TensorEdgeDesc<std::string>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Bool   )) edgeDescs.push_back(TensorEdgeDesc<bool>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(TensorEdgeDesc<::MLFloat16>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float64)) edgeDescs.push_back(TensorEdgeDesc<double>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt32 )) edgeDescs.push_back(TensorEdgeDesc<uint32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt64 )) edgeDescs.push_back(TensorEdgeDesc<uint64_t>());
 
             typeConstraints[i].allowedTypeCount = static_cast<uint32_t>(edgeDescs.size() - lastEdgeDescSize);
             lastEdgeDescSize = edgeDescs.size();

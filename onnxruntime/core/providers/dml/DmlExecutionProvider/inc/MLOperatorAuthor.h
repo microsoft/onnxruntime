@@ -105,6 +105,7 @@ enum class MLOperatorEdgeType : uint32_t
 {
     Undefined = 0,
     Tensor = 1,
+    SequenceTensor = 2,
 };
 
 //! \struct MLOperatorEdgeDescription
@@ -119,6 +120,7 @@ struct MLOperatorEdgeDescription
         uint64_t reserved;
 
         //! The data type of a tensor.  Used when edgeType is set to Tensor.
+        //! The data type of each tensor in a sequence of tensors.  Used when edgeType is set to Sequence.
         MLOperatorTensorDataType tensorDataType;
     };
 };
