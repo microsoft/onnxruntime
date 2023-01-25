@@ -45,6 +45,7 @@ namespace Dml
 
         BucketizedBufferAllocator(
             ID3D12Device* device,
+            std::shared_ptr<ExecutionContext> context,
             ID3D12CommandQueue* queue,
             const D3D12_HEAP_PROPERTIES& heap_props,
             D3D12_HEAP_FLAGS heap_flags,
@@ -107,13 +108,10 @@ namespace Dml
         friend class AllocationInfo;
         void FreeResource(void* p, uint64_t resourceId);
 
-        ComPtr<ID3D12Device> m_device;
-
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
-        std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<BucketizedBufferAllocator> m_subAllocator;
 
     #if _DEBUG
@@ -123,7 +121,8 @@ namespace Dml
 
         std::mutex mutex_;
 
-        Microsoft::WRL::ComPtr<ID3D12Device> device_;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_device;
+        std::shared_ptr<ExecutionContext> m_context;
         Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_;
         const D3D12_HEAP_PROPERTIES heap_properties_;
         const D3D12_HEAP_FLAGS heap_flags_;

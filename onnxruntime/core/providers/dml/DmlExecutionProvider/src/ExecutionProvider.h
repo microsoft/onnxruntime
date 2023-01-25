@@ -97,11 +97,6 @@ namespace Dml
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
 
-        void GetShadowCopyIfRequired(
-            bool isInternalOperator,
-            IUnknown* data,
-            IUnknown** dataCopy) const override;
-
         void GetABIDataInterface(
             void* data,
             IUnknown** abiData) const override;
@@ -191,8 +186,8 @@ namespace Dml
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
-        std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
         std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_bfcAllocator;
         std::shared_ptr<DmlGpuAllocator> m_gpuAllocator;
         std::shared_ptr<DmlCpuAllocator> m_cpuInputAllocator;
         std::shared_ptr<DmlCpuAllocator> m_cpuOutputAllocator;

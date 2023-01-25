@@ -39,11 +39,6 @@ namespace Windows::AI::MachineLearning::Adapter
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
 
-        virtual void GetShadowCopyIfRequired(
-            bool isInternalOperator,
-            IUnknown* data,
-            IUnknown** dataCopy) const = 0;
-
         virtual void GetABIDataInterface(
             void* data,
             IUnknown** abiData) const = 0;

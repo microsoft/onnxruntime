@@ -283,12 +283,10 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     bool m_internalOperator = false;
 
     void* m_tensorData = nullptr;
-    ComPtr<IUnknown> m_dataInterface;
     bool m_isDataInterface = false;
 
     // The returned data may be a converted shadow copy, and the piece of it which
     // is returned may vary according to kernel registration options.
-    ComPtr<IUnknown> m_dataInterfaceOrShadowCopy;
     ComPtr<IUnknown> m_abiDataInterface;
 
 };

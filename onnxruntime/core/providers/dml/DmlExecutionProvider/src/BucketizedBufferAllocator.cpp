@@ -72,12 +72,14 @@ namespace Dml
 
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
+        std::shared_ptr<ExecutionContext> context,
         ID3D12CommandQueue* queue,
         const D3D12_HEAP_PROPERTIES& heap_props,
         D3D12_HEAP_FLAGS heap_flags,
         D3D12_RESOURCE_FLAGS resource_flags,
         D3D12_RESOURCE_STATES initial_state)
-        : device_(device),
+        : m_device(device),
+        m_context(context),
         queue_(queue),
         heap_properties_(heap_props),
         heap_flags_(heap_flags),
@@ -113,7 +115,7 @@ namespace Dml
 
         for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
         {
-            HRESULT create_resource_hr = device_->CreateReservedResource(
+            HRESULT create_resource_hr = m_device->CreateReservedResource(
                 &resource_desc,
                 states[i],
                 nullptr,
@@ -150,7 +152,7 @@ namespace Dml
                 heap_flags_);
 
             HRESULT create_heap_hr =
-                device_->CreateHeap(&heap_desc, IID_PPV_ARGS(&allocation.heaps[i]));
+                m_device->CreateHeap(&heap_desc, IID_PPV_ARGS(&allocation.heaps[i]));
             if (create_heap_hr == E_OUTOFMEMORY)
             {
                 return absl::nullopt;
@@ -215,7 +217,7 @@ namespace Dml
         allocation.heaps.resize(1);
         D3D12_HEAP_DESC heap_desc =
             CD3DX12_HEAP_DESC(size_in_bytes, heap_properties_, 0, heap_flags_);
-        HRESULT create_heap_hr = device_->CreateHeap(
+        HRESULT create_heap_hr = m_device->CreateHeap(
             &heap_desc,
             IID_PPV_ARGS(&allocation.heaps.front()));
         if (create_heap_hr == E_OUTOFMEMORY)
@@ -238,7 +240,7 @@ namespace Dml
 
         for (int i = 0; i < ABSL_ARRAYSIZE(resources); i++)
         {
-            HRESULT create_resource_hr = device_->CreatePlacedResource(
+            HRESULT create_resource_hr = m_device->CreatePlacedResource(
                 allocation.heaps.front().Get(),
                 0,
                 &resource_desc,

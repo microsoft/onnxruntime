@@ -1273,38 +1273,20 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         if (impl)
         {
+            m_tensorData = m_impl->MutableDataRaw();
+
             if (isDataInterface)
             {
-                // We assume that all data handles derive from IUnknown as their first base.
-                m_dataInterface = static_cast<IUnknown*>(m_impl->MutableDataRaw());
-
-                if (m_dataInterface)
+                if (m_tensorData)
                 {
-                    if (m_winmlExecutionProvider)
-                    {
-                        // The resource may require conversion to the layout expected according to the kernel options.
-                        // This will return either the original object or a shadow copy which uses a different layout.
-                        // This pattern assumes that Lotus is not re-using tensor allocations, so each output is
-                        // a fresh allocation which will not trigger a conversion in the provider.
-                        m_winmlExecutionProvider->GetShadowCopyIfRequired(m_internalOperator, m_dataInterface.Get(), m_dataInterfaceOrShadowCopy.GetAddressOf());
-
-                        // Get the actual object to be returned from the ABI, which varies for internal and external
-                        // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
-                        TranslateAllocationDataToAbi(
-                            m_winmlExecutionProvider.Get(),
-                            m_impl->Location(),
-                            m_dataInterfaceOrShadowCopy ? m_dataInterfaceOrShadowCopy.Get() : m_dataInterface.Get(),
-                            m_abiDataInterface.GetAddressOf());
-                    }
-                    else
-                    {
-                        m_abiDataInterface = m_dataInterface;
-                    }
+                    // Get the actual object to be returned from the ABI, which varies for internal and external
+                    // kernels (i.e. ID3D12Resource, versus something that tracks the layout).
+                    TranslateAllocationDataToAbi(
+                        m_winmlExecutionProvider.Get(),
+                        m_impl->Location(),
+                        m_tensorData,
+                        m_abiDataInterface.GetAddressOf());
                 }
-            }
-            else
-            {
-                m_tensorData = m_impl->MutableDataRaw();
             }
         }
     }
@@ -1383,7 +1365,7 @@ namespace Windows::AI::MachineLearning::Adapter
             return nullptr;
         }
 
-        return m_isDataInterface ? nullptr : m_tensorData;
+        return m_tensorData;
     }
 
     void STDMETHODCALLTYPE TensorWrapper::GetDataInterface(IUnknown** dataInterface) noexcept

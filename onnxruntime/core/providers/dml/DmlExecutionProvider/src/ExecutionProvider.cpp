@@ -184,6 +184,7 @@ namespace Dml
 
         m_subAllocator = std::make_shared<BucketizedBufferAllocator>(
             m_d3d12Device.Get(),
+            m_context,
             queue,
             CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS,
@@ -857,21 +858,12 @@ namespace Dml
         m_context->QueueReference(object);
     }
 
-    void ExecutionProviderImpl::GetShadowCopyIfRequired(
-        bool isInternalOperator,
-        IUnknown* data,
-        IUnknown** dataCopy) const
-    {
-        assert(!m_closed);
-
-        *dataCopy = data;
-        data->AddRef();
-    }
-
     void ExecutionProviderImpl::GetABIDataInterface(void* data, IUnknown** abiData) const
     {
         assert(!m_closed);
-        *abiData = m_subAllocator->GetAllocationInfo(data)->GetUavResource();
+        auto uavResource = m_subAllocator->GetAllocationInfo(data)->GetUavResource();
+        uavResource->AddRef();
+        *abiData = uavResource;
     }
 
     void ExecutionProviderImpl::GetManagedBufferRegion(void* data, uint64_t size, DmlManagedBufferRegion** abiData) const
