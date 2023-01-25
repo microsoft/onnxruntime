@@ -1333,10 +1333,6 @@ TEST(PoolTest, LpPool) {
 
 // test data generated with lp_pool_test_generator.py
 TEST(PoolTest, LpPool1d) {
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   std::vector<int64_t> kernel_sizes[2] = {{2}, {3}};
   std::vector<int64_t> strides[2] = {{1}, {2}};
   std::vector<float> ys[4] = {
@@ -1361,17 +1357,16 @@ TEST(PoolTest, LpPool1d) {
       test.AddAttribute("kernel_shape", kernel_sizes[kernel_size_count]);
 
       test.AddOutput<float>("Y", y_sizes[y_count], ys[y_count]);
-      test.Run();
+
+      // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
+      // TensorRT does not support 1d pooling
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
       y_count++;
     }
 }
 
 // test data generated with lp_pool_test_generator.py
 TEST(PoolTest, LpPool2d) {
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   std::vector<int64_t> kernel_sizes[2] = {{2, 2}, {3, 3}};
   std::vector<int64_t> strides[2] = {{1, 1}, {2, 2}};
   std::vector<float> ys[4] = {
@@ -1403,10 +1398,6 @@ TEST(PoolTest, LpPool2d) {
 }
 
 TEST(PoolTest, LpPoolCeilMode) {
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
-  }
-
   OpTester test("LpPool", 18);
 
   test.AddAttribute("auto_pad", "");
@@ -1416,7 +1407,10 @@ TEST(PoolTest, LpPoolCeilMode) {
   test.AddAttribute("p", static_cast<int64_t>(1));
   test.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
   test.AddOutput<float>("Y", {1, 1, 2}, {6, 7});
-  test.Run();
+
+  // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
+  // TensorRT does not support 1d pooling
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PoolTest, GlobalLpPool) {
