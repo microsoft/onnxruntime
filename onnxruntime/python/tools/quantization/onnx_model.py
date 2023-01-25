@@ -214,6 +214,17 @@ class ONNXModel:
         node = find_by_name(node_name, graph_nodes_list)
         return node
 
+    def find_nodes_by_type(self, node_type):
+        """ Find All nodes which have the same type]
+        @param node_type: the node_type is been searched
+        @rtype: list[Node
+        """
+        node_list = []
+        for node in self.nodes():
+            if node.op_type == node_type:
+                node_list.append(node)
+        return node_list
+
     def find_nodes_by_initializer(self, graph, initializer):
         """
         Find all nodes with given initializer as an input.
