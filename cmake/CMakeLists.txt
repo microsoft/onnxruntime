@@ -834,7 +834,6 @@ function(onnxruntime_set_compile_flags target_name)
       # external/protobuf/src/google/protobuf/arena.h:445:18: error: unused parameter 'p'
       # onnxruntime_src/cmake/external/protobuf/src/google/protobuf/repeated_ptr_field.h:752:66: error: unused parameter ‘prototype’ [-Werror=unused-parameter]
       target_compile_options(${target_name} PRIVATE "-Wno-unused-parameter")
-      endif()
       target_compile_definitions(${target_name} PUBLIC -DNSYNC_ATOMIC_CPP11)
       target_include_directories(${target_name} PRIVATE "${google_nsync_SOURCE_DIR}/public")
     endif()
