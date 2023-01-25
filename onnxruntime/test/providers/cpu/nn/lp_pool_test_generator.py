@@ -3,7 +3,7 @@
 
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 # use this code to generate test data for PoolTest.LpPool1d and PoolTest.LpPool2d
@@ -24,8 +24,8 @@ def generate_lppool_1d_test_cases() -> None:
         for stride in strides:
             print(kernel_size)
             print(stride)
-            m2 = nn.LPPool1d(p, kernel_size=kernel_size, stride=stride)
-            pt_y = m2(torch.from_numpy(x))
+            model = nn.LPPool1d(p, kernel_size=kernel_size, stride=stride)
+            pt_y = model(torch.from_numpy(x))
             print(torch.flatten(pt_y))
             print(pt_y.shape)
 
@@ -50,8 +50,8 @@ def generate_lppool_2d_test_cases() -> None:
     strides = [[1, 1], [2, 2]]
     for kernel_size in kernel_sizes:
         for stride in strides:
-            m2 = nn.LPPool2d(p, kernel_size=kernel_size, stride=stride)
-            pt_y = m2(torch.from_numpy(x))
+            model = nn.LPPool2d(p, kernel_size=kernel_size, stride=stride)
+            pt_y = model(torch.from_numpy(x))
             print(kernel_size)
             print(stride)
             print(torch.flatten(pt_y))
