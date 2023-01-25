@@ -102,6 +102,7 @@
         "^test_if_opt",
         "^test_loop16_seq_none",
         "^test_identity_opt",
+        "^test_col2im_pads*",           // remove this when using ONNX with this: https://github.com/onnx/onnx/pull/4769
         // Following tests are for opset 16 ops and are not yet implemented in ORT
         "^test_roialign_aligned_*",
         //GPU failures
@@ -116,15 +117,8 @@
         "^test_div_uint8_cuda",
         "^test_add_uint8_cuda",
         "^test_roialign_aligned_*",
-        "^test_bitwise_*",
-        "^test_center_crop_pad_*",
         "^test_clip_default_int8_max_expanded_cpu",
         "^test_clip_default_int8_min_expanded_cpu",
-        "^test_col2im_*",
-        "^test_constant_pad_axes_cpu",
-        "^test_constant_pad_cpu",
-        "^test_edge_pad_cpu",
-        "^test_reflect_pad_cpu",
         "^test_softplus_example_expanded_cpu",
         "^test_softplus_expanded_cpu",
         "^test_split_*",

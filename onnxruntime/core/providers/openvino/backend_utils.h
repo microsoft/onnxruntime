@@ -30,14 +30,6 @@ bool IsDebugEnabled();
 // Internal diagnostic function.
 bool IsCILogEnabled();
 
-bool UseCompiledNetwork();
-
-// std::string GetCurrentWorkingDir();
-
-// bool IsDirExists(const std::string& pathname);
-
-// void CreateDirectory(const std::string& ov_compiled_blobs_dir);
-
 int GetFirstAvailableDevice(GlobalContext& global_context);
 
 void FillOutputsWithConstantData(std::shared_ptr<ngraph::Node> node, Ort::UnownedValue& out_tensor);
@@ -68,7 +60,7 @@ void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
 std::shared_ptr<OVNetwork>
-CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context, 
+CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto, const GlobalContext& global_context, const SubGraphContext& subgraph_context,
               std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
