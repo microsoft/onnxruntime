@@ -202,7 +202,7 @@ namespace Dml
         // Wrap the BFC allocator into our own allocator
         m_gpuAllocator = std::make_shared<DmlGpuAllocator>(m_bfcAllocator.get(), m_subAllocator.get());
 
-        m_context->SetAllocator(m_bfcAllocator);
+        m_context->SetAllocator(m_gpuAllocator);
 
         m_uploadHeap = std::make_unique<PooledUploadHeap>(m_d3d12Device.Get(), m_context);
         m_readbackHeap = std::make_unique<ReadbackHeap>(m_d3d12Device.Get(), m_context);
