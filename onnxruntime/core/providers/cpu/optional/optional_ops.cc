@@ -5,6 +5,7 @@
 
 #include "optional_ops.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
@@ -70,14 +71,16 @@ static void CopySequenceTensor(AllocatorPtr alloc,
 
   tgt->SetType(src->DataType());
 
-  std::vector<Tensor> output_tensors;
+  std::vector<OrtValue> output_tensors;
   output_tensors.reserve(src->Size());
 
+  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto in_tensor = src->begin();
   for (; in_tensor != src->end(); ++in_tensor) {
-    Tensor tmp(in_tensor->DataType(), onnxruntime::TensorShape(in_tensor->Shape()), alloc);
-    CopyCpuTensor(&*in_tensor, &tmp);
-    output_tensors.push_back(std::move(tmp));
+    auto& tensor = in_tensor->Get<Tensor>();
+    auto tmp = std::make_unique<Tensor>(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), alloc);
+    CopyCpuTensor(&tensor, tmp.get());
+    output_tensors.emplace_back(OrtValue(tmp.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
   }
 
   tgt->SetElements(std::move(output_tensors));

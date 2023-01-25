@@ -4,6 +4,7 @@
 #include <memory>
 #include <utility>
 
+#include "core/framework/TensorSeq.h"
 #include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm.h"
 #include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm_impl.h"
@@ -19,8 +20,8 @@ constexpr float Epsilon = 0.000001f;
 void GetGroupedTensors(const TensorSeq* gradients, InlinedVector<int>* tensor_sizes,
                        InlinedVector<std::vector<void*>>* grouped_tensor_pointers) {
   for (size_t i = 0; i < gradients->Size(); ++i) {
-    (*tensor_sizes)[i] = static_cast<int>(gradients->Get(i).Shape().Size());
-    (*grouped_tensor_pointers)[i] = {const_cast<float*>(gradients->Get(i).Data<float>())};
+    (*tensor_sizes)[i] = static_cast<int>(gradients->Get(i).Get<Tensor>().Shape().Size());
+    (*grouped_tensor_pointers)[i] = {const_cast<float*>(gradients->Get(i).Get<Tensor>().Data<float>())};
   }
 }
 
@@ -54,7 +55,9 @@ Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* 
                                          source_tensor.DataRaw(),
                                          source_tensor.SizeInBytes(),
                                          cudaMemcpyDeviceToDevice, stream));
-    (*clipped_gradients)->Add(std::move(*target_tensor));  // Add will check for type consistency
+
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    (*clipped_gradients)->Add(OrtValue(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()));  // Add will check for type consistency
   }
 
   return Status::OK();

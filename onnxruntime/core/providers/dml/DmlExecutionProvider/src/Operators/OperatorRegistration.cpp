@@ -12,7 +12,98 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include <mutex>
+
 using namespace Microsoft::WRL;
+
+#include "core/framework/TensorSeq.h"
+#include "core/providers/cpu/sequence/sequence_ops.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+
+namespace onnxruntime {
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceAt);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceConstruct);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceEmpty);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceLength);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, ConcatFromSequence);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert);
+
+}
+
+namespace onnxruntime {
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceAt,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceAt);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceConstruct,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
+    SequenceConstruct);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceEmpty,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
+    SequenceEmpty);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceLength,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    SequenceLength);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceErase,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceErase);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceInsert,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceInsert);
+
+}
 
 namespace Dml
 {
@@ -116,6 +207,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Split13);
 DML_OP_EXTERN_CREATION_FUNCTION(Transpose);
 DML_OP_EXTERN_CREATION_FUNCTION(Tile);
 DML_OP_EXTERN_CREATION_FUNCTION(Concat);
+DML_OP_EXTERN_CREATION_FUNCTION(ConcatFromSequence);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice7);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice10);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice11);
@@ -456,6 +548,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
+    {REG_INFO_DYNAMIC_OUTPUTS(11, ConcatFromSequence,       typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
@@ -764,6 +857,27 @@ template<typename T>
 MLOperatorEdgeDescription EdgeDesc()
 {
     return {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLTypeTraits<T>::TensorType)};
+}
+
+void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry)
+{
+    using namespace onnxruntime;
+
+    static const BuildKernelCreateInfoFn function_table[] = {
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceAt)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceConstruct)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceEmpty)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceLength)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert)>,
+    };
+
+    for (auto& function_table_entry : function_table) {
+        KernelCreateInfo info = function_table_entry();
+        if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+            ORT_THROW_IF_ERROR(registry->Register(std::move(info)));
+        }
+    }
 }
 
 void RegisterDmlOperators(IMLOperatorRegistry* registry)

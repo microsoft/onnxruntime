@@ -116,9 +116,9 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
-    std::vector<Tensor> tensors;
+    std::vector<OrtValue> tensors;
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
+      tensors.emplace_back(*iter);
     }
     target_tensor_seq->SetElements(std::move(tensors));
     auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
@@ -201,21 +201,24 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (0 == size) {
         target_tensor_seq.SetType(source_tensor_seq.DataType());
       }
-      const Tensor& source_tensor = source_tensor_seq.Get(size);
-      std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
-      target_tensor_seq.Add(std::move(*target_tensor));
+      const auto& source_tensor = source_tensor_seq.Get(size).Get<Tensor>();
+      auto target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
+
+      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+      OrtValue output_value(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      target_tensor_seq.Add(std::move(output_value));
     }
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
+        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>()), stream});
       } else {
         if (stream)
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), *stream));
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>()), *stream));
         else
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>())));
       }
       ++source_iter;
       ++target_iter;
@@ -424,7 +427,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     } else if (feed.IsTensorSequence()) {
       const auto& tensor_seq = feed.Get<TensorSeq>();
       if (tensor_seq.Size() != std::size_t{0}) {
-        feed_locations[i] = tensor_seq.Get(0).Location().device;
+        feed_locations[i] = tensor_seq.Get(0).Get<Tensor>().Location().device;
       }
     } else if (feed.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -444,7 +447,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
       } else if (fetch.IsTensorSequence()) {
         const auto& tensor_seq = fetch.Get<TensorSeq>();
         if (tensor_seq.Size() != std::size_t{0}) {
-          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Get<Tensor>().Location();
         }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)

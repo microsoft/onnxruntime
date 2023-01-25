@@ -95,12 +95,14 @@ class IdentityOp final : public OpKernel {
         if (!status.IsOK()) {
           ORT_THROW("Unable to get an allocator");
         }
-        std::vector<Tensor> tensors;
+        std::vector<OrtValue> tensors;
         for (auto it = X->begin(), end = X->end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
-          size_t bytes = it->SizeInBytes();
-          memcpy(tmp.MutableDataRaw(), it->DataRaw(), bytes);
-          tensors.push_back(std::move(tmp));
+          auto& it_tensor = it->Get<Tensor>();
+          auto tmp = std::make_unique<Tensor>(it_tensor.DataType(), onnxruntime::TensorShape(it_tensor.Shape()), alloc);
+          size_t bytes = it_tensor.SizeInBytes();
+          memcpy(tmp->MutableDataRaw(), it_tensor.DataRaw(), bytes);
+          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+          tensors.push_back(OrtValue(tmp.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
         }
 
         output->SetElements(std::move(tensors));

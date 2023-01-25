@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/TensorSeq.h"
 #include "orttraining/training_ops/cpu/optimizer/clip_grad_norm/clip_grad_norm.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -18,7 +19,7 @@ T GetL2Norm(const TensorSeq& gradients) {
   T l2_norm = 0;
   for (const auto& tensor : gradients) {
     l2_norm +=
-        ReduceAggregatorSumSquare<T>(tensor.Shape().Size(), *tensor.Data<T>()).aggall(tensor.Data<T>());
+        ReduceAggregatorSumSquare<T>(tensor.Get<Tensor>().Shape().Size(), *tensor.Get<Tensor>().Data<T>()).aggall(tensor.Get<Tensor>().Data<T>());
   }
   return reduce_sqrt<T>(l2_norm);
 }
@@ -28,7 +29,7 @@ void ClipGradNorm(T total_norm, T max_norm, TensorSeq& gradients) {
   const T clip_coefficient = std::min(max_norm / (total_norm + static_cast<T>(Epsilon)), static_cast<T>(1.0f));
 
   for (const auto& grad : gradients) {
-    auto& tensor = const_cast<Tensor&>(grad);
+    auto& tensor = const_cast<Tensor&>(grad.Get<Tensor>());
     MakeEigenArrayMap<T>(tensor) *= clip_coefficient;
   }
 }
@@ -44,9 +45,11 @@ Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSe
   clipped_gradients->SetType(gradients->DataType());
   clipped_gradients->Reserve(gradients->Size());
   for (const auto& grad : *gradients) {
-    Tensor target_tensor(grad.DataType(), grad.Shape(), alloc);
-    CopyCpuTensor(&grad, &target_tensor);
-    clipped_gradients->Add(std::move(target_tensor));  // Add will check for type consistency
+    auto target_tensor = std::make_unique<Tensor>(grad.Get<Tensor>().DataType(), grad.Get<Tensor>().Shape(), alloc);
+    CopyCpuTensor(&grad.Get<Tensor>(), target_tensor.get());
+
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    clipped_gradients->Add(OrtValue(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()));  // Add will check for type consistency
   }
 
   return Status::OK();

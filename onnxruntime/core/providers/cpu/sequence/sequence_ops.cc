@@ -95,7 +95,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   if (input_seq_idx < 0) {
     input_seq_idx = static_cast<int64_t>(X->Size()) + input_seq_idx;
   }
-  const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx));
+  const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx)).Get<Tensor>();
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
   CopyCpuTensor(&indexed_tensor, Y);
@@ -183,18 +183,11 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
-Status CreateCopyAndAppendCpuTensor(const Tensor& in_tensor, OpKernelContext* context, std::vector<Tensor>& tensors) {
-  AllocatorPtr alloc;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-  Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
-  CopyCpuTensor(&in_tensor, &tmp);
-  tensors.push_back(std::move(tmp));
-  return Status::OK();
-}
-
 Status SequenceInsert::Compute(OpKernelContext* context) const {
   const auto* S = context->Input<TensorSeq>(0);
   const auto* X = context->Input<Tensor>(1);
+  const auto* XValue = context->GetInputOrtValue(1);
+
 
   // Data type of the input tensor MUST be same as that of the input sequence
   if (!S->IsSameDataType(*X)) {
@@ -220,18 +213,19 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
 
-  std::vector<Tensor> tensors;
+
+  std::vector<OrtValue> tensors;
   tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+      tensors.push_back(*XValue);
+      tensors.push_back(S->Get(i));
     } else {
-      ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+      tensors.push_back(S->Get(i));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
+      tensors.push_back(*XValue);
   }
 
   Y->SetType(S->DataType());
@@ -272,13 +266,13 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
   auto* Y = context->Output<TensorSeq>(0);
   Y->SetType(S->DataType());
 
-  std::vector<Tensor> tensors;
+  std::vector<OrtValue> tensors;
   tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       continue;
     }
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(S->Get(i), context, tensors));
+    tensors.push_back(S->Get(i));
   }
   Y->SetElements(std::move(tensors));
   return Status::OK();
@@ -311,11 +305,10 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   // now copy the tensors to the output sequence
   Y->SetType(first_dtype);
-  std::vector<Tensor> tensors;
+  std::vector<OrtValue> tensors;
   tensors.reserve(num_inputs);
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
-    const auto* X = context->Input<Tensor>(input_idx);
-    ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
+    tensors.push_back(*context->GetInputOrtValue(input_idx));
   }
   Y->SetElements(std::move(tensors));
   return Status::OK();
@@ -506,7 +499,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
   // copy dimensions so we can update the selected axis in place
   auto output_dimensions = input_shape.AsShapeVector();
-  std::vector<Tensor> tensors;
+  std::vector<OrtValue> tensors;
   int64_t input_offset = 0;
   const T* input_data = input.Data<T>();
   for (int i = 0; i < num_outputs; ++i) {
@@ -521,8 +514,9 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
-    Tensor output_tensor(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
-    T* output_data = output_tensor.MutableData<T>();
+
+    auto p_output_tensor = std::make_unique<Tensor>(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
+    T* output_data = p_output_tensor->MutableData<T>();
 
     ::onnxruntime::math::CopyMatrix<T>(
         before_dims,                                       // M
@@ -546,8 +540,12 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
           new_dims.push_back(output_dimensions[onnxruntime::narrow<size_t>(idx)]);
         }
       }
-      output_tensor.Reshape(new_dims);
+      p_output_tensor->Reshape(new_dims);
     }
+
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    OrtValue output_tensor;
+    output_tensor.Init(p_output_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
     // finally move the resulting tensor to the output sequence
     tensors.push_back(std::move(output_tensor));

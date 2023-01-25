@@ -328,14 +328,11 @@ namespace Dml
         }
     }
 
-    void DmlOperator::InitializeWithShapes(
+    void DmlOperator::InitializeInputsWithShapes(
         const MLOperatorKernelCreationContext& kernelInfo,
         const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
-        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
         const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes,
-        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
-        uint32_t minDimensionCount
-        )
+        uint32_t minDimensionCount)
     {
         if (kernelInputIndices)
         {
@@ -347,15 +344,6 @@ namespace Dml
             std::iota(m_kernelInputIndices.begin(), m_kernelInputIndices.end(), 0);
         }
 
-        if (kernelOutputIndices)
-        {
-            m_kernelOutputIndices = *kernelOutputIndices;
-        }
-        else
-        {
-            m_kernelOutputIndices.resize(kernelInfo.GetOutputCount());
-            std::iota(m_kernelOutputIndices.begin(), m_kernelOutputIndices.end(), 0);
-        }
 
         for (uint32_t i = 0; i < m_kernelInputIndices.size(); i++)
         {
@@ -403,6 +391,23 @@ namespace Dml
                 m_inputTensorDescs.push_back(tensorDesc);
             }
         }
+    }
+
+    void DmlOperator::InitializeOutputsWithShapes(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
+        uint32_t minDimensionCount)
+    {
+        if (kernelOutputIndices)
+        {
+            m_kernelOutputIndices = *kernelOutputIndices;
+        }
+        else
+        {
+            m_kernelOutputIndices.resize(kernelInfo.GetOutputCount());
+            std::iota(m_kernelOutputIndices.begin(), m_kernelOutputIndices.end(), 0);
+        }
 
         for (uint32_t i = 0; i < m_kernelOutputIndices.size(); i++)
         {
@@ -432,6 +437,19 @@ namespace Dml
                 ));
             }
         }
+    }
+
+    void DmlOperator::InitializeWithShapes(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices,
+        const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes,
+        const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes,
+        uint32_t minDimensionCount
+        )
+    {
+        InitializeInputsWithShapes(kernelInfo, kernelInputIndices, inputShapes, minDimensionCount);
+        InitializeOutputsWithShapes(kernelInfo, kernelOutputIndices, outputShapes, minDimensionCount);
     }
 
     void DmlOperator::Compute(const MLOperatorKernelContext& kernelContext)

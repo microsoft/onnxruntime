@@ -55,6 +55,20 @@ namespace Dml
             uint32_t minDimensionCount = NchwDimensionCount
             );
 
+        void InitializeInputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelInputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> inputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
+        void InitializeOutputsWithShapes(
+            const MLOperatorKernelCreationContext& kernelInfo,
+            const std::optional<const std::vector<std::optional<uint32_t>>>& kernelOutputIndices = std::nullopt,
+            const std::optional<gsl::span<gsl::span<const uint32_t>>> outputShapes = std::nullopt,
+            uint32_t minDimensionCount = NchwDimensionCount
+            );
+
         bool AllowHalfPrecisionComputation() const;
         DML_EXECUTION_FLAGS GetExecutionFlags() const;
 

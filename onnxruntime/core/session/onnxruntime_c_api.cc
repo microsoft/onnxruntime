@@ -1618,8 +1618,10 @@ ORT_STATUS_PTR CreateTensorAndPopulate(MLDataType element_type, const int64_t* s
 
 static ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_value, int index, _Inout_ OrtAllocator* allocator,
                                                   _Outptr_ OrtValue** out) {
+
+                                                    //???
   const auto& data = p_ml_value->Get<TensorSeq>();
-  const auto& one_tensor = data.Get(index);
+  const auto& one_tensor = data.Get(index).Get<Tensor>();
   const auto& tensor_shape = one_tensor.Shape();
   auto result = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(one_tensor.DataType(), tensor_shape.GetDims().data(),
@@ -1792,7 +1794,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelperTensor(const Tensor& tensor, Te
 static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                                   _Outptr_ OrtValue** out) {
   using namespace c_api_internal;
-  std::vector<Tensor> tensors;
+  std::vector<OrtValue> tensors;
   tensors.resize(num_values);
   auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
 
@@ -1807,7 +1809,11 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
 
-    ORT_API_RETURN_IF_ERROR(OrtCreateValueImplSeqHelperTensor(one_tensor, tensors[idx]));
+    auto p_output_tensor = std::make_unique<Tensor>();
+    ORT_API_RETURN_IF_ERROR(OrtCreateValueImplSeqHelperTensor(one_tensor, *p_output_tensor.get()));
+
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    tensors[idx].Init(p_output_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
   }
 
   // create OrtValue with this vector

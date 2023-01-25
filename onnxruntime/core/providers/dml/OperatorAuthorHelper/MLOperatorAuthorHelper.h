@@ -168,6 +168,28 @@ class MLOperatorTensorShapeDescription
         return ret;
     }
 
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        return m_impl->GetSequenceInputCount(inputIndex);
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        uint32_t ret;
+        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        return ret;
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        std::vector<uint32_t> ret;
+        uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+        ret.resize(dimensionCount);
+
+        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
+        return ret;
+    }
+
     bool HasOutputShapeDescription() const noexcept
     {
         return m_impl->HasOutputShapeDescription();
@@ -621,6 +643,29 @@ public:
         ORT_THROW_IF_FAILED(m_impl->GetInputTensorShape(inputIndex, dimensionCount, ret.data()));
         return ret;
     }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        return m_impl->GetSequenceInputCount(inputIndex);
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        uint32_t ret;
+        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        return ret;
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        std::vector<uint32_t> ret;
+        uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+        ret.resize(dimensionCount);
+
+        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
+        return ret;
+    }
+
 
     void SetOutputTensorShape(uint32_t outputIndex, const std::vector<uint32_t>& outputDimensions)
     {

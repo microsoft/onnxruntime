@@ -148,7 +148,7 @@ struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;
-struct TensorSeq;
+class TensorSeq;
 class SessionState;
 
 class If;

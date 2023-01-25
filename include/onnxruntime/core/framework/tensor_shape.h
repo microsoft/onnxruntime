@@ -31,6 +31,8 @@
 
 #include "core/common/span_utils.h"
 
+#pragma optimize("", off)
+
 namespace onnxruntime {
 #ifdef __GNUC__
 #pragma GCC diagnostic push

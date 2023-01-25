@@ -543,7 +543,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
       } else {
         // We can't move the Loop's inputs directly into the Loop's outputs
         // as operator inputs are read-only. Hence, we need to make a copy.
-        std::vector<Tensor> tensors;
+        std::vector<OrtValue> tensors;
 
         auto& data = input.Get<TensorSeq>();
 
@@ -552,17 +552,20 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-          Tensor tmp(it->DataType(), onnxruntime::TensorShape(it->Shape()), alloc);
+          auto tmp = std::make_unique<Tensor>(it->Get<Tensor>().DataType(), onnxruntime::TensorShape(it->Get<Tensor>().Shape()), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams
           // to avoid data races.
-          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Location().device, tmp.Location().device);
+          auto* data_transer = session_state_.GetDataTransferMgr().GetDataTransfer(it->Get<Tensor>().Location().device, tmp->Location().device);
           if (context_.GetComputeStream())
-            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(*it, tmp, *context_.GetComputeStream()));
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensorAsync(it->Get<Tensor>(), *tmp.get(), *context_.GetComputeStream()));
           else
-            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(*it, tmp));
-          tensors.push_back(std::move(tmp));
+            ORT_RETURN_IF_ERROR(data_transer->CopyTensor(it->Get<Tensor>(), *tmp.get()));
+
+          auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+          OrtValue output_tensor(tmp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+          tensors.push_back(output_tensor);
         }
 
         output->SetElements(std::move(tensors));

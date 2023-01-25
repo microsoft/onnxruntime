@@ -1060,12 +1060,13 @@ struct SparseTensor final {
 #endif
 
 // TensorSeq
-struct TensorSeq final {
+class TensorSeq final {
+public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
-  const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
-  void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
+  const OrtValue& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  void Add(const OrtValue& tensor) { g_host->TensorSeq__Add(this, tensor); }
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };
 

@@ -5,6 +5,8 @@
 
 #include "core/framework/customregistry.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/TensorSeq.h"
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/MLOperatorAuthor.h"
 
@@ -446,9 +448,10 @@ namespace Windows::AI::MachineLearning::Adapter
         bool isInternalOperator,
         const AttributeMap* defaultAttributes,
         gsl::span<const uint32_t> requiredConstantCpuInputs,
-        MLOperatorTensorGetter& constantInputGetter
+        MLOperatorTensorGetter& constantInputGetter,
+        const onnxruntime::OpKernelContext* kernelContext
         )
-    :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter),
+    :   OpNodeInfoWrapper(kerneInfo, inputShapeOverrides, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, kernelContext),
         m_inferredOutputShapes(inferredOutputShapes),
         m_allowInputShapeQuery(allowInputShapeQuery),
         m_allowOutputShapeQuery(allowOutputShapeQuery),
@@ -808,6 +811,64 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t dimensionCount, uint32_t* dimensions) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            memset(dimensions, 0, dimensionCount * sizeof(dimensions[0]));
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
+
+            // Input shapes are determined either from the override or from the underlying proto
+            if (m_kernelContext)
+            {
+                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(inputIndex);
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>();
+                const auto& shape = elemTensor.Shape();
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    dimensions[i] = static_cast<uint32_t>(shape[i]);
+                }
+            }
+            else if (m_inputShapesOverride)
+            {
+                if (m_inputShapesOverride->GetShape(inputIndex).size() != dimensionCount)
+                {
+                    return E_INVALIDARG;
+                }
+
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    dimensions[i] = m_inputShapesOverride->GetShape(inputIndex)[i];
+                }
+            }
+            else
+            {
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                ML_CHECK_BOOL(inputType->has_sequence_type());
+
+                const auto& elemType = inputType->sequence_type().elem_type();
+
+                for (uint32_t i = 0; i < dimensionCount; ++i)
+                {
+                    // Shape inference is only done when all dimensions of all inputs have known values,
+                    // so the input tensors will always have shapes at this point.
+                    assert(elemType.tensor_type().shape().dim(i).has_dim_value());
+                    dimensions[i] = static_cast<uint32_t>(elemType.tensor_type().shape().dim(i).dim_value());
+                }
+            }
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     bool STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::IsInputValid(uint32_t inputIndex) const noexcept
     {
         if (IsClosed())
@@ -858,6 +919,76 @@ namespace Windows::AI::MachineLearning::Adapter
                 assert(inputType->tensor_type().has_shape());
 
                 *dimensionCount = inputType->tensor_type().shape().dim_size();
+            }
+
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    uint32_t STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputCount(uint32_t inputIndex) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
+
+            // Input shapes are determined either from the input tensor, override or from the underlying proto
+            if (m_kernelContext)
+            {
+                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(inputIndex);
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+                return static_cast<uint32_t>(inputTensorSeq->Size());
+            }
+
+        }
+        catch(...){}
+        return 0;
+    }
+
+    template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex, uint32_t* dimensionCount) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            *dimensionCount = 0;
+
+            if (inputIndex >= GetInputCount())
+            {
+                return E_INVALIDARG;
+            }
+
+            // Input shapes are determined either from the input tensor, override or from the underlying proto
+            if (m_kernelContext)
+            {
+                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(inputIndex);
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>();
+                *dimensionCount = static_cast<uint32_t>(elemTensor.Shape().NumDimensions());
+            }
+            else if (m_inputShapesOverride)
+            {
+                *dimensionCount = gsl::narrow_cast<uint32_t>(m_inputShapesOverride->GetShape(inputIndex).size());
+            }
+            else
+            {
+                const auto* inputType = m_impl->GetInputType(inputIndex);
+                ML_CHECK_BOOL(inputType->has_sequence_type());
+
+                const auto& elemType = inputType->sequence_type().elem_type();
+
+                // Shape inference is only done when all dimensions of all inputs have known values,
+                // so the input tensors will always have shapes at this point.
+                assert(elemType.tensor_type().has_shape());
+
+                *dimensionCount = elemType.tensor_type().shape().dim_size();
             }
 
             return S_OK;
@@ -1019,7 +1150,7 @@ namespace Windows::AI::MachineLearning::Adapter
         gsl::span<const uint32_t> requiredConstantCpuInputs,
         MLOperatorTensorGetter& constantInputGetter
         )
-    :   OpNodeInfoWrapper(protoHelper, nullptr, defaultAttributes, requiredConstantCpuInputs, constantInputGetter),
+    :   OpNodeInfoWrapper(protoHelper, nullptr, defaultAttributes, requiredConstantCpuInputs, constantInputGetter, nullptr),
         m_inferredOutputShapes(inferredOutputShapes),
         m_internalOperator(isInternalOperator),
         m_graphNodeCreateInfo(graphNodeCreateInfo)
@@ -1143,7 +1274,7 @@ namespace Windows::AI::MachineLearning::Adapter
             if (operatorGraphDesc->nodesAsOpDesc)
             {
                 m_graphNodeCreateInfo->nodesAsOperatorDesc = std::vector<std::unique_ptr<AbstractOperatorDesc>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsOpDesc[nodeIndex];
                     assert(node != nullptr);
@@ -1154,7 +1285,7 @@ namespace Windows::AI::MachineLearning::Adapter
             else
             {
                 m_graphNodeCreateInfo->nodesAsIDMLOperator = std::vector<Microsoft::WRL::ComPtr<IDMLOperator>>();
-                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++) 
+                for (uint32_t nodeIndex = 0; nodeIndex < operatorGraphDesc->nodeCount; nodeIndex++)
                 {
                     auto* node = operatorGraphDesc->nodesAsIDMLOperator[nodeIndex];
                     assert(node != nullptr);
@@ -1566,6 +1697,43 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+            *tensor = nullptr;
+
+            ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+            auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(inputIndex);
+            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+
+            auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>());
+            ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                elemTensor,
+                IsAllocationInterface(elemTensor->Location()),
+                m_winmlProvider.Get(),
+                m_internalOperator);
+            tensorWrapper.CopyTo(tensor);
+            return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
+    uint32_t STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputCount(uint32_t inputIndex)  const noexcept
+    {
+        ORT_TRY
+        {
+            VerifyNotClosed();
+
+            ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
+            auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(inputIndex);
+            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+            return static_cast<uint32_t>(inputTensorSeq->Size());
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept
     {
         ORT_TRY
@@ -1814,7 +1982,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 isInternalOperator,
                 m_defaultAttributes,
                 m_requiredConstantCpuInputs,
-                constantInputGetter);
+                constantInputGetter,
+                nullptr /*const onnxruntime::OpKernelContext* m_kernelContext*/);
 
             ORT_THROW_IF_FAILED(operatorFactory->CreateKernel(kernelInfoWrapper.Get(), m_kernel.GetAddressOf()));
             kernelInfoWrapper->Close();
@@ -1853,7 +2022,7 @@ namespace Windows::AI::MachineLearning::Adapter
             return tensorWrapper;
         };
 
-        auto inferShapesAndCreateKernel = [&](const EdgeShapes& inputShapes, EdgeShapes& outputShapes) -> ComPtr<IMLOperatorKernel> {
+        auto inferShapesAndCreateKernel = [&, context](const EdgeShapes& inputShapes, EdgeShapes& outputShapes) -> ComPtr<IMLOperatorKernel> {
             // If the output size is not dynamic, infer it using the kernel. The result of inference is stored in m_inferredOutputShapes.
             if (m_requiresOutputShapesAtCreation)
             {
@@ -1872,7 +2041,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 m_internalOperator,
                 m_defaultAttributes,
                 m_requiredConstantCpuInputs,
-                constantInputGetter);
+                constantInputGetter,
+                context /*const onnxruntime::OpKernelContext* m_kernelContext*/);
 
             ComPtr<IMLOperatorKernel> ret;
             ORT_THROW_IF_FAILED(m_operatorFactory->CreateKernel(kernelInfoWrapper.Get(), ret.GetAddressOf()));
@@ -2004,7 +2174,6 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         onnxruntime::ProtoHelperNodeContext protoContext(Node());
         onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
-
         return InputTensorShapesDefinedOnNode(info);
     }
 
@@ -2307,7 +2476,7 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
-        const onnx::TensorProto& initializer, 
+        const onnx::TensorProto& initializer,
         const onnxruntime::Path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;

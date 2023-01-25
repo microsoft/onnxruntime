@@ -198,7 +198,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
+    GetPyObjFromTensor(*rtensor.Get<Tensor>(), obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
   // XToolChain kills the build
@@ -1333,7 +1333,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,

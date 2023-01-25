@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include <vector>
 #include <utility>
@@ -17,7 +18,7 @@ class TensorSeq {
     SetType(elem_type);
   }
 
-  using const_iterator = std::vector<Tensor>::const_iterator;
+  using const_iterator = std::vector<OrtValue>::const_iterator;
 
   // Sets the element type after construction.
   // Expects sequence to be empty at the time.
@@ -27,7 +28,7 @@ class TensorSeq {
     ORT_ENFORCE(elem_type_ != nullptr, "Tensor sequence must contain only primitive types");
   }
 
-  void SetElements(std::vector<Tensor>&& tensors) {
+  void SetElements(std::vector<OrtValue>&& tensors) {
     // The caller of this method ensures that :
     // (1) `elem_type` is set before invoking this method
     // (2) All tensors contain elements of the same primitive data type
@@ -57,15 +58,15 @@ class TensorSeq {
   }
 
   // Get by index
-  const Tensor& Get(size_t i) const {
+  const OrtValue& Get(size_t i) const {
     ORT_ENFORCE(i < tensors_.size());
     return tensors_[i];
   }
 
-  void Add(Tensor&& tensor) {
-    ORT_ENFORCE(IsSameDataType(tensor),
+  void Add(const OrtValue& tensor) {
+    ORT_ENFORCE(IsSameDataType(tensor.Get<Tensor>()),
                 "TensorSeq: tensor to be added has a different data type.");
-    tensors_.push_back(std::move(tensor));
+    tensors_.push_back(tensor);
   }
 
   void Reserve(size_t capacity) {
@@ -82,7 +83,7 @@ class TensorSeq {
 
   // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
   // as vector<primitive type>
-  std::vector<Tensor> tensors_;
+  std::vector<OrtValue> tensors_;
 };
 
 }  // namespace onnxruntime

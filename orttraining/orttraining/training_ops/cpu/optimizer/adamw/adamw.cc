@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamw.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/TensorSeq.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -40,10 +41,10 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
       tp, prepare.num_of_weights, cost, [&prepare](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t index = begin; index != end; ++index) {
           int i = static_cast<int>(index);
-          const Tensor& weight_tensor = prepare.weights->Get(i);
-          const Tensor& gradient_tensor = prepare.gradients->Get(i);
-          const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i);
-          const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i);
+          const Tensor& weight_tensor = prepare.weights->Get(i).Get<Tensor>();
+          const Tensor& gradient_tensor = prepare.gradients->Get(i).Get<Tensor>();
+          const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i).Get<Tensor>();
+          const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i).Get<Tensor>();
 
           // Check the weight/gradient/momentums at the same index should have same shape.
           ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
@@ -86,11 +87,12 @@ Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_o
     updated_values->SetType(values->DataType());
     updated_values->Reserve(number_of_values);
     for (size_t input_idx = 0; input_idx < number_of_values; ++input_idx) {
-      const Tensor& source_tensor = values->Get(input_idx);
-      Tensor target_tensor(source_tensor.DataType(),
-                           source_tensor.Shape(), alloc);
-      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, target_tensor, ctx->GetComputeStream()));
-      updated_values->Add(std::move(target_tensor));  // Add will check for type consistency
+      const Tensor& source_tensor = values->Get(input_idx).Get<Tensor>();
+      auto target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
+                                                    source_tensor.Shape(), alloc);
+      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, *target_tensor.get(), ctx->GetComputeStream()));
+      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+      updated_values->Add(OrtValue(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()));  // Add will check for type consistency
     }
   }
 
@@ -196,10 +198,10 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
     //         weight decay is applied after weight is updated.
 
     for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
-      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
-      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
-      Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index));
-      Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index));
+      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index).Get<Tensor>());
+      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index).Get<Tensor>());
+      Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index).Get<Tensor>());
+      Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index).Get<Tensor>());
 
       if (adam_mode_ == 0) {
         ORT_RETURN_IF_ERROR(

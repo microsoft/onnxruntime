@@ -60,6 +60,8 @@ namespace Dml
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *internalRegInfoMap = abiRegistry->GetInternalRegInfoMap();
+
+        Dml::RegisterCpuOperatorsAsDml(registry->get());
     }
 
     ExecutionProvider::ExecutionProvider(
@@ -543,12 +545,39 @@ namespace Dml
         return false;
     }
 
+    bool IsSequenceOp(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<char*, 7>{
+            "SequenceAt",
+            "SequenceConstruct",
+            "SequenceEmpty",
+            "SequenceLength",
+            "ConcatFromSequence",
+            "SequenceErase",
+            "SequenceInsert",
+        };
+
+        for (auto& sequence_op : sequence_ops)
+        {
+            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
         _In_opt_ const InternalRegistrationInfo* regInfo,
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
+        if (IsSequenceOp(node))
+        {
+            return true;
+        }
+
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
 
         if (regInfo != nullptr)

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <memory>
 #include <utility>
 #include <variant>
 
@@ -1003,7 +1004,7 @@ class OpTester {
 
     if (seq_tensors) {
       auto num_tensors = seq_tensors->tensors.size();
-      std::vector<Tensor> tensors;
+      std::vector<OrtValue> tensors;
       tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
 
@@ -1014,16 +1015,17 @@ class OpTester {
                     " input values doesn't match tensor size of ", shape.Size());
 
         auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-        auto& tensor = tensors[i];
+        auto tensor = std::make_unique<Tensor>(elem_type,
+                                                     shape,
+                                                     allocator);
 
-        tensor = Tensor(elem_type,
-                        shape,
-                        allocator);
-
-        auto* data_ptr = tensor.MutableData<T>();
+        auto* data_ptr = tensor->MutableData<T>();
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
         }
+
+        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+        tensors[i] = OrtValue(tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
 
         if (add_shape_to_tensor_data_) {
           auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()

@@ -971,8 +971,8 @@ struct ProviderHostImpl : ProviderHost {
   MLDataType TensorSeq__DataType(const TensorSeq* p) noexcept override { return p->DataType(); }
   void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) override { p->SetType(data_type); }
   size_t TensorSeq__Size(const TensorSeq* p) noexcept override { return p->Size(); }
-  const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
-  void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
+  const OrtValue& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
+  void TensorSeq__Add(TensorSeq* p, const OrtValue& tensor) override { p->Add(tensor); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
   // AllocatorManager (direct)
@@ -1043,7 +1043,7 @@ struct ProviderSharedLibrary {
     if (handle_)
       return;
 
-    auto full_path = Env::Default().GetRuntimePath() + 
+    auto full_path = Env::Default().GetRuntimePath() +
       PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
     ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
