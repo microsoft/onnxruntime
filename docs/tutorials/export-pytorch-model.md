@@ -17,7 +17,7 @@ This document explains the process of exporting PyTorch models with custom ONNX 
 ### Export Built-In Contrib Ops
 
 "Contrib ops" refers to the set of custom ops that are built in to most ORT packages.
-Symbolic functions for all contrib ops should be defined in [pytorch_export_contrib_ops.py](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/pytorch_export_contrib_ops.py).
+Symbolic functions for all contrib ops should be defined in [pytorch_export_contrib_ops.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/pytorch_export_contrib_ops.py).
 
 To export using those contrib ops, call `pytorch_export_contrib_ops.register()` before calling `torch.onnx.export()`. For example:
 

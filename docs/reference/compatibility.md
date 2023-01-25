@@ -52,7 +52,7 @@ ONNX Runtime is not explicitly tested with every variation/combination of enviro
 * Linux: gcc>=4.8
 
 ### Dependent Libraries
-* [Submodules](https://github.com/microsoft/onnxruntime/tree/master/cgmanifests)
+* [Submodules](https://github.com/microsoft/onnxruntime/tree/main/cgmanifests)
 * See the [Execution Provider page](../execution-providers) for details on specific hardware libary version requirements
 
 
@@ -62,12 +62,14 @@ ONNX Runtime supports all opsets from the latest released version of the [ONNX](
 
 
 
-* [Supported Operator Data Types](https://github.com/microsoft/onnxruntime/blob/master/docs/OperatorKernels.md)
-  * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md)*
+* [Supported Operator Data Types](https://github.com/microsoft/onnxruntime/blob/main/docs/OperatorKernels.md)
+  * *Operators not supported in the current ONNX spec may be available as a [Contrib Operator](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md)*
   * [How to add a custom operator/kernel](operators/add-custom-op.md)
 
 | ONNX Runtime version | [ONNX version](https://github.com/onnx/onnx/blob/master/docs/Versioning.md) | ONNX opset version | ONNX ML opset version | ONNX IR version | [Windows ML Availability](https://docs.microsoft.com/en-us/windows/ai/windows-ml/release-notes/)|
 |------------------------------|--------------------|--------------------|----------------------|------------------|------------------|
+| 1.14 | **1.13** | 18 | 3 | 8 | Windows AI 1.14+ |
+| 1.13 | **1.12** | 17 | 3 | 8 | Windows AI 1.13+ |
 | 1.12 | **1.12** | 17 | 3 | 8 | Windows AI 1.12+ |
 | 1.11 | **1.11** | 16 | 2 | 8 | Windows AI 1.11+ |
 | 1.10 | **1.10** | 15 | 2 | 8 | Windows AI 1.10+ |

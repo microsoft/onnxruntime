@@ -1169,6 +1169,12 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-snpe' target='_blank'>here</a>",
 
     //Xnnpack
+    "ios,C-API,ARM64,XNNPACK":
+        "Add 'onnxruntime-c' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a> or Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
+
+    "ios,objectivec,ARM64,XNNPACK":
+        "Add 'onnxruntime-objc' using CocoaPods and refer to the <a href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
+
     "android,C-API,ARM64,XNNPACK":
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
@@ -1201,22 +1207,28 @@ var validCombos = {
         "Follow build instructions from <a href='https://aka.ms/build-ort-xnnpack' target='_blank'>here</a>",
 
     "linux,Python,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C-API,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,C++,ARM64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,Python,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "pip install onnxruntime-cann <br/>Refer to <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/community-maintained/CANN-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
     "linux,C-API,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
 
     "linux,C++,X64,CANN":
-        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+        "Follow build instructions from <a href='http://www.onnxruntime.ai/docs/execution-providers/community-maintained/CANN-ExecutionProvider.html#build' target='_blank'>here</a>.",
+
+    "windows,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
+
+    "linux,Python,X64,Azure":
+        "Follow build instructions from <a href='https://aka.ms/build-ort-azure' target='_blank'>here</a>",
 };
 
 function commandMessage(key) {

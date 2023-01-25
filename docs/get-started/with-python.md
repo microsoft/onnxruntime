@@ -4,7 +4,7 @@ parent: Get Started
 toc: true
 nav_order: 1
 ---
-# Get started with ORT for Python
+# Get started with ONNX Runtime in Python
 {: .no_toc }
 
 Below is a quick guide to get the packages installed to use ONNX for model serialization and infernece with ORT.
@@ -249,7 +249,7 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 |[ort-nightly-gpu](https://test.pypi.org/project/ort-nightly-gpu)|GPU (Dev) | Same as above |
 
 
-For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)
+For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
 
 
 ## Supported Versions

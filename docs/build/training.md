@@ -50,7 +50,7 @@ The default NVIDIA GPU build requires CUDA runtime libraries installed on the sy
 * [cuDNN](https://developer.nvidia.com/cudnn) 8.0
 * [NCCL](https://developer.nvidia.com/nccl) 2.7
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
-  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
 These dependency versions should reflect what is in the [Dockerfiles](https://github.com/pytorch/ort/tree/main/docker).
 
@@ -84,7 +84,7 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 
 * [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) 5.2.3
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
-  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
+  * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
 ### Build instructions
 {: .no_toc }
@@ -110,6 +110,6 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 
 `.\build.bat --enable_training --use_dnnl`
 
-Add `--build_wheel` to build the ONNX Runtime wheel
+Add `--build_wheel` to build the ONNX Runtime wheel.
 
-This will produce a .whl file in `build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training
+This will produce a .whl file in `build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.

@@ -26,10 +26,11 @@ The CANN Execution Provider (EP) for ONNX Runtime is developed by Huawei.
 
 Please reference table below for official CANN packages dependencies for the ONNX Runtime inferencing package.
 
-|ONNX Runtime|CANN|OS|
-|---|---|---|---|
-|v1.12.1|6.0|Ubuntu 18.04<br/>Ubuntu 20.04<br/>CentOS 7.8|
-|v1.13.1|6.0|Ubuntu 18.04<br/>Ubuntu 20.04<br/>CentOS 7.8|
+|ONNX Runtime|CANN|
+|---|---|
+|v1.12.1|6.0.0|
+|v1.13.1|6.0.0|
+|v1.14.0|6.0.0|
 
 ## Build
 
@@ -39,9 +40,72 @@ For build instructions, please see the [BUILD page](../../build/eps.md#cann).
 
 Pre-built binaries of ONNX Runtime with CANN EP are published for most language bindings. Please reference [Install ORT](../../install).
 
+## Configuration Options
+
+The CANN Execution Provider supports the following configuration options.
+
+### device_id
+
+The device ID.
+
+Default value: 0
+
+### npu_mem_limit
+
+The size limit of the device memory arena in bytes. This size limit is only for the execution provider's arena. The total device memory usage may be higher.
+
+### arena_extend_strategy
+
+The strategy for extending the device memory arena.
+
+Value                   | Description
+-|-
+kNextPowerOfTwo     | subsequent extensions extend by larger amounts (multiplied by powers of two)
+kSameAsRequested    | extend by the requested amount
+
+Default value: kNextPowerOfTwo
+
+### do_copy_in_default_stream
+
+Whether to do copies in the default stream or use separate streams. The recommended setting is true. If false, there are race conditions and possibly better performance.
+
+Default value: true
+
+### enable_cann_graph
+
+Whether to use the graph inference engine to speed up performance. The recommended setting is true. If false, it will fall back to the single-operator inference engine.
+
+Default value: true
+
 ## Samples
 
 Currently, users can use C/C++ and Python API on CANN EP.
+
+### Python
+
+```python
+import onnxruntime as ort
+
+model_path = '<path to model>'
+
+options = ort.SessionOptions()
+
+providers = [
+    (
+        "CANNExecutionProvider",
+        {
+            "device_id": 0,
+            "arena_extend_strategy": "kNextPowerOfTwo",
+            "npu_mem_limit": 2 * 1024 * 1024 * 1024,
+            "do_copy_in_default_stream": True,
+            "enable_cann_graph": True
+        },
+    ),
+    "CPUExecutionProvider",
+]
+
+session = ort.InferenceSession(model_path, sess_options=options, providers=providers)
+```
 
 ### C/C++
 
@@ -54,63 +118,55 @@ g_ort->CreateSessionOptions(&session_options);
 OrtCANNProviderOptions *cann_options = nullptr;
 g_ort->CreateCANNProviderOptions(&cann_options);
 
-std::vector<const char *> keys{"device_id", "max_opqueue_num", "npu_mem_limit", "arena_extend_strategy", "do_copy_in_default_stream"};
-std::vector<const char *> values{"1", "10000", "2147483648", "kSameAsRequested", "1"};
+std::vector<const char *> keys{"device_id", "npu_mem_limit", "arena_extend_strategy", "do_copy_in_default_stream", "enable_cann_graph"};
+std::vector<const char *> values{"1", "2147483648", "kSameAsRequested", "1", "1"};
 
 g_ort->UpdateCANNProviderOptions(cann_options, keys.data(), values.data(), keys.size());
 
 g_ort->SessionOptionsAppendExecutionProvider_CANN(session_options, cann_options);
 
 // Finally, don't forget to release the provider options and session options
-g_ort->ReleaseSessionOptions(session_options);
 g_ort->ReleaseCANNProviderOptions(cann_options);
-```
-
-### Python
-
-```python
-import onnxruntime as ort
-
-model_path = '<path to model>'
-
-options = ort.SessionOptions()
-
-providers = [
-    ('CANNExecutionProvider', {
-        'device_id': 0,
-        'max_opqueue_num': 10000,
-        'arena_extend_strategy': 'kNextPowerOfTwo',
-        'npu_mem_limit': 2 * 1024 * 1024 * 1024,
-        'do_copy_in_default_stream': True,
-    }),
-    'CPUExecutionProvider',
-]
-
-session = ort.InferenceSession(model_path, sess_options=options, providers=providers)
+g_ort->ReleaseSessionOptions(session_options);
 ```
 
 ## Supported ops
 
-Following ops are supported by the CANN Execution Provider,
+Following ops are supported by the CANN Execution Provider in single-operator Inference mode.
 
 |Operator|Note|
 |--------|------|
+|ai.onnx:Abs||
 |ai.onnx:Add||
 |ai.onnx:AveragePool|Only 2D Pool is supported.|
 |ai.onnx:BatchNormalization||
-|ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:Cast||
+|ai.onnx:Ceil||
+|ai.onnx:Conv|Only 2D Conv is supported.<br/>Weights and bias should be constant.|
+|ai.onnx:Cos||
 |ai.onnx:Div||
 |ai.onnx:Dropout||
+|ai.onnx:Exp||
+|ai.onnx:Erf||
 |ai.onnx:Flatten||
-|ai.onnx:Gemm|Input B should be constant.|
-|ai.onnx:GlobalAveragePool|Only 2D Pool is supported.|
-|ai.onnx:GlobalMaxPool|Only 2D Pool is supported.|
+|ai.onnx:Floor||
+|ai.onnx:Gemm||
+|ai.onnx:GlobalAveragePool||
+|ai.onnx:GlobalMaxPool||
 |ai.onnx:Identity||
-|ai.onnx:MatMul|Input B should be constant.|
+|ai.onnx:Log||
+|ai.onnx:MatMul||
 |ai.onnx:MaxPool|Only 2D Pool is supported.|
 |ai.onnx:Mul||
+|ai.onnx:Neg||
+|ai.onnx:Reciprocal||
 |ai.onnx:Relu||
+|ai.onnx:Reshape||
+|ai.onnx:Round||
+|ai.onnx:Sin||
+|ai.onnx:Sqrt||
 |ai.onnx:Sub||
+|ai.onnx:Transpose||
 
 ## Additional Resources
 
