@@ -49,7 +49,7 @@ struct MLAS_HALF_GEMM_KERNEL_NEON {
     static constexpr size_t KernelMaxM = 6;  // max # rows the vectorized kernel can process
     static constexpr size_t PackedK = 1;
 
-    static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 256};
+    static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 16};
 };
 
 
@@ -121,10 +121,11 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_NEON>(
 }
 
 
-const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchNeon = {
+const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_NEON>,
     nullptr, 
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_NEON>,
     MLAS_HALF_GEMM_KERNEL_NEON::PackedK,
-    MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM
+    MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,
+    32 // kernel may read beyond buffer end by 32 bytes
 };

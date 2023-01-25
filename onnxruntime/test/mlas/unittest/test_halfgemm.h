@@ -28,6 +28,7 @@ struct MLFp16 {
 
   MLFp16() = default;
   explicit constexpr MLFp16(uint16_t x) : val(x) {}
+  explicit constexpr MLFp16(int32_t x) : val((uint16_t)x) {}
   explicit MLFp16(float ff) : val(MLAS_Float2Half(ff)) {}
 
   float ToFloat() const {
@@ -52,85 +53,16 @@ operator!=(const MLFp16& left, const MLFp16& right) {
   return left.val != right.val;
 }
 
-//
-// Customize buffer fill for half precision buffer
-//
-template <> 
-MLFp16*
-MatrixGuardBuffer<MLFp16>::GetBuffer(size_t Elements, bool ZeroFill) {
-  //
-  // Check if the internal buffer needs to be reallocated.
-  //
+template<typename T>
+void SmallFloatFill(T* start, size_t size) {
+  constexpr float MinimumFillValue = -11.0f;
+  auto* FillAddress = start;
+  size_t offset = size % 23;
 
-  if (Elements > _ElementsAllocated) {
-    ReleaseBuffer();
-
-    //
-    // Reserve a virtual address range for the allocation plus an unmapped
-    // guard region.
-    //
-
-    constexpr size_t BufferAlignment = 64 * 1024;
-    constexpr size_t GuardPadding = 256 * 1024;
-
-    size_t BytesToAllocate = ((Elements * FP16_SIZE) + BufferAlignment - 1) & ~(BufferAlignment - 1);
-
-    _BaseBufferSize = BytesToAllocate + GuardPadding;
-
-#if defined(_WIN32)
-    _BaseBuffer = VirtualAlloc(NULL, _BaseBufferSize, MEM_RESERVE, PAGE_NOACCESS);
-#else
-    _BaseBuffer = mmap(0, _BaseBufferSize, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-#endif
-
-    if (_BaseBuffer == nullptr) {
-      abort();
-    }
-
-    //
-    // Commit the number of bytes for the allocation leaving the upper
-    // guard region as unmapped.
-    //
-
-#if defined(_WIN32)
-    if (VirtualAlloc(_BaseBuffer, BytesToAllocate, MEM_COMMIT, PAGE_READWRITE) == nullptr) {
-      ORT_THROW_EX(std::bad_alloc);
-    }
-#else
-    if (mprotect(_BaseBuffer, BytesToAllocate, PROT_READ | PROT_WRITE) != 0) {
-      abort();
-    }
-#endif
-
-    _ElementsAllocated = BytesToAllocate / FP16_SIZE;
-    _GuardAddress = (MLFp16*)((unsigned char*)_BaseBuffer + BytesToAllocate);
+  for (size_t i = 0; i < size; i++) {
+    offset = (offset + 21) % 23;
+    *FillAddress++ = T((MinimumFillValue + offset) / 16.0f);
   }
-
-
-  auto* GuardAddress = _GuardAddress;
-  auto* buffer = GuardAddress - Elements;
-
-  if (ZeroFill) {
-    std::fill_n(buffer, Elements, MLFp16());
-  } else {
-    constexpr float MinimumFillValue = -11.0f;
-    constexpr float MaximumFillValue = 11.0f;
-
-    float FillValue = MinimumFillValue;
-    auto* FillAddress = buffer;
-
-    while (FillAddress < GuardAddress) {
-      *FillAddress++ = FillValue/16.0f;
-
-      FillValue+=1.0f;
-
-      if (FillValue > MaximumFillValue) {
-        FillValue = MinimumFillValue;
-      }
-    }
-  }
-
-  return buffer;
 }
 
 
@@ -242,13 +174,15 @@ public:
   MlasHalfGemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
-    const AType* A = BufferA.GetBuffer(K * M * BatchSize);
-    const BType* B = BufferB.GetBuffer(N * K * BatchSize);
-    const MLFp16* Bias = withBias ? BufferBias.GetBuffer(N * BatchSize) : nullptr;
-    MLFp16* C = BufferC.GetBuffer(N * M * BatchSize);
-    float* CReference = BufferCReference.GetBuffer(N * M * BatchSize);
-
-    std::fill_n(CReference, M * N * BatchSize, float(-1.0));
+    const AType* A = BufferA.GetFilledBuffer(K * M * BatchSize, SmallFloatFill<AType>);
+    const BType* B = BufferB.GetFilledBuffer(N * K * BatchSize, SmallFloatFill<BType>);
+    const MLFp16* Bias = withBias ? BufferBias.GetFilledBuffer(N * BatchSize, SmallFloatFill<MLFp16>) : nullptr;
+    MLFp16* C = BufferC.GetFilledBuffer(N * M * BatchSize, SmallFloatFill<MLFp16>);
+    float* CReference = BufferCReference.GetFilledBuffer(
+        N * M * BatchSize,
+        [](float* start, size_t size) {
+          std::fill_n(start, size, -1.0f);
+        });
 
     this->CallGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N);
     ReferenceQgemm(M, N, K, BatchSize, A, B, Bias, CReference);

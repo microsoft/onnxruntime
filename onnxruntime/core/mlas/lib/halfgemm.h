@@ -446,7 +446,7 @@ MlasHalfGemmOperation(
 
 typedef
 void
-(MLAS_HALF_GEMM_OPERATION)(
+(MLAS_HALFGEMM_OPERATION)(
     const size_t N,
     const size_t K,
     const MLAS_HALF_GEMM_DATA_PARAMS* Data,
@@ -459,7 +459,7 @@ void
 
 typedef
 void
-(MLAS_HALF_GEMM_COPY_PACKB_ROUTINE)(
+(MLAS_HALFGEMM_COPYPACKB_ROUTINE)(
     _mlas_fp16_* D,
     const _mlas_fp16_* B,
     size_t ldb,
@@ -469,7 +469,7 @@ void
 
 typedef
 void
-(MLAS_HALF_GEMM_CONVERT_PACKB_ROUTINE)(
+(MLAS_HALFGEMM_CONVERTPACKB_ROUTINE)(
     _mlas_fp16_* D,
     const float* B,
     size_t ldb,
@@ -477,22 +477,26 @@ void
     size_t CountK
     );
 
-struct MLAS_HALF_GEMM_DISPATCH {
-    MLAS_HALF_GEMM_OPERATION* Operation;
-    MLAS_HALF_GEMM_COPY_PACKB_ROUTINE* CopyPackBRoutine;
-    MLAS_HALF_GEMM_CONVERT_PACKB_ROUTINE* ConvertPackBRoutine;
+/**
+ * @brief Hardware dependent dispatch for half precision GEMM
+*/
+struct MLAS_HALFGEMM_DISPATCH {
+    MLAS_HALFGEMM_OPERATION* Operation;   /**< HalfGemm driver */
+    MLAS_HALFGEMM_COPYPACKB_ROUTINE* CopyPackBRoutine;  /**< Pack function for B */
+    MLAS_HALFGEMM_CONVERTPACKB_ROUTINE* ConvertPackBRoutine; /**< Convert and pack function for B */
     size_t PackededK;
     size_t StrideM;
+    size_t BufOverRead;
 };
 
-extern const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchDefault;
+extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault;
 
 #if defined(MLAS_TARGET_ARM64)
-extern const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchNeon;
+extern const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon;
 #endif
 
 MLAS_FORCEINLINE
-const MLAS_HALF_GEMM_DISPATCH*
+const MLAS_HALFGEMM_DISPATCH*
 MlasHalfGemmGetDispatch()
 {
 #if defined(MLAS_TARGET_ARM64)

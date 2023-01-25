@@ -34,8 +34,8 @@ MlasHalfGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-    const MLAS_HALF_GEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
-    MLAS_HALF_GEMM_OPERATION* operation = dispatch->Operation;
+    const MLAS_HALFGEMM_DISPATCH* dispatch = MlasHalfGemmGetDispatch();
+    MLAS_HALFGEMM_OPERATION* operation = dispatch->Operation;
 
     if (ThreadPool == nullptr) {
         for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
@@ -112,13 +112,14 @@ MlasHalfGemmPackBSize(
     )
 {
     const auto* dispatch = MlasHalfGemmGetDispatch();
+    const auto padding = dispatch->BufOverRead;
     const auto PackedK = dispatch->PackededK;
     if (!float2half && dispatch->CopyPackBRoutine == nullptr) {
         // No packing routine provided
         return 0;
     }
     const size_t AlignedK = (K + PackedK - 1) & ~(PackedK - 1);
-    const size_t BytesRequired = N * AlignedK * FP16_SIZE;
+    const size_t BytesRequired = N * AlignedK * FP16_SIZE + padding;
     const size_t BufferAlignment = MlasGetPreferredBufferAlignment();
     const size_t AlignedBytesRequired =
         (BytesRequired + BufferAlignment - 1) & ~(BufferAlignment - 1);
@@ -244,10 +245,11 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
 }
 
 
-const MLAS_HALF_GEMM_DISPATCH MlasHalfGemmDispatchDefault = {
+const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     nullptr, 
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::PackedK,
-    MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM
+    MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM,
+    0
 };

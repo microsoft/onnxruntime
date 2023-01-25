@@ -66,12 +66,12 @@ Arguments:
         LEAF_ENTRY MlasHalfGemmKernelNeon
 
         PROLOG_SAVE_REG     x19,#-HGemmKernelFrame_SavedRegs!
-        lsl     x2,x2,#1                // k *= sizeof(fp16)
-        ldr     x8,[sp,#HGemmKernelFrame_B]
         ldr     x15,[sp,#HGemmKernelFrame_ldb]
+        lsl     x2,x2,#1                // k *= sizeof(fp16)
         CMP     x0, 2                   // if M < 2
         add     x9,x6,x7,lsl #1         // a1 = a0 + lda
         add     x16,x3,x4,lsl #1        // c1 = c0 + ldc
+        ldr     x8,[sp,#HGemmKernelFrame_B]
         CSEL    x9, x6, x9, LO          //     a1 = a0
         CSEL    x16, x3, x16, LO        //     c1 = c0
         add     x10,x9,x7,lsl #1        // a2 = a1 + lda
@@ -93,8 +93,8 @@ Arguments:
         CSEL    x7, x12, x7, LO         //     a5 = a4
         CSEL    x4, x13, x4, LO         //     c5 = c4
         lsl     x15,x15,#1              // ldb *= sizeof(fp16)
-        sub     x15,x15,16              // ldb -= 16
         ldrb    w19,[sp,#HGemmKernelFrame_ZeroMode]
+        sub     x15,x15,16              // ldb -= 16
 
 /****
 Main loop processes 6x16 tile, depth 4.
@@ -282,11 +282,8 @@ M6N16LoopK_Epilogue
 
 M6N16NextIterN
         SUBS    x1, x1, 16
-        B.LO    M6StoreRemainderN
-
         ldr     x8,[sp,#HGemmKernelFrame_B]
-        add     x8,x8,32                // B <- next 16 columns
-        str     x8,[sp,#HGemmKernelFrame_B]
+        B.LO    M6StoreRemainderN
 
         cbnz    x19,M6N16SkipAccumulateOutput
         ldp     q0,q1,[x3]
@@ -319,8 +316,10 @@ M6N16SkipAccumulateOutput
         SUB     x11, x11, x2            // a3 -= k
         ST1     {v28.16b, v29.16b}, [x13], 32
         SUB     x12, x12, x2            // a4 -= k
+        add     x8,x8,32                // B <- next 16 columns
         ST1     {v30.16b, v31.16b},  [x4], 32
         SUB     x7,  x7, x2             // a5 -= k
+        str     x8,[sp,#HGemmKernelFrame_B]
         B.HI    M6N16OutterLoopN
 
 ExitKernel
@@ -390,8 +389,8 @@ M6N16RemainderK1
         B       M6N16NextIterN
 
 M6StoreRemainderN
-        TBZ     x1, 3, M6StoreRemainderN
-        cbnz    x19,M6N8SkipAccumulateOutput
+        cbnz    x19,M6StoreRemainderNZeroMode
+        TBZ     x1, 3, M6StoreRemainderN4
         ldr     q0,[x3]
         ldr     q1,[x16]
         ldr     q2,[x17]
@@ -401,11 +400,100 @@ M6StoreRemainderN
         fadd    v20.8h,v20.8h,v0.8h
         fadd    v22.8h,v22.8h,v1.8h
         fadd    v24.8h,v24.8h,v2.8h
+        STR     q20,  [x3], 16
+        MOV     v20.16b, v21.16b
+        STR     q22, [x16], 16
+        MOV     v22.16b, v23.16b
+        STR     q24, [x17], 16
+        MOV     v24.16b, v25.16b
         fadd    v26.8h,v26.8h,v3.8h
         fadd    v28.8h,v28.8h,v4.8h
         fadd    v30.8h,v30.8h,v5.8h
+        STR     q26, [x14], 16
+        MOV     v26.16b, v27.16b
+        STR     q28, [x13], 16
+        MOV     v28.16b, v29.16b
+        STR     q30,  [x4], 16
+        MOV     v30.16b, v31.16b
 
-M6N8SkipAccumulateOutput
+M6StoreRemainderN4
+        TBZ     x1, 2, M6StoreRemainderN2
+        ldr     d0,[x3]
+        ldr     d1,[x16]
+        ldr     d2,[x17]
+        ldr     d3,[x14]
+        ldr     d4,[x13]
+        ldr     d5,[x4]
+        fadd    v21.4h,v20.4h,v0.4h
+        DUP     d20, v20.d[1]
+        fadd    v23.4h,v22.4h,v1.4h
+        DUP     d22, v22.d[1]
+        fadd    v25.4h,v24.4h,v2.4h
+        DUP     d24, v24.d[1]
+        fadd    v27.4h,v26.4h,v3.4h
+        DUP     d26, v26.d[1]
+        fadd    v29.4h,v28.4h,v4.4h
+        DUP     d28, v28.d[1]
+        fadd    v31.4h,v30.4h,v5.4h
+        DUP     d30, v30.d[1]
+        STR     d21,  [x3], 8
+        STR     d23, [x16], 8
+        STR     d25, [x17], 8
+        STR     d27, [x14], 8
+        STR     d29, [x13], 8
+        STR     d31,  [x4], 8
+
+M6StoreRemainderN2
+        TBZ     x1, 1, M6StoreRemainderN1
+        ldr     s0,[x3]
+        ldr     s1,[x16]
+        ldr     s2,[x17]
+        ldr     s3,[x14]
+        ldr     s4,[x13]
+        ldr     s5,[x4]
+        fadd    v21.4h,v20.4h,v0.4h
+        fadd    v23.4h,v22.4h,v1.4h
+        fadd    v25.4h,v24.4h,v2.4h
+        fadd    v27.4h,v26.4h,v3.4h
+        fadd    v29.4h,v28.4h,v4.4h
+        fadd    v31.4h,v30.4h,v5.4h
+        STR     s21,  [x3], 4
+        STR     s23, [x16], 4
+        DUP     s20, v20.s[1]
+        DUP     s22, v22.s[1]
+        STR     s25, [x17], 4
+        STR     s27, [x14], 4
+        DUP     s24, v24.s[1]
+        DUP     s26, v26.s[1]
+        STR     s29, [x13], 4
+        STR     s31,  [x4], 4
+        DUP     s28, v28.s[1]
+        DUP     s30, v30.s[1]
+
+M6StoreRemainderN1
+        TBZ     x1, 0, ExitKernel
+        ldr     h0,[x3]
+        ldr     h1,[x16]
+        ldr     h2,[x17]
+        ldr     h3,[x14]
+        ldr     h4,[x13]
+        ldr     h5,[x4]
+        fadd    v20.4h,v20.4h,v0.4h
+        fadd    v22.4h,v22.4h,v1.4h
+        fadd    v24.4h,v24.4h,v2.4h
+        fadd    v26.4h,v26.4h,v3.4h
+        fadd    v28.4h,v28.4h,v4.4h
+        fadd    v30.4h,v30.4h,v5.4h
+        STR     h20,  [x3]
+        STR     h22, [x16]
+        STR     h24, [x17]
+        STR     h26, [x14]
+        STR     h28, [x13]
+        STR     h30,  [x4]
+        b       ExitKernel
+
+M6StoreRemainderNZeroMode
+        TBZ     x1, 3, M6StoreRemainderN4ZeroMode
         STR     q20,  [x3], 16
         MOV     v20.16b, v21.16b
         STR     q22, [x16], 16
@@ -419,23 +507,8 @@ M6N8SkipAccumulateOutput
         STR     q30,  [x4], 16
         MOV     v30.16b, v31.16b
 
-M6StoreRemainderN4
-        TBZ     x1, 2, M6StoreRemainderN2
-        cbnz    x19,M6N4SkipAccumulateOutput
-        ldr     d0,[x3]
-        ldr     d1,[x16]
-        ldr     d2,[x17]
-        ldr     d3,[x14]
-        ldr     d4,[x13]
-        ldr     d5,[x4]
-        fadd    v20.4h,v20.4h,v0.4h
-        fadd    v22.4h,v22.4h,v1.4h
-        fadd    v24.4h,v24.4h,v2.4h
-        fadd    v26.4h,v26.4h,v3.4h
-        fadd    v28.4h,v28.4h,v4.4h
-        fadd    v30.4h,v30.4h,v5.4h
-
-M6N4SkipAccumulateOutput
+M6StoreRemainderN4ZeroMode
+        TBZ     x1, 2, M6StoreRemainderN2ZeroMode
         STR     d20,  [x3], 8
         STR     d22, [x16], 8
         DUP     d20, v20.d[1]
@@ -449,23 +522,8 @@ M6N4SkipAccumulateOutput
         DUP     d28, v28.d[1]
         DUP     d30, v30.d[1]
 
-M6StoreRemainderN2
-        TBZ     x1, 1, M6StoreRemainderN1
-        cbnz    x19,M6N2SkipAccumulateOutput
-        ldr     s0,[x3]
-        ldr     s1,[x16]
-        ldr     s2,[x17]
-        ldr     s3,[x14]
-        ldr     s4,[x13]
-        ldr     s5,[x4]
-        fadd    v20.4h,v20.4h,v0.4h
-        fadd    v22.4h,v22.4h,v1.4h
-        fadd    v24.4h,v24.4h,v2.4h
-        fadd    v26.4h,v26.4h,v3.4h
-        fadd    v28.4h,v28.4h,v4.4h
-        fadd    v30.4h,v30.4h,v5.4h
-
-M6N2SkipAccumulateOutput
+M6StoreRemainderN2ZeroMode
+        TBZ     x1, 1, M6StoreRemainderN1ZeroMode
         STR     s20,  [x3], 4
         STR     s22, [x16], 4
         DUP     s20, v20.s[1]
@@ -479,23 +537,8 @@ M6N2SkipAccumulateOutput
         DUP     s28, v28.s[1]
         DUP     s30, v30.s[1]
 
-M6StoreRemainderN1
+M6StoreRemainderN1ZeroMode
         TBZ     x1, 0, ExitKernel
-        cbnz    x19,M6N1SkipAccumulateOutput
-        ldr     h0,[x3]
-        ldr     h1,[x16]
-        ldr     h2,[x17]
-        ldr     h3,[x14]
-        ldr     h4,[x13]
-        ldr     h5,[x4]
-        fadd    v20.4h,v20.4h,v0.4h
-        fadd    v22.4h,v22.4h,v1.4h
-        fadd    v24.4h,v24.4h,v2.4h
-        fadd    v26.4h,v26.4h,v3.4h
-        fadd    v28.4h,v28.4h,v4.4h
-        fadd    v30.4h,v30.4h,v5.4h
-
-M6N1SkipAccumulateOutput
         STR     h20,  [x3]
         STR     h22, [x16]
         STR     h24, [x17]
