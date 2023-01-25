@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+
 # use this code to generate test data for PoolTest.LpPool1d and PoolTest.LpPool2d
 def generate_lppool_1d_test_cases() -> None:
     p = 2
@@ -27,6 +28,7 @@ def generate_lppool_1d_test_cases() -> None:
             pt_y = m2(torch.from_numpy(x))
             print(torch.flatten(pt_y))
             print(pt_y.shape)
+
 
 def generate_lppool_2d_test_cases() -> None:
     p = 2
@@ -54,6 +56,7 @@ def generate_lppool_2d_test_cases() -> None:
             print(stride)
             print(torch.flatten(pt_y))
             print(pt_y.shape)
+
 
 generate_lppool_1d_test_cases()
 generate_lppool_2d_test_cases()
