@@ -106,7 +106,6 @@ namespace Dml
         static uint64_t GetBucketSizeFromIndex(gsl::index index);
 
         friend class AllocationInfo;
-        void FreeResource(void* p, uint64_t resourceId);
 
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;

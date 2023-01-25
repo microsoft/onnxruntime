@@ -328,33 +328,6 @@ namespace Dml
         allocations_by_id_.erase(it);
     }
 
-   void BucketizedBufferAllocator::FreeResource(void* p, uint64_t pooledResourceId)
-    {
-        AllocationInfo *allocInfo = static_cast<AllocationInfo*>(p);
-
-        assert(allocInfo != nullptr); // Can't free nullptr
-
-        if (allocInfo->GetOwner() != this)
-        {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-
-        // Free the underlying allocation once queued work has completed.
-#ifdef _GAMING_XBOX
-        m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->DetachResourceWrapper().Get()).Get());
-#else
-        m_context->QueueReference(allocInfo->DetachResourceWrapper().Get());
-#endif
-
-    #if _DEBUG
-        assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
-        m_outstandingAllocationsById.erase(allocInfo->GetId());
-    #endif
-
-        // The allocation info is already destructing at this point
-    }
-
     absl::optional<uint32_t> BucketizedBufferAllocator::TryReserveAllocationID()
     {
         // The mutex must already be held

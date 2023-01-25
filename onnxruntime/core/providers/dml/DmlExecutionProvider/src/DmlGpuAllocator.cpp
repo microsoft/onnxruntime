@@ -19,7 +19,7 @@ namespace Dml
         )
     ),
     m_bfcAllocator(bfcAllocator),
-    m_subAllocator(std::move(subAllocator)) {}
+    m_subAllocator(subAllocator) {}
 
     void* DmlGpuAllocator::Alloc(size_t size_in_bytes)
     {

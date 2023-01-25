@@ -194,7 +194,7 @@ namespace Dml
         // Create a BFC allocator that encapsulates our allocator
         onnxruntime::AllocatorCreationInfo memoryInfo(
             [subAllocator](OrtDevice::DeviceId id) {
-                return std::make_unique<DmlBfcAllocator>(subAllocator.get());
+                return std::make_unique<DmlBfcAllocator>(subAllocator);
             });
 
         m_bfcAllocator = onnxruntime::CreateAllocator(memoryInfo);

@@ -11,7 +11,7 @@ namespace Dml
     class DmlBfcAllocator : public onnxruntime::IAllocator
     {
     public:
-        DmlBfcAllocator(BucketizedBufferAllocator* subAllocator)
+        DmlBfcAllocator(std::shared_ptr<BucketizedBufferAllocator> subAllocator)
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
                 "DML",
@@ -19,11 +19,11 @@ namespace Dml
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
             )
         ),
-        m_subAllocator(subAllocator) {}
+        m_subAllocator(std::move(subAllocator)) {}
 
         void* Alloc(size_t size_in_bytes) { return m_subAllocator->Alloc(size_in_bytes); }
         void Free(void* ptr) { m_subAllocator->Free(ptr); }
     private:
-        BucketizedBufferAllocator* m_subAllocator;
+        std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
     };
 } // namespace Dml
