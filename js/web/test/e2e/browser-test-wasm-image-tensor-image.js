@@ -4,7 +4,7 @@
 'use strict';
 
 function getRndColor() {
-  var r = 255*Math.random()|0,
+  let r = 255*Math.random()|0,
       g = 255*Math.random()|0,
       b = 255*Math.random()|0;
   return 'rgb(' + r + ',' + g + ',' + b + ')';
@@ -13,13 +13,13 @@ function getRndColor() {
 it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
 
   // Creating Image HTML Image Element
-  var img = document.createElement('img');
+  let img = document.createElement('img');
   img.crossOrigin = 'Anonymous';
-  var canvas = document.createElement('canvas');
+  const canvas = document.createElement('canvas');
   canvas.height = 200;
   canvas.width = 200;
-  var context = canvas.getContext('2d');
-  var y, x;
+  const context = canvas.getContext('2d');
+  let y, x;
 
   for(y = 0; y < 200; y++) {
     for(x = 0; x < 200; x++) {
@@ -33,9 +33,9 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
   // Image HTML element to tensor API
   const inputTensorHTML = await ort.Tensor.fromImage(img);
   // Tensor to ImageDAta API
-  var newImage = inputTensorHTML.toImageData();
+  let newImage = inputTensorHTML.toImageData();
   // ImageData to tensor API
-  var inputTensorImageData = await ort.Tensor.fromImage(newImage);
+  let inputTensorImageData = await ort.Tensor.fromImage(newImage);
 
   for (let i = 0; i < newImage.height*newImage.width*3; i++) {
     if(inputTensorImageData.data[i]!==inputTensorHTML.data[i]){
@@ -44,7 +44,7 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
     }
   }
 
-  var online = navigator.onLine;
+  let online = navigator.onLine;
 
   if(online){
     // URL element to tensor API
