@@ -198,6 +198,7 @@ class SymbolicShapeInference:
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
+            "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
         }
@@ -431,7 +432,9 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "SimplifiedLayerNormalization"
             "SkipLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
         ]

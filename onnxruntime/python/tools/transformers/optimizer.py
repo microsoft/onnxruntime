@@ -32,6 +32,7 @@ from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
+from onnx_model_t5 import T5OnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ MODEL_TYPES = {
     ),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
     "unet": (UnetOnnxModel, "pytorch", 1),
+    "t5": (T5OnnxModel, "pytorch", 2),
 }
 
 
@@ -248,7 +250,7 @@ def optimize_model(
             else [
                 "MatMulScaleFusion",
                 "MatMulAddFusion",
-                "SimplifiedLayerNormFusion",
+                "MatmulTransposeFusion",
                 "GemmActivationFusion",
                 "BiasSoftmaxFusion",
             ]

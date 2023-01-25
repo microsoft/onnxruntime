@@ -203,6 +203,7 @@ def export_onnx_models(
                     config.hidden_size,
                     use_external_data_format,
                     auto_mixed_precision=not disable_auto_mixed_precision,
+                    use_gpu=use_gpu,
                 )
             else:
                 logger.info(f"Skip optimizing: existed ONNX model {onnx_path}")
@@ -228,6 +229,7 @@ def export_onnx_models(
 
 def main():
     args = parse_arguments()
+    print("args")
 
     setup_logger(args.verbose)
 
