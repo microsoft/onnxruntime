@@ -1452,15 +1452,15 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
   }
 
   va_start(vargs, format);
-  OrtStatus* status = LogFormattedMessageImpl(log_severity_level, file_path, line_number, func_name, msg_size, format,
-                                              vargs);
+  OrtStatus* status = LogFormattedMessageImpl(log_severity_level, file_path, line_number, func_name,
+                                              static_cast<size_t>(msg_size), format, vargs);
   va_end(vargs);
 
   return Status{status};
 }
 
 inline OrtStatus* Logger::LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path,
-                                                  int line_number, const char* func_name, int buffer_size,
+                                                  int line_number, const char* func_name, size_t buffer_size,
                                                   const char* format, va_list vargs) const noexcept {
   constexpr size_t kStackBufferSize = 1024;
 

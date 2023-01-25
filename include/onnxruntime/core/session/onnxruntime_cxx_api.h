@@ -1541,7 +1541,7 @@ struct Logger : detail::Base<detail::Unowned<const OrtLogger>> {
                              const char* func_name, const char* format, ...) const noexcept;
  private:
   OrtStatus* LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
-                                     const char* func_name, int buffer_size, const char* format,
+                                     const char* func_name, size_t buffer_size, const char* format,
                                      va_list vargs) const noexcept;
 };
 
