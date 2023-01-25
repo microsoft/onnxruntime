@@ -202,7 +202,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("do_rotary",
               "Whether use rotary position embedding. Default value is 0.",
               AttributeProto::INT,
-              static_cast<int64_t>(0))
+              OPTIONAL_VALUE)
         .Attr("mask_filter_value",
               "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT,
