@@ -34,7 +34,7 @@ instead of `onnxruntime/rust/target`.
 ### cargo test both crates while specifying the absolute path to the OnnxRuntime shared library.
 
 ```sh
-    RUST_ONNXRUNTIME_LIBRARY_PATH=<absolute path to shared library> CARGO_TARGET_DIR=build/rust cargo test --manifest-path rust/Cargo.toml --features model-fetching
+    RUST_ONNXRUNTIME_LIBRARY_PATH=<absolute path to shared library/libonnxruntime.so> CARGO_TARGET_DIR=build/rust cargo test --manifest-path rust/Cargo.toml --features model-fetching
 ```
 
 ## cargo test with sanitizer support
