@@ -442,6 +442,19 @@ export class Tensor implements TensorInterface {
     }
   }
 
+  toDataURL(options?: TensorToImageDataOptions): string {
+    const canvas = document.createElement('canvas');
+    const pixels2DContext = canvas.getContext('2d');
+
+    const image = this.toImageData(options);
+    if (pixels2DContext!==null){
+     pixels2DContext.putImageData(image, 0, 0);
+     return canvas.toDataURL();
+    }else{
+      throw new Error('Can not access image data');
+    }
+  }
+
   toImageData(options?: TensorToImageDataOptions): ImageData {
     const pixels2DContext = document.createElement('canvas').getContext('2d');
     let image: ImageData;
