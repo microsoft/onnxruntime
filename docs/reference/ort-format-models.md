@@ -10,6 +10,8 @@ redirect_from: /docs/tutorials/mobile/model-conversion, /docs/tutorials/mobile/m
 # ORT model format
 {: .no_toc}
 
+**IMPORTANT: There was a breaking change to the ORT format in ONNX Runtime 1.13. Please see [here](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ORT_Format_Update_in_1.13.md) for details.**
+
 ## Contents
 {: .no_toc}
 
@@ -75,7 +77,7 @@ git checkout rel-1.7.2
 pip install onnxruntime==1.7.2
 ```
 
-If you are using the `master` branch in the git repository you should use the nightly ONNX Runtime python package
+If you are using the `main` branch in the git repository you should use the nightly ONNX Runtime python package:
 
 ```bash
 pip install -U -i https://test.pypi.org/simple/ ort-nightly
@@ -202,13 +204,14 @@ See the [ONNX Runtime API documentation](../api) for details on individual API u
 
 If you provide a filename for the ORT format model, a file extension of '.ort' will be inferred to be an ORT format model.
 
-If you provide in-memory bytes for the ORT format model, a marker in those bytes will be checked to infer if it's an ORT format model.
+If you provide in-memory bytes for the ORT format model, a marker in those bytes will be checked to determine if it's an ORT format model.
 
 If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
 
 #### Load ORT format model from a file path
 
 C++ API
+
 ```c++
 Ort::SessionOptions session_options;
 session_options.AddConfigEntry("session.load_model_format", "ORT");
