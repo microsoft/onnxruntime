@@ -270,6 +270,7 @@ ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
+ORT_RUNTIME_CLASS(Logger);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -3876,6 +3877,64 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                   _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
+
+  /// @}
+  /// \name OrtKernelInfo
+  /// Custom operator APIs.
+  /// @{
+
+  /** \brief Get the session logger from ::OrtKernelInfo.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to get a logger that can be used to log
+   * messages.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[out] logger Pointer set to the session's ::OrtLogger. Do not free.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.15
+   */
+  ORT_API2_STATUS(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
+
+  /// @}
+  /// \name OrtLogger
+  /// Custom operator APIs.
+  /// @{
+
+  /** \brief Logs a message at the given severity level using the provided ::OrtLogger.
+   *
+   * Only messages with a severity level equal or greater than the ::OrtLogger's logging severity level
+   * are logged. Use OrtApi::Logger_GetLoggingSeverityLevel to get the ::OrtLogger's logging severity
+   * level.
+   *
+   * Can be used in custom operators to log messages with the logger retrieved via OrtApi::KernelInfo_GetLogger.
+   *
+   * \param[in] logger The ::OrtLogger instance.
+   * \param[in] log_severity_level The message's severity level.
+   * \param[in] message The message to log.
+   * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param[in] line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param[in] func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.15
+   */
+  ORT_API2_STATUS(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
+                  _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                  _In_z_ const char* func_name);
+
+  /** \brief Get the logging severity level of the ::OrtLogger.
+   *
+   * Can be used in a custom operator to get the logging serverity level of the ::OrtLogger associated with
+   * the ::OrtKernelInfo.
+   *
+   * \param[in] logger The ::OrtLogger instance.
+   * \param[out] out Pointer to variable assigned with the logging severity level on success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.15
+   */
+  ORT_API2_STATUS(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out);
 
   /// @}
 

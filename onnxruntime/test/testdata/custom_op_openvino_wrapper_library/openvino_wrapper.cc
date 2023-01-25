@@ -133,9 +133,13 @@ static ov::Tensor OrtToOpenVINOTensor(Ort::UnownedValue ort_tensor) {
 
 KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
                                const std::unordered_map<std::string, std::string>& session_configs)
-    : weights_(nullptr) {
+    : weights_(nullptr), logger_(nullptr) {
   Ort::ConstKernelInfo kinfo(info);
   Ort::AllocatorWithDefaultOptions allocator;
+
+  this->logger_ = kinfo.GetLogger();
+
+  ORT_CXX_LOG(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Creating KernelOpenVINO");
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
   this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);  // Must keep the weights memory alive for inference.
@@ -159,7 +163,10 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
   auto device_type_it = session_configs.find("device_type");
 
   if ((device_type_it == session_configs.end()) || device_type_it->second.empty()) {
-    this->device_type_ = "CPU";
+    const char* default_dev_type = "CPU";
+    ORT_CXX_LOGF(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING,
+                 "Did not provide an OpenVINO device type. Using default: %s", default_dev_type);
+    this->device_type_ = default_dev_type;
   } else {
     this->device_type_ = device_type_it->second;
   }

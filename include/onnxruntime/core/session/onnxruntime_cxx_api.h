@@ -25,6 +25,8 @@
 #pragma once
 #include "onnxruntime_c_api.h"
 #include <cstddef>
+#include <cstdarg>
+#include <cstdio>
 #include <array>
 #include <memory>
 #include <stdexcept>
@@ -353,6 +355,7 @@ struct Status : detail::Base<OrtStatus> {
   explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
   explicit Status(const Exception&);       ///< Creates status instance out of exception
   explicit Status(const std::exception&);  ///< Creates status instance out of exception
+  Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
 };
@@ -1508,6 +1511,40 @@ struct KernelContext {
   OrtKernelContext* ctx_;
 };
 
+// Logs a message using the provider Ort::Logger, which must be passed by value.
+// Example:
+//   Ort::Logger logger(ort_logger);
+//   ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+#define ORT_CXX_LOG(logger, severity, message) \
+  logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message)
+
+// Logs a formatted message using the provided Ort::Logger, which must be passed by value.
+// Example:
+//   Ort::Logger logger(ort_logger);
+//   ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+#define ORT_CXX_LOGF(logger, severity, ...) \
+  logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
+
+struct Logger : detail::Base<detail::Unowned<const OrtLogger>> {
+  explicit Logger(std::nullptr_t) {}         ///< Create an empty instance to initialize later
+  explicit Logger(const OrtLogger* logger);  ///< Uses an existing ::OrtLogger instance
+
+  OrtLoggingLevel GetLoggingSeverityLevel() const;  ///< Wraps OrtApi::Logger_GetLoggingSeverityLevel
+
+  ///< Wraps OrtApi::Logger_LogMessage. Typically called via the ORT_CXX_LOG macro.
+  Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                    const char* func_name, const char* message) const noexcept;
+
+  ///< Prints a formatted message to a buffer and then calls OrtApi::Logger_LogMessage.
+  ///< Typically called via ORT_CXX_LOGF macro.
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                             const char* func_name, const char* format, ...) const noexcept;
+ private:
+  OrtStatus* LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                                     const char* func_name, int buffer_size, const char* format,
+                                     va_list vargs) const noexcept;
+};
+
 struct KernelInfo;
 
 namespace detail {
@@ -1550,6 +1587,8 @@ struct KernelInfoImpl : Base<T> {
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+
+  Logger GetLogger() const;
 };
 
 }  // namespace detail

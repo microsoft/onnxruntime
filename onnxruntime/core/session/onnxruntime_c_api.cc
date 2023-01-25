@@ -2660,6 +2660,12 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::KernelInfoGetAttribute_tensor,
     &OrtApis::HasSessionConfigEntry,
     &OrtApis::GetSessionConfigEntry,
+    // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
+    &OrtApis::KernelInfo_GetLogger,
+    &OrtApis::Logger_LogMessage,
+    &OrtApis::Logger_GetLoggingSeverityLevel,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

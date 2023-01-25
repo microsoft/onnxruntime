@@ -41,6 +41,10 @@ inline Status::Status(const Exception& e) {
   p_ = GetApi().CreateStatus(e.GetOrtErrorCode(), e.what());
 }
 
+inline Status::Status(const char* message, OrtErrorCode code) {
+  p_ = GetApi().CreateStatus(code, message);
+}
+
 inline std::string Status::GetErrorMessage() const {
   std::string message(GetApi().GetErrorMessage(p_));
   return message;
@@ -1420,6 +1424,57 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 //
 // Custom OP Inlines
 //
+inline Logger::Logger(const OrtLogger* logger) : detail::Base<detail::Unowned<const OrtLogger>>{logger} {
+}
+
+inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const {
+  OrtLoggingLevel out{};
+  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->p_, &out));
+  return out;
+}
+
+inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                                 const char* func_name, const char* message) const noexcept {
+  OrtStatus* status = GetApi().Logger_LogMessage(this->p_, log_severity_level, message, file_path, line_number,
+                                                 func_name);
+  return Status{status};
+}
+
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                                          const char* func_name, const char* format, ...) const noexcept {
+  va_list vargs;
+  va_start(vargs, format);
+  int msg_size = vsnprintf(nullptr, 0U, format, vargs);
+  va_end(vargs);
+
+  if (msg_size < 0) {  // Formatting error
+    return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
+  }
+
+  va_start(vargs, format);
+  OrtStatus* status = LogFormattedMessageImpl(log_severity_level, file_path, line_number, func_name, msg_size, format,
+                                              vargs);
+  va_end(vargs);
+
+  return Status{status};
+}
+
+inline OrtStatus* Logger::LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path,
+                                                  int line_number, const char* func_name, int buffer_size,
+                                                  const char* format, va_list vargs) const noexcept {
+  constexpr size_t kStackBufferSize = 1024;
+
+  if (buffer_size < kStackBufferSize) {
+    char buffer[kStackBufferSize];
+    vsnprintf(buffer, kStackBufferSize, format, vargs);
+    return GetApi().Logger_LogMessage(this->p_, log_severity_level, buffer, file_path, line_number, func_name);
+  } else {
+    auto buffer = std::make_unique<char[]>(buffer_size);
+    vsnprintf(buffer.get(), buffer_size, format, vargs);
+    return GetApi().Logger_LogMessage(this->p_, log_severity_level, buffer.get(), file_path, line_number, func_name);
+  }
+}
+
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
 }
 
@@ -1534,6 +1589,13 @@ inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocato
   OrtValue* out = nullptr;
   ThrowOnError(GetApi().KernelInfoGetAttribute_tensor(this->p_, name, allocator, &out));
   return Value{out};
+}
+
+template <typename T>
+inline Logger KernelInfoImpl<T>::GetLogger() const {
+  const OrtLogger* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetLogger(this->p_, &out));
+  return Logger{out};
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
