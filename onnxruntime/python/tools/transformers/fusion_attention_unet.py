@@ -103,8 +103,22 @@ class FusionAttentionUnet(Fusion):
         is_self_attention = not self.is_cross_attention
 
         if is_self_attention:
-            if q_matmul.input[0] != input or k_matmul.input[0] != input or q_matmul.input[0] != input:
-                logger.debug("q_matmul.input[0] != input or k_matmul.input[0] != input or q_matmul.input[0] != input")
+            if q_matmul.input[0] != input or k_matmul.input[0] != input or v_matmul.input[0] != input:
+                logger.debug(
+                    "For self attention, input hidden state for q and k/v shall be different. Got %s, %s, %s",
+                    q_matmul.input[0],
+                    k_matmul.input[0],
+                    v_matmul.input[0],
+                )
+                return None
+        else:
+            if q_matmul.input[0] != input or (k_matmul.input[0] != v_matmul.input[0]) or (k_matmul.input[0] == input):
+                logger.debug(
+                    "For cross attention, input hidden state for q and k/v shall be different. Got %s, %s, %s",
+                    q_matmul.input[0],
+                    k_matmul.input[0],
+                    v_matmul.input[0],
+                )
                 return None
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
@@ -203,9 +217,12 @@ class FusionAttentionUnet(Fusion):
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        node_before_layernorm = self.model.match_parent(
-            normalize_node, "Add" if self.is_cross_attention else "Reshape", 0
-        )
+        node_before_layernorm = self.model.match_parent(normalize_node, "Add", 0)
+
+        # In SD 1.5, for self attention, LayerNorm has parent Reshape
+        if node_before_layernorm is None and not self.is_cross_attention:
+            node_before_layernorm = self.model.match_parent(normalize_node, "Reshape", 0)
+
         if node_before_layernorm is None:
             return
 
