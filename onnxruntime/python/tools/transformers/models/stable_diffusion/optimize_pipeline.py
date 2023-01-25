@@ -10,7 +10,7 @@
 #    cd diffusers
 #    pip install -e .
 #    huggingface-cli login
-#    python3 scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5 --output_path ../stable-diffusion-v1-5-fp32
+#    python scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5 --output_path ../stable-diffusion-v1-5-fp32
 # Or use diffusers packages:
 #    export ONNX_ROOT=./sd_onnx
 #    pip install diffusers==0.11.1 transformers==4.21.2
@@ -60,7 +60,7 @@ def optimize_stable_diffusion_onnx_pipeline(
         RuntimeError: input onnx model does not exist
         RuntimeError: output onnx model path existed
     """
-    dirs_with_onnx = ["vae_encoder", "vae_decoder", "text_encoder", "safety_checker", "unet"]
+    dirs_with_onnx = ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
     for name in dirs_with_onnx:
         onnx_model_path = source_dir / name / "model.onnx"
 
@@ -106,7 +106,7 @@ def optimize_stable_diffusion_onnx_pipeline(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data_format)
-        print(f"{onnx_model_path} => {optimized_model_path}")
+        logger.info(f"{onnx_model_path} => {optimized_model_path}")
 
 
 def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
@@ -138,7 +138,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
             shutil.rmtree(target_path)
 
         shutil.copytree(source_path, target_path)
-        print(f"{source_path} => {target_path}")
+        logger.info(f"{source_path} => {target_path}")
 
     extra_files = ["model_index.json"]
     for name in extra_files:

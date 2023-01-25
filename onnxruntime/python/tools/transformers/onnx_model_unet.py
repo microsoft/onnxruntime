@@ -7,6 +7,7 @@ from logging import getLogger
 from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
+from fusion_group_norm import FusionGroupNorm
 from fusion_options import FusionOptions
 from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
@@ -51,6 +52,10 @@ class UnetOnnxModel(BertOnnxModel):
         self.preprocess()
 
         self.fuse_reshape()
+
+        if (options is None) or options.enable_group_norm:
+            group_norm_fusion = FusionGroupNorm(self)
+            group_norm_fusion.apply()
 
         if (options is None) or options.enable_attention:
             self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False)

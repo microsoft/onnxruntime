@@ -200,6 +200,7 @@ class SymbolicShapeInference:
             "PythonOp": self._infer_PythonOp,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
+            "GroupNorm": self._infer_GroupNorm,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -434,6 +435,7 @@ class SymbolicShapeInference:
             "SkipLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
+            "GroupNorm",
         ]
 
         if not skip_infer:
@@ -2055,6 +2057,9 @@ class SymbolicShapeInference:
         # output for inference, infer the shape and type for it too
         if len(node.output) > 3:
             self._propagate_shape_and_type(node, 0, 3)
+
+    def _infer_GroupNorm(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")

@@ -36,6 +36,7 @@ class FusionOptions:
 
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
+        self.enable_group_norm = model_type == "unet"
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
     def use_raw_attention_mask(self, use_raw_mask=True):
@@ -76,6 +77,8 @@ class FusionOptions:
             options.use_raw_attention_mask(False)
         if args.no_attention_mask:
             options.disable_attention_mask()
+        if args.enable_group_norm:
+            options.enable_group_norm = True
         return options
 
     @staticmethod
@@ -185,3 +188,11 @@ class FusionOptions:
             "MultiHeadAttention has only CUDA implementation so the model can only run with cuda execution provider.",
         )
         parser.set_defaults(use_multi_head_attention=False)
+
+        parser.add_argument(
+            "--enable_group_norm",
+            required=False,
+            action="store_true",
+            help="fuse GroupNorm. Only works for model_type=unet",
+        )
+        parser.set_defaults(enable_group_norm=False)
