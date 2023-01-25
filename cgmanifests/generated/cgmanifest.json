@@ -387,6 +387,16 @@
         },
         "comments": "tensorboard"
       }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "66d9cddc832c1cdc2b30a8755274f7f74640cfe6",
+          "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
+        },
+        "comments": "cutlass"
+      }
     }
   ]
 }

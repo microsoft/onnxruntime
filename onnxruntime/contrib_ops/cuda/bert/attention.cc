@@ -73,6 +73,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
+  assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
@@ -107,7 +108,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                    nullptr == extra_add_qk &&
                                    parameters.past_sequence_length == 0 &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
-                                   parameters.sequence_length == parameters.kv_sequence_length &&
                                    FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
                                                                       enable_trt_flash_attention_, true);
     if (use_causal_fused_runner) {
@@ -127,7 +127,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             nullptr == present &&
                             nullptr == extra_add_qk &&
                             parameters.hidden_size == parameters.v_hidden_size &&
-                            parameters.sequence_length == parameters.kv_sequence_length &&
                             FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
                                                                enable_trt_flash_attention_, false);
 
@@ -153,6 +152,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                         nullptr == past &&
                                         nullptr == present &&
                                         nullptr == extra_add_qk &&
+                                        (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
+                                         parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
