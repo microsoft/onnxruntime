@@ -125,12 +125,12 @@ public:
 
         auto operatorKernelContext = kernelContext.GetInterface();
         auto inputTensors = std::vector<IMLOperatorTensor*>(m_inputIndices.size());
-        auto tensors = std::vector<ComPtr<IMLOperatorTensor>>(m_inputIndices.size());
         for (uint32_t i = 0; i < inputTensors.size(); i++)
         {
             assert(m_inputTensorDescs[i].IsValid());
-            ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputTensor(0, m_inputIndices[i], tensors[i].GetAddressOf()));
-            inputTensors[i] = tensors[i].Get();
+            ComPtr<IMLOperatorTensor> inputTensor;
+            ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputTensor(0, m_inputIndices[i], &inputTensor));
+            inputTensors[i] = inputTensor.Get();
         }
 
         auto outputTensor = kernelContext.GetOutputTensor(0, m_outputShape).GetInterface().Get();

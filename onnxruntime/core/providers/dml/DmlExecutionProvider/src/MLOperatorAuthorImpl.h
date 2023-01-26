@@ -489,7 +489,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     onnxruntime::OpKernelContext* m_impl = nullptr;
     const EdgeShapes* m_outputShapes = nullptr;
 
-    std::vector<ComPtr<TensorWrapper>> m_inputTensors;
+    std::vector<std::vector<ComPtr<TensorWrapper>>> m_inputTensors;
     std::vector<ComPtr<TensorWrapper>> m_outputTensors;
 
     const onnxruntime::IExecutionProvider* m_provider = nullptr;

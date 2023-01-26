@@ -1609,21 +1609,36 @@ namespace Windows::AI::MachineLearning::Adapter
     {
         if (m_winmlProvider->TransitionsRequiredForOperator(m_internalOperator))
         {
+            uint32_t totalInputTensorCount = 0;
+            for (auto inputTensor : m_inputTensors)
+            {
+                totalInputTensorCount += static_cast<uint32_t>(inputTensor.size());
+            }
             std::vector<IUnknown*> resourcesToTransition;
-            resourcesToTransition.reserve(m_inputTensors.size() + m_outputTensors.size() + m_temporaryAllocations.size());
+            resourcesToTransition.reserve(totalInputTensorCount + m_outputTensors.size() + m_temporaryAllocations.size());
 
             for (uint32_t i = 0; i < m_inputTensors.size(); ++i)
             {
-                ComPtr<IMLOperatorTensor> tensor;
-                ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
-
-                if (tensor)
+                for (uint32_t j = 0; j < m_inputTensors[i].size(); ++j)
                 {
-                    ComPtr<IUnknown> resource;
-                    tensor->GetDataInterface(resource.GetAddressOf());
-                    if (resource)
+                    ComPtr<IMLOperatorTensor> tensor;
+                    if (m_inputTensors[i].size() == 1)
                     {
-                        resourcesToTransition.push_back(resource.Get());
+                        ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
+                    }
+                    else
+                    {
+                        ORT_THROW_IF_FAILED(GetSequenceInputTensor(i, j, tensor.GetAddressOf()));
+                    }
+
+                    if (tensor)
+                    {
+                        ComPtr<IUnknown> resource;
+                        tensor->GetDataInterface(resource.GetAddressOf());
+                        if (resource)
+                        {
+                            resourcesToTransition.push_back(resource.Get());
+                        }
                     }
                 }
             }
@@ -1664,7 +1679,7 @@ namespace Windows::AI::MachineLearning::Adapter
         // Pre-size tensor arrays.    Member methods return pointers to these which
         // are stored in these arrays, which would become stale if the vectors reallocate
         // their internal storage.
-        m_inputTensors.resize(context->InputCount());
+        m_inputTensors.resize(context->InputCount(), std::vector<ComPtr<TensorWrapper>>(1));
         m_outputTensors.resize(context->OutputCount());
 
         const void* executionHandle = m_provider->GetExecutionHandle();
@@ -1707,11 +1722,14 @@ namespace Windows::AI::MachineLearning::Adapter
             TransitionResourcesForOperatorIfRequired(false);
         }
 
-        for (auto& tensor : m_inputTensors)
+        for (auto& tensors : m_inputTensors)
         {
-            if (tensor)
+            for (auto& tensor : tensors)
             {
-                tensor->Close();
+                if (tensor)
+                {
+                    tensor->Close();
+                }
             }
         }
 
@@ -1738,7 +1756,7 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
             auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
-            if (m_inputTensors[inputIndex]->GetInterface() == nullptr)
+            if (m_inputTensors[inputIndex][0]->GetInterface() == nullptr)
             {
                 auto inputTensor = m_impl->Input<onnxruntime::Tensor>(inputIndex);
                 if (inputTensor != nullptr)
@@ -1749,13 +1767,13 @@ namespace Windows::AI::MachineLearning::Adapter
                         m_winmlProvider.Get(),
                         m_internalOperator);
 
-                    opKernelContextWrapper->m_inputTensors[inputIndex] = tensorWrapper;
+                    opKernelContextWrapper->m_inputTensors[inputIndex][0] = tensorWrapper;
                 }
             }
 
-            if (opKernelContextWrapper->m_inputTensors[inputIndex] != nullptr)
+            if (opKernelContextWrapper->m_inputTensors[inputIndex][0] != nullptr)
             {
-                opKernelContextWrapper->m_inputTensors[inputIndex].CopyTo(tensor);
+                opKernelContextWrapper->m_inputTensors[inputIndex][0].CopyTo(tensor);
             }
             return S_OK;
         }
@@ -1768,18 +1786,38 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             VerifyNotClosed();
             *tensor = nullptr;
+            
+            auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
 
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
-            auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(inputIndex);
-            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+            if (sequenceIndex >= m_inputTensors[inputIndex].size())
+            {
+                opKernelContextWrapper->m_inputTensors[inputIndex].resize(sequenceIndex+1);
+            }
+            ML_CHECK_BOOL(sequenceIndex < m_inputTensors[inputIndex].size());
 
-            auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>());
-            ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
-                elemTensor,
-                IsAllocationInterface(elemTensor->Location()),
-                m_winmlProvider.Get(),
-                m_internalOperator);
-            tensorWrapper.CopyTo(tensor);
+            if (m_inputTensors[inputIndex][sequenceIndex]->GetInterface() == nullptr)
+            {
+                auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(inputIndex);
+                ML_CHECK_BOOL(inputTensorSeq != nullptr);
+
+                auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>());
+                if (elemTensor != nullptr)
+                {
+                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        elemTensor,
+                        IsAllocationInterface(elemTensor->Location()),
+                        m_winmlProvider.Get(),
+                        m_internalOperator);
+
+                    opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex] = tensorWrapper;
+                }
+            }
+
+            if (opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex] != nullptr)
+            {
+                opKernelContextWrapper->m_inputTensors[inputIndex][sequenceIndex].CopyTo(tensor);
+            }
             return S_OK;
         }
         ORT_CATCH_RETURN
@@ -1930,7 +1968,7 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             ComPtr<IMLOperatorTensor> tensor;
             ORT_THROW_IF_FAILED(GetInputTensor(i, tensor.GetAddressOf()));
-            ret.push_back(m_inputTensors[i].Get());
+            ret.push_back(m_inputTensors[i][0].Get());
         }
 
         return ret;

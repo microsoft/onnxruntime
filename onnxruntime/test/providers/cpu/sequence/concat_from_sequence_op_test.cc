@@ -16,7 +16,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis0) {
   input.AddTensor({1, 2}, {2.0f, 3.0f});
   test.AddSeqInput("S", input);
   test.AddOutput<float>("I", {2, 1, 2}, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis1) {
@@ -28,7 +29,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis1) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int32_t>("I", {1, 2, 2}, {0, 1, 2, 3});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis2) {
@@ -40,7 +42,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis2) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 2, 2}, {0, 2, 1, 3});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis1_WithEmptyInput) {
@@ -53,7 +56,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Stack_Axis1_WithEmptyInput) {
   input.AddTensor({1, 0}, {});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 3, 0}, {});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Stack_ScalarInputs) {
@@ -66,7 +70,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Stack_ScalarInputs) {
   input.AddTensor({}, {3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {3}, {1, 2, 3});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis0) {
@@ -78,7 +83,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis0) {
   input.AddTensor({1, 2}, {2.0f, 3.0f});
   test.AddSeqInput("S", input);
   test.AddOutput<float>("I", {2, 2}, {0.0f, 1.0f, 2.0f, 3.0f});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1) {
@@ -90,7 +96,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int32_t>("I", {1, 4}, {0, 1, 2, 3});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis2) {
@@ -105,7 +112,7 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis2) {
   input.AddTensor({1, 2}, {2, 3});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 2, 2}, {0, 2, 1, 3});
-  test.Run(OpTester::ExpectResult::kExpectFailure, "axis 2 is not in valid range [-2,1]");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "axis 2 is not in valid range [-2,1]", {kDmlExecutionProvider});
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1_WithEmptyInput) {
@@ -118,7 +125,8 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_Axis1_WithEmptyInput) {
   input.AddTensor({1, 0}, {});
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {1, 0}, {});
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
@@ -135,8 +143,10 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
   test.AddSeqInput("S", input);
   test.AddOutput<int64_t>("I", {3}, {1, 2, 3});
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "Cannot concatenate scalars");
+           "Cannot concatenate scalars",
+            {kDmlExecutionProvider});
 }
+
 
 }  // namespace test
 }  // namespace onnxruntime

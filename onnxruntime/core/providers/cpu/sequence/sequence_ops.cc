@@ -98,7 +98,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx)).Get<Tensor>();
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
-  CopyCpuTensor(&indexed_tensor, Y);
+  ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(indexed_tensor, *Y));
 
   return Status::OK();
 }
