@@ -30,9 +30,9 @@ from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
-from onnx_model_t5 import T5OnnxModel
 
 logger = logging.getLogger(__name__)
 

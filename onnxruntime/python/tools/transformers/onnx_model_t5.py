@@ -6,10 +6,9 @@ import logging
 from typing import Union
 
 from fusion_attention import AttentionMask, FusionAttention
-from fusion_skiplayernorm import FusionSkipLayerNormalization
-from fusion_utils import NumpyHelper
 from fusion_base import Fusion
-from onnx import NodeProto, TensorProto, helper, numpy_helper
+from fusion_skiplayernorm import FusionSkipLayerNormalization
+from onnx import NodeProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
