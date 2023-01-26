@@ -54,13 +54,16 @@ public:
             {
                 // Remove empty tensors and keep only the non-empty tensors
                 auto shape = tensorShapeDescription.GetSequenceInputTensorShape(0, i);
-                if (OperatorHelper::ContainsEmptyDimensions(shape))
-                {
-                    continue;
-                }
 
                 auto r = static_cast<uint32_t>(shape.size());
-                axis = static_cast<uint32_t>(HandleNegativeAxis(kernelInfo.GetOptionalAttribute<int>(AttrName::Axis, -1), r));
+                auto is_scalar = r == 0;
+                if (!new_axis && is_scalar)
+                {
+                    ORT_THROW("Cannot concatenate scalars");
+                }
+
+                const int32_t signedAxis = gsl::narrow_cast<int32_t>(kernelInfo.GetAttribute<int64_t>(AttrName::Axis));
+                axis = static_cast<uint32_t>(HandleNegativeAxis(signedAxis, r + new_axis, !is_scalar));
                 if (new_axis)
                 {
                     ML_CHECK_VALID_ARGUMENT(axis < r + 1);
@@ -78,17 +81,24 @@ public:
                     inputDimCount = r + new_axis;
                 }
 
+                axisTotal += shape[axis];
+                
+                if (OperatorHelper::ContainsEmptyDimensions(shape))
+                {
+                    continue;
+                }
+
                 ML_CHECK_BOOL(*inputDimCount == shape.size());
                 m_inputTensorDescs.emplace_back(TensorDesc(sequenceInputDmlDataType, shape));
                 m_inputIndices.push_back(i);
-                axisTotal += shape[axis];
             }
+            
+            m_outputShape[axis] = axisTotal;
 
             // We should only call join if there exists input tensors that are non-empty and non-scalar.
             // In that case, the inputDimCount must be set and greater than 0.
-            if (inputDimCount.has_value() && *inputDimCount > 0)
+            if (m_inputIndices.size() > 0)
             {
-                m_outputShape[axis] = axisTotal;
                 m_outputTensorDesc = TensorDesc(sequenceInputDmlDataType, m_outputShape);
                 auto dmlAxis = GetDmlAdjustedAxis(axis, *inputDimCount, m_outputTensorDesc.GetDimensionCount());
 
@@ -118,6 +128,8 @@ public:
 
     void Compute(const MLOperatorKernelContext& kernelContext)
     {
+        auto outputTensor = kernelContext.GetOutputTensor(0, m_outputShape).GetInterface().Get();
+
         if (!m_inputIndices.size())
         {
             return;
@@ -133,7 +145,6 @@ public:
             inputTensors[i] = inputTensor.Get();
         }
 
-        auto outputTensor = kernelContext.GetOutputTensor(0, m_outputShape).GetInterface().Get();
         auto outputTensors = gsl::span<IMLOperatorTensor*> { &outputTensor, 1 };
 
         ORT_THROW_IF_FAILED(m_executionProvider->ExecuteOperator(

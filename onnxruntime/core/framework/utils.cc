@@ -118,7 +118,9 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
     std::vector<OrtValue> tensors;
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      tensors.emplace_back(*iter);
+      OrtValue tensor_on_device;
+      ORT_RETURN_IF_ERROR(AllocateHelper(allocator, target_stream, *iter, tensor_on_device));
+      tensors.emplace_back(tensor_on_device);
     }
     target_tensor_seq->SetElements(std::move(tensors));
     auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
