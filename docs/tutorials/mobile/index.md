@@ -1,6 +1,6 @@
 ---
 title: Deploy on mobile
-description: Learn how to deploy an ONNX model on a mobile device or as a web application with ONNX Runtime
+description: Learn how to deploy an ONNX model on a mobile device with ONNX Runtime
 parent: Tutorials
 has_children: true
 nav_order: 5
@@ -9,7 +9,7 @@ redirect_from: /get-started/with-mobile
 
 # How to develop a mobile application with ONNX Runtime
 
-ONNX Runtime gives you a variety of options to add machine learning to your mobile application. This page outlines the general flow through the development process. You can also check out the tutorials in this section:
+ONNX Runtime gives you a variety of options to add machine learning to your mobile application. This page outlines the flow through the development process. You can also check out the tutorials in this section:
 
 * [Build an objection detection application on iOS](./deploy-ios.md)
 * [Build an image classification application on Android](./deploy-android.md)
@@ -18,64 +18,89 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
 ![Steps to build for mobile platforms](../../../images/mobile.png){:width="80%"}
 
-1. Which ONNX Runtime package should I use?
+### Obtain a model
 
-   We publish the following ONNX Runtime packages that can be used in mobile applications:
-   * Android Java/C/C++
-     * Mobile (onnxruntime-mobile) and full (onnxruntime-android) packages
-   * iOS C/C++
-     * Mobile (onnxruntime-mobile-c) and full (onnxruntime-c) packages
-   * iOS Objective-C
-     * Mobile (onnxruntime-mobile-objc) and full (onnxruntime-objc) packages
+The first step in developing your mobile machine learning application is to obtain a model.
 
-   The full package has the full ONNX Runtime feature set.
-   The mobile package has a smaller binary size but limited feature support, like a reduced set of operator implementations and no support for running ONNX models.
+You need to understand your mobile app's scenario and get an ONNX model that is appropriate for that scenario. For example, does the app classify images, do object detection in a video stream, summarize or predict text, or do numerical prediction.
 
-   A [custom build](../../build/custom.md) is tailored to your model(s) and can be even smaller than the mobile package. However, using a custom build is more involved than using one of the published packages.
+To run on ONNX Runtime mobile, the model is required to be in ONNX format. ONNX models can be obtained from the [ONNX model zoo](https://github.com/onnx/models). If your model is not already in ONNX format, you can convert it to ONNX from PyTorch, TensorFlow and other formats using one of the converters.
 
-   If the binary size of the full package is acceptable, using the full package is recommended because it is easier to use.
-   Otherwise, consider using the mobile package or a custom build.
+Because the model is loaded and run on device, the model must fit on the device disk and be able to be loaded into the device's memory.
 
-   To give an idea of the binary size difference between mobile and full packages:
+### Develop the application
 
-   ONNX Runtime 1.11.0 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic library file size:
+Once you have a model, you can load and run it using the ONNX Runtime API.
 
-   |Package|Size|
-   |-|-|
-   |onnxruntime-mobile|3.3 MB|
-   |onnxruntime-android|12 MB|
+Which language bindings and runtime package you use depends on your chosen development environment and the target(s) you are developing for.
 
-   ONNX Runtime 1.11.0 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
+* Android Java/C/C++: onnxruntime-android package
+* iOS C/C++: onnxruntime-c package
+* iOS Objective-C: onnxruntime-objc package
 
-   |Package|Size|
-   |-|-|
-   |onnxruntime-mobile-c|22 MB|
-   |onnxruntime-c|48 MB|
+See 
 
-   Note: The iOS package is a static framework that will have a reduced binary size impact when compiled into your app.
+The above list of packages all contain the full ONNX Runtime feature and operator set and support for the ONNX format. We recommend you start with these to develop your application. Further optimizations may be required. These are detailed below.
+
+### Measure the application's performance
+
+Measure the application's performance against the requirements of your target platform. This includes:
+
+* application binary size
+* model size
+* application latency
+* power consumption
+
+If the application does not meet its requirements, there are optimizations that can be applied.
+
+### Optimize your application
+
+#### Reduce model size
+
+One method of reducing model size is to quantize the model. This reduces an original model with 32-bit weights by approximately a factor of 4, as the weights are reduced to 8-bit.
+
+Another way of reducing the model size is to find a new model with the same inputs, outputs and architecture that has already been optimized for mobile. For example: MobileNet and MobileBert.
+
+#### Reduce application binary size
+
+There are two options for reducing the ONNX Runtime binary size.
+
+1. Use the published packages that are optimized for mobile
+
+   * Android Java/C/C++: onnxruntime-mobile
+   * iOS C/C++: onnxruntime-mobile-c
+   * iOS Objective-C: onnxruntime-mobile-objc
+
+   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format][(../reference/ort-format-models.html#convert-onnx-models-to-ort-format).
+
+   If the mobile package does not have coverage for all of the operators in your model, then you can build a custom runtime binary based your specific model.
+
+2. Build a custom runtime based on your model(s)
+
+   One of the outputs of the ORT format conversion is a build configuration file, containing a list of operators from your model(s) and their types. You can use this configuration as input to the custom runtime binary build script.
+
+   [Custom builds](../build/custom) use the same build scripts as standard ONNX Runtime builds, with some extra parameters.
+
+3. Build a minimal custom build
+
+   If the runtime binary size of your custom build still exceeds requirements then you can add the ``--minimal_build` flag to the custom build above, and this will disable exceptions and real time type inference (RTTI) to further reduce the binary size.
 
    See [here](../../install/index.md#install-on-web-and-mobile) for installation instructions.
 
-2. Which machine learning model does my application use?
+To give an idea of the binary size difference between mobile and full packages:
 
-   You need to understand your mobile app's scenario and get an ONNX model that is appropriate for that scenario. For example, does the app classify images, do object detection in a video stream, summarize or predict text, or do numerical prediction.
+ONNX Runtime 1.13.1 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic library file size:
 
-   ONNX models can be obtained from the [ONNX model zoo](https://github.com/onnx/models), converted from PyTorch or TensorFlow, and many other places.
+|Package|Size|
+|-|-|
+|onnxruntime-mobile|xxx MB|
+|onnxruntime-android|xxx MB|
 
-   Once you have sourced or converted the model into ONNX format, it must be [converted to an ORT format model](../../reference/ort-format-models.md#convert-onnx-models-to-ort-format) in order to be used with the ONNX Runtime mobile package. This conversion is not necessary if you are using the full package.
+ONNX Runtime 1.13.1 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
 
-3. How do I bootstrap my app development?
+|Package|Size|
+|-|-|
+|onnxruntime-mobile-c|xxx MB|
+|onnxruntime-c|xxx MB|
 
-   If you are starting from scratch, bootstrap your mobile application according in your mobile framework XCode or Android Development Kit. TODO check this.
-
-   a. Add the ONNX Runtime dependency
-  
-   b. Consume the onnxruntime API in your application
-   
-   c. Add pre and post processing appropriate to your application and model
-
-4. How do I optimize my application?
-
-   **To reduce binary size:**  Use the ONNX Runtime mobile package or a custom build to reduce the binary size. The mobile package requires use of an ORT format model.
-
-   **To reduce memory usage:** Use an ORT format model as that uses less memory.
+Note: The iOS package is a static framework that will have a reduced binary size impact when compiled into your app.
