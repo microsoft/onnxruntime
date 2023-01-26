@@ -91,7 +91,7 @@ def optimize_stable_diffusion_onnx_pipeline(
             # TODO: enable mixed precision conversion for VAE-decoder.
             if name != "vae_decoder":
                 logger.info(f"convert to float16 ...")
-                m.convert_float_to_float16(op_block_list=["RandomNormalLike", "Resize"])
+                m.convert_float_to_float16(op_block_list=["RandomNormalLike", "Resize", "GroupNorm"])
             else:
                 logger.info("skip convert vae_decoder to fp16.")
 

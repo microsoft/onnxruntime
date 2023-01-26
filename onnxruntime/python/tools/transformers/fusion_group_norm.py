@@ -7,6 +7,7 @@ from typing import Dict
 
 import numpy as np
 from fusion_base import Fusion
+from fusion_utils import FusionUtils
 from onnx import TensorProto, helper
 from onnx_model import OnnxModel
 
@@ -23,17 +24,12 @@ class FusionGroupNorm(Fusion):
          The following is the pattern with swish activation:
                +----------------Shape-------------------------------+
                |                                                    |
-               |    (0, 32, -1)                                     v     (512x1x1) (512x1x1)
+               |    (0, 32, -1)                                     v     (512x1x1) (512x1x1) (optional)
            [Root] --> Reshape -------> InstanceNormalization --> Reshape ---> Mul --> Add --> Mul--> [output]
         Bx512xHxW                 (scale=ones(32), B=zeros(32))                        |       ^     Bx512xHxW
                                                                                        |       |
-                                                                                       +--->Sigmoid
-         The following is the pattern without swish activation:
-               +----------------Shape-------------------------------+
-               |                                                    |
-               |    (0, 32, -1)                                     v     (512x1x1) (512x1x1)
-           [Root] --> Reshape -------> InstanceNormalization --> Reshape ---> Mul --> Add -->[output]
-        Bx512xHxW                 (scale=ones(32), B=zeros(32))                             Bx512xHxW
+                                                                                       +--->Sigmoid (optional)
+        The Mul and Sigmoid before output is for Swish activation. They are optional.
         """
         nodes = self.model.match_parent_path(
             add_node, ["Mul", "Reshape", "InstanceNormalization", "Reshape"], [0, 0, 0, 0], output_name_to_node
@@ -93,6 +89,7 @@ class FusionGroupNorm(Fusion):
             and instance_norm_scale.shape == instance_norm_bias.shape
             and instance_norm_scale.shape[0] == 32
         ):
+            logger.info(f"InstanceNormalization groups={instance_norm_scale.shape[0]}")
             return
 
         if not np.allclose(np.ones_like(instance_norm_scale), instance_norm_scale):
@@ -101,6 +98,8 @@ class FusionGroupNorm(Fusion):
             return
 
         group_norm_name = self.model.create_node_name("GroupNorm", name_prefix="GroupNorm")
+
+        logger.info(f"GroupNorm channels={weight_elements}")
 
         gamma = helper.make_tensor(
             name=group_norm_name + "_gamma",
@@ -120,7 +119,7 @@ class FusionGroupNorm(Fusion):
 
         last_node = add_node
         subgraph_nodes = [add_node, weight_mul, reshape_4d, instance_norm, reshape_3d, shape_node]
-        has_swish = swish_mul and swish_sigmoid
+        has_swish_activation = swish_mul and swish_sigmoid
         if swish_mul and swish_sigmoid:
             subgraph_nodes.extend([swish_mul, swish_sigmoid])
             last_node = swish_mul
@@ -138,15 +137,32 @@ class FusionGroupNorm(Fusion):
         # instance_norm_scale might from Constant node. Use prune graph to clear it.
         self.prune_graph = True
 
+        # Right now GroupNorm only support float16 input. Need add a Cast in fp32 model.
+        utils = FusionUtils(self.model)
+
+        input = root
+        output = last_node.output[0]
+        if weight.dtype == np.float32:
+            # Add a Cast node to get float16 input for GroupNorm
+            cast_input, _cast_node = utils.cast_input(root, "float16")
+            input = cast_input
+
+            # Add a Cast node to convert back to float32 after GroupNorm
+            output = group_norm_name + "_out"
+            cast_node = helper.make_node("Cast", inputs=[group_norm_name + "_out"], outputs=[last_node.output[0]])
+            cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
+            self.model.add_node(cast_node)
+
         new_node = helper.make_node(
             "GroupNorm",
-            inputs=[root, group_norm_name + "_gamma", group_norm_name + "_beta"],
-            outputs=[last_node.output[0]],
+            inputs=[input, group_norm_name + "_gamma", group_norm_name + "_beta"],
+            outputs=[output],
+            name=group_norm_name,
         )
 
         new_node.attribute.extend(instance_norm.attribute)
         new_node.attribute.extend([helper.make_attribute("groups", 32)])
-        new_node.attribute.extend([helper.make_attribute("swish", 1 if has_swish else 0)])
+        new_node.attribute.extend([helper.make_attribute("activation", 1 if has_swish_activation else 0)])
         new_node.domain = "com.microsoft"
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
