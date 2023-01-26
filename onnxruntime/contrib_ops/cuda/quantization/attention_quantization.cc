@@ -174,6 +174,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(1, present_shape);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
+  bool use_memory_efficient_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    parameters.num_heads,
@@ -182,7 +183,8 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner);
+                                                   fused_runner,
+                                                   use_memory_efficient_attention);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
@@ -202,6 +204,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
   data.fused_runner = fused_runner;
   data.fused_cross_attention_kernel = nullptr;
+  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
 }

@@ -119,6 +119,9 @@ Status GreedySearch::SetupSubgraphExecutionInfo(const SessionState& session_stat
       decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
     } else if (attribute_name == "init_decoder") {
       ORT_ENFORCE(init_run_gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      // TODO (hasesh): If 'init_decoder' is present, then we update 'parameters_' again based on its subgraph (it would have been
+      // updated once for the 'decoder' attribute). In future, find a way to update 'parameters' only once based on only one subgraph
+      // attribute.
       auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
                                                                    subgraph_session_state, parameters_);
 
@@ -171,8 +174,7 @@ Status GreedySearch::Compute(OpKernelContext* ctx) const {
   if (has_init_decoder_) {
     ORT_ENFORCE(init_run_decoder_session_state, "Subgraph SessionState was not found for 'decoder' attribute.");
     ORT_ENFORCE(init_run_decoder_feeds_fetches_manager_, "CreateFeedsFetchesManager must be called prior to execution of graph.");
-    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_
-                  && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
+    ORT_ENFORCE(init_run_gpt_subgraph_ && gpt_subgraph_ && init_run_gpt_subgraph_->past_present_share_buffer_ == gpt_subgraph_->past_present_share_buffer_,
                 "past_present_share_buffer mode must be same for init decoder and decoder subgraphes");
   }
 

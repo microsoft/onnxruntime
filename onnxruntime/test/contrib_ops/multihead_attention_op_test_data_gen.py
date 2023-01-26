@@ -36,6 +36,8 @@ class Attention(nn.Module):
         self.value = nn.Linear(hidden_dim, self.v_hidden_size)
         self.is_decoder = is_decoder
 
+        # Do not reshape output for pretty print.
+        self.reshape_output = False
         self.verbose = False
 
     def transpose_for_scores(self, x: torch.Tensor, head_size) -> torch.Tensor:
@@ -43,7 +45,7 @@ class Attention(nn.Module):
         x = x.view(new_x_shape)
         return x.permute(0, 2, 1, 3)
 
-    def get_extended_attention_mask(self, attention_mask: Tensor) -> Tensor:
+    def get_extended_attention_mask(self, attention_mask: Tensor, dtype: torch.dtype) -> Tensor:
         assert attention_mask.dim() == 2 or attention_mask.dim() == 3
         extended_attention_mask = (
             attention_mask[:, None, :, :] if attention_mask.dim() == 3 else attention_mask[:, None, None, :]
@@ -120,7 +122,7 @@ class Attention(nn.Module):
 
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
-            attention_scores = attention_scores + self.get_extended_attention_mask(attention_mask)
+            attention_scores = attention_scores + self.get_extended_attention_mask(attention_mask, hidden_states.dtype)
 
         # Normalize the attention scores to probabilities.
         attention_probs = nn.functional.softmax(attention_scores, dim=-1)
@@ -131,8 +133,9 @@ class Attention(nn.Module):
 
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
-        # new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)
-        # context_layer = context_layer.view(new_context_layer_shape)
+        if self.reshape_output:
+            new_context_layer_shape = context_layer.size()[:-2] + (self.v_hidden_size,)
+            context_layer = context_layer.view(new_context_layer_shape)
 
         print("output", context_layer)
 
@@ -144,7 +147,7 @@ class Attention(nn.Module):
         return outputs
 
 
-def generate_test_data(
+def run_cross_attention(
     hidden_dim,
     q_head_size,
     v_head_size,
@@ -161,7 +164,8 @@ def generate_test_data(
 
     device = torch.device("cuda:0")
     mha = Attention(num_heads, hidden_dim, q_head_size, v_head_size, is_decoder=False).to(device).eval()
-
+    if key_padding_mask is not None:
+        key_padding_mask = key_padding_mask.to(device)
     torch.nn.init.uniform_(mha.query.weight, -0.5, 0.5)
     torch.nn.init.uniform_(mha.key.weight, -0.5, 0.5)
     torch.nn.init.uniform_(mha.value.weight, -0.5, 0.5)
@@ -205,10 +209,9 @@ def generate_test_data(
         past_key_value=None,
         output_attentions=False,
     )
-    print("output", output)
 
 
-def CrossAttention_Batch2_HeadSize40():
+def run_cross_batch2_headsize_40():
     hidden_dim = 80
     q_head_size = 40
     v_head_size = 40
@@ -216,10 +219,12 @@ def CrossAttention_Batch2_HeadSize40():
     batch_size = 2
     sequence_length = 3
     kv_sequence_length = 5
-    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+    run_cross_attention(
+        hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length
+    )
 
 
-def CrossAttention_Batch1_HeadSize16():
+def run_cross_batch1_headsize_16():
     hidden_dim = 32
     q_head_size = 16
     v_head_size = 16
@@ -227,10 +232,12 @@ def CrossAttention_Batch1_HeadSize16():
     batch_size = 1
     sequence_length = 2
     kv_sequence_length = 3
-    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+    run_cross_attention(
+        hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length
+    )
 
 
-def CrossAttention_Batch2_HeadSize16_8():
+def run_cross_batch2_headsize_16_8():
     hidden_dim = 32
     q_head_size = 16
     v_head_size = 8
@@ -238,15 +245,73 @@ def CrossAttention_Batch2_HeadSize16_8():
     batch_size = 2
     sequence_length = 1
     kv_sequence_length = 3
-    generate_test_data(hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length)
+    run_cross_attention(
+        hidden_dim, q_head_size, v_head_size, num_heads, batch_size, sequence_length, kv_sequence_length
+    )
+
+
+def run_cross_batch2_headsize_32_right_side_padding():
+    hidden_dim = 64
+    q_head_size = 32
+    v_head_size = 32
+    num_heads = 2
+    batch_size = 2
+    sequence_length = 2
+    kv_sequence_length = 3
+    key_padding_mask = torch.tensor([[1, 0, 0], [1, 1, 0]], dtype=torch.int32).cuda()
+
+    run_cross_attention(
+        hidden_dim,
+        q_head_size,
+        v_head_size,
+        num_heads,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        key_padding_mask,
+    )
+
+
+def run_cross_batch1_headsize_32_left_side_padding():
+    hidden_dim = 32
+    q_head_size = 32
+    v_head_size = 32
+    num_heads = 1
+    batch_size = 2
+    sequence_length = 2
+    kv_sequence_length = 3
+    key_padding_mask = torch.tensor([[0, 1, 1], [0, 0, 1]], dtype=torch.int32).cuda()
+    run_cross_attention(
+        hidden_dim,
+        q_head_size,
+        v_head_size,
+        num_heads,
+        batch_size,
+        sequence_length,
+        kv_sequence_length,
+        key_padding_mask,
+    )
+
+
+def create_cross_attention_test_data():
+    """
+    Create test data used in attention_op_test_helper.cc and multihead_attention_op_test.cc
+    """
+    print("CrossAttention_Batch2_HeadSize40")
+    run_cross_batch2_headsize_40()
+
+    print("CrossAttention_Batch1_HeadSize16")
+    run_cross_batch1_headsize_16()
+
+    print("CrossAttention_Batch2_HeadSize16_8")
+    run_cross_batch2_headsize_16_8()
+
+    print("CrossAttention_Batch2_HeadSize32_RightSidePadding")
+    run_cross_batch2_headsize_32_right_side_padding()
+
+    print("CrossAttention_Batch1_HeadSize32_LeftSidePadding")
+    run_cross_batch1_headsize_32_left_side_padding()
 
 
 with torch.no_grad():
-    print("CrossAttention_Batch2_HeadSize40")
-    CrossAttention_Batch2_HeadSize40()
-
-    rint("CrossAttention_Batch1_HeadSize16")
-    CrossAttention_Batch1_HeadSize16()
-
-    print("CrossAttention_Batch2_HeadSize16_8")
-    CrossAttention_Batch2_HeadSize16_8()
+    create_cross_attention_test_data()

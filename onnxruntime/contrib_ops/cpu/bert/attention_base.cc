@@ -249,6 +249,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
     output_parameters->mask_filter_value = mask_filter_value_;
+    output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
   }
 
