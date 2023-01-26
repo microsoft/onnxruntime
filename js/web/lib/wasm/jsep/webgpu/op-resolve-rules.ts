@@ -70,8 +70,8 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   //['Relu', '', '6+', unaryOps.relu], ['Reshape', '', '5+', reshape],
   // ['Resize', '', '10', resize, parseResizeAttributesV10],
   // ['Resize', '', '11+', resize, parseResizeAttributesV11],
-  //['Shape', '', '1+', shape], ['Sigmoid', '', '6+', unaryOps.sigmoid],
-  ['Sin', [unaryOps.sin]], ['Sinh', [unaryOps.sinh]],
+  //['Shape', '', '1+', shape],
+  ['Sigmoid', [unaryOps.sigmoid]], ['Sin', [unaryOps.sin]], ['Sinh', [unaryOps.sinh]],
   //['Slice', '', '10+', sliceV10],  // TODO: support 'steps' for Slice-10
   //['Slice', '', '1-9', slice, parseSliceAttributes],
   // // The "semantic" meaning of axis has changed in opset-13.

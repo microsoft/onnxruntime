@@ -212,8 +212,10 @@ export const reciprocal = (context: ComputeContext): number => {
 // export const relu = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
 //     createElementwiseProgramInfoLoader(inputs[0], 'Relu', a => `max(${a}, vec4(0.0))`), inputs);
 
-// export const sigmoid = async(handler: WebGpuInferenceHandler, inputs: Tensor[]): Promise<Tensor[] >=>handler.run(
-//     createElementwiseProgramInfoLoader(inputs[0], 'Sigmoid', a => `(vec4(1.0) / (vec4(1.0) + exp(-${a})))`), inputs);
+export const sigmoid = (context: ComputeContext): number => {
+  context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sigmoid', a => `(1.0 / (1.0 + exp(-${a})))`));
+  return 0;
+};
 
 export const sin = (context: ComputeContext): number => {
   context.compute(createElementwiseProgramInfoLoader(context.inputs[0], 'Sin', 'sin'));
