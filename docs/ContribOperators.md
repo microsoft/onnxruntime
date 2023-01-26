@@ -131,6 +131,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Corresponding past and present are same tensor, its size is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
 <dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
@@ -970,7 +972,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
-<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2125,7 +2127,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>mask_filter_value</tt> : float</dt>
-<dd>The value to be filled in the attention mask. Default value is negative infinity</dd>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 </dl>
@@ -2406,10 +2408,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>mask_filter_value</tt> : float</dt>
+<dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
 <dt><tt>past_present_share_buffer</tt> : int</dt>
 <dd>Corresponding past and present are same tensor, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
 <dt><tt>unidirectional</tt> : int</dt>
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>

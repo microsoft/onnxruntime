@@ -815,7 +815,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      int64_t output_start = batch * stride_m;
+      int64_t output_start = (int64_t)batch * (int64_t)stride_m;
       int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
 
       ActType const** worker_indirection_buffer = nullptr;

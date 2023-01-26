@@ -805,5 +805,28 @@ TEST(PadOpTest, BoolType) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(PadOpTest, ConstantPadAxes) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {1, 2, 2, 2},
+  {
+    1, 1,
+    1, 1,
+    1, 1,
+    1, 1});
+  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
+  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<int32_t>("axes", {2}, {1, 3});
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
+  {
+    0, 1, 1, 0,
+    0, 1, 1, 0,
+    0, 1, 1, 0,
+    0, 1, 1, 0
+    }
+  );
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

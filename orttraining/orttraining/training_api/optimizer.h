@@ -6,7 +6,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
-#include "orttraining/training_api/include/module.h"
+#include "orttraining/training_api/module.h"
 
 namespace onnxruntime {
 namespace training {

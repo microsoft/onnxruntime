@@ -9,6 +9,7 @@
 import os
 import unittest
 
+import onnx
 import pytest
 import torch
 from parity_utilities import find_transformers_source
@@ -59,6 +60,19 @@ class TestBeamSearchGpt(unittest.TestCase):
         if os.path.exists(self.beam_search_onnx_path):
             os.remove(self.beam_search_onnx_path)
 
+    def check_for_init_decoder_attr(self, model_path: str):
+        init_decoder_found = False
+        gpt2_beam_search_onnx_model = onnx.load(model_path)
+        graph_proto = gpt2_beam_search_onnx_model.graph
+        for node in graph_proto.node:
+            if node.op_type == "BeamSearch" or node.op_type == "GreedySearch":
+                for attr in node.attribute:
+                    if attr.name == "init_decoder":
+                        init_decoder_found = True
+                        break
+
+        self.assertTrue(init_decoder_found)
+
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
 
         if append_arguments:
@@ -74,6 +88,8 @@ class TestBeamSearchGpt(unittest.TestCase):
         # Test CPU
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)
         self.assertTrue(result["parity"], f"ORT and PyTorch result is different on CPU for arguments {arguments}")
+        # (CPU) Check for the presence of the "init_decoder" attribute
+        self.check_for_init_decoder_attr(self.beam_search_onnx_path)
 
         # Test GPU
         if self.enable_cuda:
@@ -81,6 +97,9 @@ class TestBeamSearchGpt(unittest.TestCase):
                 arguments.append("--use_gpu")
             result = run(arguments, sentences=self.sentences if sentences is None else sentences)
             self.assertTrue(result["parity"], f"ORT and PyTorch result is different on GPU for arguments {arguments}")
+
+            # (GPU) Check for the presence of the "init_decoder" attribute
+            self.check_for_init_decoder_attr(self.beam_search_onnx_path)
 
         os.remove(self.beam_search_onnx_path)
 
