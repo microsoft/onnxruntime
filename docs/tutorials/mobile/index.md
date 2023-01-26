@@ -48,7 +48,7 @@ You have a choice of hardware accelerators to use in your app, depending on the 
 * Applications that run on Android also have support for NNAPI and XNNPACK
 * Applications that run on iOS also have support for CoreML and XNNPACK
 
-Accelerators (called Execution Providers in ONNX Runtime) are configured in the SessionOptions, when the ONNXRuntime session is created and the model is loaded. For more detail, see your language [API docs](api).
+Accelerators (called Execution Providers in ONNX Runtime) are configured in the SessionOptions, when the ONNXRuntime session is created and the model is loaded. For more detail, see your language [API docs](../../api).
 
 TODO: add guidance on which EP should be tried first  
 
@@ -83,7 +83,7 @@ There are two options for reducing the ONNX Runtime binary size.
 
    These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format][(../reference/ort-format-models.html#convert-onnx-models-to-ort-format).
 
-   See the [install guide](https://onnxruntime.ai/docs/install/#install-on-web-and-mobile) for package specific instructions.
+   See the [install guide](../../install/#install-on-web-and-mobile) for package specific instructions.
 
    If the mobile package does not have coverage for all of the operators in your model, then you can build a custom runtime binary based your specific model.
 
@@ -91,7 +91,7 @@ There are two options for reducing the ONNX Runtime binary size.
 
    One of the outputs of the ORT format conversion is a build configuration file, containing a list of operators from your model(s) and their types. You can use this configuration as input to the custom runtime binary build script.
 
-   [Custom builds](../build/custom.md) use the same build scripts as standard ONNX Runtime builds, with some extra parameters.
+   [Custom builds](../../build/custom.md) use the same build scripts as standard ONNX Runtime builds, with some extra parameters.
 
 3. Build a minimal custom build
 
