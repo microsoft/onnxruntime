@@ -432,8 +432,7 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
-            "SimplifiedLayerNormalization"
-            "SkipLayerNormalization",
+            "SimplifiedLayerNormalization" "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
