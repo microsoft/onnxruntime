@@ -245,7 +245,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         init_beam_state_fp16_func_,
         device_copy_func_,
         device_copy_int32_func_,
-        create_encoder_inputs_func_,
+        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
         update_decoder_feeds_fp16_func_,
         expand_buffer_int32_func_,
         expand_buffer_float_func_,
