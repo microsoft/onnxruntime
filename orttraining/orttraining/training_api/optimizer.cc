@@ -6,8 +6,8 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
-#include "orttraining/training_api/include/utils.h"
-#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/utils.h"
+#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
