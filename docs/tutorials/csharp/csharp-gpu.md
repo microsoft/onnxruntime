@@ -29,11 +29,7 @@ nav_order: 1
 
 5. Restart your computer.
 
-6. You will need to move the `zlib` DLL and rename it to `zlibwapi` in the CUDA bin directory.
-    - Copy the `zlib` DLL from `C:\Program Files\NVIDIA Corporation\Nsight Systems 2022.4.2\host-windows-x64\zlib.dll`
-    - Paste and rename `zlibwapi` to `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\zlibwapi.dll`
-
-7. Now you can enable GPU in the C# ONNX Runtime API with the following code:
+6. Now you can enable GPU in the C# ONNX Runtime API with the following code:
 
 ```cs
 var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
