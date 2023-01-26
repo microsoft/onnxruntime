@@ -103,8 +103,10 @@ for (const group of ORT_WEB_TEST_CONFIG.model) {
         let context: ModelTestContext;
 
         before('prepare session', async () => {
+          console.log(`[_BEFORE_PREPARE_SESSION_] ${performance.now()}`);
           context = await ModelTestContext.create(
               test, ORT_WEB_TEST_CONFIG.profile, ORT_WEB_TEST_CONFIG.options.sessionOptions);
+          console.log(`[_AFTER_PREPARE_SESSION_] ${performance.now()}`);
         });
 
         after('release session', () => {

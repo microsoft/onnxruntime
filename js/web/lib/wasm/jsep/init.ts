@@ -114,13 +114,14 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
           if (isSourceGpu) {
             if (env.debug) {
               // eslint-disable-next-line no-console
-              console.log(`[js] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
+              console.log(`[js][${performance.now()}] jsepCopyGpuToGpu: src=${src}, dst=${dst}, size=${size}`);
             }
             backend.memcpy(src, dst);
           } else {
             if (env.debug) {
               // eslint-disable-next-line no-console
-              console.log(`[js] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
+              console.log(
+                  `[js][${performance.now()}] jsepCopyCpuToGpu: dataOffset=${src}, gpuDataId=${dst}, size=${size}`);
             }
             const data = module.HEAPU8.subarray(src, src + size);
             backend.upload(dst, data);
@@ -134,7 +135,8 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
 
               if (env.debug) {
                 // eslint-disable-next-line no-console
-                console.log(`[js] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${dataOffset}, size=${size}`);
+                console.log(`[js][${performance.now()}] jsepCopyGpuToCpu: gpuDataId=${gpuDataId}, dataOffset=${
+                    dataOffset}, size=${size}`);
               }
 
               await backend.download(gpuDataId, data);
@@ -150,7 +152,7 @@ export const init = async(module: OrtWasmModule): Promise<void> => {
         (kernel: number, contextDataOffset: number) => {
           if (env.debug) {
             // eslint-disable-next-line no-console
-            console.log(`[js] jsepRun on ${contextDataOffset}`);
+            console.log(`[js][${performance.now()}] jsepRun on ${contextDataOffset}`);
           }
           const context = new OpKernelContext(module, backend, contextDataOffset);
           return backend.computeKernel(kernel, context);
