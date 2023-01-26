@@ -22,6 +22,21 @@ The ORT format is the format supported by reduced size ONNX Runtime builds. Redu
 
 Both ORT format models and ONNX models are supported by a full ONNX Runtime build.
 
+## Backwards Compatibility
+
+Generally, the goal is that a particular version of ONNX Runtime can run models at the current (at time of the ONNX Runtime release) or older versions of the ORT format.
+
+Though we try to maintain backwards compatibility, there have been some breaking changes.
+
+ONNX Runtime version|ORT format version support|Notes
+-|-|-
+1.14+|v5, v4 (limited support)| See [here](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ORT_Format_Update_in_1.13.md#onnx-runtime-114) for details about limited v4 support.
+1.13|v5|v5 breaking change: removed kernel def hashes.
+1.12-1.8|v4|v4 breaking change: updated kernel def hash computation.
+1.7|v3, v2, v1|
+1.6|v2, v1|
+1.5|v1|ORT format introduced
+
 ## Convert ONNX models to ORT format
 
 ONNX models are converted to ORT format using the `convert_onnx_models_to_ort` script.
@@ -75,7 +90,7 @@ git checkout rel-1.7.2
 pip install onnxruntime==1.7.2
 ```
 
-If you are using the `master` branch in the git repository you should use the nightly ONNX Runtime python package
+If you are using the `main` branch in the git repository you should use the nightly ONNX Runtime python package:
 
 ```bash
 pip install -U -i https://test.pypi.org/simple/ ort-nightly
@@ -202,13 +217,14 @@ See the [ONNX Runtime API documentation](../api) for details on individual API u
 
 If you provide a filename for the ORT format model, a file extension of '.ort' will be inferred to be an ORT format model.
 
-If you provide in-memory bytes for the ORT format model, a marker in those bytes will be checked to infer if it's an ORT format model.
+If you provide in-memory bytes for the ORT format model, a marker in those bytes will be checked to determine if it's an ORT format model.
 
 If you wish to explicitly say that the InferenceSession input is an ORT format model you can do so via SessionOptions, although this generally should not be necessary.
 
 #### Load ORT format model from a file path
 
 C++ API
+
 ```c++
 Ort::SessionOptions session_options;
 session_options.AddConfigEntry("session.load_model_format", "ORT");

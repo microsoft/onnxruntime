@@ -66,7 +66,7 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 ./build.sh --use_cuda --cudnn_home <cudnn home path> --cuda_home <cuda home path>
 ```
 
-A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#cuda).
+A Dockerfile is available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#cuda).
 
 ### Notes
 {: .no_toc }
@@ -129,7 +129,7 @@ git checkout 7.2.1
 ./build.sh  --cudnn_home <path to cuDNN e.g. /usr/lib/x86_64-linux-gnu/> --cuda_home <path to folder for CUDA e.g. /usr/local/cuda> --use_tensorrt --tensorrt_home <path to TensorRT home> --skip_submodule_sync
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#tensorrt)
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
 
 ---
 
@@ -262,7 +262,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
    ```
       C:\ <openvino_install_directory>\setupvars.bat
    ```
-   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles/Dockerfile.openvino).
+   **Note:** If you are using a dockerfile to use OpenVINO™ Execution Provider, sourcing OpenVINO™ won't be possible within the dockerfile. You would have to explicitly set the LD_LIBRARY_PATH to point to OpenVINO™ libraries location. Refer our [dockerfile](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles/Dockerfile.openvino).
 
 
 4. Extra configuration step for Intel<sup>®</sup> Vision Accelerator Design based on 8 Movidius<sup>TM</sup> MyriadX VPUs:
@@ -404,7 +404,7 @@ index 7dfa97c..6d99e71 100644
 ./build.sh --llvm_path=/llvm/install/path/lib/cmake/llvm --use_mklml --use_nuphar --build_shared_lib --build_csharp --enable_pybind --config=Release
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/master/dockerfiles#nuphar).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#nuphar).
 
 
 ---
@@ -648,7 +648,7 @@ See more information on the MIGraphX Execution Provider [here](../execution-prov
 ./build.sh --config <Release|Debug|RelWithDebInfo> --use_migraphx --migraphx_home <path to MIGraphX home>
 ```
 
-Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/master/dockerfiles#migraphx).
+Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/blob/main/dockerfiles#migraphx).
 
 ## AMD ROCm
 
@@ -723,13 +723,14 @@ Once you have all the necessary components setup, follow the instructions to [cr
 
 ## XNNPACK
 
-Usage of XNNPACK on Android/Windows/Linux platforms is via the XNNPACK EP.
+Usage of XNNPACK on Android/iOS/Windows/Linux platforms is via the XNNPACK EP.
 
 See the [XNNPACK Execution Provider](../execution-providers/Xnnpack-ExecutionProvider.md) documentation for more details.
 
 The pre-built ONNX Runtime package([`onnxruntime-android`](https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android)) for Android includes the XNNPACK EP.
 
-We don't support XNNPACK on iOS currently.
+The pre-built ONNX Runtime Mobile package for iOS, `onnxruntime-c` and `onnxruntime-objc` in [CocoaPods](https://cocoapods.org/), includes the XNNPACK EP. (Package `onnxruntime-objc` with XNNPACK will be available since 1.14.)
+
 
 If performing a custom build of ONNX Runtime, support for the XNNPACK EP must be enabled when building.
 
@@ -761,6 +762,20 @@ Linux example:
 ```bash
 ./build.sh --cmake_generator "Ninja" --android  --android_sdk_path /Android --android_ndk_path /Android/ndk/21.1.6352462/ --android_abi arm64-v8a --android_api 29 --use_xnnpack
 ```
+### Build for iOS (available since 1.14)
+A Mac machine is required to build package for iOS. Please follow this [guide](./ios.md) to set up environment firstly.
+#### Create a minimal build with XNNPACK EP support
+
+Once you have all the necessary components setup, follow the instructions to [create the custom build](./custom.md), with the following changes:
+
+* Replace `--minimal_build` with `--minimal_build extended` to enable support for execution providers that dynamically create kernels at runtime, which is required by the XNNPACK EP.
+* Add `--use_xnnpack` to include the XNNPACK EP in the build
+
+```dos
+<ONNX Runtime repository root>./build.sh --config <Release|Debug|RelWithDebInfo|MinSizeRel> --use_xcode \
+           --ios --ios_sysroot iphoneos --osx_arch arm64 --apple_deploy_target <minimal iOS version> --use_xnnpack --minimal_build extended --disable_ml_ops --disable_exceptions --build_shared_lib --skip_tests --include_ops_by_config <config file from model conversion>
+```
+
 ### Build for Windows
 ```dos
 <ONNX Runtime repository root>.\build.bat --config <Release|Debug|RelWithDebInfo> --use_xnnpack
@@ -802,3 +817,32 @@ See more information on the CANN Execution Provider [here](../execution-provider
 
 * The CANN execution provider supports building for both x64 and aarch64 architectures.
 * CANN excution provider now is only supported on Linux.
+
+## Azure
+
+See the [Azure Execution Provider](../execution-providers/Azure-ExecutionProvider.md) documentation for more details.
+
+### Prerequisites
+
+For Linux, before building, please:
+
+* install openssl dev package into the system, which is openssl-dev for redhat and libssl-dev for ubuntu.
+* if have multiple openssl dev versions installed in the system, please set environment variable "OPENSSL_ROOT_DIR" to the desired version, for example:
+
+```base
+set OPENSSL_ROOT_DIR=/usr/local/ssl3.x/
+```
+
+### Build Instructions
+
+#### Windows
+
+```dos
+build.bat --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_azure
+```
+
+#### Linux
+
+```bash
+./build.sh --config <Release|Debug|RelWithDebInfo> --build_shared_lib --build_wheel --use_azure
+```

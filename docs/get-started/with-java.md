@@ -29,9 +29,9 @@ Release artifacts are published to **Maven Central** for use as a dependency in 
 | [com.microsoft.onnxruntime:onnxruntime](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime) | CPU | Windows x64, Linux x64, macOS x64 |
 | [com.microsoft.onnxruntime:onnxruntime_gpu](https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu) | GPU (CUDA) | Windows x64, Linux x64 |
 
-For building locally, please see the [Java API development documentation](https://github.com/microsoft/onnxruntime/tree/master/java/README.md) for more details.
+For building locally, please see the [Java API development documentation](https://github.com/microsoft/onnxruntime/tree/main/java/README.md) for more details.
 
-For customization of the loading mechanism of the shared library, please see [advanced loading instructions](https://github.com/microsoft/onnxruntime/tree/master/java/README.md#advanced-loading).
+For customization of the loading mechanism of the shared library, please see [advanced loading instructions](https://github.com/microsoft/onnxruntime/tree/main/java/README.md#advanced-loading).
 
 ## API Reference
 
@@ -40,7 +40,7 @@ The Javadoc is available [here](https://javadoc.io/doc/com.microsoft.onnxruntime
 ## Sample
 
 An example implementation is located in
-[src/test/java/sample/ScoreMNIST.java](https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/sample/ScoreMNIST.java).
+[src/test/java/sample/ScoreMNIST.java](https://github.com/microsoft/onnxruntime/tree/main/java/src/test/java/sample/ScoreMNIST.java).
 
 Once compiled the sample code expects the following arguments `ScoreMNIST
 [path-to-mnist-model] [path-to-mnist] [scikit-learn-flag]`.  MNIST is expected
@@ -48,13 +48,13 @@ to be in libsvm format. If the optional scikit-learn flag is supplied the model
 is expected to be produced by skl2onnx (so expects a flat feature vector, and
 produces a structured output), otherwise the model is expected to be a CNN from
 pytorch (expecting a `[1][1][28][28]` input, producing a vector of
-probabilities).  Two example models are provided in [testdata](https://github.com/microsoft/onnxruntime/tree/master/java/testdata),
+probabilities).  Two example models are provided in [testdata](https://github.com/microsoft/onnxruntime/tree/main/java/testdata),
 `cnn_mnist_pytorch.onnx` and `lr_mnist_scikit.onnx`. The first is a LeNet5 style
 CNN trained using PyTorch, the second is a logistic regression trained using scikit-learn.
 
 The unit tests contain several examples of loading models, inspecting input/output node shapes and types, as well as constructing tensors for scoring. 
 
-* [https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/ai/onnxruntime/InferenceTest.java#L66](https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/ai/onnxruntime/InferenceTest.java#L66)
+* [https://github.com/microsoft/onnxruntime/tree/main/java/src/test/java/ai/onnxruntime/InferenceTest.java#L66](https://github.com/microsoft/onnxruntime/tree/main/java/src/test/java/ai/onnxruntime/InferenceTest.java#L66)
 
 ## Get Started
 
@@ -94,7 +94,7 @@ You can load your input data into OnnxTensor objects in several ways. The most e
     var tensorFromArray = OnnxTensor.createTensor(env,sourceArray);
 ```
 
-Here is a [complete sample program](https://github.com/microsoft/onnxruntime/tree/master/java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
+Here is a [complete sample program](https://github.com/microsoft/onnxruntime/tree/main/java/src/test/java/sample/ScoreMNIST.java) that runs inference on a pretrained MNIST model.
 
 ## Run on a GPU or with another provider (optional)
 

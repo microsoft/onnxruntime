@@ -249,7 +249,7 @@ If using pip, run pip install `--upgrade pip` prior to downloading.
 |[ort-nightly-gpu](https://test.pypi.org/project/ort-nightly-gpu)|GPU (Dev) | Same as above |
 
 
-For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/master/docs/Python_Dev_Notes.md)
+For Python compiler version notes, see [this page](https://github.com/microsoft/onnxruntime/tree/main/docs/Python_Dev_Notes.md)
 
 
 ## Supported Versions

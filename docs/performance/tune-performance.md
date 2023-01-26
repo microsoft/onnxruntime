@@ -68,7 +68,7 @@ If an operator called multiple kernels during execution, the performance numbers
 {"cat":"Kernel", "name":<name of the kernel called next>, ...}
 ```
 
-ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/master/tools/perf_view) to render the statistics as a summarized view in the browser.
+ONNX Runtime also offers a [tool](https://github.com/microsoft/onnxruntime/tree/main/tools/perf_view) to render the statistics as a summarized view in the browser.
 
 ## Using different Execution Providers
 
@@ -140,7 +140,7 @@ Performance is dependent on the specific model you're trying to run, the session
 
 The CPU version of ONNX Runtime provides a complete implementation of all operators in the ONNX spec. This ensures that your ONNX-compliant model can execute successfully. In order to keep the binary size small, common data types are supported for the ops. If you are using an uncommon data type that is not supported, you can file an issue and/or contribute a PR (see examples - [PR #2112](https://github.com/microsoft/onnxruntime/pull/2112), [PR #2034](https://github.com/microsoft/onnxruntime/pull/2034), [PR #1565](https://github.com/microsoft/onnxruntime/pull/1565)). Please make sure you provide details on usage justification.
 
-Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/master/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
+Additionally, not all CUDA kernels are implemented, as these have been prioritized on an as-needed basis. This means that if your model contains operators that do not have a CUDA implementation, it will fall back to CPU. Switching between CPU and GPU can cause significant performance impact. If you require a specific operator that is not currently supported, please consider [contributing](https://github.com/microsoft/onnxruntime/tree/main/CONTRIBUTING.md) and/or [file an issue](https://github.com/microsoft/onnxruntime/issues) clearly describing your use case and share your model if possible.
 
 ### TensorRT or CUDA?
 
@@ -169,12 +169,75 @@ Currently, there are no special provisions to employ mimalloc on Linux. It is re
 
 ### Thread management
 
-* Use the appropriate ORT API to set intra and inter op num threads. Inter op num threads is only used when parallel execution is enabled.
+#### Set number of intra-op threads
+
+Onnxruntime sessions utilize multi-threading to parallelize computation inside each operator.
+Customer could configure the number of threads like:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+With above configuration, two threads will be created in the pool, so along with the main calling thread, there will be three threads in total to participate in intra-op computation.
+By default, each session will create one thread per phyical core (except the 1st core) and attach the thread to that core.
+However, if customer explicitly set the number of threads like showcased above, there will be no affinity set to any of the created thread.
+
+In addition, Onnxruntime also allow customers to create a global intra-op thread pool to prevent overheated contentions among session thread pools, please find its usage [here](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+
+#### Set number of inter-op threads
+
+A inter-op thread pool is for parallelism between operators, and will only be created when session execution mode set to parallel:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.execution_mode  = ExecutionMode.ORT_PARALLEL
+sess_opt.inter_op_num_threads = 3
+sess = ort.InferenceSession('model.onnx', sess_opt)
+```
+
+By default, inter-op thread pool will also have one thread per physical core.
+
+#### Set intra-op thread affinity
+
+For certain scenarios, it may be beneficial to customize intra-op thread affinities, for example:
+* There are multiple sessions run in parallel, customer might prefer their intra-op thread pools run on separate cores to avoid contention.
+* Customer want to limit a intra-op thread pool to run on only one of the NUMA nodes to reduce overhead of expensive cache miss among nodes.
+
+For session intra-op thread pool, please read the [configuration](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h#L180) and consume it like:
+
+```python
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 3
+sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '1;2')
+sess = ort.InferenceSession('model.onnx', sess_opt, ...)
+```
+
+For global thread pool, please read the [API](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/include/onnxruntime/core/session/onnxruntime_c_api.h#L3636) and [usage](https://github.com/microsoft/onnxruntime/blob/68b5b2d7d33b6aa2d2b5cf8d89befb4a76e8e7d8/onnxruntime/test/global_thread_pools/test_main.cc#L98).
+
+#### Numa support and performance tuning
+
+Since release 1.14, Onnxruntime thread pool could utilize all physical cores that are available over NUMA nodes.
+The intra-op thread pool will create a thread on every physical core (except the 1st core). E.g. assume there is a system of 2 NUMA nodes, each has 24 cores.
+Hence intra-op thread pool will create 47 threads, and set thread affinity to each core.
+
+For NUMA systems, it is recommended to test a few thread settings to explore for best performance, in that threads allocated among NUMA nodes might has higher cache-miss overhead when cooperating with each other. For example, when number of intra-op threads has to be 8, there are different ways to set affinity:
+
+```
+sess_opt = SessionOptions()
+sess_opt.intra_op_num_threads = 8
+sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '3,4;5,6;7,8;9,10;11,12;13,14;15,16') # set affinities of all 7 threads to cores in the first NUMA node
+# sess_opt.add_session_config_entry('session.intra_op_thread_affinities', '3,4;5,6;7,8;9,10;49,50;51,52;53,54') # set affinities for first 4 threads to the first NUMA node, and others to the second
+sess = ort.InferenceSession('resnet50.onnx', sess_opt, ...)
+```
+
+Test showed that setting affinities to a single NUMA node has nearly 20 percent performance improvement aginst the other case.
 
 #### Custom threading callbacks
 
 Occasionally, customers might prefer to use their own fine-tuned threads for multithreading,
-hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
+hence ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
 ```c++
   std::vector<std::thread> threads;
@@ -248,7 +311,7 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
 * Graph Optimization Level
-  * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](graph-optimizations.md) documentation.
+  * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](graph-optimizations.md) documentation.
 
 ### MKL_DNN/nGraph Execution Provider
 
@@ -293,7 +356,7 @@ Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python).
 
 * C#
 
-Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
+Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
 
 ### Convolution-heavy models and the CUDA EP
 
@@ -522,11 +585,11 @@ Here is a list of things to check when assessing performance issues:
 
 ### I need help performance tuning for BERT models
 
-For BERT models, sometimes ONNX Runtime cannot apply the best optimizations due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/master/onnxruntime/python/tools/transformers/notebooks) to help get started.
+For BERT models, sometimes ONNX Runtime cannot apply the best optimizations due to reasons such as framework version updates. We recommend trying out the [BERT optimization tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers), which reflects the latest changes in graph pattern matching and model conversions, and a set of [notebooks](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers/notebooks) to help get started.
 
 ### Why is the model graph not optimized even with graph_optimization_level set to ORT_ENABLE_ALL?
 
-The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may prevent some of the graph optimizations like const folding, operator fusion etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with the latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/master/tools/python/remove_initializer_from_input.py).
+The ONNX model from IR_VERSION 4 only treats initializers that appear in graph input as non-constant. This may prevent some of the graph optimizations like const folding, operator fusion etc. Move initializers out of graph inputs if there is no need to override them, by either re-generating the model with the latest exporter/converter or with the tool [remove_initializer_from_input.py](https://github.com/microsoft/onnxruntime/tree/main/tools/python/remove_initializer_from_input.py).
 
 ### Why is my model running slower on GPU than on CPU?
 

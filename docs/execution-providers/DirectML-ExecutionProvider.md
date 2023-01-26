@@ -93,7 +93,7 @@ The DirectML execution provider does not support the use of memory pattern optim
 
 If using the onnxruntime C API, you must call `DisableMemPattern` and `SetSessionExecutionMode` functions to set the options required by the DirectML execution provider.
 
-See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/master/include//onnxruntime/core/session/onnxruntime_c_api.h).
+See [onnxruntime\include\onnxruntime\core\session\onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/main/include//onnxruntime/core/session/onnxruntime_c_api.h).
 
     OrtStatus*(ORT_API_CALL* DisableMemPattern)(_Inout_ OrtSessionOptions* options)NO_EXCEPTION;
 

@@ -104,7 +104,7 @@ using (var outputs1 = session1.Run(inputs1))
 If the model have fixed sized inputs and outputs of numeric tensors, you can use "FixedBufferOnnxValue" to accelerate the inference speed. By using "FixedBufferOnnxValue", the container objects only need to be allocated/disposed one time during multiple InferenceSession.Run() calls. This avoids some overhead which may be beneficial for smaller models where the time is noticeable in the overall running time.
 
 An example can be found at `TestReusingFixedBufferOnnxValueNonStringTypeMultiInferences()`:
-* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](https://github.com/microsoft/onnxruntime/tree/master/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
+* [Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047](https://github.com/microsoft/onnxruntime/tree/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests/InferenceTest.cs#L1047)
 
 ## Running on GPU (Optional)
 If using the GPU package, simply use the appropriate SessionOptions when creating an InferenceSession.

@@ -22,7 +22,7 @@ This article shows you how to generate the reduced operator config file using th
 
 ## The create_reduced_build_config.py script
 
-To create a reduced operator configuration file, run the script [create_reduced_build_config.py](https://github.com/microsoft/onnxruntime/blob/master/tools/python/create_reduced_build_config.py) on your model/s.
+To create a reduced operator configuration file, run the script [create_reduced_build_config.py](https://github.com/microsoft/onnxruntime/blob/main/tools/python/create_reduced_build_config.py) on your model/s.
 
 The kernel configuration file can be manually edited as needed. The configuration can be created from either ONNX or ORT format models.
 

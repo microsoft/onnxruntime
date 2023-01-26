@@ -6,15 +6,16 @@
 <title>OrtSession.SessionOptions (onnxruntime 1.14.0 API)</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 <link rel="stylesheet" type="text/css" href="../../stylesheet.css" title="Style">
-<link rel="stylesheet" type="text/css" href="../../jquery/jquery-ui.css" title="Style">
+<link rel="stylesheet" type="text/css" href="../../jquery/jquery-ui.min.css" title="Style">
+<link rel="stylesheet" type="text/css" href="../../jquery-ui.overrides.css" title="Style">
 <script type="text/javascript" src="../../script.js"></script>
 <script type="text/javascript" src="../../jquery/jszip/dist/jszip.min.js"></script>
 <script type="text/javascript" src="../../jquery/jszip-utils/dist/jszip-utils.min.js"></script>
 <!--[if IE]>
 <script type="text/javascript" src="../../jquery/jszip-utils/dist/jszip-utils-ie.min.js"></script>
 <![endif]-->
-<script type="text/javascript" src="../../jquery/jquery-3.5.1.js"></script>
-<script type="text/javascript" src="../../jquery/jquery-ui.js"></script>
+<script type="text/javascript" src="../../jquery/jquery-3.6.0.min.js"></script>
+<script type="text/javascript" src="../../jquery/jquery-ui.min.js"></script>
 </head>
 <body>
 <script type="text/javascript"><!--
@@ -26,7 +27,7 @@
     catch(err) {
     }
 //-->
-var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":10,"i6":10,"i7":10,"i8":10,"i9":10,"i10":10,"i11":10,"i12":10,"i13":10,"i14":10,"i15":10,"i16":10,"i17":10,"i18":10,"i19":10,"i20":10,"i21":10,"i22":10,"i23":10,"i24":10,"i25":10,"i26":10,"i27":10,"i28":10,"i29":10,"i30":10,"i31":10,"i32":10,"i33":10,"i34":10,"i35":10,"i36":10};
+var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":10,"i6":10,"i7":10,"i8":10,"i9":10,"i10":10,"i11":10,"i12":10,"i13":10,"i14":10,"i15":10,"i16":10,"i17":10,"i18":10,"i19":10,"i20":10,"i21":10,"i22":10,"i23":10,"i24":10,"i25":10,"i26":10,"i27":10,"i28":10,"i29":10,"i30":10,"i31":10,"i32":10,"i33":10,"i34":10,"i35":10,"i36":10,"i37":10};
 var tabs = {65535:["t0","All Methods"],2:["t2","Instance Methods"],8:["t4","Concrete Methods"]};
 var altColor = "altColor";
 var rowColor = "rowColor";
@@ -157,7 +158,7 @@ implements java.lang.AutoCloseable</pre>
 <ul class="blockList">
 <li class="blockList">
 <!-- ======== NESTED CLASS SUMMARY ======== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="nested.class.summary">
 <!--   -->
@@ -189,7 +190,7 @@ implements java.lang.AutoCloseable</pre>
 </ul>
 </section>
 <!-- ======== CONSTRUCTOR SUMMARY ======== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="constructor.summary">
 <!--   -->
@@ -212,7 +213,7 @@ implements java.lang.AutoCloseable</pre>
 </ul>
 </section>
 <!-- ========== METHOD SUMMARY =========== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="method.summary">
 <!--   -->
@@ -410,19 +411,27 @@ implements java.lang.AutoCloseable</pre>
 </tr>
 <tr id="i26" class="altColor">
 <td class="colFirst"><code>void</code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#registerCustomOpsUsingFunction(java.lang.String)">registerCustomOpsUsingFunction</a></span>&#8203;(java.lang.String&nbsp;registrationFuncName)</code></th>
+<td class="colLast">
+<div class="block">Registers custom ops for use with <a href="OrtSession.html" title="class in ai.onnxruntime"><code>OrtSession</code></a>s using this SessionOptions by calling
+ the specified native function name.</div>
+</td>
+</tr>
+<tr id="i27" class="rowColor">
+<td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setCPUArenaAllocator(boolean)">setCPUArenaAllocator</a></span>&#8203;(boolean&nbsp;useArena)</code></th>
 <td class="colLast">
 <div class="block">Sets the CPU to use an arena memory allocator.</div>
 </td>
 </tr>
-<tr id="i27" class="rowColor">
+<tr id="i28" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setExecutionMode(ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode)">setExecutionMode</a></span>&#8203;(<a href="OrtSession.SessionOptions.ExecutionMode.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.ExecutionMode</a>&nbsp;mode)</code></th>
 <td class="colLast">
 <div class="block">Sets the execution mode of this options object, overriding the old setting.</div>
 </td>
 </tr>
-<tr id="i28" class="altColor">
+<tr id="i29" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setInterOpNumThreads(int)">setInterOpNumThreads</a></span>&#8203;(int&nbsp;numThreads)</code></th>
 <td class="colLast">
@@ -430,7 +439,7 @@ implements java.lang.AutoCloseable</pre>
  executing on a CPU.</div>
 </td>
 </tr>
-<tr id="i29" class="rowColor">
+<tr id="i30" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setIntraOpNumThreads(int)">setIntraOpNumThreads</a></span>&#8203;(int&nbsp;numThreads)</code></th>
 <td class="colLast">
@@ -438,49 +447,49 @@ implements java.lang.AutoCloseable</pre>
  CPU.</div>
 </td>
 </tr>
-<tr id="i30" class="altColor">
+<tr id="i31" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setLoggerId(java.lang.String)">setLoggerId</a></span>&#8203;(java.lang.String&nbsp;loggerId)</code></th>
 <td class="colLast">
 <div class="block">Sets the logger id to use.</div>
 </td>
 </tr>
-<tr id="i31" class="rowColor">
+<tr id="i32" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setMemoryPatternOptimization(boolean)">setMemoryPatternOptimization</a></span>&#8203;(boolean&nbsp;memoryPatternOptimization)</code></th>
 <td class="colLast">
 <div class="block">Turns on memory pattern optimizations, where memory is preallocated if all shapes are known.</div>
 </td>
 </tr>
-<tr id="i32" class="altColor">
+<tr id="i33" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setOptimizationLevel(ai.onnxruntime.OrtSession.SessionOptions.OptLevel)">setOptimizationLevel</a></span>&#8203;(<a href="OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a>&nbsp;level)</code></th>
 <td class="colLast">
 <div class="block">Sets the optimization level of this options object, overriding the old setting.</div>
 </td>
 </tr>
-<tr id="i33" class="rowColor">
+<tr id="i34" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setOptimizedModelFilePath(java.lang.String)">setOptimizedModelFilePath</a></span>&#8203;(java.lang.String&nbsp;outputPath)</code></th>
 <td class="colLast">
 <div class="block">Sets the output path for the optimized model.</div>
 </td>
 </tr>
-<tr id="i34" class="altColor">
+<tr id="i35" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setSessionLogLevel(ai.onnxruntime.OrtLoggingLevel)">setSessionLogLevel</a></span>&#8203;(<a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a>&nbsp;logLevel)</code></th>
 <td class="colLast">
 <div class="block">Sets the Session's logging level.</div>
 </td>
 </tr>
-<tr id="i35" class="rowColor">
+<tr id="i36" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setSessionLogVerbosityLevel(int)">setSessionLogVerbosityLevel</a></span>&#8203;(int&nbsp;logLevel)</code></th>
 <td class="colLast">
 <div class="block">Sets the Session's logging verbosity level.</div>
 </td>
 </tr>
-<tr id="i36" class="altColor">
+<tr id="i37" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setSymbolicDimensionValue(java.lang.String,long)">setSymbolicDimensionValue</a></span>&#8203;(java.lang.String&nbsp;dimensionName,
                          long&nbsp;dimensionValue)</code></th>
@@ -506,7 +515,7 @@ implements java.lang.AutoCloseable</pre>
 <ul class="blockList">
 <li class="blockList">
 <!-- ========= CONSTRUCTOR DETAIL ======== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="constructor.detail">
 <!--   -->
@@ -526,7 +535,7 @@ implements java.lang.AutoCloseable</pre>
 </ul>
 </section>
 <!-- ============ METHOD DETAIL ========== -->
-<section role="region">
+<section>
 <ul class="blockList">
 <li class="blockList"><a id="method.detail">
 <!--   -->
@@ -764,6 +773,34 @@ implements java.lang.AutoCloseable</pre>
 <dd><code>path</code> - The path to the library on disk.</dd>
 <dt><span class="throwsLabel">Throws:</span></dt>
 <dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If there was an error loading the library.</dd>
+</dl>
+</li>
+</ul>
+<a id="registerCustomOpsUsingFunction(java.lang.String)">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>registerCustomOpsUsingFunction</h4>
+<pre class="methodSignature">public&nbsp;void&nbsp;registerCustomOpsUsingFunction&#8203;(java.lang.String&nbsp;registrationFuncName)
+                                    throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
+<div class="block">Registers custom ops for use with <a href="OrtSession.html" title="class in ai.onnxruntime"><code>OrtSession</code></a>s using this SessionOptions by calling
+ the specified native function name. The custom ops library must either be linked against, or
+ have previously been loaded by the user.
+
+ <p>The registration function must have the signature:
+
+ <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
+
+ <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
+ information on custom ops. See
+ https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
+ for an example of a custom op library registration function.</div>
+<dl>
+<dt><span class="paramLabel">Parameters:</span></dt>
+<dd><code>registrationFuncName</code> - The name of the registration function to call.</dd>
+<dt><span class="throwsLabel">Throws:</span></dt>
+<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If there was an error finding or calling the registration function.</dd>
 </dl>
 </li>
 </ul>
