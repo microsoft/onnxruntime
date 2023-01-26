@@ -8,6 +8,8 @@
 #include "orttraining/core/graph/recompute_graph_utils.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
 
+#include <deque>
+
 namespace onnxruntime {
 
 namespace {

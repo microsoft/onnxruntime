@@ -11,6 +11,8 @@
 #include "core/optimizer/compute_optimizer/passthrough_actors.h"
 #include "core/optimizer/compute_optimizer/compute_optimizer.h"
 
+#include <deque>
+
 using SliceInfo = onnxruntime::optimizer::compute_optimizer::SliceInfo;
 using namespace onnxruntime::optimizer::compute_optimizer;
 namespace onnxruntime {
