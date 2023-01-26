@@ -25,14 +25,14 @@ nav_order: 1
 ## Getting Started
 
 1. Install CUDA toolkit based on the supported version for the ONNX Runtime Version. See this link for compatible versions:
-[NVIDIA - CUDA | onnxruntime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+[NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
 
-2. Install Driver from NVIDIA based on your GPU. Find the driver download here: [Official Drivers | NVIDIA](https://www.nvidia.com/download/index.aspx?lang=en-us)
+2. Install Driver from NVIDIA based on your GPU. Find the driver download here: [Official Drivers - NVIDIA](https://www.nvidia.com/download/index.aspx?lang=en-us)
 
-3. Install the cuDNN version based on the supported version for the ONNX Runtime Version. See this link for compatible versions: [NVIDIA - CUDA | onnxruntime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) then download the cuDNN version from here: [cuDNN Archive | NVIDIA Developer](https://developer.nvidia.com/rdp/cudnn-archive)
+3. Install the cuDNN version based on the supported version for the ONNX Runtime Version. See this link for compatible versions: [NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) then download the cuDNN version from here: [cuDNN Archive - NVIDIA Developer](https://developer.nvidia.com/rdp/cudnn-archive)
 
 4. Follow the steps here from NVIDIA to install cuDNN. Skip step 5 about update visual studio settings. This is only for C++ projects. For the C# project you do not need to complete this step.
-[Installation Guide :: NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows)
+[Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows)
 
 5. Restart
 
