@@ -31,8 +31,7 @@ nav_order: 1
 
 3. Install the cuDNN version based on the supported version for the ONNX Runtime Version. See this link for compatible versions: [NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) then download the cuDNN version from here: [cuDNN Archive - NVIDIA Developer](https://developer.nvidia.com/rdp/cudnn-archive)
 
-4. Follow the steps here from NVIDIA to install cuDNN. Skip step 5 on updating visual studio settings, this is only for C++ projects.
-[Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows)
+4. Follow the steps here from [Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 on updating visual studio settings, this is only for C++ projects.
 
 5. Restart your computer as prompted by the NVIDIA installer.
 
@@ -41,6 +40,7 @@ nav_order: 1
     - Paste and rename `zlibwapi` to `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.8\bin\zlibwapi.dll`
 
 7. Now you can enable GPU in the C# ONNX Runtime API with the following code:
+
 ```cs
 var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
 ```
