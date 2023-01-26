@@ -57,6 +57,30 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     ) const noexcept PURE;
 };
 
+interface __declspec(uuid("1d2e1226-a918-4236-8775-175cf1f52c9a"))
+IMLOperatorKernelCreationContextPrivate1 : public IMLOperatorKernelCreationContextPrivate 
+{
+    //! Gets the minimum size of a char buffer to store the node name (including null terminator).
+    //! Returns 0 if the node has no name.
+    STDMETHOD_(uint32_t, GetUtf8NameSizeInBytes)() const noexcept PURE;
+ 
+    //! Writes the node name and null terminator into a char buffer.
+    STDMETHOD(GetUtf8Name)(
+        uint32_t bufferSizeInBytes,
+        _Out_writes_(bufferSizeInBytes) char* name
+        ) const noexcept PURE;
+
+    //! Gets the minimum size of a wchar buffer to store the node name (including null terminator).
+    //! Returns 0 if the node has no name.
+    STDMETHOD_(uint32_t, GetWideNameSizeInBytes)() const noexcept PURE;
+
+    //! Writes the node name and null terminator into a wchar buffer.
+    STDMETHOD(GetWideName)(
+        uint32_t bufferSizeInBytes,
+        _Out_writes_(bufferSizeInBytes) wchar_t* name
+        ) const noexcept PURE;
+};
+
 //! \interface IMLOperatorAttributes1
 //! \brief Represents the values of an operator's attributes, as determined by a model using the operator.
 //! This interface is called by implementations of custom operator kernels, and by implementations

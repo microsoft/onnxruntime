@@ -982,6 +982,85 @@ namespace Windows::AI::MachineLearning::Adapter
         m_abiExecutionObject.CopyTo(executionInterface);
     }
 
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8NameSizeInBytes() const noexcept
+    {
+        // Include null terminator.
+        const auto& name = m_impl->node().Name(); 
+        return name.empty() ? 0 : name.size() + 1;
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8Name(uint32_t bufferSizeInBytes, char* outputName) const noexcept
+    {
+        if (bufferSizeInBytes == 0)
+        {
+            return E_INVALIDARG;
+        }
+
+        // Copy as many characters as possible, leaving room for the null terminator.
+        const auto& nodeName = m_impl->node().Name();
+        size_t charsCopied = nodeName.copy(outputName, bufferSizeInBytes - 1);
+
+        // Write the null terminator.
+        assert(charsCopied >= 0 && charsCopied < bufferSizeInBytes);
+        outputName[charsCopied] = '\0';
+
+        return S_OK;
+    }
+
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideNameSizeInBytes() const noexcept
+    {
+        const auto& name = m_impl->node().Name(); 
+        if (name.empty())
+        {
+            return 0;
+        }
+        
+        int requiredSize = MultiByteToWideChar(CP_UTF8, 0, name.data(), name.size(), nullptr, 0);
+        assert(requiredSize > 0);
+
+        // Include null terminator.
+        return static_cast<uint32_t>(requiredSize) + 1;
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideName(uint32_t bufferSizeInBytes, wchar_t* outputName) const noexcept
+    {
+        // Buffer needs to be large enough to at least hold a null terminator.
+        if (bufferSizeInBytes < sizeof(wchar_t))
+        {
+            return E_INVALIDARG;
+        }
+
+        const auto& nodeName = m_impl->node().Name();
+        if (nodeName.empty())
+        {
+            outputName[0] = L'\0';
+            return S_OK;
+        }
+
+        uint32_t bufferSizeInChars = bufferSizeInBytes / sizeof(wchar_t);
+        int charsCopiedIfSucceeded = MultiByteToWideChar(CP_UTF8, 0, nodeName.data(), nodeName.size(), outputName, bufferSizeInChars);
+
+        auto lastError = GetLastError();
+        if (lastError == ERROR_INSUFFICIENT_BUFFER)
+        {
+            // Buffer was too small. Truncate and overwrite last char with null terminator.
+            outputName[bufferSizeInChars - 1] = '\0';
+            return S_OK;
+        }
+
+        if (charsCopiedIfSucceeded == 0)
+        {
+            assert(lastError == ERROR_INVALID_PARAMETER || lastError == ERROR_NO_UNICODE_TRANSLATION);
+            return E_INVALIDARG;
+        }
+
+        // All characters copied successfully. Write null terminator at the end of copied chars.
+        assert(lastError == 0);
+        outputName[charsCopiedIfSucceeded] = '\0';
+
+        return S_OK;
+    }
+
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     uint32_t STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputCount() const noexcept
     {
