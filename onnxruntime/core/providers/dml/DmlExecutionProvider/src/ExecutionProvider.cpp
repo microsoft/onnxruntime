@@ -494,7 +494,9 @@ namespace Dml
                 ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
                 : D3D12_RESOURCE_STATE_COPY_DEST;
 
-            m_context->CopyBufferRegion(dstData, 0, dstState, srcData, 0, srcState, dataSizeInBytes);
+            const uint64_t srcOffset = srcBufferRegion.Offset();
+            const uint64_t dstOffset = dstBufferRegion.Offset();
+            m_context->CopyBufferRegion(dstData, dstOffset, dstState, srcData, srcOffset, srcState, dataSizeInBytes);
         }
         else
         {

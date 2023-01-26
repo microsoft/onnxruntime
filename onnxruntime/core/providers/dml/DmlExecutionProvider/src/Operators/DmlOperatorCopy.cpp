@@ -50,13 +50,13 @@ public:
         MLOperatorTensor outputTensor = kernelContext.GetOutputTensor(0);
 
         // Avoid self copying.
-        if (inputTensor.GetDataInterface().Get() != outputTensor.GetDataInterface().Get())
-        {
+        // if (inputTensor.GetDataInterface().Get() != outputTensor.GetDataInterface().Get())
+        // {
             // Copy elements from input tensor to output tensor.
             ORT_THROW_IF_FAILED(m_executionProvider->CopyTensor(
                 outputTensor.GetInterface().Get(),
                 inputTensor.GetInterface().Get()));
-        }
+        // }
     }
 };
 
