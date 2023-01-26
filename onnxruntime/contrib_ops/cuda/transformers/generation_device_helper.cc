@@ -751,7 +751,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
 
             gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
             gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
-            ORT_THROW("Here");
+            //ORT_THROW("Here");
             //CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_key.data(), present_key.data(), present_key.size_bytes(),
             //    cudaMemcpyDeviceToDevice, cuda_stream));
             //CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_value.data(), present_value.data(), present_value.size_bytes(),
