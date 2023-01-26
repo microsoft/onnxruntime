@@ -20,7 +20,7 @@ nav_order: 1
 
 ## Prerequisites
 - Windows 11
-- Visual Studio
+- Visual Studio 2019 or 2022
  
 ## Getting Started
 
