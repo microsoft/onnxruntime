@@ -73,7 +73,7 @@ struct KernelTwo {
 
 struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
-    return new KernelOne();
+    return std::make_unique<KernelOne>().release();
   };
 
   const char* GetName() const { return "CustomOpOne"; };
@@ -92,7 +92,7 @@ struct CustomOpOne : Ort::CustomOpBase<CustomOpOne, KernelOne> {
 
 struct CustomOpTwo : Ort::CustomOpBase<CustomOpTwo, KernelTwo> {
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
-    return new KernelTwo();
+    return std::make_unique<CustomOpTwo>().release();
   };
 
   const char* GetName() const { return "CustomOpTwo"; };
