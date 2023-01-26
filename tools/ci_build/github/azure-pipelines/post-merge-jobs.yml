@@ -156,3 +156,38 @@ stages:
         Destination: AzureBlob
         storage: onnxruntime
         ContainerName: '$web'
+
+- stage: AndroidCustomBuildScript
+  dependsOn: []
+  jobs:
+  - job: AndroidCustomBuildScript
+    workspace:
+      clean: all
+    pool: 'Linux-CPU'
+    variables:
+      dockerImageTag: onnxruntime-android-custom-build
+    steps:
+    - checkout: self
+      submodules: false
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.8'
+        addToPath: true
+        architecture: x64
+
+    - task: CmdLine@2
+      displayName: 'Run build_custom_android_package.py'
+      inputs:
+        script: |
+          "$(Build.SourcesDirectory)/tools/android_custom_build/build_custom_android_package.py" \
+            --docker_image_tag=$(dockerImageTag) \
+            "$(Build.BinariesDirectory)/custom_android_package"
+        workingDirectory: '$(Build.BinariesDirectory)'
+
+    - task: CmdLine@2
+      displayName: 'Clean up docker image'
+      inputs:
+        script: docker image rm $(dockerImageTag)
+        workingDirectory: '$(Build.BinariesDirectory)'
+      condition: succeededOrFailed()

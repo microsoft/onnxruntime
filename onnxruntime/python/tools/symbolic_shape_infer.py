@@ -433,6 +433,7 @@ class SymbolicShapeInference:
             "LongformerAttention",
             "SkipLayerNormalization",
             "PythonOp",
+            "MultiHeadAttention",
         ]
 
         if not skip_infer:
