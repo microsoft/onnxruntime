@@ -46,7 +46,9 @@ class TSharedCubinKernel {
     for (int32_t i = 0; i < mKernelMetaCount; ++i) {
       auto const& kernelMeta = mKernelMeta[i];
       auto const kernelKey = hashID(kernelMeta);
-      if (kernelMeta.mSM == smVersion && kernelMeta.mDataType == mDataType && mFunctions.find(kernelKey) == mFunctions.end()) {
+      if (kernelMeta.mSM == smVersion &&
+          kernelMeta.mDataType == mDataType &&
+          mFunctions.find(kernelKey) == mFunctions.end()) {
         int32_t const DEFAULT_SMEM_SIZE{48 * 1024};
         if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
           int32_t deviceID{0};
@@ -56,7 +58,7 @@ class TSharedCubinKernel {
                   &sharedMemPerMultiprocessor, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID) != cudaSuccess ||
               sharedMemPerMultiprocessor < kernelMeta.mSharedMemBytes) {
             // skip load function because not enough shared memory to launch the kernel
-            printf("skip loading trt flash attention kernel %s because no enough shared memory",
+            printf("skip loading trt attention kernel %s because no enough shared memory",
                    kernelMeta.mFuncName);
             continue;
           }
@@ -79,7 +81,7 @@ class TSharedCubinKernel {
                                          CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
                                          kernelMeta.mSharedMemBytes) != CUDA_SUCCESS) {
             // some chip may not have enough shared memory to launch the kernel
-            printf("skip loading trt flash attention kernel %s because no enough shared memory",
+            printf("skip loading trt attention kernel %s because no enough shared memory",
                    kernelMeta.mFuncName);
             continue;
           }
@@ -97,9 +99,13 @@ class TSharedCubinKernel {
     loadCubinKernels(mSM);
   }
 
-  bool isValid(int32_t s) const {
+  bool isValid(int32_t /*s*/) const {
     return !mFunctions.empty();
   }
+
+  virtual void dumpHashId(TKernelParam const& param, std::ostringstream& message) const = 0;
+
+  virtual int32_t getSForUnroll(TKernelParam const& param) const = 0;
 
   virtual void run(TKernelParam& params, cudaStream_t ss) const {
     ORT_ENFORCE(!params.interleaved);  // interleaved is for int8
@@ -107,19 +113,11 @@ class TSharedCubinKernel {
     auto const findIter = mFunctions.find(hashID(params));
     if (findIter == mFunctions.end()) {
       std::ostringstream errMsg;
-      errMsg << "Could not find kernel for:\n"
-             << "\t s: " << params.s << "\n"
-             << "\t d: " << params.d << "\n"
-             << "\t interleaved: " << params.interleaved << "\n"
-             << "\t force_unroll: " << params.force_unroll << "\n"
-             << "Was the plugin compiled on a compatible CUDA and SM version?\n"
-             << "\t Compiled on CUDA " << CUDA_VERSION << "\n"
+      errMsg << "Could not find kernel for:\n";
+      dumpHashId(params, errMsg);
+      errMsg << "\t Compiled on CUDA " << CUDA_VERSION << "\n"
              << "\t Current SM version: " << mSM << "\n"
-             << "\t SM versions enabled during compilation: "
-             << "75 "
-             << "80 "
-             << "86 "
-             << "89 "
+             << "\t SM versions enabled during compilation: 75, 80, 86, 89"
              << "\n";
       ORT_ENFORCE(findIter != mFunctions.end(), errMsg.str().c_str());
     }
@@ -133,7 +131,7 @@ class TSharedCubinKernel {
                                         kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr),
                  mDriver);
     } else {
-      int32_t unroll = (params.s + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep;
+      int32_t unroll = (getSForUnroll(params) + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep;
       cuErrCheck(mDriver.cuLaunchKernel(func, params.h, params.b, unroll, kernelMeta.mThreadsPerCTA, 1, 1,
                                         kernelMeta.mSharedMemBytes, ss, kernelParams, nullptr),
                  mDriver);
