@@ -12,12 +12,6 @@ nav_order: 1
 
 {: .no_toc }
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
 ## Prerequisites
 - Windows 11
 - Visual Studio 2019 or 2022
