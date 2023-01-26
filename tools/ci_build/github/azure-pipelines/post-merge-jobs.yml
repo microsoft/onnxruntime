@@ -4,7 +4,7 @@ stages:
   jobs:
   - template: templates/c-api-linux-cpu.yml
     parameters:
-      AdditionalBuildFlags: --use_extension
+      AdditionalBuildFlags: --use_extensions
       BaseImage: 'centos:7'
       OnnxruntimeArch: 'x64'
       OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
@@ -14,7 +14,7 @@ stages:
 
   - template: templates/c-api-linux-cpu.yml
     parameters:
-      AdditionalBuildFlags: --use_extension
+      AdditionalBuildFlags: --use_extensions
       BaseImage: 'arm64v8/centos:7'
       OnnxruntimeArch: 'aarch64'
       OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
@@ -30,7 +30,7 @@ stages:
       buildArch: x86
       msbuildPlatform: Win32
       packageName: x86
-      buildparameter: --use_extension --enable_onnx_tests
+      buildparameter: --use_extensions --enable_onnx_tests
       runTests: true
       buildJava: false
       buildNodejs: false
@@ -44,7 +44,7 @@ stages:
       buildArch: x64
       msbuildPlatform: arm
       packageName: arm
-      buildparameter: --arm --use_extension  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+      buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
       runTests: false
       buildJava: false
       buildNodejs: false
@@ -58,7 +58,7 @@ stages:
       buildArch: x64
       msbuildPlatform: arm64
       packageName: arm64
-      buildparameter: --build_nodejs --arm64 --use_extension  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+      buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
       runTests: false
       buildJava: false
       buildNodejs: true
@@ -72,7 +72,7 @@ stages:
       buildArch: x64
       msbuildPlatform: x64
       packageName: x64
-      buildparameter: --build_java --build_nodejs --use_extension  --enable_onnx_tests
+      buildparameter: --build_java --build_nodejs --use_extensions  --enable_onnx_tests
       runTests: true
       buildJava: true
       buildNodejs: true
