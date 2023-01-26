@@ -25,9 +25,9 @@ nav_order: 1
 
 3. Install the cuDNN version based on the supported version for the ONNX Runtime Version. See this link for compatible versions: [NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) then download the cuDNN version from here: [cuDNN Archive - NVIDIA Developer](https://developer.nvidia.com/rdp/cudnn-archive)
 
-4. Follow the steps here from [Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 on updating visual studio settings, this is only for C++ projects.
+4. Follow the steps here from [Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
 
-5. Restart your computer as prompted by the NVIDIA installer.
+5. Restart your computer.
 
 6. You will need to move the `zlib` DLL and rename it to `zlibwapi` in the CUDA bin directory.
     - Copy the `zlib` DLL from `C:\Program Files\NVIDIA Corporation\Nsight Systems 2022.4.2\host-windows-x64\zlib.dll`
