@@ -65,7 +65,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       OrtValue& position_ids,
       bool increase_position,
       gsl::span<const int32_t> beam_next_tokens,
-      gsl::span<const int32_t> beam_indices);
+      gsl::span<const int32_t> beam_indices,
+      IBeamSearchState<T>* beam_state);
 
   const SessionState* init_run_decoder_session_state_ = nullptr;
   GptSubgraph* init_run_gpt_subgraph_ = nullptr;
@@ -124,7 +125,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices) {
+    gsl::span<const int32_t> beam_indices,
+    IBeamSearchState<T>* beam_state) {
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -138,7 +140,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             false,
-                            -1);
+                            -1,
+                            beam_state ? nullptr : nullptr);
 }
 
 template <typename T>
@@ -305,7 +308,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       ORT_RETURN_IF_ERROR(UpdateFeeds(fetches, feeds, current_length,
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
-                                      ReinterpretAsSpan<const int32_t>(beam_indices)));
+                                      ReinterpretAsSpan<const int32_t>(beam_indices),
+                                      &beam_state));
     }
     fetches.clear();
   }

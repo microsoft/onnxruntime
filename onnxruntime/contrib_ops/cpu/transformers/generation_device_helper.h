@@ -126,7 +126,8 @@ using UpdateGptFeedsFunc = std::function<Status(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len)>;
+    int past_sequence_len,
+    transformers::IBeamSearchState<T>* beam_state)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
@@ -260,7 +261,8 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    transformers::IBeamSearchState<T>* beam_state);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5

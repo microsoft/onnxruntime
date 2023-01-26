@@ -579,10 +579,12 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len) {
+    int past_sequence_len,
+    transformers::IBeamSearchState<T>* beam_state) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(beam_state);
 
   // The following updates inputs for subgraph
 
@@ -895,7 +897,8 @@ template Status UpdateGptFeeds<float>(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    transformers::IBeamSearchState<float>* beam_state);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

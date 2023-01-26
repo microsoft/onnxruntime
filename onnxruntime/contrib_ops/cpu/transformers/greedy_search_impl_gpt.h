@@ -157,8 +157,8 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             gpt_subgraph_.past_present_share_buffer_,
-                            past_sequence_length
-                            );
+                            past_sequence_length,
+                            nullptr);
 }
 
 template <typename T, typename ParametersT>

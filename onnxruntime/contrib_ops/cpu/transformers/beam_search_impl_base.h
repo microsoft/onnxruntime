@@ -49,6 +49,9 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->scores = AllocateBuffer<float>(allocator, scores_buffer_, elements);
       this->remaining_scores = this->scores;
     }
+
+    this->past_state_buffer = AllocateBuffer<T>(allocator, past_state_temp_buffer_, 2 * 12 * 2 * batch_beam_size * 12 * 128 * 64);
+
   }
 
  private:
@@ -61,6 +64,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
+  BufferUniquePtr past_state_temp_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {

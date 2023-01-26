@@ -42,6 +42,8 @@ struct IBeamSearchState {
                                        //   temp token: (batch_size * num_beams, 2 * num_beams)
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+
+  gsl::span<T> past_state_buffer;     // 2 * 12 * 2 * (batch_size * num_beams * 12 * max_length * 64)
 };
 
 struct IBeamSearchCpuState {
