@@ -229,7 +229,6 @@ def export_onnx_models(
 
 def main():
     args = parse_arguments()
-    print("args")
 
     setup_logger(args.verbose)
 
