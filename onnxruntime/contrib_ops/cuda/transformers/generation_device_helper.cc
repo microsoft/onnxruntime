@@ -736,7 +736,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     OrtValue past;
     auto past_type = DataTypeImpl::GetType<T>();
     cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
-
+    ORT_UNUSED_PARAMETER(cuda_stream);
     if (!beam_state) {
         // Let the allocator do the allocation
         Tensor::InitOrtValue(past_type, past_shape, allocator, past);
