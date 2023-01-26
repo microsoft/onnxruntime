@@ -8,6 +8,7 @@
 #endif
 
 #include "gemm_gelu.h"
+#include "linear_combination_gelu.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 
@@ -51,7 +52,7 @@ namespace cuda {
 
 // The code section below describes datatype for input, output matrices and computation between
 // elements in input matrices.
-using ElementAccumulator = float;                   // <- data type of accumulator
+using ElementAccumulator = cutlass::half_t;                   // <- data type of accumulator
 using ElementComputeEpilogue = cutlass::half_t;     // <- data type of epilogue operations
 using ElementInputA = cutlass::half_t;              // <- data type of elements in input matrix A
 using ElementInputB = cutlass::half_t;              // <- data type of elements in input matrix B
@@ -93,7 +94,42 @@ using SwizzleThreadBlock = cutlass::gemm::threadblock::GemmIdentityThreadblockSw
 //
 //    d_ij = max(0, alpha * sum_k(a_ik * b_kj) + c_ij )
 //
-using EpilogueOp = cutlass::epilogue::thread::LinearCombinationGELUTaylor<
+// using EpilogueOp = cutlass::epilogue::thread::LinearCombinationGELUTaylor<
+//     ElementOutput,                                        // <- data type of output matrix
+//     128 / cutlass::sizeof_bits<ElementOutput>::value,     // <- this is the number of elements per
+//                                                           // vectorized memory access. For half
+//                                                           // precision, it's 8 elements. This becomes
+//                                                           // the vector width of math instructions in
+//                                                           // epilogue too
+//     ElementAccumulator,                                   // <- data type of accumulator
+//     ElementComputeEpilogue,                               // <- data type for alpha in linear combination function
+//     cutlass::epilogue::thread::ScaleType::NoBetaScaling>; // <- alpha x C + bias
+
+// using EpilogueOp = cutlass::epilogue::thread::LinearCombination<
+//     ElementOutput,                                     // <- data type of output matrix
+//     128 / cutlass::sizeof_bits<ElementOutput>::value,  // <- this is the number of elements per
+//                                                        // vectorized memory access. For half
+//                                                        // precision, it's 8 elements. This becomes
+//                                                        // the vector width of math instructions in
+//                                                        // epilogue too
+//     ElementAccumulator,                                // <- data type of accumulator
+//     ElementComputeEpilogue,
+//     cutlass::epilogue::thread::ScaleType::NoBetaScaling>;  // <- data type for alpha/beta in linear combination function
+
+
+// using EpilogueOp = cutlass::epilogue::thread::LinearCombinationGelu<
+//     ElementOutput,                                        // <- data type of output matrix
+//     128 / cutlass::sizeof_bits<ElementOutput>::value,     // <- this is the number of elements per
+//                                                           // vectorized memory access. For half
+//                                                           // precision, it's 8 elements. This becomes
+//                                                           // the vector width of math instructions in
+//                                                           // epilogue too
+//     ElementAccumulator,                                   // <- data type of accumulator
+//     ElementComputeEpilogue,                               // <- data type for alpha in linear combination function
+//     cutlass::epilogue::thread::ScaleType::NoBetaScaling>; // <- alpha x C + bias
+
+
+using EpilogueOp = cutlass::epilogue::thread::LinearCombinationGELU<
     ElementOutput,                                        // <- data type of output matrix
     128 / cutlass::sizeof_bits<ElementOutput>::value,     // <- this is the number of elements per
                                                           // vectorized memory access. For half
@@ -252,7 +288,7 @@ Status GemmGelu<MLFloat16>::ComputeInternal(OpKernelContext* context) const {
     {reinterpret_cast<const cutlass::half_t*>(left_X->Data<MLFloat16>()), lda},              // <- reference to matrix B on device
     {bias != nullptr
           ? reinterpret_cast<const cutlass::half_t*>(bias->Data<MLFloat16>())
-          : nullptr, 1},  // <- the C matrix is treated as the bias vector. We can enable the GEMM
+          : nullptr, 0},  // <- the C matrix is treated as the bias vector. We can enable the GEMM
                                         //    to project away the N dimension by setting the stride to zero.
 
     {reinterpret_cast<cutlass::half_t*>(Y->MutableData<MLFloat16>()), ldc},              // <- reference to matrix D on device
