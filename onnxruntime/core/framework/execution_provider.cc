@@ -19,6 +19,7 @@ inline int MakeKey(int id, OrtMemType mem_type) {
 }  // namespace
 
 AllocatorPtr IExecutionProvider::GetAllocator(int device_id, OrtMemType mem_type) const {
+  // TODO(leca): ORT_ENFORCE(mem_type != OrtMemType::OrtMemTypeDefault || device_id == GetDeviceId(), "Rule out the case that search on OrtMemTypeDefault but device_id doesn't match GetDeviceId()");
   auto iter = allocators_.find(MakeKey(device_id, mem_type));
   if (iter != allocators_.end()) {
     return iter->second;

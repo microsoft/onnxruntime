@@ -31,6 +31,8 @@ static void TestModelInfo(const Ort::Session& session, bool is_input, const std:
   ASSERT_EQ(real_dims, dims);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// onnx format models are not supported in a minimal build
 TEST(CApiTest, input_output_type_info) {
   constexpr const ORTCHAR_T* model_uri = ORT_TSTR("../models/opset8/test_squeezenet/model.onnx");
   Ort::SessionOptions session_options;
@@ -38,3 +40,4 @@ TEST(CApiTest, input_output_type_info) {
   TestModelInfo(session, true, {1, 3, 224, 224});
   TestModelInfo(session, false, {1, 1000, 1, 1});
 }
+#endif

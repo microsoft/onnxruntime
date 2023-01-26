@@ -750,7 +750,8 @@ TEST(GemmOpTest, GemmWithAlphaOpset11) {
   TestGemmWithAlphaOpset11<double>();
 }
 
-#ifndef ENABLE_TRAINING_CORE  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in training builds so no need to test the feature in a training build.
 TEST(GemmOpTest, SharedPrepackedWeights) {
   OpTester test("Gemm");
 

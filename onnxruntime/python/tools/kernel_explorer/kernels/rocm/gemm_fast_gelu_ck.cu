@@ -24,6 +24,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
 class CKGemmFastGelu : public IKernelExplorer {
  public:
@@ -122,5 +123,8 @@ void InitComposableKernelGemmFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
+#else
+void InitComposableKernelGemmFastGelu(py::module) {}
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

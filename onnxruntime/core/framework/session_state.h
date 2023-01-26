@@ -161,7 +161,8 @@ class SessionState {
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
+// This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
