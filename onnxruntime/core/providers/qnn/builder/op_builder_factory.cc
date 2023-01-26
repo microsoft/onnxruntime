@@ -120,6 +120,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateTileOpBuilder("Tile", *this);
   }
+
+  {
+    CreateNMSOpBuilder("NonMaxSuppression", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

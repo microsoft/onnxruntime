@@ -158,7 +158,9 @@ class BaseOpBuilder : public IOpBuilder {
         {"ArgMin", "Argmin"},
         {"ConvTranspose", "TransposeConv2d"},
         {"Tile", "Tile"},
-        {"TopK", "TopK"}};
+        {"TopK", "TopK"},
+        {"NonMaxSuppression", "BoxWithNmsLimit"}};
+
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
