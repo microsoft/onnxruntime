@@ -526,44 +526,39 @@ namespace Dml
 
     bool TryGetTensorDataType(
         const onnxruntime::NodeArg& nodeArg,
+        _Out_ MLOperatorEdgeType* edgeType,
         _Out_ MLOperatorTensorDataType* onnxElementType
     )
     {
         *onnxElementType = MLOperatorTensorDataType::Undefined;
+        *edgeType = MLOperatorEdgeType::Undefined;
 
         const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
-        if (typeProto != nullptr && typeProto->has_tensor_type())
+        if (typeProto != nullptr)
         {
-            const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
-            if (tensorTypeProto.has_elem_type())
+            const ::onnx::TypeProto_Tensor* tensorTypeProto;
+            if (typeProto->has_tensor_type())
             {
-                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
+                *edgeType = MLOperatorEdgeType::Tensor;
+                tensorTypeProto = &typeProto->tensor_type();
+            }
+            else if (typeProto->has_sequence_type())
+            {
+                *edgeType = MLOperatorEdgeType::SequenceTensor;
+                tensorTypeProto = &typeProto->sequence_type().elem_type().tensor_type();
+            }
+            else
+            {
+                return false;
+            }
+
+            if (tensorTypeProto->has_elem_type())
+            {
+                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto->elem_type());
                 return true;
             }
         }
 
-        return false;
-    }
-
-    bool IsSequenceOp(const onnxruntime::Node& node)
-    {
-        auto sequence_ops = std::array<char*, 7>{
-            "SequenceAt",
-            "SequenceConstruct",
-            "SequenceEmpty",
-            "SequenceLength",
-            "ConcatFromSequence",
-            "SequenceErase",
-            "SequenceInsert",
-        };
-
-        for (auto& sequence_op : sequence_ops)
-        {
-            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
-            {
-                return true;
-            }
-        }
         return false;
     }
 
@@ -573,11 +568,6 @@ namespace Dml
         uint32_t supportedDeviceDataTypeMask // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
         )
     {
-        if (IsSequenceOp(node))
-        {
-            return true;
-        }
-
         std::vector<onnxruntime::NodeArg const*> constantCpuInputs;
 
         if (regInfo != nullptr)
@@ -605,8 +595,9 @@ namespace Dml
             // Use the enumeration from the proto instead of nodeArg.Type() which returns a string.
 
             // Reject node if undefined data type or non-tensor, as DML cannot handle it.
+            MLOperatorEdgeType edgeType;
             MLOperatorTensorDataType onnxElementType;
-            if (!TryGetTensorDataType(nodeArg, &onnxElementType))
+            if (!TryGetTensorDataType(nodeArg, &edgeType, &onnxElementType))
             {
                 // We shouldn't have arrived here because (1) no DML operators should have been
                 // registered which use non-tensor types (2) ONNX validation should have already
@@ -616,6 +607,14 @@ namespace Dml
                 // besides tensors, then remove the assert.
                 assert(false);
                 nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Succeed when any nodeArg that is a SequenceTensor.
+            // These are actually implemented by CPU Kernels, except for ConcatFromSequence.
+            if (edgeType == MLOperatorEdgeType::SequenceTensor)
+            {
+                // Leave nodeContainsSupportedDataTypes alone.
                 return;
             }
 
