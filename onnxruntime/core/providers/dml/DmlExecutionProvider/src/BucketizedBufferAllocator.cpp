@@ -377,6 +377,11 @@ namespace Dml
         auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
         ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
 
+        // Make sure that we are aligned to 4 bytes to satisfy DML's requirements
+        constexpr uint64_t DML_ALIGNMENT = 4;
+        size_in_bytes =
+            (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
+
         return D3D12BufferRegion(
             tagged_ptr.offset,
             size_in_bytes,
