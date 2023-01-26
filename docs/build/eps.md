@@ -629,13 +629,13 @@ The Vitis-AI execution provider is only supported on Linux.
 
 ## AMD MIGraphX
 
-See more information on the MIGraphX Execution Provider [here](../execution-providers/community-maintained/MIGraphX-ExecutionProvider.md).
+See more information on the MIGraphX Execution Provider [here](../execution-providers/MIGraphX-ExecutionProvider.md).
 
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCM](https://rocmdocs.amd.com/en/latest/Installation_Guide/Installation-Guide.html)
-  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCM3.3
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The MIGraphX execution provider for ONNX Runtime is built and tested with ROCm5.4
 * Install [MIGraphX](https://github.com/ROCmSoftwarePlatform/AMDMIGraphX)
   * The path to MIGraphX installation must be provided via the `--migraphx_home parameter`.
 
@@ -657,8 +657,8 @@ See more information on the ROCm Execution Provider [here](../execution-provider
 ### Prerequisites
 {: .no_toc }
 
-* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install)
-  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.2.3
+* Install [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install)
+  * The ROCm execution provider for ONNX Runtime is built and tested with ROCm5.4
 
 ### Build Instructions
 {: .no_toc }
