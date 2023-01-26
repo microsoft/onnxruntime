@@ -632,7 +632,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+  size_t keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
 
   if (keyCount > ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH) {
     throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "Too many provider options.");
@@ -643,16 +643,18 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   jstring jkeyArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
   jstring jvalueArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
 
-  for (int i = 0; i < keyCount; i++) {
-    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
-    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
+  for (size_t i = 0; i < keyCount; i++) {
+    // In this loop, it is type-safe to call (jsize)i since i is
+    // upper-bounded by keyCount (type: jsize) returned by GetArrayLength.
+    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, (jsize)i));
+    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, (jsize)i));
     keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
     valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
   }
 
   checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, keyArray, valueArray, keyCount));
 
-  for (int i = 0; i < keyCount; i++) {
+  for (size_t i = 0; i < keyCount; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
