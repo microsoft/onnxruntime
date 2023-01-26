@@ -35,7 +35,7 @@ ONNX Runtime supports many different execution providers today. Some of the EPs 
 |[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|[Intel OpenVINO](../execution-providers/OpenVINO-ExecutionProvider.md)|[CoreML](../execution-providers/CoreML-ExecutionProvider.md) (*preview*)|
 ||[AMD ROCm](../execution-providers/ROCm-ExecutionProvider.md)|[TVM](../execution-providers/community-maintained/TVM-ExecutionProvider.md) (*preview*)|
 ||[TVM](../execution-providers/community-maintained/TVM-ExecutionProvider.md) (*preview*)|[Qualcomm SNPE](../execution-providers/SNPE-ExecutionProvider.md)|
-||||[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|
+|||[XNNPACK](../execution-providers/Xnnpack-ExecutionProvider.md)|
 
 ### Add an Execution Provider
 
