@@ -38,9 +38,17 @@ Which language bindings and runtime package you use depends on your chosen devel
 * iOS C/C++: onnxruntime-c package
 * iOS Objective-C: onnxruntime-objc package
 
-See 
+See the [install guide](https://onnxruntime.ai/docs/install/#install-on-web-and-mobile) for package specific instructions.
 
-The above list of packages all contain the full ONNX Runtime feature and operator set and support for the ONNX format. We recommend you start with these to develop your application. Further optimizations may be required. These are detailed below.
+The above packages all contain the full ONNX Runtime feature and operator set and support for the ONNX format. We recommend you start with these to develop your application. Further optimizations may be required. These are detailed below.
+
+You have a choice of hardware accelerators to use in your app, depending on the target platform:
+
+* All targets have support for CPU and this is the default
+* Applications that run on Android also have support for NNAPI and XNNPACK
+* Applications that run on iOS also have support for CoreML and XNNPACK
+
+TODO: add guidance on which EP should be tried first  
 
 ### Measure the application's performance
 
@@ -72,6 +80,8 @@ There are two options for reducing the ONNX Runtime binary size.
    * iOS Objective-C: onnxruntime-mobile-objc
 
    These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format][(../reference/ort-format-models.html#convert-onnx-models-to-ort-format).
+
+   See the [install guide](https://onnxruntime.ai/docs/install/#install-on-web-and-mobile) for package specific instructions.
 
    If the mobile package does not have coverage for all of the operators in your model, then you can build a custom runtime binary based your specific model.
 
