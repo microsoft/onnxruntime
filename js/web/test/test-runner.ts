@@ -502,8 +502,10 @@ export async function runModelTestSet(
     const feeds: Record<string, ort.Tensor> = {};
     testCase.inputs!.forEach((tensor, i) => feeds[context.session.inputNames[i]] = tensor);
     const start = now();
+    console.log(`[_BEFORE_SESSION_RUN_] ${start}`);
     const outputs = await context.session.run(feeds);
     const end = now();
+    console.log(`[_AFTER_SESSION_RUN_] ${end}`);
     if (context.perfData.count === 0) {
       context.perfData.firstRun = end - start;
     } else {
