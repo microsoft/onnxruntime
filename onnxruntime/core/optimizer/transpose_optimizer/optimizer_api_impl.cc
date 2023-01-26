@@ -647,8 +647,8 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // add schema if available.
-  // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
+  // add schema to make it equivalent with the other nodes in the graph created by Graph::Resolve()
+  // EPs may do kernel lookup during GetCapability which requires the schema
   graph.SetOpSchemaFromRegistryForNode(node);
 #endif
 
