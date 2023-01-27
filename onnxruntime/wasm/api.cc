@@ -322,6 +322,7 @@ void OrtReleaseTensor(OrtValue* tensor) {
 OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
                                    size_t log_verbosity_level,
                                    bool terminate,
+                                   bool synchronize,
                                    const char* tag) {
   OrtRunOptions* run_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateRunOptions, &run_options);
@@ -335,6 +336,12 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
     RETURN_NULLPTR_IF_ERROR(RunOptionsSetTerminate, run_options);
   } else {
     RETURN_NULLPTR_IF_ERROR(RunOptionsUnsetTerminate, run_options);
+  }
+
+  if (synchronize) {
+    RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options);
+  } else {
+    RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options);
   }
 
   if (tag != nullptr) {

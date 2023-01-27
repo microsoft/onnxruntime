@@ -7,6 +7,7 @@
 #include <atomic>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 
 /**
  * Configuration information for a Run call.
@@ -26,10 +27,6 @@ struct OrtRunOptions {
   // Set to 'true' to run only the nodes from feeds to required fetches.
   // So it is possible that only some of the nodes are executed.
   bool only_execute_path_to_fetches = false;
-
-  // Set to 'true' to synchronize execution providers with CPU at the end of session run.
-  // Taking CUDA EP as an example, it will trigger cudaStreamSynchronize on the compute stream.
-  bool synchronize_execution_providers = true;
 
 #ifdef ENABLE_TRAINING
   // Used by onnxruntime::training::TrainingSession. This class is now deprecated.

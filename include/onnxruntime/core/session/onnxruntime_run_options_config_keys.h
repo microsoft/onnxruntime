@@ -25,3 +25,8 @@
 // Example usage: "cpu:0;gpu:0" (or) "gpu:0"
 // By default, the value for this key is empty (i.e.) no memory arenas are shrunk
 static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memory.enable_memory_arena_shrinkage";
+
+// when any CUDA work is issued (CUDA + TensorRT EP) the InferenceSession::run method will synchronize
+// after submitting the work - this option enables to return right after submitting all the work
+// This requires the user to handle synchronization points to wait for a finished inference if needed
+static const char* const kOrtRunOptionsConfigDisableSynchronization = "cuda.disable_sync_execution";
