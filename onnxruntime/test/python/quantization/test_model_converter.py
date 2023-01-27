@@ -51,11 +51,49 @@ class TestONNXModel(unittest.TestCase):
         )
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
+    @staticmethod
+    def construc_matmul_model():
+        #       input                  input
+        #      /     \                /     \
+        #     /       \              /       \
+        #    |         |            |         |
+        #    |    Transpose  ===>   |    Transpose
+        #    |         |            |         |
+        #     \       /              \      Cast(1))
+        #      \     /                \      /
+        #       MatMul                 MatMul
+        #         |                       |
+        #         |                     Cast(2)
+        #         |                       |
+        #     (output)                (output)
+
+        initializers = []
+        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [4, 2, 8, 8])
+        output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [4, 2, 8, 8])
+        initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W1"))
+        initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W2"))
+        initializers.append(generate_input_initializer([2], np.float32, "B"))
+        conv_node_1 = onnx.helper.make_node("MatMul", ["input", "W1", "B"], ["Conv1_O"], name="Conv1")
+        conv_node_2 = onnx.helper.make_node("MatMul", ["input", "W2", "B"], ["Conv2_O"], name="Conv2")
+        relu_node = onnx.helper.make_node("Relu", ["Conv1_O"], ["Relu_O"], name="Relu")
+        add_node = onnx.helper.make_node("Add", ["Relu_O", "Conv2_O"], ["output"], name="Add")
+        graph = helper.make_graph(
+            [conv_node_1, relu_node, conv_node_2, add_node],
+            "onnx_model_test",
+            [input],
+            [output],
+            initializer=initializers,
+        )
+        return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
     def construct_test(self, op: str):
         np.random.seed(1)
         model_fp32_path = "pre_converter_{}.fp32.onnx".format(op)
         model_fp16_path = "post_converter_{}.fp16.onnx".format(op)
-        model = self.construct_conv_model()
+        if op == "Conv":
+            model = self.construct_conv_model()
+        elif op == "MatMul":
+            raise NotImplementedError
 
         converter = FP16Converter()
         converter.set_model(model)
@@ -80,6 +118,9 @@ class TestONNXModel(unittest.TestCase):
 
     def test_conv_model_converter(self):
         self.construct_test("Conv")
+
+    def test_matmul_model_converter(self):
+        self.construct_test("MatMul")
 
 
 def get_op_count_from_model(op, model):
