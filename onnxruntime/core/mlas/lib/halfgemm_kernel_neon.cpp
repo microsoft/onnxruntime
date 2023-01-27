@@ -17,6 +17,8 @@ Abstract:
 #include "mlasi.h"
 #include "halfgemm.h"
 
+#include "arm64_neon.h"
+
 //
 // Define the prototypes of the NEON routines written in assembly.
 //
@@ -52,6 +54,78 @@ struct MLAS_HALF_GEMM_KERNEL_NEON {
     static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 16};
 };
 
+
+MLAS_FORCEINLINE
+void
+CvtHalf2Float(
+    float* dest,
+    const _mlas_fp16_* src,
+    size_t len
+)
+{
+    while (len >= 4) {
+        const auto* srcPtr = reinterpret_cast<const float16x4_t*>(src);
+        auto* dstPtr = reinterpret_cast<float32x4_t*>(dest);
+        *dstPtr = vcvt_f32_f16(*srcPtr);
+        src += 4;
+        dest += 4;
+        len -= 4;
+    }
+
+    if (0 == len) {
+        return;
+    }
+
+    float16x4_t buf;
+    std::memcpy(&buf, src, len * sizeof(_mlas_fp16_));
+    float32x4_t res = vcvt_f32_f16(buf);
+
+    if ((len & 2) != 0) {
+        vst1q_lane_f64(dest, res, 0);
+        res = vdupq_laneq_f64(res, 1);
+        dest += 2;
+    }
+    if ((len & 1) != 0) {
+        vst1q_lane_f32(dest, res, 0);
+    }
+}
+
+
+MLAS_FORCEINLINE
+void
+CvtFloat2Half(
+    _mlas_fp16_* dest,
+    const float* src,
+    size_t len
+)
+{
+    while (len >= 4) {
+        const auto* srcPtr = reinterpret_cast<const float32x4_t*>(src);
+        auto* dstPtr = reinterpret_cast<float16x4_t*>(dest);
+        *dstPtr = vcvt_f16_f32(*srcPtr);
+        src += 4;
+        dest += 4;
+        len -= 4;
+    }
+
+    if (0 == len) {
+        return;
+    }
+
+    float32x4_t buf;
+    std::memcpy(&buf, src, len * sizeof(float));
+    float16x4_t res = vcvt_f16_f32(buf);
+
+    if ((len & 2) != 0) {
+        vst1_lane_f32(dest, res, 0);
+        res = vdup_lane_f32(res, 1);
+        dest += 2;
+    }
+    if ((len & 1) != 0) {
+        vst1_lane_f16(dest, res, 0);
+    }
+}
+
 /**
  * @brief Convert a 2D matrix from float to fp16
 */
@@ -65,19 +139,15 @@ CvtFloat2Half2D(
     size_t CntCol
     )
 {
-    int64_t stride_gap = size_t(int64_t(stride) - int64_t(CntCol));
-    if (0 == stride_gap) {
+    if (stride == CntCol) {
         const size_t len = CntRow * CntCol;
-        for (size_t i = 0; i < len; i++) {
-            *dest++ = MLAS_Float2Half(*(src++));
-        }
+        CvtFloat2Half(dest, src, len);
         return;
     }
     while (CntRow > 0) {
-        for (size_t k = 0; k < CntCol; k++) {
-            *dest++ = MLAS_Float2Half(*(src++));
-        }
-        src += stride_gap;
+        CvtFloat2Half(dest, src, CntCol);
+        src += stride;
+        dest += CntCol;
         CntRow--;
     }
 }
