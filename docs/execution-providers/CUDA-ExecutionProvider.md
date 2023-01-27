@@ -178,6 +178,7 @@ cudaProviderOptions.UpdateOptions(providerOptionsDict);
 
 SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
 ```
+Also see the tutorial here on how to [configure CUDA for C# on Windows](../tutorials/csharp/csharp-gpu.html).
 
 ### Java
 
