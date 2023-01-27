@@ -32,12 +32,12 @@ class TestFusion(unittest.TestCase):
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
     def verify_parity(self, optimized_model, expected_model):
-        sess_optimized = InferenceSession(optimized_model, providers=['CPUExecutionProvider'])
-        sess_expected = InferenceSession(expected_model, providers=['CPUExecutionProvider'])
-        inputs = np.random.randint(low=0, high=6, size=(4,8), dtype=np.int32) + 1
+        sess_optimized = InferenceSession(optimized_model, providers=["CPUExecutionProvider"])
+        sess_expected = InferenceSession(expected_model, providers=["CPUExecutionProvider"])
+        inputs = np.random.randint(low=0, high=6, size=(4, 8), dtype=np.int32) + 1
 
-        outputs_optimized = sess_optimized.run(None, {'ids': inputs})
-        outputs_expected = sess_expected.run(None, {'ids': inputs})
+        outputs_optimized = sess_optimized.run(None, {"ids": inputs})
+        outputs_expected = sess_expected.run(None, {"ids": inputs})
         self.assertTrue(np.allclose(outputs_optimized[0], outputs_expected[0]))
 
     def test_embedlayer_fusion(self):

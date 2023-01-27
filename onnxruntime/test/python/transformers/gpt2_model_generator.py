@@ -549,7 +549,16 @@ def create_gpt2_attention(hidden_size=64, num_heads=4, max_seq_len=32, switch_ad
     return helper.make_model(graph, opset_imports=(opsetid,))
 
 
-def create_gpt2_embedlayer(pos_embed=100, word_embed=101, token_embed=10, hidden_size=768, attn_hidden_dim=256, num_heads=4, epsilon=0.1, one_attention_node=False):
+def create_gpt2_embedlayer(
+    pos_embed=100,
+    word_embed=101,
+    token_embed=10,
+    hidden_size=768,
+    attn_hidden_dim=256,
+    num_heads=4,
+    epsilon=0.1,
+    one_attention_node=False,
+):
     # Construct input and output nodes
     inputs = [
         helper.make_tensor_value_info("ids", TensorProto.INT32, ["batch_size", "sequence_length"]),
@@ -614,27 +623,75 @@ def create_gpt2_embedlayer(pos_embed=100, word_embed=101, token_embed=10, hidden
 
     # Construct data initializers for graph nodes
     embed_layernorm_initializers = [
-        helper.make_tensor("word_embeddings_weight", TensorProto.FLOAT, [word_embed, hidden_size], [(i+1)/(word_embed * hidden_size) for i in range(word_embed * hidden_size)]),
-        helper.make_tensor("pos_embeddings_weight", TensorProto.FLOAT, [pos_embed, hidden_size], [(i+2)/(pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]),
-        helper.make_tensor("token_embeddings_weight", TensorProto.FLOAT, [token_embed, hidden_size], [(i+3)/(token_embed * hidden_size) for i in range(token_embed * hidden_size)]),
-        helper.make_tensor("layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i+4)/hidden_size for i in range(hidden_size)]),
-        helper.make_tensor("layernorm_bias", TensorProto.FLOAT, [hidden_size], [(i+5)/hidden_size for i in range(hidden_size)]),
+        helper.make_tensor(
+            "word_embeddings_weight",
+            TensorProto.FLOAT,
+            [word_embed, hidden_size],
+            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "pos_embeddings_weight",
+            TensorProto.FLOAT,
+            [pos_embed, hidden_size],
+            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "token_embeddings_weight",
+            TensorProto.FLOAT,
+            [token_embed, hidden_size],
+            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i + 4) / hidden_size for i in range(hidden_size)]
+        ),
+        helper.make_tensor(
+            "layernorm_bias", TensorProto.FLOAT, [hidden_size], [(i + 5) / hidden_size for i in range(hidden_size)]
+        ),
     ]
     attention_initializers = (
         [
-            helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+6)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+7)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+8)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
+            helper.make_tensor(
+                "q_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "k_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "v_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
         ]
         if not one_attention_node
         else [
-            helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+9)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("qkv_bias", TensorProto.FLOAT, [hidden_size], [(i+10)/hidden_size for i in range(hidden_size)]),
-            helper.make_tensor("fix_hidden_size", TensorProto.FLOAT, [attn_hidden_dim, hidden_size], [(i+11)/(attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]),
+            helper.make_tensor(
+                "qkv_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "qkv_bias", TensorProto.FLOAT, [hidden_size], [(i+10)/hidden_size for i in range(hidden_size)]
+            ),
+            helper.make_tensor(
+                "fix_hidden_size",
+                TensorProto.FLOAT,
+                [attn_hidden_dim, hidden_size],
+                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]
+            ),
         ]
     )
     initializers = [
-        helper.make_tensor("dense_bias", TensorProto.FLOAT, [hidden_size], [(i+12)/hidden_size for i in range(hidden_size)]),
+        helper.make_tensor(
+            "dense_bias", TensorProto.FLOAT, [hidden_size], [(i+12)/hidden_size for i in range(hidden_size)]
+        ),
     ]
     initializers.extend(embed_layernorm_initializers)
     initializers.extend(attention_initializers)
@@ -645,7 +702,16 @@ def create_gpt2_embedlayer(pos_embed=100, word_embed=101, token_embed=10, hidden
     return helper.make_model(graph, opset_imports=(opsetid,))
 
 
-def create_gpt2_fused_embedlayer(pos_embed=100, word_embed=101, token_embed=10, hidden_size=768, attn_hidden_dim=256, num_heads=4, epsilon=0.1, one_attention_node=False):
+def create_gpt2_fused_embedlayer(
+    pos_embed=100,
+    word_embed=101,
+    token_embed=10,
+    hidden_size=768,
+    attn_hidden_dim=256,
+    num_heads=4,
+    epsilon=0.1,
+    one_attention_node=False
+):
     # Construct input and output nodes
     inputs = [
         helper.make_tensor_value_info("ids", TensorProto.INT32, ["batch_size", "sequence_length"]),
@@ -716,27 +782,75 @@ def create_gpt2_fused_embedlayer(pos_embed=100, word_embed=101, token_embed=10, 
 
     # Construct data initializers for graph nodes
     embed_layernorm_initializers = [
-        helper.make_tensor("word_embeddings_weight", TensorProto.FLOAT, [word_embed, hidden_size], [(i+1)/(word_embed * hidden_size) for i in range(word_embed * hidden_size)]),
-        helper.make_tensor("pos_embeddings_weight", TensorProto.FLOAT, [pos_embed, hidden_size], [(i+2)/(pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]),
-        helper.make_tensor("token_embeddings_weight", TensorProto.FLOAT, [token_embed, hidden_size], [(i+3)/(token_embed * hidden_size) for i in range(token_embed * hidden_size)]),
-        helper.make_tensor("layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i+4)/hidden_size for i in range(hidden_size)]),
-        helper.make_tensor("layernorm_bias", TensorProto.FLOAT, [hidden_size], [(i+5)/hidden_size for i in range(hidden_size)]),
+        helper.make_tensor(
+            "word_embeddings_weight",
+            TensorProto.FLOAT,
+            [word_embed, hidden_size],
+            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "pos_embeddings_weight",
+            TensorProto.FLOAT,
+            [pos_embed, hidden_size],
+            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "token_embeddings_weight",
+            TensorProto.FLOAT,
+            [token_embed, hidden_size],
+            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)]
+        ),
+        helper.make_tensor(
+            "layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i + 4) / hidden_size for i in range(hidden_size)]
+        ),
+        helper.make_tensor(
+            "layernorm_bias", TensorProto.FLOAT, [hidden_size], [(i + 5) / hidden_size for i in range(hidden_size)]
+        ),
     ]
     attention_initializers = (
         [
-            helper.make_tensor("q_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+6)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("k_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+7)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("v_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+8)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
+            helper.make_tensor(
+                "q_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "k_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "v_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
         ]
         if not one_attention_node
         else [
-            helper.make_tensor("qkv_weight", TensorProto.FLOAT, [hidden_size, hidden_size], [(i+9)/(hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]),
-            helper.make_tensor("qkv_bias", TensorProto.FLOAT, [hidden_size], [(i+10)/hidden_size for i in range(hidden_size)]),
-            helper.make_tensor("fix_hidden_size", TensorProto.FLOAT, [attn_hidden_dim, hidden_size], [(i+11)/(attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]),
+            helper.make_tensor(
+                "qkv_weight",
+                TensorProto.FLOAT,
+                [hidden_size, hidden_size],
+                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+            ),
+            helper.make_tensor(
+                "qkv_bias", TensorProto.FLOAT, [hidden_size], [(i + 10) / hidden_size for i in range(hidden_size)]
+            ),
+            helper.make_tensor(
+                "fix_hidden_size",
+                TensorProto.FLOAT,
+                [attn_hidden_dim, hidden_size],
+                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]
+            ),
         ]
     )
     initializers = [
-        helper.make_tensor("dense_bias", TensorProto.FLOAT, [hidden_size], [(i+12)/hidden_size for i in range(hidden_size)]),
+        helper.make_tensor(
+            "dense_bias", TensorProto.FLOAT, [hidden_size], [(i + 12) / hidden_size for i in range(hidden_size)]
+        ),
     ]
     initializers.extend(embed_layernorm_initializers)
     initializers.extend(attention_initializers)
