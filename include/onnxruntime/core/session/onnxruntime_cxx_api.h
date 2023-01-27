@@ -1512,26 +1512,26 @@ struct KernelContext {
   OrtKernelContext* ctx_;
 };
 
-// Logs a message using the provider Ort::Logger, which must be passed by value.
+// Logs a message using the provider Ort::Logger, which must be passed by value or reference.
 // Does not throw exceptions, so can be used in destructors and catch clauses.
 // Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
 #define ORT_CXX_LOG(logger, severity, message) \
   std::ignore = logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message)
 
-// Logs a message using the provider Ort::Logger, which must be passed by value.
-// Throws an exception on error.
+// Logs a message using the provider Ort::Logger, which must be passed by value or reference.
+// Throws an exception on failure.
 // Example: ORT_CXX_LOG_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
 #define ORT_CXX_LOG_CHECKED(logger, severity, message) \
   Ort::ThrowOnError(logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
-// Logs a formatted message using the provided Ort::Logger, which must be passed by value.
-// // Does not throw exceptions, so can be used in destructors and catch clauses.
+// Logs a formatted message using the provided Ort::Logger, which must be passed by value or reference.
+// Does not throw exceptions, so can be used in destructors and catch clauses.
 // Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
 #define ORT_CXX_LOGF(logger, severity, ...) \
   std::ignore = logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
 
-// Logs a formatted message using the provided Ort::Logger, which must be passed by value.
-// Throws an exception on error.
+// Logs a formatted message using the provided Ort::Logger, which must be passed by value or reference.
+// Throws an exception on failure.
 // Example: ORT_CXX_LOGF_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
 #define ORT_CXX_LOGF_CHECKED(logger, severity, ...) \
   Ort::ThrowOnError(logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
@@ -1541,12 +1541,12 @@ struct Logger {
 
   OrtLoggingLevel GetLoggingSeverityLevel() const;  ///< Wraps OrtApi::Logger_GetLoggingSeverityLevel
 
-  ///< Wraps OrtApi::Logger_LogMessage. Typically called via the ORT_CXX_LOG macro.
+  ///< Wraps OrtApi::Logger_LogMessage. Typically called via the ORT_CXX_LOG or ORT_CXX_LOF_CHECHED macros.
   Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
                     const char* func_name, const char* message) const noexcept;
 
   ///< Prints a formatted message to a buffer and then calls OrtApi::Logger_LogMessage.
-  ///< Typically called via ORT_CXX_LOGF macro.
+  ///< Typically called via the ORT_CXX_LOGF or ORT_CXX_LOGF_CHECKED macros.
   template <typename... Args>
   Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
                              const char* func_name, const char* format, Args... args) const noexcept;

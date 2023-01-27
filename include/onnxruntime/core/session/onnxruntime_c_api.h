@@ -3889,7 +3889,7 @@ struct OrtApi {
    * messages.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
-   * \param[out] logger Pointer set to the session's ::OrtLogger. Do not free.
+   * \param[out] logger Pointer set to the session's ::OrtLogger. Owned by ONNX Runtime, so do not free.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.15
