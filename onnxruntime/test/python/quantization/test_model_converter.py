@@ -4,10 +4,9 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-
 from op_test_utils import check_model_correctness, check_op_type_count
+
 from onnxruntime.quantization.fp16_converter import FP16Converter
-from onnxruntime.quantization.onnx_model import ONNXModel
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -72,7 +71,7 @@ class TestONNXModel(unittest.TestCase):
         fp16_model = converter.get_model()
         fp16_op_count = get_op_count_from_model(op, fp16_model)
         # TO-DO: Modify following parameters when converter is ready
-        fp16_nodes = {"Cast": 4 * fp16_op_count, op: op_count}
+        fp16_nodes = {"Cast": 2 * fp16_op_count, op: op_count}
         check_op_type_count(self, model_fp16_path, **fp16_nodes)
         check_model_correctness(
             self,
@@ -82,7 +81,7 @@ class TestONNXModel(unittest.TestCase):
         )
 
     def test_conv_model_converter(self):
-        self.construct_test('Conv')
+        self.construct_test("Conv")
 
 
 def get_op_count_from_model(op, model):
