@@ -722,12 +722,13 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         int gpt_subgraph_first_past_input_idx,
                         int gpt_subgraph_first_present_output_idx,
                         Stream* ort_stream,
+                        bool use_preallocated_past_and_present_buffers,
                         transformers::IBeamSearchState<T>* beam_state) {
   int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto past_type = DataTypeImpl::GetType<T>();
 
-  if (!beam_state) {
+  if (!use_preallocated_past_and_present_buffers) {
       for (int i = 0; i < num_present_tensors; ++i) {
           const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
@@ -762,48 +763,51 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
       }
     } else {
 
+      // We need beam_state as that holds the pre-allocated past and present buffers
+      ORT_ENFORCE(beam_state);
+      int max_seq_length = beam_state->GetMaxLength();
+
+      const OrtValue& representative_present = last_outputs[gpt_subgraph_first_present_output_idx];
+      // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
+      const TensorShape& representative_shape = representative_present.Get<Tensor>().Shape();
+
+      // The following data stays the same for the past/present states from all layers
+      int batch_beam_size = representative_shape[1];
+      int num_heads = representative_shape[2];
+      int past_seq_length = representative_shape[3];
+      int head_size = representative_shape[4];
+
       gsl::span<T> past_state_buffer = beam_state->GetPastStateBuffer();
-      int batch_beam_size = 0;
-      int past_seq_length = 0;
 
+      // 
       for (int i = 0; i < num_present_tensors; ++i) {
-          const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
+          gsl::span<T> current_layer_past_state_buffer = past_state_buffer.subspan(i * 2 * batch_beam_size * num_heads * max_seq_length * head_size);
 
-          // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
-          const TensorShape& past_shape = present.Get<Tensor>().Shape();
-          past_seq_length = past_shape[3];
-          batch_beam_size = past_shape[1];
-
-          // Create a tensor with same shape.
+          // Create a tensor with same shape as the present state (use `representative_shape`).
           OrtValue past;
 
-          gsl::span<T> current_layer_past_state_buffer = past_state_buffer.subspan(i * 2 * batch_beam_size * 12 * 128 * 64);
-
-
           // OrtValue doesn't own the buffer - so no need to pass in the allocator 
-          Tensor::InitOrtValue(past_type, past_shape, current_layer_past_state_buffer.data(), allocator->Info(), past);
+          Tensor::InitOrtValue(past_type, representative_shape, current_layer_past_state_buffer.data(), allocator->Info(), past);
 
           next_inputs[gpt_subgraph_first_past_input_idx + i] = past;
       }
 
-      // Copy stuff to the device
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->filtered_next_indices.data(), beam_indices.data(), batch_beam_size * 4, cudaMemcpyHostToDevice, cuda_stream));
-
-      // Pick the past states
-      //const dim3 grid(12, 12, batch_beam_size * 2);  // (num_heads, layer_num, beam_batch * 2)
-      //const dim3 block(std::min(past_seq_length * 64, 1024), 1, 1); // (length * head_size), max_threads_per_block
+      // Copy the selected beam indices to the device to launch the PickGptPastStateKernel kernel
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->selected_next_indices.data(), beam_indices.data(), beam_indices.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
 
       typedef typename ToCudaType<T>::MappedType CudaT;
       cuda::PickGptPastStateKernel<CudaT>(
           reinterpret_cast<CudaT*>(past_state_buffer.data()),
+          // Use the buffer pointer of the first present state - the pre-allocated buffer is shared between
+          // the present states of all layers
           reinterpret_cast<const CudaT*>(last_outputs[gpt_subgraph_first_present_output_idx].Get<Tensor>().Data<T>()),
-          beam_state->filtered_next_indices.data(),
+          beam_state->selected_next_indices.data(),
           batch_beam_size,
           past_seq_length,
-          128, //max_seq_length
-          12,
-          64,
-          12,
+          max_seq_length,
+          num_heads,
+          head_size,
+          num_present_tensors, // because num_present_tensors == num_layers
           cuda_stream);
 
     }
@@ -866,6 +870,7 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
     int past_sequence_len,
+    bool use_preallocated_past_and_present_buffers,
     transformers::IBeamSearchState<T>* beam_state) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator updateFeedsRange("UpdateGptFeeds", profile::Color::Yellow);
@@ -918,7 +923,8 @@ Status UpdateGptFeeds(
     } else {
       ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator,
                                               gpt_subgraph_first_past_input_idx,
-                                              gpt_subgraph_first_present_output_idx, ort_stream, beam_state));
+                                              gpt_subgraph_first_present_output_idx, ort_stream, 
+                                              use_preallocated_past_and_present_buffers, beam_state));
     }
   }
 
@@ -1112,6 +1118,7 @@ template Status UpdateGptFeeds<float>(
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
     int past_sequence_len,
+    bool use_preallocated_past_and_present_buffers,
     transformers::IBeamSearchState<float>* beam_state);
 
 // Float16
@@ -1170,6 +1177,7 @@ template Status UpdateGptFeeds<MLFloat16>(
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
     int past_sequence_len,
+    bool use_preallocated_past_and_present_buffers,
     transformers::IBeamSearchState<MLFloat16>* beam_state);
 
 template Status UpdateDecoderFeeds<float>(

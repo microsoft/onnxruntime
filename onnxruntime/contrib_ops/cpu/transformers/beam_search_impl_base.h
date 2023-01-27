@@ -20,8 +20,14 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
+            int num_layers,
+            int num_heads,
+            int head_size,
             bool output_scores,
-            bool use_position) {
+            bool use_position,
+            bool use_preallocated_past_and_present_buffers) {
+    max_length_ = max_length;
+
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
 
     size_t next_token_size = SafeInt<size_t>(batch_beam_size) * vocab_size;
@@ -31,8 +37,6 @@ struct BeamSearchState : public IBeamSearchState<T> {
     this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
-    this->filtered_next_indices = AllocateBuffer<int32_t>(allocator, filtered_next_indices_buffer_, batch_beam_size);
-
 
     this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
@@ -52,13 +56,22 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->remaining_scores = this->scores;
     }
 
-    this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * 12 * 2 * batch_beam_size * 12 * 128 * 64);
+    if (use_preallocated_past_and_present_buffers) {
+        size_t all_layers_kv_past_state_size = (SafeInt<size_t>(num_layers) * 2 * batch_beam_size * num_heads * max_length * head_size);
 
-    all_layers_kv_past_state_size_ = (SafeInt<size_t>(12) * 2 * batch_beam_size * 12 * 128 * 64);
+        // '2' is to allocate both past and present states
+        this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * all_layers_kv_past_state_size);
 
-    past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size_);
-    past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size_, all_layers_kv_past_state_size_);
+        past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size);
+        past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size, all_layers_kv_past_state_size);
 
+        // TODO(hasesh): We need this scratch buffer on CUDA because currently, the BeamScorer runs on CPU and selects the beams
+        // for the next iteration and hence the chosen next indices is on CPU.
+        // We will use this scratch buffer to take them to device because we need them on the device to launch the CUDA
+        // kernel that will update the next iteration's past state.
+        // Remove this once BeamScorer runs on CUDA and we have the selected next indices on CUDA.
+        this->selected_next_indices = AllocateBuffer<int32_t>(allocator, selected_next_indices_buffer_, batch_beam_size);
+    }
   }
 
   gsl::span<T> GetPastStateBuffer() override {
@@ -69,21 +82,25 @@ struct BeamSearchState : public IBeamSearchState<T> {
       return past_present_states_[1];
   }
 
+  int GetMaxLength() override {
+      return max_length_; 
+  }
+
  private:
   BufferUniquePtr next_token_logits_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
-  BufferUniquePtr filtered_next_indices_buffer_;
+  BufferUniquePtr selected_next_indices_buffer_;
   BufferUniquePtr next_scores_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
   BufferUniquePtr past_present_state_temp_buffer_;
-
   gsl::span<T> past_present_states_[2];
-  size_t all_layers_kv_past_state_size_ = 0;
+
+  int max_length_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {

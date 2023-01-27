@@ -6,11 +6,21 @@
 #include "contrib_ops/cpu/transformers/beam_search_impl_base.h"
 
 #include "core/common/span_utils.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 
 namespace transformers {
+
+namespace beam_search_gpt_impl_detail {
+    // Environment variable to enable or disable pre-allocation of past/present buffers.
+    // The present buffer will be used to make up the present state fetches for the GPT2 execution.
+    // The past buffer will be used to form the past state feeds for the GPT2 execution.
+    // This will also optimize the selection of the next run's past state from the previous run's present state
+    // for the selected beams.
+    constexpr const char* kDisableBeamSearchPreallocatedFetches = "ORT_DISABLE_BEAM_SEARCH_PREALLOCATED_FETCHES";
+}
 
 // Beam search implementation for GPT-2 model.
 template <typename T>
@@ -50,7 +60,10 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   Status Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
                  const FeedsFetchesManager& feeds_fetches_manager);
 
-  bool use_preallocated_past_and_present_ = true;
+  // Using pre-allocated past and present buffers is only supported on CUDA for now.
+  // TODO(hasesh): Support it on CPU as well.
+  bool use_preallocated_past_and_present_buffers_ = this->IsCuda() &&
+      !ParseEnvironmentVariableWithDefault<bool>(beam_search_gpt_impl_detail::kDisableBeamSearchPreallocatedFetches, false);;
 
  private:
   // Prepare the inputs for first inference of subgraph
@@ -129,6 +142,7 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     IBeamSearchState<T>* beam_state) {
+    
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -143,7 +157,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             false,
                             -1,
-                            beam_state ? beam_state : nullptr);
+                            use_preallocated_past_and_present_buffers_,
+                            beam_state);
 }
 
 template <typename T>
@@ -208,8 +223,12 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                   parameters->vocab_size,
                   parameters->sequence_length,
                   parameters->max_length,
+                  gpt_subgraph_.num_layers,
+                  gpt_subgraph_.num_heads, 
+                  gpt_subgraph_.head_size,
                   parameters->output_scores,
-                  use_position);
+                  use_position,
+                  use_preallocated_past_and_present_buffers_);
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -219,7 +238,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
   // Allocate present state fetches. 
   // We will use the same buffer always - it is pre-allocated to hold max_sequence_length of present state values.
-  if (use_preallocated_past_and_present_) {
+  if (use_preallocated_past_and_present_buffers_) {
       // init run and other run subgraphs are expected to have same past/present info. So, use any one of them below.
       fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
       fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
@@ -227,10 +246,18 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
           OrtValue present_tensor;
           gsl::span<T> present_state_buffer = beam_state.GetPresentStateBuffer();
 
-          gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer * 2 * parameters->batch_size * parameters->num_beams * gpt_subgraph_.num_heads * parameters->max_length * gpt_subgraph_.head_size, 
-                                                                                   2 * parameters->batch_size * parameters->num_beams * gpt_subgraph_.num_heads * parameters->sequence_length * gpt_subgraph_.head_size);
+          gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer * 
+              2 * parameters->batch_size * parameters->num_beams 
+              * gpt_subgraph_.num_heads * parameters->max_length 
+              * gpt_subgraph_.head_size, 
+              
+              2 * parameters->batch_size * 
+              parameters->num_beams * gpt_subgraph_.num_heads * 
+              parameters->sequence_length * 
+              gpt_subgraph_.head_size);
 
-          int64_t dims[] = {2, parameters->batch_size * parameters->num_beams, gpt_subgraph_.num_heads, parameters->sequence_length, gpt_subgraph_.head_size };
+          int64_t dims[] = {2, parameters->batch_size * parameters->num_beams, 
+                            gpt_subgraph_.num_heads, parameters->sequence_length, gpt_subgraph_.head_size };
           TensorShape shape(&dims[0], 5);
 
           Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, current_layer_present_buffer.data(), this->temp_space_allocator_->Info(), present_tensor);
@@ -335,10 +362,10 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                       ReinterpretAsSpan<const int32_t>(beam_indices),
-                                      use_preallocated_past_and_present_ ? &beam_state : nullptr));
+                                      &beam_state));
     }
 
-    if (use_preallocated_past_and_present_) {
+    if (use_preallocated_past_and_present_buffers_) {
         // Clear fetches before present state(s)
         for(int64_t i=0; i < static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()); ++i) {
             fetches[i] = OrtValue();

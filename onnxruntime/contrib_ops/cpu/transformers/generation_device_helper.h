@@ -127,6 +127,7 @@ using UpdateGptFeedsFunc = std::function<Status(
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
     int past_sequence_len,
+    bool use_preallocated_past_and_present_buffers,
     transformers::IBeamSearchState<T>* beam_state)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
@@ -262,6 +263,7 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
     int past_sequence_len,
+    bool use_preallocated_past_and_present_buffers,
     transformers::IBeamSearchState<T>* beam_state);
 
 // ---------------------------------------------------------------

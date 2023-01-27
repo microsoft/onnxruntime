@@ -158,6 +158,7 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             gpt_subgraph_.past_present_share_buffer_,
                             past_sequence_length,
+                            false,
                             nullptr);
 }
 
