@@ -29,9 +29,6 @@ ONNX Runtime functions as part of an ecosystem of tools and platforms to deliver
 * [Export a Custom Vision model to ONNX format](https://docs.microsoft.com/en-us/samples/azure-samples/cognitive-services-onnx-customvision-sample/cognitive-services-onnx-customvision-sample/){:target="_blank"}
 * [Use a Custom Vision model with Windows Machine Learning](https://docs.microsoft.com/en-us/azure/cognitive-services/custom-vision-service/custom-vision-onnx-windows-ml){:target="_blank"}
 
-## Azure Live Video Analytics
-* [Azure Video Analytics: YOLOv3 and TinyYOLOv3](https://github.com/Azure/live-video-analytics/tree/master/utilities/video-analysis/yolov3-onnx){:target="_blank"}
-
 ## Azure SQL Edge
 * [ML predictions in Azure SQL Edge and Azure SQL Managed Instance](https://docs.microsoft.com/en-us/azure/azure-sql-edge/deploy-onnx){:target="_blank"}
 

@@ -74,6 +74,6 @@ dotnet run [path-to-model] [path-to-image] [path-to-output-image]
 ```
 
 ## References:
-[fasterrcnn_csharp](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/fasterrcnn_csharp.md)
+[fasterrcnn_csharp](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/csharp/fasterrcnn_csharp.md)
 
-[resnet50_csharp](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/tutorials/resnet50_csharp.md)
+[resnet50_csharp](https://github.com/microsoft/onnxruntime/blob/gh-pages/docs/tutorials/csharp/resnet50_csharp.md)
