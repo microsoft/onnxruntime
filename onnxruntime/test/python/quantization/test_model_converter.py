@@ -88,8 +88,8 @@ class TestONNXModel(unittest.TestCase):
 
     def construct_test(self, op: str):
         np.random.seed(1)
-        model_fp32_path = "pre_converter_{}.fp32.onnx".format(op)
-        model_fp16_path = "post_converter_{}.fp16.onnx".format(op)
+        model_fp32_path = f"pre_converter_{op}.fp32.onnx"
+        model_fp16_path = f"post_converter_{op}.fp16.onnx"
         if op == "Conv":
             model = self.construct_conv_model()
         elif op == "MatMul":

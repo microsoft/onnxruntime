@@ -18,6 +18,7 @@ class FP16Converter:
         if int(initializer.data_type) == TensorType.FLOAT:
             new_tensor = np.asarray(numpy_helper.to_array(initializer), dtype=np.float16)
             return numpy_helper.from_array(new_tensor, new_name)
+        return initializer
 
     def __conv_conversion(self):
         model = ONNXModel(self.model)
@@ -52,7 +53,6 @@ class FP16Converter:
                 )
                 model.add_node(cast_node)
                 model.replace_node_output(node, out_tensor, new_out_tensor)
-
         return True
 
     def convert_op(self, op: str):
@@ -60,6 +60,7 @@ class FP16Converter:
             return False
         if op == "Conv":
             return self.__conv_conversion()
+        return False
 
     def convert_all(self):
         return map(self.convert_op, self.supported_ops)
