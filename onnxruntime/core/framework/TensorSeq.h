@@ -78,8 +78,9 @@ class TensorSeq {
   void Add(Tensor&& tensor) {
     ORT_ENFORCE(IsSameDataType(tensor),
                 "TensorSeq: tensor to be added has a different data type.");
+    auto ml_tensor = TensorTypeBase::Type();
     auto tensor_ptr = std::make_unique<Tensor>(std::move(tensor));
-    Add(OrtValue(tensor_ptr.release(), DataType(), DataType()->GetDeleteFunc()));
+    Add(OrtValue(tensor_ptr.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
   }
 
   void Reserve(size_t capacity) {
