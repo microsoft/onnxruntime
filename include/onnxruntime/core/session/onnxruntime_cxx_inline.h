@@ -54,6 +54,10 @@ inline OrtErrorCode Status::GetErrorCode() const {
   return GetApi().GetErrorCode(p_);
 }
 
+inline bool Status::IsOK() const {
+  return (p_ == nullptr);
+}
+
 // This template converts a C++ type into it's ONNXTensorElementDataType
 template <typename T>
 struct TypeToTensorType;

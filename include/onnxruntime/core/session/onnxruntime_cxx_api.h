@@ -352,12 +352,13 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  */
 struct Status : detail::Base<OrtStatus> {
   explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API. Must be non-null
+  explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API.
   explicit Status(const Exception&);       ///< Creates status instance out of exception
   explicit Status(const std::exception&);  ///< Creates status instance out of exception
   Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
+  bool IsOK() const;  ///< Returns true if instance represents an OK (non-error) status.
 };
 
 /** \brief The ThreadingOptions
@@ -1524,6 +1525,7 @@ struct KernelContext {
   Ort::ThrowOnError(logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
 // Logs a formatted message using the provided Ort::Logger, which must be passed by value.
+// // Does not throw exceptions, so can be used in destructors and catch clauses.
 // Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
 #define ORT_CXX_LOGF(logger, severity, ...) \
   std::ignore = logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
