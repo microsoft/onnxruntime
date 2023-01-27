@@ -109,6 +109,20 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     int* d_presence_mask,
                                     cudaStream_t stream);
 
+
+template <typename T>
+void PickGptPastStateKernel(
+    T* past_state,
+    const T* present_state,
+    const int32_t* beam_indices,
+    int batch_beam,
+    int past_seq_length,
+    int max_seq_length,
+    int num_heads,
+    int head_size,
+    int num_layers,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

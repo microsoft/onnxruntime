@@ -746,6 +746,100 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_presence_mask);
 }
 
+
+template <typename T>
+__global__ void PickGptPastStateKernelImpl(
+T* past_state,
+const T* present_state,
+const int32_t* beam_indices,
+int batch_beam,
+int past_seq_length,
+int max_seq_length,
+int num_heads,
+int head_size,
+int num_layers) {
+    int layer_id = blockIdx.y;
+    int is_v = blockIdx.z / batch_beam;
+    int batch_beam_id = blockIdx.z % batch_beam;
+    int head_id = blockIdx.x;
+
+    int block_per_layer = 2 * batch_beam * num_heads * max_seq_length * head_size;
+    
+    int block_per_head = past_seq_length * head_size;
+    int block_per_beam = num_heads * block_per_head;
+    int block_per_past_state = batch_beam * block_per_beam;
+
+    int input_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (beam_indices[batch_beam_id] * block_per_beam) + (head_id * block_per_head);
+    int output_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (batch_beam_id * block_per_beam) + (head_id * block_per_head);
+
+    for(int i=threadIdx.x; i<block_per_head; i+= blockDim.x) {
+        past_state[output_offset + i] = present_state[input_offset + i];
+    }
+
+}
+
+
+template <typename T>
+void PickGptPastStateKernel(
+    T* past_state,
+    const T* present_state,
+    const int32_t* beam_indices,
+    int batch_beam,
+    int past_seq_length,
+    int max_seq_length,
+    int num_heads,
+    int head_size,
+    int num_layers,
+    cudaStream_t stream) {
+    assert(past_seq_length > 0 && max_seq_length > 0);
+
+    int device;
+    cudaGetDevice(&device);
+    cudaDeviceProp props;
+    cudaGetDeviceProperties(&props, device);
+
+    int max_threads = props.maxThreadsPerBlock;
+
+    dim3 grid(num_heads, num_layers, batch_beam * 2);  // (num_heads, layer_num, beam_batch * 2)
+    dim3 block(std::min(past_seq_length * head_size, max_threads), 1, 1); // std::min((past_seq_length * head_size), max_threads_per_block)
+
+    PickGptPastStateKernelImpl<T><<<grid, block, 0, stream>>> (
+        past_state,
+        present_state,
+        beam_indices,
+        batch_beam,
+        past_seq_length,
+        max_seq_length,
+        num_heads,
+        head_size,
+        num_layers);
+}
+
+
+template void PickGptPastStateKernel(
+    float* past_state,
+    const float* present_state,
+    const int32_t* beam_indices,
+    int batch_beam,
+    int past_seq_length,
+    int max_seq_length,
+    int num_heads,
+    int head_size,
+    int num_layers,
+    cudaStream_t stream);
+
+template void PickGptPastStateKernel(
+    half* past_state,
+    const half* present_state,
+    const int32_t* beam_indices,
+    int batch_beam,
+    int past_seq_length,
+    int max_seq_length,
+    int num_heads,
+    int head_size,
+    int num_layers,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

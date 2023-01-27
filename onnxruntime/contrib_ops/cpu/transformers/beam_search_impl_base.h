@@ -31,6 +31,8 @@ struct BeamSearchState : public IBeamSearchState<T> {
     this->next_tokens = AllocateBuffer<int32_t>(allocator, next_tokens_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
     this->next_indices = AllocateBuffer<int32_t>(allocator, next_indices_buffer_, SafeInt<size_t>(2) * batch_beam_size);
+    this->filtered_next_indices = AllocateBuffer<int32_t>(allocator, filtered_next_indices_buffer_, batch_beam_size);
+
 
     this->next_scores = AllocateBuffer<float>(allocator, next_scores_buffer_, SafeInt<size_t>(2) * batch_beam_size);
 
@@ -50,8 +52,21 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->remaining_scores = this->scores;
     }
 
-    this->past_state_buffer = AllocateBuffer<T>(allocator, past_state_temp_buffer_, 2 * 12 * 2 * batch_beam_size * 12 * 128 * 64);
+    this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * 12 * 2 * batch_beam_size * 12 * 128 * 64);
 
+    all_layers_kv_past_state_size_ = (SafeInt<size_t>(12) * 2 * batch_beam_size * 12 * 128 * 64);
+
+    past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size_);
+    past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size_, all_layers_kv_past_state_size_);
+
+  }
+
+  gsl::span<T> GetPastStateBuffer() override {
+      return past_present_states_[0];
+  }
+
+  gsl::span<T> GetPresentStateBuffer() override {
+      return past_present_states_[1];
   }
 
  private:
@@ -59,12 +74,16 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
   BufferUniquePtr next_indices_buffer_;
+  BufferUniquePtr filtered_next_indices_buffer_;
   BufferUniquePtr next_scores_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
-  BufferUniquePtr past_state_temp_buffer_;
+  BufferUniquePtr past_present_state_temp_buffer_;
+
+  gsl::span<T> past_present_states_[2];
+  size_t all_layers_kv_past_state_size_ = 0;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {
