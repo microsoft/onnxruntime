@@ -15,6 +15,7 @@
 namespace onnxruntime {
 namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::TensorShapeProto;
 using ONNX_NAMESPACE::OpSchema;
 #ifndef NDEBUG
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
@@ -59,10 +60,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "Y",
                 "The output tensor of the same shape as X",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)"}, "Constrain input X and output Y types to half tensors.")
-        //.TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
         .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
+
+constexpr const char* SplitGelu_ver1_doc = R"DOC(
+A fusion used in diffusion model that hidden state is sliced into two parts, one part applied Gelu actication, then these
+two parts are multiplied.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    SplitGelu, 1,
+    OpSchema()
+        .SetDoc(SplitGelu_ver1_doc)
+        .Input(0,
+               "X",
+               "Input data tensor. Dimensions are (N, H*W, D), where N is the batch size, H and W are the height and width of the data, and D is hidden dimension",
+               "T")
+        .Output(0,
+                "Y",
+                "The output tensor with dimensions (N, H*W, D/2)",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to half tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          if (hasInputShape(ctx, 0)) {
+            auto& input_shape = getInputShape(ctx, 0);
+            if (input_shape.dim().size() != 3) {
+              fail_shape_inference("input shall be 3 dimensions");
+            }
+            if (input_shape.dim(2).has_dim_value()) {
+              fail_shape_inference("input dim 2 shall have dim value");
+            }
+
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = input_shape.dim(0);
+            *output_shape.add_dim() = input_shape.dim(1);
+            output_shape.add_dim()->set_dim_value(input_shape.dim(2).dim_value() / 2);
+            updateOutputShape(ctx, 0, output_shape);
+          }
+        }));
 }  // namespace contrib
 }  // namespace onnxruntime

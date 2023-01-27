@@ -9,10 +9,6 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
-#ifndef NDEBUG
-//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
-#endif
-
 namespace onnxruntime {
 
 namespace concurrency {
@@ -166,6 +162,31 @@ struct IGenerationParameters {
   int min_tokens_to_keep = 1;
   bool custom_sampling = false;
 };
+
+
+#ifndef NDEBUG
+//#define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+#endif
+
+#ifdef DEBUG_GENERATION
+#define DUMP_TENSOR_LEVEL 2
+#else
+#define DUMP_TENSOR_LEVEL 1 // change it to 0 if want to disable dumping for code not in generation.
+#endif
+
+#if DUMP_TENSOR_LEVEL > 0
+#define DUMP_TENSOR_INIT() transformers::CudaTensorConsoleDumper dumper
+#define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#endif
+#if DUMP_TENSOR_LEVEL > 1
+#define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_D(...)
+#endif
+
 
 class IConsoleDumper {
  public:
