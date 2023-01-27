@@ -1035,7 +1035,7 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(inputIndex);
                 ML_CHECK_BOOL(inputTensorSeq != nullptr);
-                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>();
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex);
                 *dimensionCount = static_cast<uint32_t>(elemTensor.Shape().NumDimensions());
             }
             else if (m_inputShapesOverride)
