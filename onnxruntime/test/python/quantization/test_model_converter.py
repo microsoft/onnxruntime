@@ -35,7 +35,6 @@ class TestONNXModel(unittest.TestCase):
         initializers = []
         input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [4, 2, 8, 8])
         output = helper.make_tensor_value_info("output", TensorProto.FLOAT, [4, 2, 8, 8])
-
         initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W1"))
         initializers.append(generate_input_initializer([2, 2, 1, 1], np.float32, "W2"))
         initializers.append(generate_input_initializer([2], np.float32, "B"))
@@ -70,7 +69,6 @@ class TestONNXModel(unittest.TestCase):
 
         fp16_model = converter.get_model()
         fp16_op_count = get_op_count_from_model(op, fp16_model)
-        # TO-DO: Modify following parameters when converter is ready
         fp16_nodes = {"Cast": 2 * fp16_op_count, op: op_count}
         check_op_type_count(self, model_fp16_path, **fp16_nodes)
         check_model_correctness(
