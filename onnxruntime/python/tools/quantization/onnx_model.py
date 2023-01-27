@@ -217,7 +217,8 @@ class ONNXModel:
     def find_nodes_by_type(self, node_type):
         """ Find All nodes which have the same type]
         @param node_type: the node_type is been searched
-        @rtype: list[Node
+        @rtype: list[Node]
+
         """
         node_list = []
         for node in self.nodes():
