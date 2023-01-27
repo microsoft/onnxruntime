@@ -10,6 +10,8 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include "core/providers/dml/DmlExecutionProvider/src/DmlBuffer.h"
+#include "DmlBufferRegion.h"
+#include "DmlBuffer.h"
 
 interface IDMLOperator;
 
@@ -265,6 +267,8 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 
     MLOperatorTensorDataType STDMETHODCALLTYPE GetTensorDataType() const noexcept override;
 
+    Dml::D3D12BufferRegion GetBufferRegion() const;
+
     bool STDMETHODCALLTYPE IsCpuData() const noexcept override;
 
     bool STDMETHODCALLTYPE IsDataInterface() const noexcept override;
@@ -455,6 +459,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
 
     std::vector<IMLOperatorTensor*> GetInputTensors();
     std::vector<IMLOperatorTensor*> GetOutputTensors(const EdgeShapes& outputShapes);
+    const Dml::D3D12BufferRegion& AllocateDefaultBuffer(uint64_t size);
 
  protected:
     void ClearTempAllocations();

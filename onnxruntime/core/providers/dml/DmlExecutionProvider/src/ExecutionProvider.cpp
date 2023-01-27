@@ -850,9 +850,9 @@ namespace Dml
         m_context->QueueReference(object);
     }
 
-    ID3D12Resource* ExecutionProviderImpl::GetABIDataInterface(void* data) const
+    D3D12BufferRegion ExecutionProviderImpl::GetBufferRegion(void* data, uint64_t size) const
     {
-        return m_gpuAllocator->GetAllocationInfo(data)->GetUavResource();
+        return m_gpuAllocator->CreateBufferRegion(data, size);
     }
 
     uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(void* data, bool isInternalOperator)

@@ -2,8 +2,9 @@
 
 #include "../MLOperatorAuthorImpl.h"
 #include "../../../OperatorAuthorHelper/OperatorHelper.h"
-
 #include "../External/D3DX12/d3dx12.h"
+
+#include "../DmlBufferRegion.h"
 
 // The shader header is produced using "fxc.exe dft_shader.hlsl -E DFT -T cs_5_0 -Zi /Fh"
 #include "GeneratedShaders/stockham.h"
@@ -76,7 +77,7 @@ private:
         // Allocate temporary buffers if needed
         struct ResourceDesc
         {
-            ComPtr<ID3D12Resource> Resource;
+            Dml::D3D12BufferRegion BufferRegion;
             std::array<uint32_t, 4> Sizes;
             std::array<uint32_t, 4> Strides;
         };
@@ -266,7 +267,6 @@ public:
         ComPtr<IMLOperatorTensor> outputTensor;
         ORT_THROW_IF_FAILED(context->GetOutputTensor(0, &outputTensor));
         auto outputDims = GetTensorDimensions(outputTensor.Get());
-
         ORT_THROW_HR_IF(E_FAIL, inputDims.size() != outputDims.size());
 
         // Get optional dft_length input
@@ -291,16 +291,6 @@ public:
         {
             params.Type = DFTType::Stockham;
             params.StockhamParams = {};
-
-            ComPtr<IUnknown> inputUnknown;
-            ComPtr<ID3D12Resource> inputResource;
-            inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            inputUnknown.As(&inputResource);
-
-            ComPtr<IUnknown> outputUnknown;
-            ComPtr<ID3D12Resource> outputResource;
-            outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            outputUnknown.As(&outputResource);
 
             // { before_dft_axis, axis, after_dft_axis, real_or_complex }
             std::array<uint32_t, 4> reshapedInputSize = { 1, 1, 1, inputDims.back() };
@@ -349,10 +339,13 @@ public:
 
             // Create the resource loop list
             // Add the input resource to the loop list
+            auto inputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(inputTensor.Get());
             params.StockhamParams.ResourceLoopList.push_back({});
-            params.StockhamParams.ResourceLoopList.back().Resource = inputResource;
+            params.StockhamParams.ResourceLoopList.back().BufferRegion = inputTensorWrapper->GetBufferRegion();
             params.StockhamParams.ResourceLoopList.back().Sizes = reshapedInputSize;
             params.StockhamParams.ResourceLoopList.back().Strides = reshapedInputStrides;
+
+            auto kernelContext = static_cast<Windows::AI::MachineLearning::Adapter::OpKernelContextWrapper*>(context);
 
             // If 1 temporary should be placed first, or multiple temporaries, then
             // Add a temp in the list
@@ -361,9 +354,7 @@ public:
                 params.StockhamParams.ResourceLoopList.push_back({});
                 params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
                 params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+                auto& resource = params.StockhamParams.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             }
 
             // If 2 temps, add another
@@ -372,14 +363,13 @@ public:
                 params.StockhamParams.ResourceLoopList.push_back({});
                 params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
                 params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+                auto& resource = params.StockhamParams.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             }
 
             // Add output resource
+            auto outputTensorWrapper = static_cast<Windows::AI::MachineLearning::Adapter::TensorWrapper*>(outputTensor.Get());
             params.StockhamParams.ResourceLoopList.push_back({});
-            params.StockhamParams.ResourceLoopList.back().Resource = outputResource;
+            params.StockhamParams.ResourceLoopList.back().BufferRegion = outputTensorWrapper->GetBufferRegion();
             params.StockhamParams.ResourceLoopList.back().Sizes = reshapedOutputSize;
             params.StockhamParams.ResourceLoopList.back().Strides = reshapedOutputStrides;
             params.StockhamParams.OutputIndex = static_cast<uint32_t>(params.StockhamParams.ResourceLoopList.size() - 1);
@@ -390,9 +380,7 @@ public:
                 params.StockhamParams.ResourceLoopList.push_back({});
                 params.StockhamParams.ResourceLoopList.back().Sizes = temporarySize;
                 params.StockhamParams.ResourceLoopList.back().Strides = temporaryStrides;
-
-                auto& resource = params.StockhamParams.ResourceLoopList.back().Resource;
-                ORT_THROW_IF_FAILED(context->AllocateTemporaryData(temporaryBufferByteSize, &resource));
+                auto& resource = params.StockhamParams.ResourceLoopList.back().BufferRegion = kernelContext->AllocateDefaultBuffer(temporaryBufferByteSize);
             }
 
             // Define the loop range
@@ -413,8 +401,8 @@ public:
         const auto& loopList = stockhamParams.ResourceLoopList;
 
         // Get input and output resources
-        auto inputResource = loopList[0].Resource.Get();
-        auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
+        auto inputResource = loopList[0].BufferRegion.ResourceInUavState();
+        auto outputResource = loopList[stockhamParams.OutputIndex].BufferRegion.ResourceInUavState();
 
         // Set the root signature and pipeline state
         commandList->SetComputeRootSignature(m_rootSignature.Get());
@@ -432,11 +420,11 @@ public:
             auto inIdx = stockhamParams.LoopRange.CalculateIndex(index);
             auto outIdx = stockhamParams.LoopRange.CalculateIndex(index + 1);
 
-            auto in = loopList[inIdx].Resource.Get();
+            const auto& in = loopList[inIdx].BufferRegion;
             std::copy(loopList[inIdx].Sizes.begin(), loopList[inIdx].Sizes.end(), constants.InputSizes);
             std::copy(loopList[inIdx].Strides.begin(), loopList[inIdx].Strides.end(), constants.InputStrides);
 
-            auto out = loopList[outIdx].Resource.Get();
+            const auto& out = loopList[outIdx].BufferRegion;
             std::copy(loopList[outIdx].Sizes.begin(), loopList[outIdx].Sizes.end(), constants.OutputSizes);
             std::copy(loopList[outIdx].Strides.begin(), loopList[outIdx].Strides.end(), constants.OutputStrides);
 
@@ -465,24 +453,20 @@ public:
     }
 
     void Dispatch(
-        ID3D12Resource* inputResource,
-        ID3D12Resource* outputResource,
+        const Dml::D3D12BufferRegion& inputBufferRegion,
+        const Dml::D3D12BufferRegion& outputBufferRegion,
         DFTShaderConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
-        D3D12_RESOURCE_BARRIER uav_barriers[2];
-        uav_barriers[0] = CD3DX12_RESOURCE_BARRIER::UAV(inputResource);
-        uav_barriers[1] = CD3DX12_RESOURCE_BARRIER::UAV(outputResource);
-        commandList->ResourceBarrier(2, uav_barriers);
         // Set resource views
         commandList->SetComputeRootUnorderedAccessView(
             0, // root parameter index
-            inputResource->GetGPUVirtualAddress()
+            inputBufferRegion.ResourceInUavState()->GetGPUVirtualAddress() + inputBufferRegion.Offset()
         );
 
         commandList->SetComputeRootUnorderedAccessView(
             1, // root parameter index
-            outputResource->GetGPUVirtualAddress()
+            outputBufferRegion.ResourceInUavState()->GetGPUVirtualAddress() + outputBufferRegion.Offset()
         );
         auto pendingElementCount = constants.ElementCount;
 
@@ -512,8 +496,6 @@ public:
 
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
-
-        commandList->ResourceBarrier(2, uav_barriers);
     }
 };
 

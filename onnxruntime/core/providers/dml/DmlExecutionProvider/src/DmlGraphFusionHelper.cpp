@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DmlGraphFusionHelper.h"
+#include "DmlBufferRegion.h"
 
 
 namespace Dml
@@ -88,18 +89,14 @@ namespace DmlGraphFusionHelper
         return buffer;
     }
 
-    void UnwrapTensor(
+    D3D12BufferRegion UnwrapTensor(
         Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider* winmlProvider,
         const onnxruntime::Tensor* tensor,
-        ID3D12Resource** resource,
         uint64_t* allocId)
     {
         void* opaqueData = const_cast<void*>(tensor->DataRaw());
-        ID3D12Resource* abiDataInterface = winmlProvider->GetABIDataInterface(opaqueData);
-        abiDataInterface->AddRef();
-
         *allocId = winmlProvider->TryGetPooledAllocationId(opaqueData, 0);
-        *resource = abiDataInterface;
+        return winmlProvider->GetBufferRegion(opaqueData, tensor->SizeInBytes());
     }
 
     void ProcessInputData(

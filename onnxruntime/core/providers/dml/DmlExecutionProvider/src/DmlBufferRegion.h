@@ -24,8 +24,8 @@ namespace Dml
             ID3D12Resource* resource_copy_dst_state);
 
         // Move-only
-        D3D12BufferRegion(const D3D12BufferRegion&) = delete;
-        D3D12BufferRegion& operator=(const D3D12BufferRegion&) = delete;
+        D3D12BufferRegion(const D3D12BufferRegion&) = default;
+        D3D12BufferRegion& operator=(const D3D12BufferRegion&) = default;
         D3D12BufferRegion(D3D12BufferRegion&&);
         D3D12BufferRegion& operator=(D3D12BufferRegion&&);
 

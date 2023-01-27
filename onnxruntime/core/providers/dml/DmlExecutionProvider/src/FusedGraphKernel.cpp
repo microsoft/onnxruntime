@@ -302,10 +302,10 @@ namespace Dml
                         const onnxruntime::Tensor* tensor = kernelContext->Input<onnxruntime::Tensor>(i);
 
                         uint64_t allocId;
-                        DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &inputBindings[i].Buffer, &allocId);
+                        auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &allocId);
+
+                        inputBindings[i] = bufferRegion.GetBufferBinding();
                         inputBindingsChanged = inputBindingsChanged || (!allocId || m_inputBindingAllocIds[i] != allocId);
-                        inputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                        inputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                         inputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &inputBindings[i]};
                         m_inputBindingAllocIds[i] = allocId;
                     }
@@ -339,10 +339,9 @@ namespace Dml
                     );
 
                 uint64_t allocId;
-                DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &outputBindings[i].Buffer, &allocId);
+                auto bufferRegion = DmlGraphFusionHelper::UnwrapTensor(m_winmlProvider.Get(), tensor, &allocId);
+                outputBindings[i] = bufferRegion.GetBufferBinding();
                 outputBindingsChanged = outputBindingsChanged || (!allocId || m_outputBindingAllocIds[i] != allocId);
-                outputBindings[i].Buffer->Release(); // Avoid holding an additional reference
-                outputBindings[i].SizeInBytes = DmlGraphFusionHelper::AlignToPow2<size_t>(tensor->SizeInBytes(), 4);
                 outputBindingDescs[i] = {DML_BINDING_TYPE_BUFFER, &outputBindings[i]};
                 m_outputBindingAllocIds[i] = allocId;
             }

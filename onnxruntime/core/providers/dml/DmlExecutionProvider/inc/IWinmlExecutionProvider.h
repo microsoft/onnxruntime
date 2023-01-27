@@ -9,6 +9,7 @@
 #include <optional>
 
 #include "core/framework/op_kernel.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBufferRegion.h"
 
 struct AbstractOperatorDesc;
 interface IMLOperatorTensor;
@@ -20,11 +21,6 @@ namespace onnxruntime
 {
     class KernelDef;
     class Node;
-}
-
-namespace Dml
-{
-    class DmlManagedBufferRegion;
 }
 
 namespace Windows::AI::MachineLearning::Adapter
@@ -39,7 +35,7 @@ namespace Windows::AI::MachineLearning::Adapter
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
 
-        virtual ID3D12Resource* GetABIDataInterface(void* data) const = 0;
+        virtual Dml::D3D12BufferRegion GetBufferRegion(void* data, uint64_t size) const = 0;
 
         virtual uint64_t TryGetPooledAllocationId(
             void* data,
