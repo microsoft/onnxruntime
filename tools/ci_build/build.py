@@ -1224,7 +1224,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        onnxruntime_extensions_path = os.path.join(build_dir, "deps", "onnxruntime-extensions")
+        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
 
         if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
             # use absolute path here because onnxruntime-extensions is outside onnxruntime
