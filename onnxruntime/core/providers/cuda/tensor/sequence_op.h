@@ -123,7 +123,7 @@ class ConcatFromSequence final : public CudaKernel, public ConcatBase {
     int64_t input_count = static_cast<int64_t>(X->Size());
     InlinedTensorsVector input_tensors;
     for (int64_t i = 0; i < input_count; ++i) {
-      input_tensors.push_back(&X->Get(i).Get<Tensor>());
+      input_tensors.push_back(&X->Get(i));
     }
     Prepare p;
     ORT_RETURN_IF_ERROR(PrepareForCompute(context, input_tensors, p));
