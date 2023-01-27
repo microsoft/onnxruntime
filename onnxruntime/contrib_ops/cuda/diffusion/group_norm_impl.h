@@ -35,7 +35,7 @@ Status LaunchGroupNormKernel(
     int height,                     // H
     int width,                      // W
     int num_groups,                 // number of groups
-    bool swish                      // Whether there is Swish activation after group normalization
+    bool use_swish_activation       // Whether there is Swish activation after group normalization
     );
 
 }  // namespace cuda

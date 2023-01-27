@@ -21,21 +21,24 @@ namespace cuda {
       GroupNorm<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16);
+REGISTER_KERNEL_TYPED(float);
 
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
-GroupNorm<T>::GroupNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
-  ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
+GroupNorm<T>::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
+  epsilon_ = op_info.GetAttrOrDefault<float>("epsilon", 1e-5f);
   ORT_ENFORCE(epsilon_ >= 0);
 
   int64_t num_groups;
-  ORT_ENFORCE(op_kernel_info.GetAttr<int64_t>("groups", &num_groups).IsOK());
+  ORT_ENFORCE(op_info.GetAttr("groups", &num_groups).IsOK());
   ORT_ENFORCE(num_groups >= 0);
   num_groups_ = static_cast<int>(num_groups);
 
-
-  ORT_ENFORCE(op_kernel_info.GetAttr<bool>("swish", &swish_).IsOK());
+  int64_t activation;
+  ORT_ENFORCE(op_info.GetAttr("activation", &activation).IsOK());
+  ORT_ENFORCE(activation == 0 || activation == 1); // 0 is None, 1 is Swish
+  use_swish_activation_ = (activation == 1);
 }
 
 template <typename T>
@@ -56,9 +59,9 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
-  if (gamma_dims[0] != input_dims[2]) {
+  if (gamma_dims[0] != input_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Last dimension of gamma and input does not match");
+                           "Number of channels in gamma and input does not match");
   }
 
   const auto& beta_dims = beta->Shape().GetDims();
@@ -66,9 +69,9 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                             "beta is expected to have 1 dimension, got ", beta_dims.size());
   }
-  if (beta_dims[0] != input_dims[2]) {
+  if (beta_dims[0] != input_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Last dimension of beta and input does not match");
+                            "Number of channels in beta and input does not match");
   }
 
   int batch_size = static_cast<int>(input_dims[0]);
@@ -89,8 +92,8 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
       Stream(context),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
       reinterpret_cast<const CudaT*>(input->Data<T>()),
-      reinterpret_cast<const float*>(gamma->Data<T>()),
-      reinterpret_cast<const float*>(beta->Data<T>()),
+      gamma->Data<float>(),
+      beta->Data<float>(),
       reinterpret_cast<float*>(workspace.get()),
       epsilon_,
       batch_size,
@@ -98,7 +101,7 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
       height,
       width,
       num_groups_,
-      swish_);
+      use_swish_activation_);
 }
 
 }  // namespace cuda

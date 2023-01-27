@@ -29,7 +29,7 @@ This operator transforms input according to
 The input channels are separated into num_groups groups, each containing num_channels / num_groups channels. num_channels must be divisible by num_groups. The mean and standard-deviation are calculated separately over the each group.
 The weight and bias are per-channel affine transform parameter vectors of size num_channels.
 
-The swish attribute can be used to enable Swish activation after group normalization.
+The activation attribute can be used to enable activation after group normalization.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -40,8 +40,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("groups",
               "The number of groups of channels. It should be a divisor of the number of channels C",
               AttributeProto::INT)
-        .Attr("swish",
-              "Whether use Swish activation after group normalization",
+        .Attr("activation",
+              "Activation after group normalization: 0 for None, 1 for Swish",
               AttributeProto::INT)
         .Input(0,
                "X",
@@ -50,16 +50,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "gamma",
                "1D gamma tensor for normalization with shape (C), where C is number of channels",
-               "T")
+               "M")
         .Input(2,
                "beta",
                "1D beta tensor for normalization  with shape (C), where C is number of channels",
-               "T")
+               "M")
         .Output(0,
                 "Y",
                 "The output tensor of the same shape as X",
                 "T")
         .TypeConstraint("T", {"tensor(float16)"}, "Constrain input X and output Y types to half tensors.")
+        //.TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
         .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
