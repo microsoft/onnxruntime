@@ -356,7 +356,7 @@ Refer to the [Python API docs](https://onnxruntime.ai/docs/api/python).
 
 * C#
 
-Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests/OrtIoBindingAllocationTest.cs).
+Refer to [OrtIoBindingAllocationTest.cs](https://github.com/microsoft/onnxruntime/blob/main/csharp/test/Microsoft.ML.OnnxRuntime.Tests.Common/OrtIoBindingAllocationTest.cs).
 
 ### Convolution-heavy models and the CUDA EP
 
