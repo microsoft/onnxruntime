@@ -416,23 +416,6 @@ public:
         auto inputResource = loopList[0].Resource.Get();
         auto outputResource = loopList[stockhamParams.OutputIndex].Resource.Get();
 
-        // Transition resources from common to UAV state
-        D3D12_RESOURCE_BARRIER barriers[2];
-
-        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-            inputResource,
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-        );
-
-        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-            outputResource,
-            D3D12_RESOURCE_STATE_COMMON,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS
-        );
-
-        commandList->ResourceBarrier(2, barriers);
-
         // Set the root signature and pipeline state
         commandList->SetComputeRootSignature(m_rootSignature.Get());
         commandList->SetPipelineState(m_pipelineState.Get());
@@ -471,21 +454,6 @@ public:
             constants.DFTIteration = index + 1;
             Dispatch(in, out, constants, commandList);
         }
-
-        // Transition resources to common state
-        barriers[0] = CD3DX12_RESOURCE_BARRIER::Transition(
-                inputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
-
-        barriers[1] = CD3DX12_RESOURCE_BARRIER::Transition(
-                outputResource,
-                D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                D3D12_RESOURCE_STATE_COMMON
-                );
-
-        commandList->ResourceBarrier(2, barriers);
     }
 
     std::vector<uint32_t> GetTensorDimensions(IMLOperatorTensor* tensor)

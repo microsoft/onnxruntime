@@ -95,12 +95,11 @@ namespace DmlGraphFusionHelper
         uint64_t* allocId)
     {
         void* opaqueData = const_cast<void*>(tensor->DataRaw());
-        Microsoft::WRL::ComPtr<IUnknown> resourceUnk;
-        winmlProvider->GetABIDataInterface(opaqueData, &resourceUnk);
+        ID3D12Resource* abiDataInterface = winmlProvider->GetABIDataInterface(opaqueData);
+        abiDataInterface->AddRef();
 
         *allocId = winmlProvider->TryGetPooledAllocationId(opaqueData, 0);
-
-        ORT_THROW_IF_FAILED(resourceUnk->QueryInterface(resource));
+        *resource = abiDataInterface;
     }
 
     void ProcessInputData(

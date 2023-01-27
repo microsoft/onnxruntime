@@ -9,6 +9,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include <wrl/client.h>
 #include <wrl/implements.h>
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBuffer.h"
 
 interface IDMLOperator;
 
@@ -285,10 +286,7 @@ class TensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
     void* m_tensorData = nullptr;
     bool m_isDataInterface = false;
 
-    // The returned data may be a converted shadow copy, and the piece of it which
-    // is returned may vary according to kernel registration options.
-    ComPtr<IUnknown> m_abiDataInterface;
-
+    ID3D12Resource* m_abiDataInterface;
 };
 
 class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
@@ -449,9 +447,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
     HRESULT STDMETHODCALLTYPE GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept override;
-
     HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const;
-    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data, uint64_t* allocId) const;
 
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
 
@@ -481,8 +477,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, publi
 
     // Temporary allocations created by the kernel.  These will be freed to the allocator following
     // Compute being called on the kernel.  This list is used to maintain their lifetime.
-    mutable std::vector<ComPtr<IUnknown>> m_temporaryAllocations;
-    mutable std::vector<ComPtr<IUnknown>> m_temporaryAbiAllocations;
+    mutable std::vector<Dml::DmlBuffer> m_temporaryBuffers;
 };
 
 class AbiOpKernel : public onnxruntime::OpKernel

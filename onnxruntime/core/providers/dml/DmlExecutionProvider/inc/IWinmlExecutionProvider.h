@@ -39,14 +39,7 @@ namespace Windows::AI::MachineLearning::Adapter
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
 
-        virtual void GetABIDataInterface(
-            void* data,
-            IUnknown** abiData) const = 0;
-
-        virtual void GetManagedBufferRegion(
-            void* data,
-            uint64_t size,
-            Dml::DmlManagedBufferRegion** abiData) const = 0;
+        virtual ID3D12Resource* GetABIDataInterface(void* data) const = 0;
 
         virtual uint64_t TryGetPooledAllocationId(
             void* data,

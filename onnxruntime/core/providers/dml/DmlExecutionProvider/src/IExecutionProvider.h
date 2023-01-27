@@ -3,6 +3,7 @@
 
 #pragma once
 #include "core/providers/dml/DmlExecutionProvider/inc/DmlExecutionProvider.h"
+#include "DmlBuffer.h"
 
 namespace Dml
 {
@@ -67,9 +68,10 @@ namespace Dml
         STDMETHOD_(void, Flush)() const noexcept = 0;
 
         STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept = 0;
-        STDMETHOD(AllocatePooledResource(size_t size, DmlManagedBufferRegion** pooledResource)) const noexcept = 0;
 
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept = 0;
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept = 0;
+
+        virtual DmlBuffer AllocatePooledResource(size_t size) const = 0;
     };
 } // namespace Dml

@@ -20,9 +20,9 @@
 #include "core/framework/fallback_cpu_capability.h"
 #include "DmlCommittedResourceWrapper.h"
 #include "DmlBufferRegion.h"
-#include "DmlManagedBufferRegion.h"
 #include "DmlBfcAllocator.h"
 #include "DmlGpuAllocator.h"
+#include "DmlBuffer.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -113,19 +113,9 @@ namespace Dml
         m_context->GetCurrentCompletionEvent().WaitForSignal();
     }
 
-    HRESULT __stdcall ExecutionProviderImpl::AllocatePooledResource(
-        size_t size,
-        DmlManagedBufferRegion** managedBufferRegion
-    ) const noexcept
+    DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size) const
     {
-        ORT_TRY
-        {
-        void* opaqueData = m_gpuAllocator->Alloc(size);
-        auto bufferRegion = m_gpuAllocator->CreateManagedBufferRegion(opaqueData, size);
-        bufferRegion.CopyTo(managedBufferRegion);
-        return S_OK;
-        }
-        ORT_CATCH_RETURN
+        return m_gpuAllocator->AllocateDefaultBuffer(size);
     }
 
     D3D12BufferRegion ExecutionProviderImpl::GetBufferForTensor(IMLOperatorTensor* tensor) const
@@ -860,18 +850,9 @@ namespace Dml
         m_context->QueueReference(object);
     }
 
-    void ExecutionProviderImpl::GetABIDataInterface(void* data, IUnknown** abiData) const
+    ID3D12Resource* ExecutionProviderImpl::GetABIDataInterface(void* data) const
     {
-        assert(!m_closed);
-        auto uavResource = m_gpuAllocator->GetAllocationInfo(data)->GetUavResource();
-        uavResource->AddRef();
-        *abiData = uavResource;
-    }
-
-    void ExecutionProviderImpl::GetManagedBufferRegion(void* data, uint64_t size, DmlManagedBufferRegion** abiData) const
-    {
-        auto managedBufferRegion = m_gpuAllocator->CreateManagedBufferRegion(data, size);
-        ORT_THROW_IF_FAILED(managedBufferRegion.CopyTo(abiData));
+        return m_gpuAllocator->GetAllocationInfo(data)->GetUavResource();
     }
 
     uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(void* data, bool isInternalOperator)
@@ -965,7 +946,7 @@ namespace Dml
 
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetGpuAllocator()
     {
-        return m_bfcAllocator;
+        return m_gpuAllocator;
     }
 
     std::shared_ptr<onnxruntime::IAllocator> ExecutionProviderImpl::GetCpuInputAllocator()

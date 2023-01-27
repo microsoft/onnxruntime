@@ -5,7 +5,7 @@
 
 #include "core/framework/allocator.h"
 #include "DmlBufferRegion.h"
-#include "DmlManagedBufferRegion.h"
+#include "DmlBuffer.h"
 
 namespace Dml
 {
@@ -20,9 +20,9 @@ namespace Dml
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;
         D3D12BufferRegion CreateBufferRegion(const void* ptr, uint64_t size_in_bytes);
-        ComPtr<DmlManagedBufferRegion> CreateManagedBufferRegion(const void* ptr, uint64_t size_in_bytes);
         AllocationInfo* GetAllocationInfo(const void* ptr);
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
+        DmlBuffer AllocateDefaultBuffer(uint64_t num_bytes);
 
     private:
         // This allocator is managed by ORT and should be used to allocate/free memory in order

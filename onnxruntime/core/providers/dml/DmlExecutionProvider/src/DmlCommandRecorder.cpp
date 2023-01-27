@@ -4,7 +4,6 @@
 #include "precomp.h"
 #include "DmlCommandRecorder.h"
 #include "CommandQueue.h"
-#include "absl/cleanup/cleanup.h"
 
 using namespace Dml;
 
@@ -62,21 +61,12 @@ void DmlCommandRecorder::InitializeOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
-        if (!tempResourceHandle)
-        {
-            ORT_THROW_HR(E_OUTOFMEMORY);
-        }
-        absl::Cleanup([allocator, tempResourceHandle]() { allocator->Free(tempResourceHandle); });
-
-        auto subAllocator = m_allocator.lock();
-        auto bufferRegion = subAllocator->CreateBufferRegion(tempResourceHandle, temporaryResourceSize);
+        auto buffer = allocator->AllocateDefaultBuffer(temporaryResourceSize);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = bufferRegion.GetBufferBinding();
+        DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
-        allocator->Free(tempResourceHandle);
     }
 
     // Bind inputs, if provided.
@@ -142,18 +132,10 @@ void DmlCommandRecorder::ExecuteOperator(
 
         // Allocate and immediately free a temporary buffer. The buffer resource will still be
         // alive (managed by the pool); freeing allows the resource to be shared with other operators.
-        void* tempResourceHandle = allocator->Alloc(static_cast<size_t>(temporaryResourceSize));
-        if (!tempResourceHandle)
-        {
-            ORT_THROW_HR(E_OUTOFMEMORY);
-        }
-        absl::Cleanup([allocator, tempResourceHandle]() { allocator->Free(tempResourceHandle); });
-
-        auto subAllocator = m_allocator.lock();
-        auto bufferRegion = subAllocator->CreateBufferRegion(tempResourceHandle, temporaryResourceSize);
+        auto buffer = allocator->AllocateDefaultBuffer(temporaryResourceSize);
 
         // Bind the temporary resource.
-        DML_BUFFER_BINDING bufferBinding = bufferRegion.GetBufferBinding();
+        DML_BUFFER_BINDING bufferBinding = buffer.GetBufferBinding();
         DML_BINDING_DESC bindingDesc = { DML_BINDING_TYPE_BUFFER, &bufferBinding };
         bindingTable->BindTemporaryResource(&bindingDesc);
     }

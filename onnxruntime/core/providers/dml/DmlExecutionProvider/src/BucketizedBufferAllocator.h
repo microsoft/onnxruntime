@@ -63,14 +63,11 @@ namespace Dml
             const void* ptr,
             uint64_t size_in_bytes);
 
-        ComPtr<DmlManagedBufferRegion> CreateManagedBufferRegion(
-            const void* ptr,
-            uint64_t size_in_bytes);
-
         AllocationInfo* GetAllocationInfo(const void* ptr);
 
         void* Alloc(size_t size_in_bytes);
         void Free(void* ptr);
+        void FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId);
         uint64_t ComputeRequiredSize(size_t size);
         bool TilingEnabled() const { return tiling_enabled_; };
 

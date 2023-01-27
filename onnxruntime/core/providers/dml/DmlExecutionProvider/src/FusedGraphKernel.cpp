@@ -6,7 +6,7 @@
 #include "MLOperatorAuthorImpl.h"
 #include "FusedGraphKernel.h"
 #include "DmlGraphFusionHelper.h"
-#include "DmlManagedBufferRegion.h"
+#include "DmlManagedBuffer.h"
 
 using namespace Windows::AI::MachineLearning::Adapter;
 
@@ -64,14 +64,10 @@ namespace Dml
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)
             {
-                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
-                ORT_THROW_IF_FAILED(m_provider->AllocatePooledResource(
-                    static_cast<size_t>(persistentResourceSize),
-                    managedBufferRegion.GetAddressOf()));
-
-                managedBufferRegion.As(&m_persistentResourceAllocatorUnk);
-                m_persistentResource = managedBufferRegion->GetBufferRegion().ResourceInUavState();
-                m_persistentResourceBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
+                auto buffer = m_provider->AllocatePooledResource(persistentResourceSize);
+                m_persistentResourceBinding = buffer.GetBufferBinding();
+                m_managedPersistentBuffer = wil::MakeOrThrow<DmlManagedBuffer>(std::move(buffer));
+                m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
             }
 
             ORT_THROW_IF_FAILED(m_provider->InitializeOperator(
@@ -81,7 +77,6 @@ namespace Dml
 
             // Queue references to objects which must be kept alive until resulting GPU work completes
             m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
 
             std::for_each(
                 initializeResourceRefs.begin(),
@@ -145,7 +140,7 @@ namespace Dml
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
-                m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
+                m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
             }
             else
             {
@@ -359,25 +354,10 @@ namespace Dml
 
             if (execBindingProps.TemporaryResourceSize > 0)
             {
-                // Allocate temporary data which will automatically be freed when the GPU work
-                // which is scheduled up to the point that this method returns has completed.
-                ComPtr<IUnknown> tempAlloc;
-                uint64_t tempAllocId = 0;
-                ORT_THROW_IF_FAILED(contextWrapper.AllocateTemporaryData(static_cast<size_t>(execBindingProps.TemporaryResourceSize), tempAlloc.GetAddressOf(), &tempAllocId));
-
-                ComPtr<DmlManagedBufferRegion> managedBufferRegion;
-                m_winmlProvider->GetManagedBufferRegion(tempAlloc.Get(), execBindingProps.TemporaryResourceSize, &managedBufferRegion);
-
-                // Bind the temporary resource.
-                DML_BUFFER_BINDING tempBufferBinding = managedBufferRegion->GetBufferRegion().GetBufferBinding();
+                auto buffer = m_provider->AllocatePooledResource(execBindingProps.TemporaryResourceSize);
+                DML_BUFFER_BINDING tempBufferBinding = buffer.GetBufferBinding();
                 DML_BINDING_DESC tempBindingDesc = { DML_BINDING_TYPE_BUFFER, &tempBufferBinding };
-
-                if (!tempAllocId || m_tempBindingAllocId != tempAllocId)
-                {
-                    m_bindingTable->BindTemporaryResource(&tempBindingDesc);
-                }
-
-                m_tempBindingAllocId = tempAllocId;
+                m_bindingTable->BindTemporaryResource(&tempBindingDesc);
             }
 
             // Execute the command list and if it succeeds, update the fence value at which this command may be
@@ -401,7 +381,7 @@ namespace Dml
             m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_graphicsCommandList).Get());
             m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(m_heap).Get());
             m_winmlProvider->QueueReference(m_bindingTable.Get());
-            m_winmlProvider->QueueReference(m_persistentResourceAllocatorUnk.Get());
+            m_winmlProvider->QueueReference(m_managedPersistentBuffer.Get());
         }
 
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;
@@ -418,12 +398,11 @@ namespace Dml
         ComPtr<IDMLBindingTable> m_bindingTable;
         std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         ComPtr<ID3D12Resource> m_persistentResource;
-        ComPtr<IUnknown> m_persistentResourceAllocatorUnk; // Controls when the persistent resource is returned to the allocator
+        ComPtr<DmlManagedBuffer> m_managedPersistentBuffer;
 
         // Bindings from previous executions of a re-used command list
         mutable std::vector<uint64_t> m_inputBindingAllocIds;
         mutable std::vector<uint64_t> m_outputBindingAllocIds;
-        mutable uint64_t m_tempBindingAllocId = 0;
 
         // Fence tracking the status of the command list's last execution, and whether its descriptor heap
         // can safely be updated.

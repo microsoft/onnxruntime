@@ -6,6 +6,7 @@
 #include "GraphTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/inc/IWinmlExecutionProvider.h"
 #include "DmlBufferRegion.h"
+#include "DmlBuffer.h"
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -26,7 +27,6 @@ namespace Dml
     class BucketizedBufferAllocator;
     class DmlCpuAllocator;
     class ExecutionProvider;
-    class DmlManagedBufferRegion;
     class DmlGpuAllocator;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -97,14 +97,7 @@ namespace Dml
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
 
-        void GetABIDataInterface(
-            void* data,
-            IUnknown** abiData) const override;
-
-        void GetManagedBufferRegion(
-            void* data,
-            uint64_t size,
-            DmlManagedBufferRegion** abiData) const;
+        ID3D12Resource* GetABIDataInterface(void* data) const override;
 
        uint64_t TryGetPooledAllocationId(void* data, bool isInternalOperator) override;
 
@@ -133,11 +126,8 @@ namespace Dml
 
         void WaitForOutstandingWork();
 
-        // Allocate a resource from pools.  Releasing pooledResource returns it to the pool.
-        STDMETHOD(AllocatePooledResource)(
-            size_t size,
-            DmlManagedBufferRegion** managedBufferRegion
-        ) const noexcept final;
+        // Allocate a resource from pools.  Releasing the returned buffer returns it to the pool.
+        DmlBuffer ExecutionProviderImpl::AllocatePooledResource(size_t size) const;
 
         STDMETHOD_(ID3D12Resource*, DecodeResource)(IMLOperatorTensor* tensor) const noexcept final;
 

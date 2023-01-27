@@ -7,7 +7,6 @@
 #include "BucketizedBufferAllocator.h"
 #include "DmlReservedResourceWrapper.h"
 #include "DmlBufferRegion.h"
-#include "DmlManagedBufferRegion.h"
 
 namespace Dml
 {
@@ -328,6 +327,24 @@ namespace Dml
         allocations_by_id_.erase(it);
     }
 
+    void BucketizedBufferAllocator::FreeResource(AllocationInfo* allocInfo, uint64_t pooledResourceId)
+    {
+        // Since this allocator is warapped by ORT's BFC allocator, it's possible that the context is already
+        // close at this point if the application is winding down.
+        if (!m_context->Closed())
+        {
+            assert(allocInfo != nullptr); // Can't free nullptr
+
+            if (allocInfo->GetOwner() != this)
+            {
+                // This allocation doesn't belong to this allocator!
+                ORT_THROW_HR(E_INVALIDARG);
+            }
+
+            m_context->QueueReference(allocInfo);
+        }
+    }
+
     absl::optional<uint32_t> BucketizedBufferAllocator::TryReserveAllocationID()
     {
         // The mutex must already be held
@@ -388,31 +405,6 @@ namespace Dml
             it->second->GetUavResource(),
             it->second->GetCopySrcResource(),
             it->second->GetCopyDstResource());
-    }
-
-    ComPtr<DmlManagedBufferRegion> BucketizedBufferAllocator::CreateManagedBufferRegion(
-        const void* ptr,
-        uint64_t size_in_bytes)
-    {
-        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
-
-        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
-
-        // We need to access (mutable) state after this point, so we need to lock
-        std::unique_lock<std::mutex> lock(mutex_);
-
-        // Find the allocation corresponding to this pointer
-        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
-        ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
-
-        D3D12BufferRegion bufferRegion(
-            tagged_ptr.offset,
-            size_in_bytes,
-            it->second->GetUavResource(),
-            it->second->GetCopySrcResource(),
-            it->second->GetCopyDstResource());
-
-        return wil::MakeOrThrow<DmlManagedBufferRegion>(it->second, std::move(bufferRegion));
     }
 
     AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(const void* ptr)

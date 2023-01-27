@@ -36,11 +36,6 @@ namespace Dml
         return m_subAllocator->CreateBufferRegion(ptr, size_in_bytes);
     }
 
-    ComPtr<DmlManagedBufferRegion> DmlGpuAllocator::CreateManagedBufferRegion(const void* ptr, uint64_t size_in_bytes)
-    {
-        return m_subAllocator->CreateManagedBufferRegion(ptr, size_in_bytes);
-    }
-
     AllocationInfo* DmlGpuAllocator::GetAllocationInfo(const void* ptr)
     {
         return m_subAllocator->GetAllocationInfo(ptr);
@@ -50,4 +45,10 @@ namespace Dml
     {
         m_subAllocator->SetDefaultRoundingMode(roundingMode);
     }
+
+    DmlBuffer DmlGpuAllocator::AllocateDefaultBuffer(uint64_t num_bytes)
+    {
+        return DmlBuffer(this, num_bytes);
+    }
+
 } // namespace Dml
