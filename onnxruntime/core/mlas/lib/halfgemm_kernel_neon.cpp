@@ -52,6 +52,35 @@ struct MLAS_HALF_GEMM_KERNEL_NEON {
     static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 16};
 };
 
+/**
+ * @brief Convert a 2D matrix from float to fp16
+*/
+MLAS_FORCEINLINE
+void
+CvtFloat2Half2D(
+    _mlas_fp16_* dest,
+    const float* src,
+    size_t stride,
+    size_t CntRow,
+    size_t CntCol
+    )
+{
+    int64_t stride_gap = size_t(int64_t(stride) - int64_t(CntCol));
+    if (0 == stride_gap) {
+        const size_t len = CntRow * CntCol;
+        for (size_t i = 0; i < len; i++) {
+            *dest++ = MLAS_Float2Half(*(src++));
+        }
+        return;
+    }
+    while (CntRow > 0) {
+        for (size_t k = 0; k < CntCol; k++) {
+            *dest++ = MLAS_Float2Half(*(src++));
+        }
+        src += stride_gap;
+        CntRow--;
+    }
+}
 
 template<>
 MLAS_FORCEINLINE
@@ -64,11 +93,7 @@ MlasHalfGemmConvertPackA<MLAS_HALF_GEMM_KERNEL_NEON>(
     size_t CountK
 )
 {
-    for (size_t m = 0; m < CountM; m++) {
-        for (size_t k = 0; k < CountK; k++) {
-            *D++ = MLAS_Float2Half(*(A + m * lda + k));
-        }
-    }
+    CvtFloat2Half2D(D, A, lda, CountM, CountK);
 }
 
 template<>
@@ -82,11 +107,7 @@ MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_NEON>(
     size_t CountK
 )
 {
-    for (size_t k = 0; k < CountK; k++) {
-        for (size_t n = 0; n < CountN; n++) {
-            *D++ = MLAS_Float2Half(*(B + k * ldb + n));
-        }
-    }
+    CvtFloat2Half2D(D, B, ldb, CountK, CountN); 
 }
 
 

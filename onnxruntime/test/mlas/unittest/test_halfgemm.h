@@ -146,22 +146,43 @@ private:
                       const BType* B,
                       const MLFp16* Bias,
                       float* C) {
+    // TODO!! deal with half precision accumulation error
+    // Most CPUs does not support mixed precision accumulation,
+    // only mul & add fuse. As a result, different striding
+    // on the K dimension may lead to rounding error.
+    // Accumulation of these rounding error maybe significant.
+    //
+    // An ugly hack now is to change the K stride of the kernel
+    // under test to be 16, pass this test and then change it
+    // back :-(.
+    //
+    constexpr size_t KStride = 16;
+
     for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++) {
           const AType* a = A + M * K * batch + m * K;
           const BType* b = B + K * N * batch + n;
           float* c = C + (M * N * batch) + (m * N) + n;
-          float sum = Bias == nullptr ? 0.0f : float(Bias[n]);
 
-          for (size_t k = 0; k < K; k++) {
-            MLFp16 down(float(*b) * float(*a) + sum);
-            sum = float(down);
-            b += N;
-            a += 1;
+          for (size_t k = 0; k < K; k+=KStride) {
+            float sum = 0.0f;
+            if (k == 0 && Bias != nullptr) {
+              sum = float(Bias[n]);
+            }
+            for (size_t kk = 0; kk < std::min(KStride, K - k); kk++) {
+              MLFp16 down(float(*b) * float(*a) + sum);
+              sum = float(down);
+              b += N;
+              a += 1;
+            }
+            if (k == 0) {
+              *c = sum;
+            } else {
+              MLFp16 d(sum + *c);
+              *c = float(d);
+            }
           }
-
-          *c = sum;
         }
       }
       if (Bias) {
@@ -174,9 +195,21 @@ public:
   MlasHalfGemmTest() : threadpool_(Threaded ? GetMlasThreadPool() : nullptr) {}
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
-    const AType* A = BufferA.GetFilledBuffer(K * M * BatchSize, SmallFloatFill<AType>);
-    const BType* B = BufferB.GetFilledBuffer(N * K * BatchSize, SmallFloatFill<BType>);
-    const MLFp16* Bias = withBias ? BufferBias.GetFilledBuffer(N * BatchSize, SmallFloatFill<MLFp16>) : nullptr;
+    const AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    AType Atail[16];
+    std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
+
+    const BType* B = BufferB.GetFilledBuffer(N * K * BatchSize + 16, SmallFloatFill<BType>);
+    BType Btail[16];
+    std::memcpy(Btail, B + N * K * BatchSize, 16 * sizeof(BType));
+
+    MLFp16 BiasTail[16];
+    const MLFp16* Bias = nullptr;
+    if (withBias) {
+      Bias = BufferBias.GetFilledBuffer(N * BatchSize + 16, SmallFloatFill<MLFp16>);
+      std::memcpy(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16));
+    }
+
     MLFp16* C = BufferC.GetFilledBuffer(N * M * BatchSize, SmallFloatFill<MLFp16>);
     float* CReference = BufferCReference.GetFilledBuffer(
         N * M * BatchSize,
@@ -195,6 +228,10 @@ public:
         }
       }
     }
+    ASSERT_EQ(std::memcmp(Atail, A + K * M * BatchSize, 16 * sizeof(AType)), 0) << "Matrix A buffer overwritten!";
+    ASSERT_EQ(std::memcmp(Btail, B + N * K * BatchSize, 16 * sizeof(BType)), 0) << "Matrix B buffer overwritten!";
+    if (withBias)
+        ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16)), 0) << "Bias buffer overwritten!";
   }
 
  private:

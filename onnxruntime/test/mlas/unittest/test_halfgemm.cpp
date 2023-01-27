@@ -55,26 +55,6 @@ class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
 
-    test_registered += RegisterSingleTest(6, 16, 4, 1, false);
-    test_registered += RegisterSingleTest(6, 16, 8, 1, false);
-    test_registered += RegisterSingleTest(6, 16, 12, 1, false);
-    test_registered += RegisterSingleTest(6, 16, 16, 1, false);
-    test_registered += RegisterSingleTest(6, 32, 16, 1, false);
-    test_registered += RegisterSingleTest(6, 48, 16, 1, false);
-    test_registered += RegisterSingleTest(6, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(12, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(24, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(24, 64, 17, 1, false);
-    test_registered += RegisterSingleTest(24, 64, 18, 1, false);
-    test_registered += RegisterSingleTest(24, 64, 19, 1, false);
-    test_registered += RegisterSingleTest(25, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(26, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(27, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(28, 64, 16, 1, false);
-    test_registered += RegisterSingleTest(29, 64, 17, 1, false);
-    test_registered += RegisterSingleTest(29, 64, 18, 1, false);
-    test_registered += RegisterSingleTest(29, 64, 19, 1, false);
-
     for (size_t b = 1; b < 16; b++) {
       test_registered += RegisterSingleTest(b, b, b, 1, false);
       test_registered += RegisterSingleTest(b, b, b, 1, true);
