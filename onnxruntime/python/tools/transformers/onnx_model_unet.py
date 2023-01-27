@@ -9,6 +9,7 @@ from typing import Optional
 from fusion_attention_unet import FusionAttentionUnet
 from fusion_group_norm import FusionGroupNorm
 from fusion_options import FusionOptions
+from fusion_splitgelu import FusionSplitGelu
 from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
 
@@ -56,6 +57,10 @@ class UnetOnnxModel(BertOnnxModel):
         if (options is None) or options.enable_group_norm:
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
+
+        if (options is None) or options.enable_splitgelu:
+            split_gelu_fusion = FusionSplitGelu(self)
+            split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
             self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False)

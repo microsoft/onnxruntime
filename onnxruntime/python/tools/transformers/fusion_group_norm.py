@@ -99,7 +99,8 @@ class FusionGroupNorm(Fusion):
 
         group_norm_name = self.model.create_node_name("GroupNorm", name_prefix="GroupNorm")
 
-        logger.info(f"GroupNorm channels={weight_elements}")
+        if weight_elements not in [320, 640, 960, 1280, 1920, 2560] + [128, 256, 512]:
+            logger.info(f"GroupNorm channels={weight_elements}")
 
         gamma = helper.make_tensor(
             name=group_norm_name + "_gamma",
@@ -130,7 +131,7 @@ class FusionGroupNorm(Fusion):
             input_name_to_nodes,
             output_name_to_node,
         ):
-            self.node_to_remove.extend([last_node])
+            self.nodes_to_remove.extend([last_node])
         else:
             self.nodes_to_remove.extend(subgraph_nodes)
 
@@ -166,3 +167,4 @@ class FusionGroupNorm(Fusion):
         new_node.domain = "com.microsoft"
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        return True
