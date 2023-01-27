@@ -1424,55 +1424,48 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 //
 // Custom OP Inlines
 //
-inline Logger::Logger(const OrtLogger* logger) : detail::Base<detail::Unowned<const OrtLogger>>{logger} {
+inline Logger::Logger(const OrtLogger* logger) : logger_(logger) {
 }
 
 inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const {
   OrtLoggingLevel out{};
-  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->p_, &out));
+  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->logger_, &out));
   return out;
 }
 
 inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
                                  const char* func_name, const char* message) const noexcept {
-  OrtStatus* status = GetApi().Logger_LogMessage(this->p_, log_severity_level, message, file_path, line_number,
+  OrtStatus* status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, message, file_path, line_number,
                                                  func_name);
   return Status{status};
 }
 
-inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
-                                          const char* func_name, const char* format, ...) const noexcept {
-  va_list vargs;
-  va_start(vargs, format);
-  int msg_len = vsnprintf(nullptr, 0U, format, vargs);
-  va_end(vargs);
+template <typename... Args>
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path,
+                                          int line_number, const char* func_name, const char* format,
+                                          Args... args) const noexcept {
+  int msg_len = snprintf(nullptr, 0U, format, args...);
 
   if (msg_len < 0) {  // Formatting error
     return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
   }
 
-  va_start(vargs, format);
-  OrtStatus* status = LogFormattedMessageImpl(log_severity_level, file_path, line_number, func_name,
-                                              static_cast<size_t>(msg_len + 1), format, vargs);
-  va_end(vargs);
+  OrtStatus* status = nullptr;
+  const size_t buffer_size = static_cast<size_t>(msg_len + 1);
 
-  return Status{status};
-}
-
-inline OrtStatus* Logger::LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path,
-                                                  int line_number, const char* func_name, size_t buffer_size,
-                                                  const char* format, va_list vargs) const noexcept {
   constexpr size_t kStackBufferSize = 1024;
 
   if (buffer_size < kStackBufferSize) {
     char buffer[kStackBufferSize];
-    vsnprintf(buffer, kStackBufferSize, format, vargs);
-    return GetApi().Logger_LogMessage(this->p_, log_severity_level, buffer, file_path, line_number, func_name);
+    snprintf(buffer, kStackBufferSize, format, args...);
+    status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, buffer, file_path, line_number, func_name);
   } else {
     auto buffer = std::make_unique<char[]>(buffer_size);
-    vsnprintf(buffer.get(), buffer_size, format, vargs);
-    return GetApi().Logger_LogMessage(this->p_, log_severity_level, buffer.get(), file_path, line_number, func_name);
+    snprintf(buffer.get(), buffer_size, format, args...);
+    status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
   }
+
+  return Status{status};
 }
 
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {

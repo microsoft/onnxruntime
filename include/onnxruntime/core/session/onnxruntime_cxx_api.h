@@ -25,12 +25,12 @@
 #pragma once
 #include "onnxruntime_c_api.h"
 #include <cstddef>
-#include <cstdarg>
 #include <cstdio>
 #include <array>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <utility>
@@ -1512,21 +1512,29 @@ struct KernelContext {
 };
 
 // Logs a message using the provider Ort::Logger, which must be passed by value.
-// Example:
-//   Ort::Logger logger(ort_logger);
-//   ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+// Does not throw exceptions, so can be used in destructors and catch clauses.
+// Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
 #define ORT_CXX_LOG(logger, severity, message) \
-  logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message)
+  std::ignore = logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message)
+
+// Logs a message using the provider Ort::Logger, which must be passed by value.
+// Throws an exception on error.
+// Example: ORT_CXX_LOG_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+#define ORT_CXX_LOG_CHECKED(logger, severity, message) \
+  Ort::ThrowOnError(logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
 // Logs a formatted message using the provided Ort::Logger, which must be passed by value.
-// Example:
-//   Ort::Logger logger(ort_logger);
-//   ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+// Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
 #define ORT_CXX_LOGF(logger, severity, ...) \
-  logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
+  std::ignore = logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
 
-struct Logger : detail::Base<detail::Unowned<const OrtLogger>> {
-  explicit Logger(std::nullptr_t) {}         ///< Create an empty instance to initialize later
+// Logs a formatted message using the provided Ort::Logger, which must be passed by value.
+// Throws an exception on error.
+// Example: ORT_CXX_LOGF_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+#define ORT_CXX_LOGF_CHECKED(logger, severity, ...) \
+  Ort::ThrowOnError(logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
+
+struct Logger {
   explicit Logger(const OrtLogger* logger);  ///< Uses an existing ::OrtLogger instance
 
   OrtLoggingLevel GetLoggingSeverityLevel() const;  ///< Wraps OrtApi::Logger_GetLoggingSeverityLevel
@@ -1537,12 +1545,12 @@ struct Logger : detail::Base<detail::Unowned<const OrtLogger>> {
 
   ///< Prints a formatted message to a buffer and then calls OrtApi::Logger_LogMessage.
   ///< Typically called via ORT_CXX_LOGF macro.
+  template <typename... Args>
   Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
-                             const char* func_name, const char* format, ...) const noexcept;
+                             const char* func_name, const char* format, Args... args) const noexcept;
+
  private:
-  OrtStatus* LogFormattedMessageImpl(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
-                                     const char* func_name, size_t buffer_size, const char* format,
-                                     va_list vargs) const noexcept;
+  const OrtLogger* logger_{};
 };
 
 struct KernelInfo;
