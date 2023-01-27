@@ -20,7 +20,7 @@ Status CopyIfNotSameCPUBuffer(OpKernelContext* ctx, size_t number_of_values,
     dest_values->SetType(src_values->DataType());
     dest_values->Reserve(number_of_values);
     for (size_t input_idx = 0; input_idx < number_of_values; ++input_idx) {
-      const Tensor& source_tensor = src_values->Get(input_idx).Get<Tensor>();
+      const Tensor& source_tensor = src_values->Get(input_idx);
       auto target_tensor = std::make_unique<Tensor>(source_tensor.DataType(),
                                                     source_tensor.Shape(),
                                                     alloc);

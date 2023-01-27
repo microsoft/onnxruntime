@@ -73,13 +73,14 @@ class Memcpy final : public OpKernel {
       }
       auto X_size = X->Size();
       for (size_t i = 0; i < X_size; ++i) {
-        const Tensor& source_tensor = X->Get(i).Get<Tensor>();
-        auto target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        auto* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device,
-                                                                                          target_tensor->Location().device);
-        ORT_RETURN_IF_ERROR(gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor.get(), *ctx->GetComputeStream()));
-        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-        Y->Add(OrtValue(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
+        const Tensor& source_tensor = X->Get(i);
+        std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
+        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor,
+                                                                   Info().GetKernelDef().ExecQueueId());
+        if (!retval.IsOK()) {
+          return retval;
+        }
+        Y->Add(std::move(*target_tensor));
       }
       return Status::OK();
     }

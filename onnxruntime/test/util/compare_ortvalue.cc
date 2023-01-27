@@ -393,7 +393,7 @@ std::pair<COMPARE_RESULT, std::string> CompareOrtValue(const OrtValue& o, const 
     }
 
     for (size_t i = 0; i < expected_tensor_count; ++i) {
-      auto res = CompareTwoTensors(actual_tensor_seq.Get(i).Get<Tensor>(), expected_tensor_seq.Get(i).Get<Tensor>(), per_sample_tolerance, relative_per_sample_tolerance,
+      auto res = CompareTwoTensors(actual_tensor_seq.Get(i), expected_tensor_seq.Get(i), per_sample_tolerance, relative_per_sample_tolerance,
                                    post_processing);
       if (res.first != COMPARE_RESULT::SUCCESS) {
         return res;

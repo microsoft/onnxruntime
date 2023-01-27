@@ -1065,8 +1065,10 @@ public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
-  const OrtValue& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  const OrtValue& GetAt(size_t i) const { return g_host->TensorSeq__GetAt(this, i); }
   void Add(const OrtValue& tensor) { g_host->TensorSeq__Add(this, tensor); }
+  void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };
 

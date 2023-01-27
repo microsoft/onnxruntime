@@ -33,8 +33,8 @@ Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV
       tp, prepare.num_of_weights, cost, [&prepare](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t index = begin; index != end; ++index) {
           int i = static_cast<int>(index);
-          const Tensor& weight_tensor = prepare.weights->Get(i).Get<Tensor>();
-          const Tensor& gradient_tensor = prepare.gradients->Get(i).Get<Tensor>();
+          const Tensor& weight_tensor = prepare.weights->Get(i);
+          const Tensor& gradient_tensor = prepare.gradients->Get(i);
 
           // Check the weight/gradient/momentums at the same index should have same shape.
           ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
@@ -65,8 +65,8 @@ Status SGDOptimizerV2<T>::Compute(OpKernelContext* ctx) const {
     const float lr = *p.learning_rate->template Data<float>();
 
     for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
-      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index).Get<Tensor>());
-      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index).Get<Tensor>());
+      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
+      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
 
       // new_weight = weight - lr * gradient
       const auto& delta = -lr * MakeEigenArrayMap<T>(gradient);

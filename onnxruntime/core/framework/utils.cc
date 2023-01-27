@@ -203,7 +203,7 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (0 == size) {
         target_tensor_seq.SetType(source_tensor_seq.DataType());
       }
-      const auto& source_tensor = source_tensor_seq.Get(size).Get<Tensor>();
+      const auto& source_tensor = source_tensor_seq.Get(size);
       auto target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
 
       auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -429,7 +429,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
     } else if (feed.IsTensorSequence()) {
       const auto& tensor_seq = feed.Get<TensorSeq>();
       if (tensor_seq.Size() != std::size_t{0}) {
-        feed_locations[i] = tensor_seq.Get(0).Get<Tensor>().Location().device;
+        feed_locations[i] = tensor_seq.Get(0).Location().device;
       }
     } else if (feed.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -449,7 +449,7 @@ static void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager
       } else if (fetch.IsTensorSequence()) {
         const auto& tensor_seq = fetch.Get<TensorSeq>();
         if (tensor_seq.Size() != std::size_t{0}) {
-          fetch_alloc_info[i] = &tensor_seq.Get(0).Get<Tensor>().Location();
+          fetch_alloc_info[i] = &tensor_seq.Get(0).Location();
         }
       } else if (fetch.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)

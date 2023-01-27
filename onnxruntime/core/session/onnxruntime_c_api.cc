@@ -1646,7 +1646,7 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_valu
 
                                                     //???
   const auto& data = p_ml_value->Get<TensorSeq>();
-  const auto& one_tensor = data.Get(index).Get<Tensor>();
+  const auto& one_tensor = data.Get(index);
   const auto& tensor_shape = one_tensor.Shape();
   auto result = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(one_tensor.DataType(), tensor_shape.GetDims().data(),

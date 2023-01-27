@@ -95,7 +95,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   if (input_seq_idx < 0) {
     input_seq_idx = static_cast<int64_t>(X->Size()) + input_seq_idx;
   }
-  const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx)).Get<Tensor>();
+  const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx));
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
   ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(indexed_tensor, *Y));
@@ -219,9 +219,9 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       tensors.push_back(*XValue);
-      tensors.push_back(S->Get(i));
+      tensors.push_back(S->GetAt(i));
     } else {
-      tensors.push_back(S->Get(i));
+      tensors.push_back(S->GetAt(i));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
@@ -272,7 +272,7 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
     if (i == input_seq_idx) {
       continue;
     }
-    tensors.push_back(S->Get(i));
+    tensors.push_back(S->GetAt(i));
   }
   Y->SetElements(std::move(tensors));
   return Status::OK();

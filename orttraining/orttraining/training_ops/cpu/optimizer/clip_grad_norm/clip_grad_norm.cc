@@ -44,12 +44,12 @@ Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSe
 
   clipped_gradients->SetType(gradients->DataType());
   clipped_gradients->Reserve(gradients->Size());
-  for (const auto& grad : *gradients) {
-    auto target_tensor = std::make_unique<Tensor>(grad.Get<Tensor>().DataType(), grad.Get<Tensor>().Shape(), alloc);
-    CopyCpuTensor(&grad.Get<Tensor>(), target_tensor.get());
-
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    clipped_gradients->Add(OrtValue(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc()));  // Add will check for type consistency
+  for (int i = 0; i < gradients->Size(); i++)
+  {
+    const auto& grad = gradients->Get(i);
+    Tensor target_tensor(grad.DataType(), grad.Shape(), alloc);
+    CopyCpuTensor(&grad, &target_tensor);
+    clipped_gradients->Add(std::move(target_tensor));  // Add will check for type consistency
   }
 
   return Status::OK();

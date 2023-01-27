@@ -42,10 +42,10 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
       tp, prepare.num_of_weights, cost, [&prepare](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t index = begin; index != end; ++index) {
           int i = static_cast<int>(index);
-          const Tensor& weight_tensor = prepare.weights->Get(i).Get<Tensor>();
-          const Tensor& gradient_tensor = prepare.gradients->Get(i).Get<Tensor>();
-          const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i).Get<Tensor>();
-          const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i).Get<Tensor>();
+          const Tensor& weight_tensor = prepare.weights->Get(i);
+          const Tensor& gradient_tensor = prepare.gradients->Get(i);
+          const Tensor& momentum_1_tensor = prepare.momentums_1->Get(i);
+          const Tensor& momentum_2_tensor = prepare.momentums_2->Get(i);
 
           // Check the weight/gradient/momentums at the same index should have same shape.
           ORT_ENFORCE(weight_tensor.Shape() == gradient_tensor.Shape(),
@@ -166,10 +166,10 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
     //         weight decay is applied after weight is updated.
 
     for (size_t weight_index = 0; weight_index < p.num_of_weights; ++weight_index) {
-      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index).Get<Tensor>());
-      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index).Get<Tensor>());
-      Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index).Get<Tensor>());
-      Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index).Get<Tensor>());
+      Tensor& weight = const_cast<Tensor&>(p.weights->Get(weight_index));
+      Tensor& gradient = const_cast<Tensor&>(p.gradients->Get(weight_index));
+      Tensor& momentums_1 = const_cast<Tensor&>(p.momentums_1->Get(weight_index));
+      Tensor& momentums_2 = const_cast<Tensor&>(p.momentums_2->Get(weight_index));
 
       if (adam_mode_ == 0) {
         ORT_RETURN_IF_ERROR(

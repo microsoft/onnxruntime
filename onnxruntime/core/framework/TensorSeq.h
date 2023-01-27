@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/data_types.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/tensor.h"
 #include <vector>
@@ -57,8 +58,13 @@ class TensorSeq {
     return tensors_.cend();
   }
 
-  // Get by index
-  const OrtValue& Get(size_t i) const {
+  // Get onnxruntime::Tensor by index
+  const Tensor& Get(size_t i) const {
+    return GetAt(i).Get<Tensor>();
+  }
+
+  // Get OrtValue by index
+  const OrtValue& GetAt(size_t i) const {
     ORT_ENFORCE(i < tensors_.size());
     return tensors_[i];
   }
@@ -67,6 +73,13 @@ class TensorSeq {
     ORT_ENFORCE(IsSameDataType(tensor.Get<Tensor>()),
                 "TensorSeq: tensor to be added has a different data type.");
     tensors_.push_back(tensor);
+  }
+
+  void Add(Tensor&& tensor) {
+    ORT_ENFORCE(IsSameDataType(tensor),
+                "TensorSeq: tensor to be added has a different data type.");
+    auto tensor_ptr = std::make_unique<Tensor>(std::move(tensor));
+    Add(OrtValue(tensor_ptr.release(), DataType(), DataType()->GetDeleteFunc()));
   }
 
   void Reserve(size_t capacity) {
@@ -81,8 +94,6 @@ class TensorSeq {
   // and the SequenceInsert op expects validation of tensors to be added to the seq against this type.
   const PrimitiveDataTypeBase* elem_type_{};
 
-  // TODO: optimization opportunity - if all tensors in the seq are scalars, we can potentially represent them
-  // as vector<primitive type>
   std::vector<OrtValue> tensors_;
 };
 
