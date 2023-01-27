@@ -483,9 +483,7 @@ def t5_to_onnx(args: argparse.Namespace):
         Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
-        optimize_onnx=True
-        if not args.precision == Precision.FLOAT16
-        else False,  # Enable the fp32 optimizations for now.
+        optimize_onnx=(args.precision != Precision.FLOAT16),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,

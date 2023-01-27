@@ -245,7 +245,7 @@ class T5Helper:
             model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=2 if not is_float16 else 0,
+            opt_level=2 if not is_float16 and not use_external_data_format else 0,
             optimization_options=optimization_options,
             use_gpu=False,
         )
