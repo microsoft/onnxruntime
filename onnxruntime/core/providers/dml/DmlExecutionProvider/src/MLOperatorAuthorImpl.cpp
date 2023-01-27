@@ -893,7 +893,7 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(inputIndex);
                 ML_CHECK_BOOL(inputTensorSeq != nullptr);
-                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>();
+                const auto& elemTensor = inputTensorSeq->Get(sequenceIndex);
                 const auto& shape = elemTensor.Shape();
                 for (uint32_t i = 0; i < dimensionCount; ++i)
                 {
