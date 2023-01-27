@@ -1786,7 +1786,7 @@ namespace Windows::AI::MachineLearning::Adapter
         {
             VerifyNotClosed();
             *tensor = nullptr;
-            
+
             auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
 
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
@@ -1801,7 +1801,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(inputIndex);
                 ML_CHECK_BOOL(inputTensorSeq != nullptr);
 
-                auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex).Get<onnxruntime::Tensor>());
+                auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex));
                 if (elemTensor != nullptr)
                 {
                     ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
