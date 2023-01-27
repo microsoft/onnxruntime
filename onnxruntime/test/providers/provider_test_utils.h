@@ -1004,10 +1004,9 @@ class OpTester {
 
     if (seq_tensors) {
       auto num_tensors = seq_tensors->tensors.size();
-      std::vector<OrtValue> tensors;
-      tensors.resize(num_tensors);
       auto elem_type = DataTypeImpl::GetType<T>();
 
+      ptr = std::make_unique<TensorSeq>(elem_type);
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
@@ -1015,17 +1014,14 @@ class OpTester {
                     " input values doesn't match tensor size of ", shape.Size());
 
         auto allocator = test::AllocatorManager::Instance().GetAllocator(CPU);
-        auto tensor = std::make_unique<Tensor>(elem_type,
-                                                     shape,
-                                                     allocator);
+        Tensor tensor(elem_type, shape, allocator);
 
-        auto* data_ptr = tensor->MutableData<T>();
+        auto* data_ptr = tensor.MutableData<T>();
         for (int64_t x = 0; x < values_count; ++x) {
           data_ptr[x] = seq_tensors->tensors[i].data[x];
         }
 
-        auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-        tensors[i] = OrtValue(tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+        ptr->Add(std::move(tensor));
 
         if (add_shape_to_tensor_data_) {
           auto* output_tensor_type = sequence_tensor_proto.proto.mutable_sequence_type()
@@ -1049,9 +1045,6 @@ class OpTester {
           }
         }
       }
-
-      ptr = std::make_unique<TensorSeq>(elem_type);
-      ptr->SetElements(std::move(tensors));
     }
 
     OrtValue value;
