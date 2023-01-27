@@ -7,7 +7,9 @@
 import os
 import unittest
 
+import numpy as np
 import onnx
+from onnxruntime import InferenceSession
 from gpt2_model_generator import create_gpt2_embedlayer
 from parity_utilities import find_transformers_source
 
@@ -29,25 +31,48 @@ class TestFusion(unittest.TestCase):
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
+    def verify_parity(self, optimized_model, expected_model):
+        sess_optimized = InferenceSession(optimized_model, providers=['CPUExecutionProvider'])
+        sess_expected = InferenceSession(expected_model, providers=['CPUExecutionProvider'])
+        inputs = np.random.randint(low=0, high=6, size=(4,8), dtype=np.int32) + 1
+
+        outputs_optimized = sess_optimized.run(None, {'ids': inputs})
+        outputs_expected = sess_expected.run(None, {'ids': inputs})
+        self.assertTrue(np.allclose(outputs_optimized[0], outputs_expected[0]))
+
     def test_embedlayer_fusion(self):
         model = create_gpt2_embedlayer(one_attention_node=False)
         path = "."
-        model_path = os.path.join(path, "gpt2_embedlayer.onnx")
-        onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, model_type="gpt2")
-        os.remove(model_path)
+        original_model_filename = "gpt2_embedlayer.onnx"
+        optimized_model_filename = "gpt2_embedlayer_opt.onnx"
+        expected_model_filename = "gpt2_embedlayer_exp.onnx"
 
-        self.verify_fusion(optimized_model, "gpt2_embedlayer_opt.onnx")
+        original_model_path = os.path.join(path, original_model_filename)
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
+
+        self.verify_fusion(optimized_model, expected_model_filename)
+        self.verify_parity(optimized_model_filename, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_filename)
 
     def test_embedlayer_fusion_one_attn_node(self):
         model = create_gpt2_embedlayer(one_attention_node=True)
         path = "."
-        model_path = os.path.join(path, "gpt2_embedlayer_one_attn.onnx")
-        onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path, model_type="gpt2")
-        os.remove(model_path)
+        original_model_filename = "gpt2_embedlayer_one_attn.onnx"
+        optimized_model_filename = "gpt2_embedlayer_one_attn_opt.onnx"
+        expected_model_filename = "gpt2_embedlayer_one_attn_exp.onnx"
 
-        self.verify_fusion(optimized_model, "gpt2_embedlayer_one_attn_opt.onnx")
+        original_model_path = os.path.join(path, original_model_filename)
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
+
+        self.verify_fusion(optimized_model, expected_model_filename)
+        self.verify_parity(optimized_model_filename, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_filename)
 
 
 if __name__ == "__main__":
