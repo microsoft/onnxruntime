@@ -808,6 +808,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
           num_heads,
           head_size,
           num_present_tensors, // because num_present_tensors == num_layers
+          1024, // TODO(hasesh): Query maxThreadsPerBlock of the Cuda device and pass this instead of this hard-coded value
           cuda_stream);
 
     }

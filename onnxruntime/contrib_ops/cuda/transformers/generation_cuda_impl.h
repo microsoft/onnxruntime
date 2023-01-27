@@ -121,6 +121,7 @@ void PickGptPastStateKernel(
     int num_heads,
     int head_size,
     int num_layers,
+    int max_threads_per_block,
     cudaStream_t stream);
 
 }  // namespace cuda

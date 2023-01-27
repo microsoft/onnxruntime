@@ -790,18 +790,12 @@ void PickGptPastStateKernel(
     int num_heads,
     int head_size,
     int num_layers,
+    int max_threads_per_block,
     cudaStream_t stream) {
     assert(past_seq_length > 0 && max_seq_length > 0);
 
-    int device;
-    cudaGetDevice(&device);
-    cudaDeviceProp props;
-    cudaGetDeviceProperties(&props, device);
-
-    int max_threads = props.maxThreadsPerBlock;
-
     dim3 grid(num_heads, num_layers, batch_beam * 2);  // (num_heads, layer_num, beam_batch * 2)
-    dim3 block(std::min(past_seq_length * head_size, max_threads), 1, 1); // std::min((past_seq_length * head_size), max_threads_per_block)
+    dim3 block(std::min(past_seq_length * head_size, max_threads_per_block), 1, 1); // std::min((past_seq_length * head_size), max_threads_per_block)
 
     PickGptPastStateKernelImpl<T><<<grid, block, 0, stream>>> (
         past_state,
@@ -826,6 +820,7 @@ template void PickGptPastStateKernel(
     int num_heads,
     int head_size,
     int num_layers,
+    int max_threads_per_block,
     cudaStream_t stream);
 
 template void PickGptPastStateKernel(
@@ -838,6 +833,7 @@ template void PickGptPastStateKernel(
     int num_heads,
     int head_size,
     int num_layers,
+    int max_threads_per_block,
     cudaStream_t stream);
 
 }  // namespace cuda
