@@ -4,7 +4,6 @@
 #include <memory>
 #include <utility>
 
-#include "core/framework/TensorSeq.h"
 #include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm.h"
 #include "orttraining/training_ops/cuda/reduction/reduction_all_impl.h"
 #include "orttraining/training_ops/cuda/optimizer/clip_grad_norm/clip_grad_norm_impl.h"
