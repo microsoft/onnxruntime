@@ -26,10 +26,6 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#ifdef USE_TBB
-#include <oneapi/tbb.h>
-#endif
-
 #ifdef _WIN32
 using NAME_CHAR_TYPE = wchar_t;
 #else
@@ -139,7 +135,7 @@ struct TensorOpCost {
 
 namespace concurrency {
 
-#ifdef USE_TBB
+#if defined(USE_TBB) || defined(USE_OCT)
 
 using FN = std::function<void(std::ptrdiff_t first, std::ptrdiff_t last)>;
 using SimpleFN = std::function<void(std::ptrdiff_t)>;
@@ -226,8 +222,10 @@ class ThreadPool {
  private:
   void Schedule(std::function<void()> fn);
   void ParallelFor(std::ptrdiff_t total, const FN& fn);
-
-  std::unique_ptr<oneapi::tbb::global_control> tbb_global_;
+//#ifdef USE_TBB
+//  std::unique_ptr<oneapi::tbb::global_control> tbb_global_;
+//#endif
+  void* impl_ = nullptr;
   int dop_ = 1;
 };
 

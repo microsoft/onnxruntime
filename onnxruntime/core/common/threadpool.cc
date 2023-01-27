@@ -41,6 +41,13 @@ limitations under the License.
 // Chance of arithmetic overflow could be reduced
 #pragma warning(disable : 26451)
 #endif
+
+#ifdef USE_OCT
+#include <octopus/threadpool.h>
+#else
+#include <oneapi/tbb.h>
+#endif
+
 namespace onnxruntime {
 
 namespace concurrency {
@@ -365,7 +372,7 @@ class alignas(CACHE_LINE_BYTES) LoopCounter {
   const unsigned _num_shards;
 };
 
-#ifdef USE_TBB
+#if defined(USE_TBB) || defined(USE_OCT)
 
 ThreadPool::ThreadPool(Env* /*env*/,
                        const ThreadOptions& /*thread_options*/,
@@ -374,10 +381,23 @@ ThreadPool::ThreadPool(Env* /*env*/,
                        bool /*low_latency_hint*/,
                        bool /*force_hybrid*/) : dop_(degree_of_parallelism) {
   ORT_ENFORCE(dop_ > 0, "dop must be a positive integer!");
-  tbb_global_ = std::make_unique<oneapi::tbb::global_control>(oneapi::tbb::global_control::max_allowed_parallelism, degree_of_parallelism - 1);
+#ifdef USE_OCT
+  impl_ = new octopus::ThreadPool(dop_);
+#else
+  impl_ = new oneapi::tbb::global_control(oneapi::tbb::global_control::max_allowed_parallelism,
+                                          degree_of_parallelism);
+#endif
 }
 
-ThreadPool::~ThreadPool() {}
+ThreadPool::~ThreadPool() {
+  if (impl_) {
+#ifdef USE_OCT
+    delete ((octopus::ThreadPool*)impl_);
+#else
+    delete ((oneapi::tbb::global_contro*)impl_);
+#endif
+  }
+}
 
 void ThreadPool::Schedule(std::function<void()> fn) {
   fn();
@@ -443,6 +463,15 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
   }
 }
 
+#ifdef USE_OCT
+
+void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
+  octopus::StaticPartitioner static_partitioner(std::max(total/(2*dop_), 1LL));
+  ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &static_partitioner);
+}
+
+#else
+
 struct TbbTask {
   TbbTask(const FN& fn) : fn_(fn) {}
   void operator()(const oneapi::tbb::blocked_range<std::ptrdiff_t>& r) const {
@@ -457,6 +486,8 @@ void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
   TbbTask tbb_task(fn);
   oneapi::tbb::parallel_for(oneapi::tbb::blocked_range<std::ptrdiff_t>(0, total, 1), tbb_task);
 }
+
+#endif
 
 #else
 

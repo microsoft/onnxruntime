@@ -476,3 +476,7 @@ endif()
 if (onnxruntime_USE_TBB)
     include(tbb)
 endif()
+
+if (onnxruntime_USE_OCT)
+    include(oct)
+endif()
