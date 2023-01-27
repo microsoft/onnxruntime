@@ -71,19 +71,13 @@ static void CopySequenceTensor(AllocatorPtr alloc,
 
   tgt->SetType(src->DataType());
 
-  std::vector<OrtValue> output_tensors;
-  output_tensors.reserve(src->Size());
-
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
   auto in_tensor = src->begin();
   for (; in_tensor != src->end(); ++in_tensor) {
     auto& tensor = in_tensor->Get<Tensor>();
-    auto tmp = std::make_unique<Tensor>(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), alloc);
-    CopyCpuTensor(&tensor, tmp.get());
-    output_tensors.emplace_back(OrtValue(tmp.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
+    Tensor tmp(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), alloc);
+    CopyCpuTensor(&tensor, &tmp);
+    tgt->Add(std::move(tmp));
   }
-
-  tgt->SetElements(std::move(output_tensors));
 }
 
 static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_value,

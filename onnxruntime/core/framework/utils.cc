@@ -203,12 +203,9 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       if (0 == size) {
         target_tensor_seq.SetType(source_tensor_seq.DataType());
       }
-      const auto& source_tensor = source_tensor_seq.Get(size);
-      auto target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
-
-      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-      OrtValue output_value(target_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-      target_tensor_seq.Add(std::move(output_value));
+      const Tensor& source_tensor = source_tensor_seq.Get(size);
+      std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
+      target_tensor_seq.Add(std::move(*target_tensor));
     }
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
