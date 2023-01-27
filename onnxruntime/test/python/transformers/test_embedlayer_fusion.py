@@ -9,9 +9,10 @@ import unittest
 
 import numpy as np
 import onnx
-from onnxruntime import InferenceSession
 from gpt2_model_generator import create_gpt2_embedlayer
 from parity_utilities import find_transformers_source
+
+from onnxruntime import InferenceSession
 
 if find_transformers_source():
     from onnx_model import OnnxModel
