@@ -3,6 +3,7 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/cuda_call.h"
+#include <core/platform/env.h>
 
 #ifdef _WIN32
 #else  // POSIX
@@ -86,19 +87,15 @@ const char* CudaErrString<ncclResult_t>(ncclResult_t e) {
 
 template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> CudaCall(
-  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
-      auto del = [](char* p) { free(p); };
-      std::unique_ptr<char, decltype(del)> hostname_ptr(nullptr, del);
-      size_t hostname_len = 0;
-      char* hostname = nullptr;
-      //TODO: avoid using const_cast
-      if (-1 == _dupenv_s(&hostname, &hostname_len, "COMPUTERNAME"))
-        hostname = const_cast<char*>("?");
-      else
-        hostname_ptr.reset(hostname);
+      std::string hostname_str = GetEnvironmentVar("COMPUTERNAME");
+      if (hostname_str.empty()) {
+        hostname_str = "?";
+      }
+      const char* hostname = hostname_str.c_str();
 #else
       char hostname[HOST_NAME_MAX];
       if (gethostname(hostname, HOST_NAME_MAX) != 0)
