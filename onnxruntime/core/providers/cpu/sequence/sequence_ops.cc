@@ -188,7 +188,6 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(1);
   const auto* XValue = context->GetInputOrtValue(1);
 
-
   // Data type of the input tensor MUST be same as that of the input sequence
   if (!S->IsSameDataType(*X)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -212,7 +211,6 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   }
 
   auto* Y = context->Output<TensorSeq>(0);
-
 
   std::vector<OrtValue> tensors;
   tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);

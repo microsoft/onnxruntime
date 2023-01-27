@@ -545,6 +545,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         // as operator inputs are read-only. Hence, we need to make a copy.
         auto& data = input.Get<TensorSeq>();
         output->SetType(data.DataType());
+        output->SetElements({});
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));

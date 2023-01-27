@@ -485,9 +485,7 @@ void Check<TensorSeq>(const OpTester::Data& expected_data,
       t_disp(element_type);
 
   for (size_t i = 0; i < output_num_tensors; ++i) {
-    const auto& exp_tensor = exp_seq.Get(i).Get<Tensor>();
-    const auto& out_tensor = output_seq.Get(i).Get<Tensor>();
-    t_disp.Invoke<TensorCheck>(exp_tensor, out_tensor, provider_type, check_params);
+    t_disp.Invoke<TensorCheck>(exp_seq.Get(i), output_seq.Get(i), provider_type, check_params);
   }
 }
 

@@ -225,15 +225,15 @@ void AdamWTestLoop(
         ASSERT_TRUE(momentum1_to_train.find(weight_name) != momentum1_to_train.end());
         ASSERT_TRUE(momentum2_to_train.find(weight_name) != momentum2_to_train.end());
 
-        const float* updated_weight_buffer = updated_seq_weight.Get(weight_index).Get<Tensor>().Data<float>();
+        const float* updated_weight_buffer = updated_seq_weight.Get(weight_index).Data<float>();
         std::copy(updated_weight_buffer, updated_weight_buffer + weights_to_train[weight_name].size(),
                   weights_to_train[weight_name].begin());
 
-        const float* updated_momentum1_buffer = updated_seq_momentum1.Get(weight_index).Get<Tensor>().Data<float>();
+        const float* updated_momentum1_buffer = updated_seq_momentum1.Get(weight_index).Data<float>();
         std::copy(updated_momentum1_buffer, updated_momentum1_buffer + momentum1_to_train[weight_name].size(),
                   momentum1_to_train[weight_name].begin());
 
-        const float* updated_momentum2_buffer = updated_seq_momentum2.Get(weight_index).Get<Tensor>().Data<float>();
+        const float* updated_momentum2_buffer = updated_seq_momentum2.Get(weight_index).Data<float>();
         std::copy(updated_momentum2_buffer, updated_momentum2_buffer + momentum2_to_train[weight_name].size(),
                   momentum2_to_train[weight_name].begin());
 
