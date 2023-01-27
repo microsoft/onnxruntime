@@ -18,7 +18,7 @@ class GroupNorm final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  bool swish_;
+  bool use_swish_activation_;
   float epsilon_;
   int num_groups_;
 };
