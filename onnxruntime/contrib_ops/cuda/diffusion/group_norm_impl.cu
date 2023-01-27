@@ -21,6 +21,7 @@
 #include <cub/cub.cuh>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/diffusion/group_norm_impl.h"
+#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -39,7 +40,7 @@ struct GroupSums {
   int32_t flag;
   // The sum.
   float sum;
-  // The sum of squares.                                                                                                                                                                                                                                                              
+  // The sum of squares.
   float sumSq;
 };
 
@@ -446,13 +447,17 @@ Status LaunchGroupNormKernel(
   params.invHWC = 1.F / (float)(params.hw * params.cPerGroup);
   params.groupsPerBlock = cPerBlock / params.cPerGroup;
 
+  DUMP_TENSOR_INIT();
+  DUMP_TENSOR("input", input, batch_size, num_channels, height * width);
+  DUMP_TENSOR("gamma", gamma, 1, num_channels);
+  DUMP_TENSOR("beta", beta, 1, num_channels);
   cudaMemsetAsync(params.redBuffer, 0, GetGroupNormWorkspaceSizeInBytes(), stream);
   groupNormNHWCSum<T>(params, stream);
+  DUMP_TENSOR("workspace", params.redBuffer, batch_size, num_groups, 2);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
   groupNormNHWCScale<T>(params, stream);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
+  DUMP_TENSOR("output", output, batch_size, num_channels, height * width);
   return Status::OK();
 }
 
