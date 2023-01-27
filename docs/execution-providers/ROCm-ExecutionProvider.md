@@ -19,6 +19,10 @@ The ROCm Execution Provider enables hardware accelerated computation on AMD ROCm
 
 ## Install
 
+**NOTE** Please make sure to install the proper version of Pytorch specified here [PyTorch Version](../install/#training-install-table-for-all-languages).
+
+For Nightly PyTorch builds please see [Pytorch home](https://pytorch.org/) and select ROCm as the Compute Platform.
+
 Pre-built binaries of ONNX Runtime with ROCm EP are published for most language bindings. Please reference [Install ORT](../install).
 
 ## Requirements
@@ -26,7 +30,9 @@ Pre-built binaries of ONNX Runtime with ROCm EP are published for most language 
 
 |ONNX Runtime|ROCm|
 |---|---|
-|main|5.2.3|
+|main|5.4|
+|1.13|5.4|
+|1.13|5.3.2|
 |1.12|5.2.3|
 |1.12|5.2|
 
