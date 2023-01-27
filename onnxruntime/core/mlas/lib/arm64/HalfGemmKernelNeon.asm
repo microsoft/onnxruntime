@@ -148,142 +148,142 @@ M6N16PopulateAccumulators
         b.LO    M6N16LoopK_Epilogue     // need k>=8 for main loop
 
 M6N16InnerLoopK
-        FMLA    v20.8h, v16.8h,  v0.h[0]
-        FMLA    v21.8h, v17.8h,  v0.h[0]
-        LDR     d4, [x17], 8              // A4
-        FMLA    v22.8h, v16.8h,  v1.h[0]
-        FMLA    v23.8h, v17.8h,  v1.h[0]
-        LDR     d5,  [x7], 8              // A5
-        FMLA    v24.8h, v16.8h,  v2.h[0]
-        FMLA    v25.8h, v17.8h,  v2.h[0]
+        fmla    v20.8h,v16.8h,v0.h[0]
+        fmla    v21.8h,v17.8h,v0.h[0]
+        ldr     d4,[x17],8              // A4
+        fmla    v22.8h,v16.8h,v1.h[0]
+        fmla    v23.8h,v17.8h,v1.h[0]
+        ldr     d5,[x7],8               // A5
+        fmla    v24.8h,v16.8h,v2.h[0]
+        fmla    v25.8h,v17.8h,v2.h[0]
         ldr     q18,[x8],16             // B1.low
-        FMLA    v26.8h, v16.8h,  v3.h[0]
-        FMLA    v27.8h, v17.8h,  v3.h[0]
-        ld1     {v19.16b},[x8],x9      // B1.high  x8 <- next row
-        FMLA    v28.8h, v16.8h,  v4.h[0]
-        FMLA    v29.8h, v17.8h,  v4.h[0]
-        FMLA    v30.8h, v16.8h,  v5.h[0]
-        FMLA    v31.8h, v17.8h,  v5.h[0]
-        subs    x0,x0,8                     // k -= 4
+        fmla    v26.8h,v16.8h,v3.h[0]
+        fmla    v27.8h,v17.8h,v3.h[0]
+        ld1     {v19.16b},[x8],x9       // B1.high  x8 <- next row
+        fmla    v28.8h,v16.8h,v4.h[0]
+        fmla    v29.8h,v17.8h,v4.h[0]
+        fmla    v30.8h,v16.8h,v5.h[0]
+        fmla    v31.8h,v17.8h,v5.h[0]
+        subs    x0,x0,8                 // k -= 4
 
-        FMLA    v20.8h, v18.8h,  v0.h[1]
-        FMLA    v21.8h, v19.8h,  v0.h[1]
+        fmla    v20.8h,v18.8h,v0.h[1]
+        fmla    v21.8h,v19.8h,v0.h[1]
         ldr     q16,[x8],16             // B2.low
-        FMLA    v22.8h, v18.8h,  v1.h[1]
-        FMLA    v23.8h, v19.8h,  v1.h[1]
-        ld1     {v17.16b},[x8],x9      // B2.high  x8 <- next row
-        FMLA    v24.8h, v18.8h,  v2.h[1]
-        FMLA    v25.8h, v19.8h,  v2.h[1]
-        FMLA    v26.8h, v18.8h,  v3.h[1]
-        FMLA    v27.8h, v19.8h,  v3.h[1]
-        FMLA    v28.8h, v18.8h,  v4.h[1]
-        FMLA    v29.8h, v19.8h,  v4.h[1]
-        FMLA    v30.8h, v18.8h,  v5.h[1]
-        FMLA    v31.8h, v19.8h,  v5.h[1]
+        fmla    v22.8h,v18.8h,v1.h[1]
+        fmla    v23.8h,v19.8h,v1.h[1]
+        ld1     {v17.16b},[x8],x9       // B2.high  x8 <- next row
+        fmla    v24.8h,v18.8h,v2.h[1]
+        fmla    v25.8h,v19.8h,v2.h[1]
+        fmla    v26.8h,v18.8h,v3.h[1]
+        fmla    v27.8h,v19.8h,v3.h[1]
+        fmla    v28.8h,v18.8h,v4.h[1]
+        fmla    v29.8h,v19.8h,v4.h[1]
+        fmla    v30.8h,v18.8h,v5.h[1]
+        fmla    v31.8h,v19.8h,v5.h[1]
 
-        FMLA    v20.8h, v16.8h,  v0.h[2]
-        FMLA    v21.8h, v17.8h,  v0.h[2]
+        fmla    v20.8h,v16.8h,v0.h[2]
+        fmla    v21.8h,v17.8h,v0.h[2]
         ldr     q18,[x8],16             // B3.low
-        FMLA    v22.8h, v16.8h,  v1.h[2]
-        FMLA    v23.8h, v17.8h,  v1.h[2]
-        ld1     {v19.16b},[x8],x9      // B3.high  x8 <- next row
-        FMLA    v24.8h, v16.8h,  v2.h[2]
-        FMLA    v25.8h, v17.8h,  v2.h[2]
-        FMLA    v26.8h, v16.8h,  v3.h[2]
-        FMLA    v27.8h, v17.8h,  v3.h[2]
-        FMLA    v28.8h, v16.8h,  v4.h[2]
-        FMLA    v29.8h, v17.8h,  v4.h[2]
-        FMLA    v30.8h, v16.8h,  v5.h[2]
-        FMLA    v31.8h, v17.8h,  v5.h[2]
+        fmla    v22.8h,v16.8h,v1.h[2]
+        fmla    v23.8h,v17.8h,v1.h[2]
+        ld1     {v19.16b},[x8],x9       // B3.high  x8 <- next row
+        fmla    v24.8h,v16.8h,v2.h[2]
+        fmla    v25.8h,v17.8h,v2.h[2]
+        fmla    v26.8h,v16.8h,v3.h[2]
+        fmla    v27.8h,v17.8h,v3.h[2]
+        fmla    v28.8h,v16.8h,v4.h[2]
+        fmla    v29.8h,v17.8h,v4.h[2]
+        fmla    v30.8h,v16.8h,v5.h[2]
+        fmla    v31.8h,v17.8h,v5.h[2]
 
-        ldr     q16,[x8],16             // B0.low  next iter
-        FMLA    v20.8h, v18.8h,  v0.h[3]
-        FMLA    v21.8h, v19.8h,  v0.h[3]
-        ld1     {v17.16b},[x8],x9      // B0.high  x8 <- next row
-        FMLA    v22.8h, v18.8h,  v1.h[3]
-        FMLA    v23.8h, v19.8h,  v1.h[3]
-        LDR     d0,  [x6], 8              // A0
-        FMLA    v24.8h, v18.8h,  v2.h[3]
-        FMLA    v25.8h, v19.8h,  v2.h[3]
-        LDR     d1,  [x14], 8              // A1
-        FMLA    v26.8h, v18.8h,  v3.h[3]
-        FMLA    v27.8h, v19.8h,  v3.h[3]
-        LDR     d2, [x15], 8              // A2
-        FMLA    v28.8h, v18.8h,  v4.h[3]
-        FMLA    v29.8h, v19.8h,  v4.h[3]
-        LDR     d3, [x16], 8              // A3
-        FMLA    v30.8h, v18.8h,  v5.h[3]
-        FMLA    v31.8h, v19.8h,  v5.h[3]
-        b.hs    M6N16InnerLoopK             // k >= 8 for main loop
+        ldr     q16,[x8],16             // Load B0.low for next iter
+        fmla    v20.8h,v18.8h,v0.h[3]
+        fmla    v21.8h,v19.8h,v0.h[3]
+        ld1     {v17.16b},[x8],x9       // Load B0.high for next iter
+        fmla    v22.8h,v18.8h,v1.h[3]
+        fmla    v23.8h,v19.8h,v1.h[3]
+        ldr     d0,[x6],8               // Load A0 for next iter
+        fmla    v24.8h,v18.8h,v2.h[3]
+        fmla    v25.8h,v19.8h,v2.h[3]
+        ldr     d1,[x14],8              // Load A1 for next iter
+        fmla    v26.8h,v18.8h,v3.h[3]
+        fmla    v27.8h,v19.8h,v3.h[3]
+        ldr     d2,[x15],8              // Load A2 for next iter
+        fmla    v28.8h,v18.8h,v4.h[3]
+        fmla    v29.8h,v19.8h,v4.h[3]
+        ldr     d3,[x16],8              // Load A3 for next iter
+        fmla    v30.8h,v18.8h,v5.h[3]
+        fmla    v31.8h,v19.8h,v5.h[3]
+        b.hs    M6N16InnerLoopK         // k >= 8 for main loop
 
 M6N16LoopK_Epilogue
         // last block of k >= 4, no pre-load for next iter
-        FMLA    v20.8h, v16.8h,  v0.h[0]
-        FMLA    v21.8h, v17.8h,  v0.h[0]
-        LDR     d4, [x17], 8              // A4
-        FMLA    v22.8h, v16.8h,  v1.h[0]
-        FMLA    v23.8h, v17.8h,  v1.h[0]
-        LDR     d5,  [x7], 8              // A5
-        FMLA    v24.8h, v16.8h,  v2.h[0]
-        FMLA    v25.8h, v17.8h,  v2.h[0]
+        fmla    v20.8h,v16.8h,v0.h[0]
+        fmla    v21.8h,v17.8h,v0.h[0]
+        ldr     d4,[x17],8              // A4
+        fmla    v22.8h,v16.8h,v1.h[0]
+        fmla    v23.8h,v17.8h,v1.h[0]
+        ldr     d5,[x7],8               // A5
+        fmla    v24.8h,v16.8h,v2.h[0]
+        fmla    v25.8h,v17.8h,v2.h[0]
         ldr     q18,[x8],16             // B1.low
-        FMLA    v26.8h, v16.8h,  v3.h[0]
-        FMLA    v27.8h, v17.8h,  v3.h[0]
-        ld1     {v19.16b},[x8],x9      // B1.high  x8 <- next row
-        FMLA    v28.8h, v16.8h,  v4.h[0]
-        FMLA    v29.8h, v17.8h,  v4.h[0]
-        FMLA    v30.8h, v16.8h,  v5.h[0]
-        FMLA    v31.8h, v17.8h,  v5.h[0]
-        adds    x0,x0,8                     // revert k over-decrement
+        fmla    v26.8h,v16.8h,v3.h[0]
+        fmla    v27.8h,v17.8h,v3.h[0]
+        ld1     {v19.16b},[x8],x9       // B1.high  x8 <- next row
+        fmla    v28.8h,v16.8h,v4.h[0]
+        fmla    v29.8h,v17.8h,v4.h[0]
+        fmla    v30.8h,v16.8h,v5.h[0]
+        fmla    v31.8h,v17.8h,v5.h[0]
+        adds    x0,x0,8                 // revert k over-decrement
 
-        FMLA    v20.8h, v18.8h,  v0.h[1]
-        FMLA    v21.8h, v19.8h,  v0.h[1]
+        fmla    v20.8h,v18.8h,v0.h[1]
+        fmla    v21.8h,v19.8h,v0.h[1]
         ldr     q16,[x8],16             // B2.low
-        FMLA    v22.8h, v18.8h,  v1.h[1]
-        FMLA    v23.8h, v19.8h,  v1.h[1]
-        ld1     {v17.16b},[x8],x9      // B2.high  x8 <- next row
-        FMLA    v24.8h, v18.8h,  v2.h[1]
-        FMLA    v25.8h, v19.8h,  v2.h[1]
-        FMLA    v26.8h, v18.8h,  v3.h[1]
-        FMLA    v27.8h, v19.8h,  v3.h[1]
-        FMLA    v28.8h, v18.8h,  v4.h[1]
-        FMLA    v29.8h, v19.8h,  v4.h[1]
-        FMLA    v30.8h, v18.8h,  v5.h[1]
-        FMLA    v31.8h, v19.8h,  v5.h[1]
+        fmla    v22.8h,v18.8h,v1.h[1]
+        fmla    v23.8h,v19.8h,v1.h[1]
+        ld1     {v17.16b},[x8],x9       // B2.high  x8 <- next row
+        fmla    v24.8h,v18.8h,v2.h[1]
+        fmla    v25.8h,v19.8h,v2.h[1]
+        fmla    v26.8h,v18.8h,v3.h[1]
+        fmla    v27.8h,v19.8h,v3.h[1]
+        fmla    v28.8h,v18.8h,v4.h[1]
+        fmla    v29.8h,v19.8h,v4.h[1]
+        fmla    v30.8h,v18.8h,v5.h[1]
+        fmla    v31.8h,v19.8h,v5.h[1]
 
-        FMLA    v20.8h, v16.8h,  v0.h[2]
-        FMLA    v21.8h, v17.8h,  v0.h[2]
+        fmla    v20.8h,v16.8h,v0.h[2]
+        fmla    v21.8h,v17.8h,v0.h[2]
         ldr     q18,[x8],16             // B3.low
-        FMLA    v22.8h, v16.8h,  v1.h[2]
-        FMLA    v23.8h, v17.8h,  v1.h[2]
-        ld1     {v19.16b},[x8],x9      // B3.high  x8 <- next row
-        FMLA    v24.8h, v16.8h,  v2.h[2]
-        FMLA    v25.8h, v17.8h,  v2.h[2]
-        FMLA    v26.8h, v16.8h,  v3.h[2]
-        FMLA    v27.8h, v17.8h,  v3.h[2]
-        FMLA    v28.8h, v16.8h,  v4.h[2]
-        FMLA    v29.8h, v17.8h,  v4.h[2]
-        FMLA    v30.8h, v16.8h,  v5.h[2]
-        FMLA    v31.8h, v17.8h,  v5.h[2]
+        fmla    v22.8h,v16.8h,v1.h[2]
+        fmla    v23.8h,v17.8h,v1.h[2]
+        ld1     {v19.16b},[x8],x9       // B3.high  x8 <- next row
+        fmla    v24.8h,v16.8h,v2.h[2]
+        fmla    v25.8h,v17.8h,v2.h[2]
+        fmla    v26.8h,v16.8h,v3.h[2]
+        fmla    v27.8h,v17.8h,v3.h[2]
+        fmla    v28.8h,v16.8h,v4.h[2]
+        fmla    v29.8h,v17.8h,v4.h[2]
+        fmla    v30.8h,v16.8h,v5.h[2]
+        fmla    v31.8h,v17.8h,v5.h[2]
 
-        FMLA    v20.8h, v18.8h,  v0.h[3]
-        FMLA    v21.8h, v19.8h,  v0.h[3]
-        FMLA    v22.8h, v18.8h,  v1.h[3]
-        FMLA    v23.8h, v19.8h,  v1.h[3]
-        FMLA    v24.8h, v18.8h,  v2.h[3]
-        FMLA    v25.8h, v19.8h,  v2.h[3]
-        FMLA    v26.8h, v18.8h,  v3.h[3]
-        FMLA    v27.8h, v19.8h,  v3.h[3]
-        FMLA    v28.8h, v18.8h,  v4.h[3]
-        FMLA    v29.8h, v19.8h,  v4.h[3]
-        FMLA    v30.8h, v18.8h,  v5.h[3]
-        FMLA    v31.8h, v19.8h,  v5.h[3]
-        B.NE    M6N16RemainderK123         // remaining k 1~3
+        fmla    v20.8h,v18.8h,v0.h[3]
+        fmla    v21.8h,v19.8h,v0.h[3]
+        fmla    v22.8h,v18.8h,v1.h[3]
+        fmla    v23.8h,v19.8h,v1.h[3]
+        fmla    v24.8h,v18.8h,v2.h[3]
+        fmla    v25.8h,v19.8h,v2.h[3]
+        fmla    v26.8h,v18.8h,v3.h[3]
+        fmla    v27.8h,v19.8h,v3.h[3]
+        fmla    v28.8h,v18.8h,v4.h[3]
+        fmla    v29.8h,v19.8h,v4.h[3]
+        fmla    v30.8h,v18.8h,v5.h[3]
+        fmla    v31.8h,v19.8h,v5.h[3]
+        b.NE    M6N16RemainderK123      // remaining k 1~3
 
-M6N16NextIterN
-        SUBS    x1, x1, 16
+M6N16OutterLoopNTail
+        subs    x1,x1,16                // N -= 16
         ldr     x8,[sp,#HGemmKernelFrame_B]
-        B.LO    M6StoreRemainderN
+        b.LO    M6StoreRemainderN       // remaining k < 16
 
         cbnz    x19,M6N16SkipAccumulateOutput
         ldp     q0,q1,[x3]
@@ -292,8 +292,8 @@ M6N16NextIterN
         ldp     q6,q7,[x12]
         ldp     q16,q17,[x13]
         ldp     q18,q19,[x4]
-        fadd    v20.8h,v20.8h,v0.8h
-        fadd    v21.8h,v21.8h,v1.8h
+        fadd    v20.8h,v20.8h,v0.8h     // !ZeroMode
+        fadd    v21.8h,v21.8h,v1.8h     // accumulate into C
         fadd    v22.8h,v22.8h,v2.8h
         fadd    v23.8h,v23.8h,v3.8h
         fadd    v24.8h,v24.8h,v4.8h
@@ -306,91 +306,91 @@ M6N16NextIterN
         fadd    v31.8h,v31.8h,v19.8h
 
 M6N16SkipAccumulateOutput
-        ST1     {v20.16b, v21.16b},  [x3], 32
-        SUB     x6,  x6, x2             // a0 -= k
-        ST1     {v22.16b, v23.16b}, [x10], 32
-        SUB     x14,  x14, x2             // a1 -= k
-        ST1     {v24.16b, v25.16b}, [x11], 32
-        SUB     x15, x15, x2            // a2 -= k
-        ST1     {v26.16b, v27.16b}, [x12], 32
-        SUB     x16, x16, x2            // a3 -= k
-        ST1     {v28.16b, v29.16b}, [x13], 32
-        SUB     x17, x17, x2            // a4 -= k
+        st1     {v20.16b,v21.16b},[x3],32
+        sub     x6,x6,x2                // restore a0
+        st1     {v22.16b,v23.16b},[x10],32
+        sub     x14,x14,x2              // restore a1
+        st1     {v24.16b,v25.16b},[x11],32
+        sub     x15,x15,x2              // restore a2
+        st1     {v26.16b,v27.16b},[x12],32
+        sub     x16,x16,x2              // restore a3
+        st1     {v28.16b,v29.16b},[x13],32
+        sub     x17,x17,x2              // restore a4
         add     x8,x8,32                // B <- next 16 columns
-        ST1     {v30.16b, v31.16b},  [x4], 32
-        SUB     x7,  x7, x2             // a5 -= k
+        st1     {v30.16b,v31.16b},[x4],32
+        sub     x7,x7,x2                // restore a5
         str     x8,[sp,#HGemmKernelFrame_B]
-        B.HI    M6N16OutterLoopN
+        b.HI    M6N16OutterLoopN
 
 ExitKernel
         EPILOG_RESTORE_REG       x19,#HGemmKernelFrame_SavedRegs!
         EPILOG_RETURN
 
 M6N16RemainderK123
-        TBZ     x0, 2, M6N16RemainderK1
-        LDR     s0,  [x6], 4
-        LDR     q16, [x8], 16
-        ld1     {v17.16b},[x8],x9
-        LDR     s1,  [x14], 4
-        LDR     s2, [x15], 4
-        LDR     s3, [x16], 4
-        LDR     s4, [x17], 4
-        LDR     s5,  [x7], 4
-        LDR     q18, [x8], 16
-        ld1     {v19.16b},[x8],x9
-        FMLA    v20.8h, v16.8h,  v0.h[0]
-        FMLA    v22.8h, v16.8h,  v1.h[0]
-        FMLA    v24.8h, v16.8h,  v2.h[0]
-        FMLA    v26.8h, v16.8h,  v3.h[0]
-        FMLA    v28.8h, v16.8h,  v4.h[0]
-        FMLA    v30.8h, v16.8h,  v5.h[0]
-        FMLA    v21.8h, v17.8h,  v0.h[0]
-        FMLA    v23.8h, v17.8h,  v1.h[0]
-        FMLA    v25.8h, v17.8h,  v2.h[0]
-        FMLA    v27.8h, v17.8h,  v3.h[0]
-        FMLA    v29.8h, v17.8h,  v4.h[0]
-        FMLA    v31.8h, v17.8h,  v5.h[0]
+        tbz     x0,2,M6N16RemainderK1
+        ldr     s0,[x6],4               // A0
+        ldr     q16,[x8],16             // B0.low
+        ld1     {v17.16b},[x8],x9       // B0.high
+        ldr     s1,[x14],4              // A1
+        ldr     s2,[x15],4              // A2
+        ldr     s3,[x16],4              // A3
+        ldr     s4,[x17],4              // A4
+        ldr     s5,[x7],4               // A5
+        ldr     q18,[x8],16             // B1.low
+        ld1     {v19.16b},[x8],x9       // B2.high
+        fmla    v20.8h,v16.8h,v0.h[0]
+        fmla    v22.8h,v16.8h,v1.h[0]
+        fmla    v24.8h,v16.8h,v2.h[0]
+        fmla    v26.8h,v16.8h,v3.h[0]
+        fmla    v28.8h,v16.8h,v4.h[0]
+        fmla    v30.8h,v16.8h,v5.h[0]
+        fmla    v21.8h,v17.8h,v0.h[0]
+        fmla    v23.8h,v17.8h,v1.h[0]
+        fmla    v25.8h,v17.8h,v2.h[0]
+        fmla    v27.8h,v17.8h,v3.h[0]
+        fmla    v29.8h,v17.8h,v4.h[0]
+        fmla    v31.8h,v17.8h,v5.h[0]
 
-        FMLA    v20.8h, v18.8h,  v0.h[1]
-        FMLA    v22.8h, v18.8h,  v1.h[1]
-        FMLA    v24.8h, v18.8h,  v2.h[1]
-        FMLA    v26.8h, v18.8h,  v3.h[1]
-        FMLA    v28.8h, v18.8h,  v4.h[1]
-        FMLA    v30.8h, v18.8h,  v5.h[1]
-        FMLA    v21.8h, v19.8h,  v0.h[1]
-        FMLA    v23.8h, v19.8h,  v1.h[1]
-        FMLA    v25.8h, v19.8h,  v2.h[1]
-        FMLA    v27.8h, v19.8h,  v3.h[1]
-        FMLA    v29.8h, v19.8h,  v4.h[1]
-        FMLA    v31.8h, v19.8h,  v5.h[1]
-        TBZ     x0, 1, M6N16NextIterN
+        fmla    v20.8h,v18.8h,v0.h[1]
+        fmla    v22.8h,v18.8h,v1.h[1]
+        fmla    v24.8h,v18.8h,v2.h[1]
+        fmla    v26.8h,v18.8h,v3.h[1]
+        fmla    v28.8h,v18.8h,v4.h[1]
+        fmla    v30.8h,v18.8h,v5.h[1]
+        fmla    v21.8h,v19.8h,v0.h[1]
+        fmla    v23.8h,v19.8h,v1.h[1]
+        fmla    v25.8h,v19.8h,v2.h[1]
+        fmla    v27.8h,v19.8h,v3.h[1]
+        fmla    v29.8h,v19.8h,v4.h[1]
+        fmla    v31.8h,v19.8h,v5.h[1]
+        tbz     x0,1,M6N16OutterLoopNTail
 
 M6N16RemainderK1
-        LDR     h0,  [x6], 2
-        LDR     q16, [x8], 16
-        ld1     {v17.16b},[x8],x9
-        LDR     h1,  [x14], 2
-        LDR     h2, [x15], 2
-        LDR     h3, [x16], 2
-        LDR     h4, [x17], 2
-        LDR     h5,  [x7], 2
-        FMLA    v20.8h, v16.8h,  v0.h[0]
-        FMLA    v22.8h, v16.8h,  v1.h[0]
-        FMLA    v24.8h, v16.8h,  v2.h[0]
-        FMLA    v26.8h, v16.8h,  v3.h[0]
-        FMLA    v28.8h, v16.8h,  v4.h[0]
-        FMLA    v30.8h, v16.8h,  v5.h[0]
-        FMLA    v21.8h, v17.8h,  v0.h[0]
-        FMLA    v23.8h, v17.8h,  v1.h[0]
-        FMLA    v25.8h, v17.8h,  v2.h[0]
-        FMLA    v27.8h, v17.8h,  v3.h[0]
-        FMLA    v29.8h, v17.8h,  v4.h[0]
-        FMLA    v31.8h, v17.8h,  v5.h[0]
-        B       M6N16NextIterN
+        ldr     h0,[x6],2               // A0
+        ldr     q16,[x8],16             // B0.low
+        ld1     {v17.16b},[x8],x9       // B0.high
+        ldr     h1,[x14],2              // A1
+        ldr     h2,[x15],2              // A2
+        ldr     h3,[x16],2              // A3
+        ldr     h4,[x17],2              // A4
+        ldr     h5,[x7],2               // A5
+        fmla    v20.8h,v16.8h,v0.h[0]
+        fmla    v22.8h,v16.8h,v1.h[0]
+        fmla    v24.8h,v16.8h,v2.h[0]
+        fmla    v26.8h,v16.8h,v3.h[0]
+        fmla    v28.8h,v16.8h,v4.h[0]
+        fmla    v30.8h,v16.8h,v5.h[0]
+        fmla    v21.8h,v17.8h,v0.h[0]
+        fmla    v23.8h,v17.8h,v1.h[0]
+        fmla    v25.8h,v17.8h,v2.h[0]
+        fmla    v27.8h,v17.8h,v3.h[0]
+        fmla    v29.8h,v17.8h,v4.h[0]
+        fmla    v31.8h,v17.8h,v5.h[0]
+        b       M6N16OutterLoopNTail
 
 M6StoreRemainderN
         cbnz    x19,M6StoreRemainderNZeroMode
-        TBZ     x1, 3, M6StoreRemainderN4
+        tbz     x1,3,M6StoreRemainderN4
         ldr     q0,[x3]
         ldr     q1,[x10]
         ldr     q2,[x11]
@@ -400,24 +400,24 @@ M6StoreRemainderN
         fadd    v20.8h,v20.8h,v0.8h
         fadd    v22.8h,v22.8h,v1.8h
         fadd    v24.8h,v24.8h,v2.8h
-        STR     q20,  [x3], 16
-        MOV     v20.16b, v21.16b
-        STR     q22, [x10], 16
-        MOV     v22.16b, v23.16b
-        STR     q24, [x11], 16
-        MOV     v24.16b, v25.16b
+        str     q20,[x3],16
+        mov     v20.16b,v21.16b
+        str     q22,[x10],16
+        mov     v22.16b,v23.16b
+        str     q24,[x11],16
+        mov     v24.16b,v25.16b
         fadd    v26.8h,v26.8h,v3.8h
         fadd    v28.8h,v28.8h,v4.8h
         fadd    v30.8h,v30.8h,v5.8h
-        STR     q26, [x12], 16
-        MOV     v26.16b, v27.16b
-        STR     q28, [x13], 16
-        MOV     v28.16b, v29.16b
-        STR     q30,  [x4], 16
-        MOV     v30.16b, v31.16b
+        str     q26,[x12],16
+        mov     v26.16b,v27.16b
+        str     q28,[x13],16
+        mov     v28.16b,v29.16b
+        str     q30,[x4],16
+        mov     v30.16b,v31.16b
 
 M6StoreRemainderN4
-        TBZ     x1, 2, M6StoreRemainderN2
+        tbz     x1,2,M6StoreRemainderN2
         ldr     d0,[x3]
         ldr     d1,[x10]
         ldr     d2,[x11]
@@ -425,26 +425,26 @@ M6StoreRemainderN4
         ldr     d4,[x13]
         ldr     d5,[x4]
         fadd    v21.4h,v20.4h,v0.4h
-        DUP     d20, v20.d[1]
+        dup     d20,v20.d[1]
         fadd    v23.4h,v22.4h,v1.4h
-        DUP     d22, v22.d[1]
+        dup     d22,v22.d[1]
         fadd    v25.4h,v24.4h,v2.4h
-        DUP     d24, v24.d[1]
+        dup     d24,v24.d[1]
         fadd    v27.4h,v26.4h,v3.4h
-        DUP     d26, v26.d[1]
+        dup     d26,v26.d[1]
         fadd    v29.4h,v28.4h,v4.4h
-        DUP     d28, v28.d[1]
+        dup     d28,v28.d[1]
         fadd    v31.4h,v30.4h,v5.4h
-        DUP     d30, v30.d[1]
-        STR     d21,  [x3], 8
-        STR     d23, [x10], 8
-        STR     d25, [x11], 8
-        STR     d27, [x12], 8
-        STR     d29, [x13], 8
-        STR     d31,  [x4], 8
+        dup     d30,v30.d[1]
+        str     d21,[x3],8
+        str     d23,[x10],8
+        str     d25,[x11],8
+        str     d27,[x12],8
+        str     d29,[x13],8
+        str     d31,[x4],8
 
 M6StoreRemainderN2
-        TBZ     x1, 1, M6StoreRemainderN1
+        tbz     x1,1,M6StoreRemainderN1
         ldr     s0,[x3]
         ldr     s1,[x10]
         ldr     s2,[x11]
@@ -457,21 +457,21 @@ M6StoreRemainderN2
         fadd    v27.4h,v26.4h,v3.4h
         fadd    v29.4h,v28.4h,v4.4h
         fadd    v31.4h,v30.4h,v5.4h
-        STR     s21,  [x3], 4
-        STR     s23, [x10], 4
-        DUP     s20, v20.s[1]
-        DUP     s22, v22.s[1]
-        STR     s25, [x11], 4
-        STR     s27, [x12], 4
-        DUP     s24, v24.s[1]
-        DUP     s26, v26.s[1]
-        STR     s29, [x13], 4
-        STR     s31,  [x4], 4
-        DUP     s28, v28.s[1]
-        DUP     s30, v30.s[1]
+        str     s21,[x3],4
+        str     s23,[x10],4
+        dup     s20,v20.s[1]
+        dup     s22,v22.s[1]
+        str     s25,[x11],4
+        str     s27,[x12],4
+        dup     s24,v24.s[1]
+        dup     s26,v26.s[1]
+        str     s29,[x13],4
+        str     s31,[x4],4
+        dup     s28,v28.s[1]
+        dup     s30,v30.s[1]
 
 M6StoreRemainderN1
-        TBZ     x1, 0, ExitKernel
+        tbz     x1,0,ExitKernel
         ldr     h0,[x3]
         ldr     h1,[x10]
         ldr     h2,[x11]
@@ -484,67 +484,67 @@ M6StoreRemainderN1
         fadd    v26.4h,v26.4h,v3.4h
         fadd    v28.4h,v28.4h,v4.4h
         fadd    v30.4h,v30.4h,v5.4h
-        STR     h20,  [x3]
-        STR     h22, [x10]
-        STR     h24, [x11]
-        STR     h26, [x12]
-        STR     h28, [x13]
-        STR     h30,  [x4]
+        str     h20,[x3]
+        str     h22,[x10]
+        str     h24,[x11]
+        str     h26,[x12]
+        str     h28,[x13]
+        str     h30,[x4]
         b       ExitKernel
 
 M6StoreRemainderNZeroMode
-        TBZ     x1, 3, M6StoreRemainderN4ZeroMode
-        STR     q20,  [x3], 16
-        MOV     v20.16b, v21.16b
-        STR     q22, [x10], 16
-        MOV     v22.16b, v23.16b
-        STR     q24, [x11], 16
-        MOV     v24.16b, v25.16b
-        STR     q26, [x12], 16
-        MOV     v26.16b, v27.16b
-        STR     q28, [x13], 16
-        MOV     v28.16b, v29.16b
-        STR     q30,  [x4], 16
-        MOV     v30.16b, v31.16b
+        tbz     x1,3,M6StoreRemainderN4ZeroMode
+        str     q20,[x3],16
+        mov     v20.16b,v21.16b
+        str     q22,[x10],16
+        mov     v22.16b,v23.16b
+        str     q24,[x11],16
+        mov     v24.16b,v25.16b
+        str     q26,[x12],16
+        mov     v26.16b,v27.16b
+        str     q28,[x13],16
+        mov     v28.16b,v29.16b
+        str     q30,[x4],16
+        mov     v30.16b,v31.16b
 
 M6StoreRemainderN4ZeroMode
-        TBZ     x1, 2, M6StoreRemainderN2ZeroMode
-        STR     d20,  [x3], 8
-        STR     d22, [x10], 8
-        DUP     d20, v20.d[1]
-        DUP     d22, v22.d[1]
-        STR     d24, [x11], 8
-        STR     d26, [x12], 8
-        DUP     d24, v24.d[1]
-        DUP     d26, v26.d[1]
-        STR     d28, [x13], 8
-        STR     d30,  [x4], 8
-        DUP     d28, v28.d[1]
-        DUP     d30, v30.d[1]
+        tbz     x1,2,M6StoreRemainderN2ZeroMode
+        str     d20,[x3],8
+        str     d22,[x10],8
+        dup     d20,v20.d[1]
+        dup     d22,v22.d[1]
+        str     d24,[x11],8
+        str     d26,[x12],8
+        dup     d24,v24.d[1]
+        dup     d26,v26.d[1]
+        str     d28,[x13],8
+        str     d30,[x4],8
+        dup     d28,v28.d[1]
+        dup     d30,v30.d[1]
 
 M6StoreRemainderN2ZeroMode
-        TBZ     x1, 1, M6StoreRemainderN1ZeroMode
-        STR     s20,  [x3], 4
-        STR     s22, [x10], 4
-        DUP     s20, v20.s[1]
-        DUP     s22, v22.s[1]
-        STR     s24, [x11], 4
-        STR     s26, [x12], 4
-        DUP     s24, v24.s[1]
-        DUP     s26, v26.s[1]
-        STR     s28, [x13], 4
-        STR     s30,  [x4], 4
-        DUP     s28, v28.s[1]
-        DUP     s30, v30.s[1]
+        tbz     x1,1,M6StoreRemainderN1ZeroMode
+        str     s20,[x3],4
+        str     s22,[x10],4
+        dup     s20,v20.s[1]
+        dup     s22,v22.s[1]
+        str     s24,[x11],4
+        str     s26,[x12],4
+        dup     s24,v24.s[1]
+        dup     s26,v26.s[1]
+        str     s28,[x13],4
+        str     s30,[x4],4
+        dup     s28,v28.s[1]
+        dup     s30,v30.s[1]
 
 M6StoreRemainderN1ZeroMode
-        TBZ     x1, 0, ExitKernel
-        STR     h20,  [x3]
-        STR     h22, [x10]
-        STR     h24, [x11]
-        STR     h26, [x12]
-        STR     h28, [x13]
-        STR     h30,  [x4]
+        tbz     x1,0,ExitKernel
+        str     h20,[x3]
+        str     h22,[x10]
+        str     h24,[x11]
+        str     h26,[x12]
+        str     h28,[x13]
+        str     h30,[x4]
         b       ExitKernel
 
         LEAF_END MlasHalfGemmKernelNeon
