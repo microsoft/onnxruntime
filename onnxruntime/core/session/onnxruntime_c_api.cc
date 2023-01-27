@@ -1817,7 +1817,6 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelperTensor(const Tensor& tensor, Te
 static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                                   _Outptr_ OrtValue** out) {
   using namespace c_api_internal;
-
   auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
   auto seq_ptr = std::make_unique<TensorSeq>(dtype);
 

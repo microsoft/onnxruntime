@@ -55,7 +55,6 @@ Status PopulateOutput(cudaStream_t stream, AllocatorPtr alloc, const TensorSeq* 
                                          source_tensor.DataRaw(),
                                          source_tensor.SizeInBytes(),
                                          cudaMemcpyDeviceToDevice, stream));
-
     (*clipped_gradients)->Add(std::move(*target_tensor));  // Add will check for type consistency
   }
 

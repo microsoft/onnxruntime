@@ -494,10 +494,12 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         is_uneven_split,
                                         num_remaining_splits,
                                         split_sizes));
+  auto tseq = context.Output<TensorSeq>(0);
+  tseq->SetType(input.DataType());
+  tseq->SetElements({});
 
   // copy dimensions so we can update the selected axis in place
   auto output_dimensions = input_shape.AsShapeVector();
-  std::vector<OrtValue> tensors;
   int64_t input_offset = 0;
   const T* input_data = input.Data<T>();
   for (int i = 0; i < num_outputs; ++i) {
@@ -513,8 +515,8 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
 
-    auto p_output_tensor = std::make_unique<Tensor>(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
-    T* output_data = p_output_tensor->MutableData<T>();
+    Tensor output_tensor(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
+    T* output_data = output_tensor.MutableData<T>();
 
     ::onnxruntime::math::CopyMatrix<T>(
         before_dims,                                       // M
@@ -538,20 +540,12 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
           new_dims.push_back(output_dimensions[onnxruntime::narrow<size_t>(idx)]);
         }
       }
-      p_output_tensor->Reshape(new_dims);
+      output_tensor.Reshape(new_dims);
     }
 
-    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-    OrtValue output_tensor;
-    output_tensor.Init(p_output_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
     // finally move the resulting tensor to the output sequence
-    tensors.push_back(std::move(output_tensor));
+    tseq->Add(std::move(output_tensor));
   }
-
-  auto& tseq = *context.Output<TensorSeq>(0);
-  tseq.SetType(input.DataType());
-  tseq.SetElements(std::move(tensors));
 
   return Status::OK();
 }

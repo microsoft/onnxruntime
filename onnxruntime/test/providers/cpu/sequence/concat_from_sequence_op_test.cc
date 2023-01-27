@@ -139,6 +139,5 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
            {kDmlExecutionProvider});
 }
 
-
 }  // namespace test
 }  // namespace onnxruntime
