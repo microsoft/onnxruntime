@@ -627,19 +627,19 @@ def create_gpt2_embedlayer(
             "word_embeddings_weight",
             TensorProto.FLOAT,
             [word_embed, hidden_size],
-            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)]
+            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)],
         ),
         helper.make_tensor(
             "pos_embeddings_weight",
             TensorProto.FLOAT,
             [pos_embed, hidden_size],
-            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]
+            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)],
         ),
         helper.make_tensor(
             "token_embeddings_weight",
             TensorProto.FLOAT,
             [token_embed, hidden_size],
-            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)]
+            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)],
         ),
         helper.make_tensor(
             "layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i + 4) / hidden_size for i in range(hidden_size)]
@@ -654,19 +654,19 @@ def create_gpt2_embedlayer(
                 "q_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
                 "k_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
                 "v_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
         ]
         if not one_attention_node
@@ -675,22 +675,22 @@ def create_gpt2_embedlayer(
                 "qkv_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
-                "qkv_bias", TensorProto.FLOAT, [hidden_size], [(i+10)/hidden_size for i in range(hidden_size)]
+                "qkv_bias", TensorProto.FLOAT, [hidden_size], [(i + 10) / hidden_size for i in range(hidden_size)]
             ),
             helper.make_tensor(
                 "fix_hidden_size",
                 TensorProto.FLOAT,
                 [attn_hidden_dim, hidden_size],
-                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]
+                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)],
             ),
         ]
     )
     initializers = [
         helper.make_tensor(
-            "dense_bias", TensorProto.FLOAT, [hidden_size], [(i+12)/hidden_size for i in range(hidden_size)]
+            "dense_bias", TensorProto.FLOAT, [hidden_size], [(i + 12) / hidden_size for i in range(hidden_size)]
         ),
     ]
     initializers.extend(embed_layernorm_initializers)
@@ -710,7 +710,7 @@ def create_gpt2_fused_embedlayer(
     attn_hidden_dim=256,
     num_heads=4,
     epsilon=0.1,
-    one_attention_node=False
+    one_attention_node=False,
 ):
     # Construct input and output nodes
     inputs = [
@@ -786,19 +786,19 @@ def create_gpt2_fused_embedlayer(
             "word_embeddings_weight",
             TensorProto.FLOAT,
             [word_embed, hidden_size],
-            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)]
+            [(i + 1) / (word_embed * hidden_size) for i in range(word_embed * hidden_size)],
         ),
         helper.make_tensor(
             "pos_embeddings_weight",
             TensorProto.FLOAT,
             [pos_embed, hidden_size],
-            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)]
+            [(i + 2) / (pos_embed * hidden_size) for i in range(pos_embed * hidden_size)],
         ),
         helper.make_tensor(
             "token_embeddings_weight",
             TensorProto.FLOAT,
             [token_embed, hidden_size],
-            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)]
+            [(i + 3) / (token_embed * hidden_size) for i in range(token_embed * hidden_size)],
         ),
         helper.make_tensor(
             "layernorm_weight", TensorProto.FLOAT, [hidden_size], [(i + 4) / hidden_size for i in range(hidden_size)]
@@ -813,19 +813,19 @@ def create_gpt2_fused_embedlayer(
                 "q_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 6) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
                 "k_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 7) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
                 "v_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 8) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
         ]
         if not one_attention_node
@@ -834,7 +834,7 @@ def create_gpt2_fused_embedlayer(
                 "qkv_weight",
                 TensorProto.FLOAT,
                 [hidden_size, hidden_size],
-                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)]
+                [(i + 9) / (hidden_size * hidden_size) for i in range(hidden_size * hidden_size)],
             ),
             helper.make_tensor(
                 "qkv_bias", TensorProto.FLOAT, [hidden_size], [(i + 10) / hidden_size for i in range(hidden_size)]
@@ -843,7 +843,7 @@ def create_gpt2_fused_embedlayer(
                 "fix_hidden_size",
                 TensorProto.FLOAT,
                 [attn_hidden_dim, hidden_size],
-                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)]
+                [(i + 11) / (attn_hidden_dim * hidden_size) for i in range(attn_hidden_dim * hidden_size)],
             ),
         ]
     )
