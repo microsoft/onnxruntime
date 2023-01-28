@@ -11,7 +11,7 @@ from onnxruntime.quantization.onnx_model import ONNXModel
 class FP16Converter:
     def __init__(self):
         self.model = None
-        self.supported_ops = ["Conv"]
+        self.supported_ops = ["Conv", "MatMul"]
 
     @staticmethod
     def __cast_intializer_to_fp16(initializer, new_name):
@@ -20,9 +20,9 @@ class FP16Converter:
             return numpy_helper.from_array(new_tensor, new_name)
         return initializer
 
-    def __conv_conversion(self):
+    def __conversion(self, op):
         model = ONNXModel(self.model)
-        conv_nodes = model.find_nodes_by_type("Conv")
+        conv_nodes = model.find_nodes_by_type(op)
         initializer_name_set = model.get_initializer_name_set()
         for node in conv_nodes:
             for in_tensor_name in node.input:
@@ -58,9 +58,7 @@ class FP16Converter:
     def convert_op(self, op: str):
         if op not in self.supported_ops or self.model is None:
             return False
-        if op == "Conv":
-            return self.__conv_conversion()
-        return False
+        return self.__conversion(op)
 
     def convert_all(self):
         return map(self.convert_op, self.supported_ops)
