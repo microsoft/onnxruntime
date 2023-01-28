@@ -661,7 +661,7 @@ class MLSupportQueryContext final : public OpNodeInfoWrapper<
     // TODO - ...
 };
 
-onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type);
+onnxruntime::MLDataType ToMLDataType(::MLOperatorEdgeType edgeType, ::MLOperatorTensorDataType type);
 std::string ToTypeString(MLOperatorEdgeDescription desc);
 onnx::AttributeProto_AttributeType ToProto(MLOperatorAttributeType type);
 

@@ -271,30 +271,62 @@ namespace Windows::AI::MachineLearning::Adapter
     return onnxruntime::DataTypeImpl::GetTensorType<x>(); \
   }
 
+#define ML_SEQUENCE_TENSOR_TYPE_CASE(x)                           \
+  if (type == MLTypeTraits<x>::TensorType)                        \
+  {                                                               \
+    return onnxruntime::DataTypeImpl::GetSequenceTensorType<x>(); \
+  }
+
 #pragma warning(push)
 #pragma warning(disable:4702)
-    onnxruntime::MLDataType ToTensorDataType(::MLOperatorTensorDataType type)
+    onnxruntime::MLDataType ToMLDataType(::MLOperatorEdgeType edgeType, ::MLOperatorTensorDataType type)
     {
-        if (type == MLOperatorTensorDataType::String)
-            return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
+        if (edgeType == ::MLOperatorEdgeType::Tensor)
+        {
+            if (type == MLOperatorTensorDataType::String)
+                return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
 
-        ML_TENSOR_TYPE_CASE(float);
-        ML_TENSOR_TYPE_CASE(uint8_t);
-        ML_TENSOR_TYPE_CASE(int8_t);
-        ML_TENSOR_TYPE_CASE(uint16_t);
-        ML_TENSOR_TYPE_CASE(int16_t);
-        ML_TENSOR_TYPE_CASE(int32_t);
-        ML_TENSOR_TYPE_CASE(int64_t);
-        ML_TENSOR_TYPE_CASE(bool);
-        ML_TENSOR_TYPE_CASE(double);
-        ML_TENSOR_TYPE_CASE(uint32_t);
-        ML_TENSOR_TYPE_CASE(uint64_t);
-        ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
+            ML_TENSOR_TYPE_CASE(float);
+            ML_TENSOR_TYPE_CASE(uint8_t);
+            ML_TENSOR_TYPE_CASE(int8_t);
+            ML_TENSOR_TYPE_CASE(uint16_t);
+            ML_TENSOR_TYPE_CASE(int16_t);
+            ML_TENSOR_TYPE_CASE(int32_t);
+            ML_TENSOR_TYPE_CASE(int64_t);
+            ML_TENSOR_TYPE_CASE(bool);
+            ML_TENSOR_TYPE_CASE(double);
+            ML_TENSOR_TYPE_CASE(uint32_t);
+            ML_TENSOR_TYPE_CASE(uint64_t);
+            ML_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
 
-        ORT_THROW_HR(E_NOTIMPL);
-        return onnxruntime::DataTypeImpl::GetTensorType<float>();
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnxruntime::DataTypeImpl::GetTensorType<float>();
+        }
+        else if (edgeType == ::MLOperatorEdgeType::SequenceTensor)
+        {
+            if (type == MLOperatorTensorDataType::String)
+                return onnxruntime::DataTypeImpl::GetSequenceTensorType<std::string>();
+
+            ML_SEQUENCE_TENSOR_TYPE_CASE(float);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint8_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int8_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint16_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int16_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int32_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(int64_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(bool);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(double);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint32_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(uint64_t);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::MLFloat16);
+
+            ORT_THROW_HR(E_NOTIMPL);
+            return onnxruntime::DataTypeImpl::GetSequenceTensorType<float>();
+        }
 #pragma warning(pop)
+        ORT_THROW_HR(E_NOTIMPL);
     }
+
 
 #pragma warning(push)
 #pragma warning(disable:4702)

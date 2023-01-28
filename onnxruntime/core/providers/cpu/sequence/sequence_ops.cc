@@ -211,23 +211,20 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   }
 
   auto* Y = context->Output<TensorSeq>(0);
+  Y->SetType(S->DataType());
+  Y->SetElements({});
 
-  std::vector<OrtValue> tensors;
-  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      tensors.push_back(*XValue);
-      tensors.push_back(S->GetAt(i));
+      Y->Add(*XValue);
+      Y->Add(S->GetAt(i));
     } else {
-      tensors.push_back(S->GetAt(i));
+      Y->Add(S->GetAt(i));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
-      tensors.push_back(*XValue);
+      Y->Add(*XValue);
   }
-
-  Y->SetType(S->DataType());
-  Y->SetElements(std::move(tensors));
 
   return Status::OK();
 }
@@ -263,16 +260,14 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   Y->SetType(S->DataType());
+  Y->SetElements({});
 
-  std::vector<OrtValue> tensors;
-  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       continue;
     }
-    tensors.push_back(S->GetAt(i));
+    Y->Add(S->GetAt(i));
   }
-  Y->SetElements(std::move(tensors));
   return Status::OK();
 }
 
@@ -303,12 +298,10 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   // now copy the tensors to the output sequence
   Y->SetType(first_dtype);
-  std::vector<OrtValue> tensors;
-  tensors.reserve(num_inputs);
+  Y->SetElements({});
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
-    tensors.push_back(*context->GetInputOrtValue(input_idx));
+    Y->Add(*context->GetInputOrtValue(input_idx));
   }
-  Y->SetElements(std::move(tensors));
   return Status::OK();
 }
 
@@ -514,7 +507,6 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
-
     Tensor output_tensor(input.DataType(), onnxruntime::TensorShape(output_dimensions), alloc);
     T* output_data = output_tensor.MutableData<T>();
 

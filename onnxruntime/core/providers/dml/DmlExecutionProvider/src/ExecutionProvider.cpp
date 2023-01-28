@@ -562,6 +562,27 @@ namespace Dml
         return false;
     }
 
+    bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<char*, 6>{
+            "SequenceAt",
+            "SequenceConstruct",
+            "SequenceEmpty",
+            "SequenceLength",
+            "SequenceErase",
+            "SequenceInsert",
+        };
+
+        for (auto& sequence_op : sequence_ops)
+        {
+            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     bool DoesNodeContainSupportedDataTypes(
         const onnxruntime::Node& node,
         _In_opt_ const InternalRegistrationInfo* regInfo,
@@ -610,9 +631,8 @@ namespace Dml
                 return;
             }
 
-            // Succeed when any nodeArg that is a SequenceTensor.
-            // These are actually implemented by CPU Kernels, except for ConcatFromSequence.
-            if (edgeType == MLOperatorEdgeType::SequenceTensor)
+            // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
+            if (edgeType == MLOperatorEdgeType::SequenceTensor && IsCpuOnDmlOperator(node))
             {
                 // Leave nodeContainsSupportedDataTypes alone.
                 return;
