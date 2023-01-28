@@ -170,23 +170,31 @@ class MLOperatorTensorShapeDescription
 
     uint32_t GetSequenceInputCount(uint32_t inputIndex) const
     {
-        return m_impl->GetSequenceInputCount(inputIndex);
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+        return private_impl->GetSequenceInputCount(inputIndex);
     }
 
     uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
     {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+
         uint32_t ret;
-        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
         return ret;
     }
 
     std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
     {
+        Microsoft::WRL::ComPtr<IMLOperatorTensorShapeDescriptionPrivate> private_impl;
+        m_impl.As(&private_impl);
+
         std::vector<uint32_t> ret;
         uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
         ret.resize(dimensionCount);
 
-        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
         return ret;
     }
 
@@ -646,23 +654,32 @@ public:
 
     uint32_t GetSequenceInputCount(uint32_t inputIndex) const
     {
-        return m_impl->GetSequenceInputCount(inputIndex);
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+
+        return private_impl->GetSequenceInputCount(inputIndex);
     }
 
     uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
     {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+
         uint32_t ret;
-        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex, &ret));
         return ret;
     }
 
     std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
     {
+        Microsoft::WRL::ComPtr<IMLOperatorShapeInferenceContextPrivate> private_impl;
+        m_impl.As(&private_impl);
+
         std::vector<uint32_t> ret;
         uint32_t dimensionCount = GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
         ret.resize(dimensionCount);
 
-        ORT_THROW_IF_FAILED(m_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
+        ORT_THROW_IF_FAILED(private_impl->GetSequenceInputTensorShape(inputIndex, sequenceIndex, dimensionCount, ret.data()));
         return ret;
     }
 

@@ -199,26 +199,6 @@ IMLOperatorTensorShapeDescription : IUnknown
         _Out_writes_(dimensionCount) uint32_t* dimensions
         ) const noexcept PURE;
 
-    //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(uint32_t inputIndex) const noexcept PURE;
-
-    //! Gets the number of dimensions of a tensor input of the operator.
-    //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD(GetSequenceInputTensorDimensionCount)(
-        uint32_t inputIndex,
-        uint32_t sequenceIndex,
-        _Out_ uint32_t* dimensionCount
-        ) const noexcept PURE;
-
-    //! Gets the sizes of dimensions of an input tensor of the operator.
-    //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD(GetSequenceInputTensorShape)(
-        uint32_t inputIndex,
-        uint32_t sequenceIndex,
-        uint32_t dimensionCount,
-        _Out_writes_(dimensionCount) uint32_t* dimensions
-        ) const noexcept PURE;
-
     //! Returns true if output shapes may be queried using GetOutputTensorDimensionCount
     //! and GetOutputTensorShape. This is true if the kernel was registered with a
     //! shape inferrer.
@@ -345,22 +325,6 @@ IMLOperatorKernelContext : IUnknown
     STDMETHOD(GetInputTensor)(
         uint32_t inputIndex,
         _COM_Outptr_result_maybenull_ IMLOperatorTensor** tensor
-        ) const noexcept PURE;
-
-    //! Gets the input tensor of the operator at the specified index.
-    //! This sets tensor to nullptr for optional inputs which do not exist.
-    //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD(GetSequenceInputTensor)(
-        uint32_t inputIndex,
-        uint32_t sequenceIndex,
-        _COM_Outptr_result_maybenull_ IMLOperatorTensor** tensor
-        ) const noexcept PURE;
-
-    //! Gets the input tensor of the operator at the specified index.
-    //! This sets tensor to nullptr for optional inputs which do not exist.
-    //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(
-        uint32_t inputIndex
         ) const noexcept PURE;
 
     //! Gets the output tensor of the operator at the specified index.
@@ -527,25 +491,6 @@ IMLOperatorShapeInferenceContext : public IMLOperatorAttributes
     //! Returns an error if the input at the specified index is not a tensor.
     STDMETHOD(GetInputTensorShape)(
         uint32_t inputIndex,
-        uint32_t dimensionCount,
-        _Out_writes_(dimensionCount) uint32_t* dimensions
-        ) const noexcept PURE;
-
-    //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(uint32_t inputIndex) const noexcept PURE;
-
-    //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD(GetSequenceInputTensorDimensionCount)(
-        uint32_t inputIndex,
-        uint32_t sequenceIndex,
-        _Out_ uint32_t* dimensionCount
-        ) const noexcept PURE;
-
-    //! Gets the sizes of dimensions of an input tensor of the operator.
-    //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD(GetSequenceInputTensorShape)(
-        uint32_t inputIndex,
-        uint32_t sequenceIndex,
         uint32_t dimensionCount,
         _Out_writes_(dimensionCount) uint32_t* dimensions
         ) const noexcept PURE;

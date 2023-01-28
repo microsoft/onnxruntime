@@ -347,7 +347,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
         Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
  public:
@@ -411,7 +411,7 @@ class DmlGraphOpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
         Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
  public:
@@ -457,7 +457,7 @@ private:
     DmlGraphNodeCreateInfo* m_graphNodeCreateInfo = nullptr;
 };
 
-class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext>, public Closable
+class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOperatorKernelContextPrivate>, public Closable
 {
  public:
     ~OpKernelContextWrapper();

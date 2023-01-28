@@ -82,7 +82,7 @@ public:
                 }
 
                 axisTotal += shape[axis];
-                
+
                 if (OperatorHelper::ContainsEmptyDimensions(shape))
                 {
                     continue;
@@ -92,7 +92,7 @@ public:
                 m_inputTensorDescs.emplace_back(TensorDesc(sequenceInputDmlDataType, shape));
                 m_inputIndices.push_back(i);
             }
-            
+
             m_outputShape[axis] = axisTotal;
 
             // We should only call join if there exists input tensors that are non-empty and non-scalar.
@@ -135,7 +135,8 @@ public:
             return;
         }
 
-        auto operatorKernelContext = kernelContext.GetInterface();
+        ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        kernelContext.GetInterface().As(&operatorKernelContext);
         auto inputTensors = std::vector<IMLOperatorTensor*>(m_inputIndices.size());
         for (uint32_t i = 0; i < inputTensors.size(); i++)
         {
