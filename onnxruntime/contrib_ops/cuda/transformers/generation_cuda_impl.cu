@@ -469,7 +469,7 @@ template void LaunchSortPairs(void* d_temp_storage,
 // A stateful callback functor that maintains a running prefix to be applied
 // during consecutive scan operations.
 struct BlockPrefixCallbackOp {
-  float running_total; // running prefix
+  float running_total;  // running prefix
 
   __device__ BlockPrefixCallbackOp(float running_total) : running_total(running_total) {}
   // Callback operator to be entered by the first warp of threads in the block.
@@ -746,39 +746,38 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_presence_mask);
 }
 
-
 template <typename T>
 __global__ void PickGptPastStateKernelImpl(
-T* past_state,
-const T* present_state,
-const int32_t* beam_indices,
-int batch_beam,
-int past_seq_length,
-int max_seq_length,
-int num_heads,
-int head_size,
-int num_layers) {
-    int layer_id = blockIdx.y;
-    int is_v = blockIdx.z / batch_beam;
-    int batch_beam_id = blockIdx.z % batch_beam;
-    int head_id = blockIdx.x;
+    T* past_state,
+    const T* present_state,
+    const int32_t* beam_indices,
+    int batch_beam,
+    int past_seq_length,
+    int max_seq_length,
+    int num_heads,
+    int head_size) {
+  int layer_id = blockIdx.z / 2;
+  int is_v = blockIdx.z % 2;
+  int batch_beam_id = blockIdx.y;
+  int seq_id = blockIdx.x;
+  int head_id = threadIdx.y;
 
-    int block_per_layer = 2 * batch_beam * num_heads * max_seq_length * head_size;
-    
-    int block_per_head = past_seq_length * head_size;
-    int block_per_beam = num_heads * block_per_head;
-    int block_per_past_state = batch_beam * block_per_beam;
+  int block_per_layer = 2 * batch_beam * num_heads * max_seq_length * head_size;
 
-    int input_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (beam_indices[batch_beam_id] * block_per_beam) + (head_id * block_per_head);
-    int output_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (batch_beam_id * block_per_beam) + (head_id * block_per_head);
+  int block_per_head = past_seq_length * head_size;
+  int block_per_beam = num_heads * block_per_head;
+  int block_per_past_state = batch_beam * block_per_beam;
 
-    for(int i=threadIdx.x; i<block_per_head; i+= blockDim.x) {
-        past_state[output_offset + i] = present_state[input_offset + i];
-    }
+  int input_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (beam_indices[batch_beam_id] * block_per_beam) + (head_id * block_per_head) + (seq_id * head_size);
+  int output_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (batch_beam_id * block_per_beam) + (head_id * block_per_head) + (seq_id * head_size);
 
+  for (int i = threadIdx.x; i < head_size; i += blockDim.x) {
+      past_state[output_offset + i] = present_state[input_offset + i];
+  }
 }
 
-
+// TODO(hasesh): Use vectorization for optimal reads/writes as this copy is mostly
+// about copying data and can benefit from optimal reads/writes
 template <typename T>
 void PickGptPastStateKernel(
     T* past_state,
@@ -792,23 +791,22 @@ void PickGptPastStateKernel(
     int num_layers,
     int max_threads_per_block,
     cudaStream_t stream) {
-    assert(past_seq_length > 0 && max_seq_length > 0);
+  assert(past_seq_length > 0 && max_seq_length > 0);
+  assert(head_size * num_heads <= max_threads_per_block);
 
-    dim3 grid(num_heads, num_layers, batch_beam * 2);  // (num_heads, layer_num, beam_batch * 2)
-    dim3 block(std::min(past_seq_length * head_size, max_threads_per_block), 1, 1); // std::min((past_seq_length * head_size), max_threads_per_block)
+  dim3 grid(past_seq_length, batch_beam, num_layers * 2);
+  dim3 block(head_size, num_heads, 1);
 
-    PickGptPastStateKernelImpl<T><<<grid, block, 0, stream>>> (
-        past_state,
-        present_state,
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        head_size,
-        num_layers);
+  PickGptPastStateKernelImpl<T><<<grid, block, 0, stream>>>(
+      past_state,
+      present_state,
+      beam_indices,
+      batch_beam,
+      past_seq_length,
+      max_seq_length,
+      num_heads,
+      head_size);
 }
-
 
 template void PickGptPastStateKernel(
     float* past_state,
