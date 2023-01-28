@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +58,8 @@ class FP16Converter:
 
     def convert_op(self, op: str):
         if op not in self.supported_ops or self.model is None:
+            print("Unsupported op: " + op)
+            print("Supported ops: " + str(self.supported_ops))
             return False
         if op == "Conv":
             return self.__conv_conversion()
@@ -77,3 +80,20 @@ class FP16Converter:
 
     def get_model(self):
         return self.model
+
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 2:
+        print("Usage: python fp16_converter.py <in_model_path> <out_model_path>")
+        return
+    int_model_path = Path(args[0])
+    out_model_path = Path(args[1])
+    convertor = FP16Converter()
+    convertor.import_model_from_path(int_model_path)
+    convertor.convert_all()
+    convertor.export_model_to_path(out_model_path)
+
+
+if __name__ == "__main__":
+    main()
