@@ -37,7 +37,7 @@ GroupNorm<T>::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
 
   int64_t activation;
   ORT_ENFORCE(op_info.GetAttr("activation", &activation).IsOK());
-  ORT_ENFORCE(activation == 0 || activation == 1); // 0 is None, 1 is Swish
+  ORT_ENFORCE(activation == 0 || activation == 1);  // 0 is None, 1 is Swish
   use_swish_activation_ = (activation == 1);
 }
 
@@ -67,11 +67,11 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
   const auto& beta_dims = beta->Shape().GetDims();
   if (beta_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "beta is expected to have 1 dimension, got ", beta_dims.size());
+                           "beta is expected to have 1 dimension, got ", beta_dims.size());
   }
   if (beta_dims[0] != input_dims[1]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "Number of channels in beta and input does not match");
+                           "Number of channels in beta and input does not match");
   }
 
   int batch_size = static_cast<int>(input_dims[0]);
@@ -81,7 +81,7 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   if (num_channels % num_groups_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                            "number of channels should be divisiable by num_groups");
+                           "number of channels should be divisiable by num_groups");
   }
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
