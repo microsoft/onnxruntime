@@ -2449,7 +2449,6 @@ namespace Windows::AI::MachineLearning::Adapter
 
             MLOperatorEdgeDescription edgeDesc;
             ORT_THROW_IF_FAILED(GetOutputEdgeDescription(outputIndex, &edgeDesc));
-            ML_CHECK_BOOL(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
 
             // In the process of calling mutable_tensor_type, the type may switch from undefined to tensor.
             // This is done here in case the dimension count is zero (scalar)
