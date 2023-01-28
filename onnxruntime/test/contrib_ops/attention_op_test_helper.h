@@ -28,11 +28,15 @@ struct AttentionTestData{
     std::vector<AttentionKernelType> skip_kernel_types; // skip some kernels if they do not supported this test case.
 };
 
+// Disable some tests in Windows since prefast build might crash with large test data.
 #ifndef _MSC_VER
 // Return packed weights and bias for input projection.
 void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 * 64, int offset = 0, int step=1);
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step=1);
+
 void GetCrossAttentionData_HeadSize40(AttentionTestData& data);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d);
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data);
 #endif
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);

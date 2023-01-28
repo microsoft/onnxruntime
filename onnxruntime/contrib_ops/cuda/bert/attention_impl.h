@@ -27,7 +27,8 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner);
+    void* fused_runner,
+    bool use_memory_efficient_attention = false);
 
 template <typename T>
 struct AttentionData {
@@ -48,6 +49,8 @@ struct AttentionData {
 
   void* fused_runner;
   const void* fused_cross_attention_kernel;
+
+  bool use_memory_efficient_attention;
 };
 
 template <typename T>

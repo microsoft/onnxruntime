@@ -544,7 +544,8 @@ def get_ort_environment_variables():
     env_names = [
         "ORT_DISABLE_FUSED_ATTENTION",
         "ORT_DISABLE_FUSED_CROSS_ATTENTION",
-        "ORT_DISABLE_FLASH_ATTENTION",
+        "ORT_DISABLE_TRT_FLASH_ATTENTION",
+        "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION",
         "ORT_TRANSFORMER_OPTIONS",
         "ORT_CUDA_GEMM_OPTIONS",
     ]
