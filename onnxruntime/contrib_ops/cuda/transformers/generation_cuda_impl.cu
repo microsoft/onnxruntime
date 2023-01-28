@@ -793,38 +793,42 @@ void PickGptPastStateKernel(
 
   if ((head_size % 2) == 0) {
     int H = head_size / 2;
+    if (H * num_heads <= max_threads_per_block) {
+      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
+      dim3 block(H, num_heads, 1);
 
-    // TODO(hasesh): Support case where this is > maxThreadsPerBlock
-    assert(H * num_heads <= max_threads_per_block);
-
-    dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-    dim3 block(H, num_heads, 1);
-
-    PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
-        reinterpret_cast<float2*>(past_state),
-        reinterpret_cast<const float2*>(present_state),
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        H);
+      PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
+          reinterpret_cast<float2*>(past_state),
+          reinterpret_cast<const float2*>(present_state),
+          beam_indices,
+          batch_beam,
+          past_seq_length,
+          max_seq_length,
+          num_heads,
+          H);
+    } else {
+      // TODO(hasesh): Support this case
+      assert(false);
+    }
   } else {
     // TODO(hasesh): Support cases where this is > max_threads_per_block
-    assert(head_size * num_heads <= max_threads_per_block);
+    if (head_size * num_heads <= max_threads_per_block) {
+      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
+      dim3 block(head_size, num_heads, 1);
 
-    dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-    dim3 block(head_size, num_heads, 1);
-
-    PickGptPastStateKernelImpl<float><<<grid, block, 0, stream>>>(
-        past_state,
-        present_state,
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        head_size);
+      PickGptPastStateKernelImpl<float><<<grid, block, 0, stream>>>(
+          past_state,
+          present_state,
+          beam_indices,
+          batch_beam,
+          past_seq_length,
+          max_seq_length,
+          num_heads,
+          head_size);
+    } else {
+      // TODO(hasesh): Support this case
+      assert(false);
+    }
   }
 }
 
@@ -845,56 +849,60 @@ void PickGptPastStateKernel(
 
   if ((head_size % 4) == 0) {
     int H = head_size / 4;
+    if (H * num_heads <= max_threads_per_block) {
+      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
+      dim3 block(H, num_heads, 1);
 
-    // TODO(hasesh): Support case where this is > maxThreadsPerBlock
-    assert(H * num_heads <= max_threads_per_block);
-
-    dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-    dim3 block(H, num_heads, 1);
-
-    PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
-        reinterpret_cast<float2*>(past_state),
-        reinterpret_cast<const float2*>(present_state),
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        H);
+      PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
+          reinterpret_cast<float2*>(past_state),
+          reinterpret_cast<const float2*>(present_state),
+          beam_indices,
+          batch_beam,
+          past_seq_length,
+          max_seq_length,
+          num_heads,
+          H);
+    } else {
+      // TODO(hasesh): Support this case
+      assert(false);
+    }
   } else if (0 == (head_size & 1)) {
     int H = head_size / 2;
+    if (H * num_heads <= max_threads_per_block) {
+      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
+      dim3 block(H, num_heads, 1);
 
-    // TODO(hasesh): Support case where this is > maxThreadsPerBlock
-    assert(H * num_heads <= max_threads_per_block);
-
-    dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-    dim3 block(H, num_heads, 1);
-
-    PickGptPastStateKernelImpl<half2><<<grid, block, 0, stream>>>(
-        reinterpret_cast<half2*>(past_state),
-        reinterpret_cast<const half2*>(present_state),
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        H);
+      PickGptPastStateKernelImpl<half2><<<grid, block, 0, stream>>>(
+          reinterpret_cast<half2*>(past_state),
+          reinterpret_cast<const half2*>(present_state),
+          beam_indices,
+          batch_beam,
+          past_seq_length,
+          max_seq_length,
+          num_heads,
+          H);
+    } else {
+      // TODO(hasesh): Support this case
+      assert(false);
+    }
   } else {
-    // TODO(hasesh): Support cases where this is > max_threads_per_block
-    assert(head_size * num_heads <= max_threads_per_block);
+    if (head_size * num_heads <= max_threads_per_block) {
+      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
+      dim3 block(head_size, num_heads, 1);
 
-    dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-    dim3 block(head_size, num_heads, 1);
-
-    PickGptPastStateKernelImpl<half><<<grid, block, 0, stream>>>(
-        past_state,
-        present_state,
-        beam_indices,
-        batch_beam,
-        past_seq_length,
-        max_seq_length,
-        num_heads,
-        head_size);
+      PickGptPastStateKernelImpl<half><<<grid, block, 0, stream>>>(
+          past_state,
+          present_state,
+          beam_indices,
+          batch_beam,
+          past_seq_length,
+          max_seq_length,
+          num_heads,
+          head_size);
+    } else {
+      // TODO(hasesh): Support this case
+      assert(false);
+    }
   }
 }
 
