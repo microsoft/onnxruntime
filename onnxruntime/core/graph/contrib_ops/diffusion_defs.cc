@@ -15,8 +15,8 @@
 namespace onnxruntime {
 namespace contrib {
 using ONNX_NAMESPACE::AttributeProto;
-using ONNX_NAMESPACE::TensorShapeProto;
 using ONNX_NAMESPACE::OpSchema;
+using ONNX_NAMESPACE::TensorShapeProto;
 #ifndef NDEBUG
 using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
@@ -63,7 +63,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
         .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
-
 
 constexpr const char* SplitGelu_ver1_doc = R"DOC(
 A fusion used in diffusion model that hidden state is sliced into two parts, one part applied Gelu actication, then these
