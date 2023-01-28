@@ -28,7 +28,7 @@ class FusionUtils:
         logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
-    def cast_input(self, input_name: str, target_type = "int32"):
+    def cast_input(self, input_name: str, target_type="int32"):
         cast_output = input_name + "_" + target_type
 
         # Avoid consequent Cast nodes.
@@ -55,7 +55,6 @@ class FusionUtils:
         self.model.add_node(cast_node)
 
         return cast_output, cast_node
-
 
     def cast_input_to_int32(self, input_name: str):
         return self.cast_input(input_name, "int32")
