@@ -493,7 +493,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
   auto tseq = context.Output<TensorSeq>(0);
   tseq->SetType(input.DataType());
   tseq->SetElements({});
-  tseq->Reserve(num_outputs);
+  tseq->Reserve(static_cast<size_t>(num_outputs));
 
   // copy dimensions so we can update the selected axis in place
   auto output_dimensions = input_shape.AsShapeVector();
