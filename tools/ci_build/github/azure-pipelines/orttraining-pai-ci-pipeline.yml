@@ -60,8 +60,7 @@ jobs:
         "$(TODAY)" |
     displayName: Cache Task
 
-  - script: |
-      sudo mkdir -p $(Pipeline.Workspace)/ccache
+  - script: mkdir -p $(CCACHE_DIR)
     condition: ne(variables.CACHE_RESTORED, 'true')
     displayName: Create Cache Dir
 
