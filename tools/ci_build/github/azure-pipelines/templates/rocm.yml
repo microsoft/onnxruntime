@@ -93,7 +93,44 @@ jobs:
                 onnxruntime_BUILD_UNIT_TESTS=OFF \
               ${{ variables['EnableProfiling'] }}
       workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Build onnxruntime (in container)'
+    displayName: 'Build onnxruntime training (in container)'
+
+  - task: CmdLine@2
+    inputs:
+      script: |
+        docker run --rm \
+          --privileged \
+          --ipc=host \
+          --network=host \
+          --cap-add=SYS_PTRACE \
+          --security-opt seccomp=unconfined \
+          -e CC=/opt/rh/devtoolset-10/root/usr/bin/cc -e CXX=/opt/rh/devtoolset-10/root/usr/bin/c++ -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --workdir /onnxruntime_src \
+          --entrypoint $(PythonManylinuxDir)/bin/python3 \
+          -e NIGHTLY_BUILD \
+          -e BUILD_BUILDNUMBER \
+          --user onnxruntimedev \
+          onnxruntimetrainingrocmbuild-rocm${{ parameters.RocmVersion }} \
+            /onnxruntime_src/tools/ci_build/build.py \
+              --config ${{ parameters.BuildConfig }} \
+              --use_rocm \
+              --rocm_version=${{ parameters.RocmVersion }} \
+              --rocm_home=/opt/rocm \
+              --nccl_home=/opt/rocm \
+              --update \
+              --parallel \
+              --build_dir /build \
+              --build \
+              --build_wheel \
+              --skip_tests \
+              --cmake_extra_defines \
+                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
+                onnxruntime_BUILD_UNIT_TESTS=OFF \
+              ${{ variables['EnableProfiling'] }}
+      workingDirectory: $(Build.SourcesDirectory)
+    displayName: 'Build onnxruntime inference (in container)'
 
   # All UTs were here are now covered in AMD CI - see orttraining-pai-ci-pipeline.yml
   # This CI is mainly responsible for packaging. The uploaded whl could be used in the downstream CIs (if any).
