@@ -581,12 +581,14 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     bool use_preallocated_past_and_present_buffers,
-    transformers::IBeamSearchState<T>* beam_state) {
+    transformers::IBeamSearchState<T>* beam_state,
+    int max_threads_per_block) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(use_preallocated_past_and_present_buffers);
   ORT_UNUSED_PARAMETER(beam_state);
+  ORT_UNUSED_PARAMETER(max_threads_per_block);
 
   // The following updates inputs for subgraph
 
@@ -901,7 +903,8 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     bool use_preallocated_past_and_present_buffers,
-    transformers::IBeamSearchState<float>* beam_state);
+    transformers::IBeamSearchState<float>* beam_state,
+    int max_threads_per_block);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

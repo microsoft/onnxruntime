@@ -33,6 +33,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
                 GptSubgraph& gpt_subgraph,
                 concurrency::ThreadPool* thread_pool,
                 Stream* ort_stream,
+                int max_threads_per_block,
                 IConsoleDumper* cuda_dumper,
                 BeamSearchParameters& params,
                 const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
@@ -52,7 +53,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
-        update_feeds_func_(update_feeds_func) {
+        update_feeds_func_(update_feeds_func),
+      max_threads_per_block_(max_threads_per_block) {
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -62,8 +64,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
 
   // Using pre-allocated past and present buffers is only supported on CUDA for now.
   // TODO(hasesh): Support it on CPU as well.
-  bool use_preallocated_past_and_present_buffers_ = this->IsCuda() &&
-      !ParseEnvironmentVariableWithDefault<bool>(beam_search_gpt_impl_detail::kDisableBeamSearchPreallocatedFetches, false);;
+  bool use_preallocated_past_and_present_buffers_ = this->IsCuda() && 
+                                                    !ParseEnvironmentVariableWithDefault<bool>(
+                                                          beam_search_gpt_impl_detail::kDisableBeamSearchPreallocatedFetches, false);
 
  private:
   // Prepare the inputs for first inference of subgraph
@@ -92,6 +95,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitBeamStateFunc<T> init_beam_state_func_;
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+
+  // Device specific parameters
+  int max_threads_per_block_ = 0;
 };
 
 template <typename T>
@@ -158,7 +164,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             false,
                             -1,
                             use_preallocated_past_and_present_buffers_,
-                            beam_state);
+                            beam_state,
+                            max_threads_per_block_);
 }
 
 template <typename T>

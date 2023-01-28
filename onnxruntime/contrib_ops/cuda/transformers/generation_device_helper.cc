@@ -723,7 +723,8 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
                         int gpt_subgraph_first_present_output_idx,
                         Stream* ort_stream,
                         bool use_preallocated_past_and_present_buffers,
-                        transformers::IBeamSearchState<T>* beam_state) {
+                        transformers::IBeamSearchState<T>* beam_state,
+                        int max_threads_per_block) {
   int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto past_type = DataTypeImpl::GetType<T>();
@@ -808,7 +809,7 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
           num_heads,
           head_size,
           num_present_tensors, // because num_present_tensors == num_layers
-          1024, // TODO(hasesh): Query maxThreadsPerBlock of the Cuda device and pass this instead of this hard-coded value
+          max_threads_per_block,
           cuda_stream);
 
     }
@@ -872,7 +873,8 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     bool use_preallocated_past_and_present_buffers,
-    transformers::IBeamSearchState<T>* beam_state) {
+    transformers::IBeamSearchState<T>* beam_state,
+    int max_threads_per_block) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator updateFeedsRange("UpdateGptFeeds", profile::Color::Yellow);
   updateFeedsRange.Begin();
@@ -925,7 +927,8 @@ Status UpdateGptFeeds(
       ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator,
                                               gpt_subgraph_first_past_input_idx,
                                               gpt_subgraph_first_present_output_idx, ort_stream, 
-                                              use_preallocated_past_and_present_buffers, beam_state));
+                                              use_preallocated_past_and_present_buffers, beam_state, 
+                                              max_threads_per_block));
     }
   }
 
@@ -1120,7 +1123,8 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     bool use_preallocated_past_and_present_buffers,
-    transformers::IBeamSearchState<float>* beam_state);
+    transformers::IBeamSearchState<float>* beam_state,
+    int max_threads_per_block);
 
 // Float16
 template void InitBeamState<MLFloat16>(
@@ -1179,7 +1183,8 @@ template Status UpdateGptFeeds<MLFloat16>(
     bool past_present_share_buffer,
     int past_sequence_len,
     bool use_preallocated_past_and_present_buffers,
-    transformers::IBeamSearchState<MLFloat16>* beam_state);
+    transformers::IBeamSearchState<MLFloat16>* beam_state,
+    int max_threads_per_block);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,

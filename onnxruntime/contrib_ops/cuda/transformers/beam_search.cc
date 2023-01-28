@@ -54,6 +54,8 @@ BeamSearch::BeamSearch(const OpKernelInfo& info)
                                   GenerationCudaDeviceHelper::ExpandBuffer<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper);
+
+  max_threads_per_block_ = reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp().maxThreadsPerBlock;
 }
 
 Status BeamSearch::ComputeInternal(OpKernelContext* context) const {
