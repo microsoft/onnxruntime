@@ -46,6 +46,7 @@ Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSe
 
   clipped_gradients->SetType(gradients->DataType());
   clipped_gradients->SetElements({});
+  clipped_gradients->Reserve(gradients->Size());
   for (size_t i = 0; i < gradients->Size(); i++)
   {
     const auto& grad = gradients->Get(i);

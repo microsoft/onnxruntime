@@ -132,6 +132,7 @@ Status Optimizer::ConstructInputs() {
       ORT_ENFORCE(!tensors.empty(), "Tensors vector cannot be empty while building a tensor sequence.");
 
       auto tensor_seq = std::make_unique<TensorSeq>(tensors.front().DataType());
+      tensor_seq->Reserve(tensors.size());
       for (auto& tensor : tensors)
       {
         tensor_seq->Add(std::move(tensor));

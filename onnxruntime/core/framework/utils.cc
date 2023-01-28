@@ -116,10 +116,12 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
     auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
+    target_tensor_seq->Reserve(source_tensor_seq.Size());
     for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      OrtValue tensor_on_device;
-      ORT_RETURN_IF_ERROR(AllocateHelper(allocator, target_stream, *iter, tensor_on_device));
-      target_tensor_seq->Add(tensor_on_device);
+      const Tensor& tensor = iter->Get<Tensor>();
+      OrtValue value;
+      Tensor::InitOrtValue(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), allocator, value);
+      target_tensor_seq->Add(value);
     }
     auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
     target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());

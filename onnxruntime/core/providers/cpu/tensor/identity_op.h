@@ -90,6 +90,7 @@ class IdentityOp final : public OpKernel {
       if (X != output) {
         output->SetType(X->DataType());
         output->SetElements({});
+        output->Reserve(X->Size());
 
         AllocatorPtr alloc;
         auto status = context->GetTempSpaceAllocator(&alloc);

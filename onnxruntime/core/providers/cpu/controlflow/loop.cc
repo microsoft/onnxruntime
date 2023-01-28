@@ -546,6 +546,7 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         auto& data = input.Get<TensorSeq>();
         output->SetType(data.DataType());
         output->SetElements({});
+        output->Reserve(data.Size());
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));

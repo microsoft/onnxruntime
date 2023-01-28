@@ -1819,6 +1819,7 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, siz
   using namespace c_api_internal;
   auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
   auto seq_ptr = std::make_unique<TensorSeq>(dtype);
+  seq_ptr->Reserve(num_values);
 
   for (size_t idx = 0; idx < num_values; ++idx) {
     ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));

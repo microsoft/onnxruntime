@@ -1007,6 +1007,7 @@ class OpTester {
       auto elem_type = DataTypeImpl::GetType<T>();
 
       ptr = std::make_unique<TensorSeq>(elem_type);
+      ptr->Reserve(num_tensors);
       for (size_t i = 0; i < num_tensors; ++i) {
         TensorShape shape{seq_tensors->tensors[i].shape};
         auto values_count = static_cast<int64_t>(seq_tensors->tensors[i].data.size());
