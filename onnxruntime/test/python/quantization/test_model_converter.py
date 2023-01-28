@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from op_test_utils import check_model_correctness, check_op_type_count
-
 from onnxruntime.quantization.fp16_converter import FP16Converter
+
+from op_test_utils import check_model_correctness, check_op_type_count
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -53,19 +53,17 @@ class TestONNXModel(unittest.TestCase):
 
     @staticmethod
     def construc_matmul_model():
-        #       input                  input
-        #      /     \                /     \
-        #     /       \              /       \
-        #    |         |            |         |
-        #    |    Transpose  ===>   |    Transpose
-        #    |         |            |         |
-        #     \       /              \      Cast(1))
-        #      \     /                \      /
-        #       MatMul                 MatMul
-        #         |                       |
-        #         |                     Cast(2)
-        #         |                       |
-        #     (output)                (output)
+        #    (input)                 (input)
+        #       |                       |
+        #   Transpose               Transpose
+        #       |                       |
+        #       \     (init)  ===>   Cast(1)) (init)
+        #        \      /                \      /
+        #         MatMul                  MatMul
+        #           |                       |
+        #           |                     Cast(2)
+        #           |                       |
+        #        (output)                (output)
 
         initializers = []
         input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [4, 2, 8, 8])
@@ -87,33 +85,41 @@ class TestONNXModel(unittest.TestCase):
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     def construct_test(self, op: str):
+        fp16_nodes = None
+        model = None
+        test_input = None
         np.random.seed(1)
         model_fp32_path = f"pre_converter_{op}.fp32.onnx"
         model_fp16_path = f"post_converter_{op}.fp16.onnx"
+
         if op == "Conv":
             model = self.construct_conv_model()
         elif op == "MatMul":
-            raise NotImplementedError
-
+            model = self.construc_matmul_model()
         converter = FP16Converter()
         converter.set_model(model)
         converter.export_model_to_path(Path(model_fp32_path))
         op_count = get_op_count_from_model(op, model)
         fp32_nodes = {"Cast": 0, op: op_count}
         check_op_type_count(self, model_fp32_path, **fp32_nodes)
-
         converter.convert_op(op)
         converter.export_model_to_path(Path(model_fp16_path))
 
         fp16_model = converter.get_model()
         fp16_op_count = get_op_count_from_model(op, fp16_model)
-        fp16_nodes = {"Cast": 2 * fp16_op_count, op: op_count}
+        if op == "Conv":
+            fp16_nodes = {"Cast": 4, op: fp16_op_count}
+            test_input = {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)}
+        elif op == "MatMul":
+            fp16_nodes = {"Cast": 2, op: fp16_op_count}
+            test_input = {"input": np.random.rand(4, 2).astype(np.float32)}
+
         check_op_type_count(self, model_fp16_path, **fp16_nodes)
         check_model_correctness(
             self,
             model_fp32_path,
             model_fp16_path,
-            {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)},
+            test_input,
         )
 
     def test_conv_model_converter(self):
