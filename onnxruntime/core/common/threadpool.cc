@@ -394,7 +394,7 @@ ThreadPool::~ThreadPool() {
 #ifdef USE_OCT
     delete ((octopus::ThreadPool*)impl_);
 #else
-    delete ((oneapi::tbb::global_contro*)impl_);
+    delete ((oneapi::tbb::global_control*)impl_);
 #endif
   }
 }
