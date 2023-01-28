@@ -458,10 +458,11 @@ public:
         DFTShaderConstants& constants,
         ID3D12GraphicsCommandList* commandList)
     {
-        D3D12_RESOURCE_BARRIER uav_barriers[2];
+        D3D12_RESOURCE_BARRIER uav_barriers[3];
         uav_barriers[0] = CD3DX12_RESOURCE_BARRIER::UAV(inputBufferRegion.ResourceInUavState());
         uav_barriers[1] = CD3DX12_RESOURCE_BARRIER::UAV(outputBufferRegion.ResourceInUavState());
-        commandList->ResourceBarrier(2, uav_barriers);
+        uav_barriers[2] = CD3DX12_RESOURCE_BARRIER::Aliasing(nullptr, nullptr);
+        commandList->ResourceBarrier(3, uav_barriers);
 
         // Set resource views
         commandList->SetComputeRootUnorderedAccessView(
@@ -502,7 +503,7 @@ public:
             commandList->Dispatch(dispatchSizeX, 1, 1);
         }
 
-        commandList->ResourceBarrier(2, uav_barriers);
+        commandList->ResourceBarrier(3, uav_barriers);
     }
 };
 
