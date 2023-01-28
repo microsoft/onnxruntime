@@ -57,6 +57,9 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
                       : ConstGraphNodes::NodeFilterFunc(nullptr))},
       filter_info_{filter_info} {
   std::vector<const Node*> leaf_nodes;
+#ifdef ENABLE_TRAINING
+  yieldOp_index_.reserve(1);
+#endif
   for (auto& node : graph_->Nodes()) {
     // This is a leaf node (without any output node)
     if (node.OutputNodesBegin() == node.OutputNodesEnd()) {
@@ -66,6 +69,11 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     if (node.InputEdgesBegin() == node.InputEdgesEnd()) {
       root_nodes_.push_back(node.Index());
     }
+#ifdef ENABLE_TRAINING
+    if (node.Name() == "YieldOp") {
+      yieldOp_index_.push_back(node.Index());
+    }
+#endif
   }
 
   graph.ReverseDFSFrom(
@@ -286,4 +294,10 @@ const std::unordered_set<std::string>& GraphViewer::GetOuterScopeNodeArgNames() 
 }
 #endif
 
+bool GraphViewer::AreNodesSplitByYield(NodeIndex producer, NodeIndex consumer) const {
+  for (size_t i = 0; i < yieldOp_index_.size(); i++) {
+    if (producer < yieldOp_index_[i] && yieldOp_index_[i] < consumer) return true;
+  }
+  return false;
+}
 }  // namespace onnxruntime

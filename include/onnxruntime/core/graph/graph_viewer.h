@@ -191,6 +191,8 @@ class GraphViewer {
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
 #endif
 
+  bool AreNodesSplitByYield(NodeIndex producer, NodeIndex consumer) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
   GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info);
@@ -218,5 +220,6 @@ class GraphViewer {
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;
   InitializedTensorSet filtered_initializers_;
+  InlinedVector<NodeIndex> yieldOp_index_;
 };
 }  // namespace onnxruntime

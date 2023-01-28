@@ -1799,7 +1799,7 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i) {
+          if (node_stream_map_[it->Index()] != i && !graph_viewer_.AreNodesSplitByYield(node_index, it->Index())) {
             node_to_trigger_points[node_index] = num_trigger_points++;
             break;
           }
@@ -1809,7 +1809,7 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor 
+        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
         if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
@@ -1854,7 +1854,7 @@ class PlannerImpl {
         ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
-    
+
     // 4. add commands to logic queue
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
@@ -1871,7 +1871,8 @@ class PlannerImpl {
           }
           visited.insert(it->Index());
           //  check whether we need to add barrier
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end() &&
+              !graph_viewer_.AreNodesSplitByYield(it->Index(), node_index)) {
             // find the trigger_point_id
             auto trigger_point_it = node_to_trigger_points.find(it->Index());
             ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
