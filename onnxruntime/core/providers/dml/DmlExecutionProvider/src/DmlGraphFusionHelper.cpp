@@ -2,6 +2,8 @@
 
 #include "DmlGraphFusionHelper.h"
 #include "DmlBufferRegion.h"
+#include "DmlTaggedPointer.h"
+#include "DmlAllocationInfo.h"
 
 
 namespace Dml
@@ -95,8 +97,18 @@ namespace DmlGraphFusionHelper
         uint64_t* allocId)
     {
         void* opaqueData = const_cast<void*>(tensor->DataRaw());
-        *allocId = winmlProvider->TryGetPooledAllocationId(opaqueData, 0);
-        return winmlProvider->GetBufferRegion(opaqueData, tensor->SizeInBytes());
+
+        if (tensor->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
+        {
+            // The allocation is not pooled
+            auto allocInfo = static_cast<AllocationInfo*>(opaqueData);
+            *allocId = allocInfo->GetPooledResourceId();
+            return D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource(), nullptr, nullptr);
+        }
+
+        auto taggedPointer = TaggedPointer::Unpack(opaqueData);
+        *allocId = winmlProvider->TryGetPooledAllocationId(taggedPointer, 0);
+        return winmlProvider->GetBufferRegion(taggedPointer, tensor->SizeInBytes());
     }
 
     void ProcessInputData(

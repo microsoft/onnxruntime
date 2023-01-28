@@ -7,6 +7,7 @@
 #include "DmlGpuAllocator.h"
 #include "core/framework/allocator.h"
 #include "BucketizedBufferAllocator.h"
+#include "DmlTaggedPointer.h"
 
 namespace Dml
 {
@@ -31,14 +32,14 @@ namespace Dml
         m_bfcAllocator->Free(ptr);
     }
 
-    D3D12BufferRegion DmlGpuAllocator::CreateBufferRegion(const void* ptr, uint64_t size_in_bytes)
+    D3D12BufferRegion DmlGpuAllocator::CreateBufferRegion(const TaggedPointer& taggedPointer, uint64_t size_in_bytes)
     {
-        return m_subAllocator->CreateBufferRegion(ptr, size_in_bytes);
+        return m_subAllocator->CreateBufferRegion(taggedPointer, size_in_bytes);
     }
 
-    AllocationInfo* DmlGpuAllocator::GetAllocationInfo(const void* ptr)
+    AllocationInfo* DmlGpuAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)
     {
-        return m_subAllocator->GetAllocationInfo(ptr);
+        return m_subAllocator->GetAllocationInfo(taggedPointer);
     }
 
     void DmlGpuAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)

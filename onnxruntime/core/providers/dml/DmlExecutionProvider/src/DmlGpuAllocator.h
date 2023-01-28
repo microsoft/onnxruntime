@@ -11,6 +11,7 @@ namespace Dml
 {
     class BucketizedBufferAllocator;
     class AllocationInfo;
+    struct TaggedPointer;
 
     class DmlGpuAllocator : public onnxruntime::IAllocator
     {
@@ -19,8 +20,8 @@ namespace Dml
 
         void* Alloc(size_t size_in_bytes) final;
         void Free(void* ptr) final;
-        D3D12BufferRegion CreateBufferRegion(const void* ptr, uint64_t size_in_bytes);
-        AllocationInfo* GetAllocationInfo(const void* ptr);
+        D3D12BufferRegion CreateBufferRegion(const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
+        AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
         DmlBuffer AllocateDefaultBuffer(uint64_t num_bytes);
 

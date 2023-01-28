@@ -4,6 +4,7 @@
 #include "precomp.h"
 #include "DmlBuffer.h"
 #include "DmlGpuAllocator.h"
+#include "DmlTaggedPointer.h"
 
 namespace Dml
 {
@@ -14,7 +15,7 @@ namespace Dml
     m_opaqueData = allocator_->Alloc(size_in_bytes);
     ORT_THROW_HR_IF(E_OUTOFMEMORY, m_opaqueData == nullptr);
 
-    buffer_region_ = allocator_->CreateBufferRegion(m_opaqueData, size_in_bytes);
+    buffer_region_ = allocator_->CreateBufferRegion(TaggedPointer::Unpack(m_opaqueData), size_in_bytes);
 }
 
 DmlBuffer::~DmlBuffer()

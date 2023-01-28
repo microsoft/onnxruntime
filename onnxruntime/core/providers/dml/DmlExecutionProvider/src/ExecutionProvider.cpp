@@ -23,6 +23,7 @@
 #include "DmlBfcAllocator.h"
 #include "DmlGpuAllocator.h"
 #include "DmlBuffer.h"
+#include "DmlTaggedPointer.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -120,10 +121,8 @@ namespace Dml
 
     D3D12BufferRegion ExecutionProviderImpl::GetBufferForTensor(IMLOperatorTensor* tensor) const
     {
-        MLOperatorTensor mlOperatorTensor(tensor);
-        void* data = mlOperatorTensor.GetByteData();
-        auto sizeInBytes = mlOperatorTensor.GetUnalignedTensorByteSize();
-        return m_gpuAllocator->CreateBufferRegion(data, sizeInBytes);
+        auto tensorWrapper = static_cast<TensorWrapper*>(tensor);
+        return tensorWrapper->GetBufferRegion();
     }
 
     ID3D12Resource* __stdcall ExecutionProviderImpl::DecodeResource(IMLOperatorTensor* tensor) const noexcept
@@ -850,15 +849,15 @@ namespace Dml
         m_context->QueueReference(object);
     }
 
-    D3D12BufferRegion ExecutionProviderImpl::GetBufferRegion(void* data, uint64_t size) const
+    D3D12BufferRegion ExecutionProviderImpl::GetBufferRegion(const TaggedPointer& taggedPointer, uint64_t size) const
     {
-        return m_gpuAllocator->CreateBufferRegion(data, size);
+        return m_gpuAllocator->CreateBufferRegion(taggedPointer, size);
     }
 
-    uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(void* data, bool isInternalOperator)
+    uint64_t ExecutionProviderImpl::TryGetPooledAllocationId(const TaggedPointer& taggedPointer, bool isInternalOperator)
     {
         assert(!isInternalOperator);
-        return m_gpuAllocator->GetAllocationInfo(data)->GetPooledResourceId();
+        return m_gpuAllocator->GetAllocationInfo(taggedPointer)->GetPooledResourceId();
     }
 
     void ExecutionProviderImpl::GetABIExecutionInterfaceAndInvalidateState(
@@ -981,10 +980,10 @@ namespace Dml
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
     }
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr)
+    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer)
     {
         Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
-        return pAllocationInfo->GetAllocationInfo(ptr)->GetUavResource();
+        return pAllocationInfo->GetAllocationInfo(taggedPointer)->GetUavResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

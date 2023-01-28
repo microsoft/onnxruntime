@@ -11,6 +11,7 @@ namespace Dml
 {
     class BucketizedBufferAllocator;
     class BucketizedBufferAllocator;
+    struct TaggedPointer;
 
     // An allocator that makes logically contiguous allocations backed by D3D heaps.
     //
@@ -60,10 +61,10 @@ namespace Dml
         // than a call to ID3D12Device::CreatePlacedResource or
         // CreateReservedResource.
         D3D12BufferRegion CreateBufferRegion(
-            const void* ptr,
+            const TaggedPointer& taggedPointer,
             uint64_t size_in_bytes);
 
-        AllocationInfo* GetAllocationInfo(const void* ptr);
+        AllocationInfo* GetAllocationInfo(const TaggedPointer& taggedPointer);
 
         void* Alloc(size_t size_in_bytes);
         void Free(void* ptr);

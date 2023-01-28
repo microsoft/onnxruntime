@@ -12,6 +12,8 @@
 #include "MLOperatorAuthorImpl.h"
 #include "core/providers/dml/OperatorAuthorHelper/MLOperatorAuthorPrivate.h"
 #include "DmlGpuAllocator.h"
+#include "DmlAllocationInfo.h"
+#include "DmlTaggedPointer.h"
 
 using namespace Microsoft::WRL;
 
@@ -1269,7 +1271,14 @@ namespace Windows::AI::MachineLearning::Adapter
 
     Dml::D3D12BufferRegion TensorWrapper::GetBufferRegion() const
     {
-        return m_winmlExecutionProvider->GetBufferRegion(m_tensorData, m_impl->SizeInBytes());
+        if (m_impl->Location().device.MemType() == OrtDevice::MemType::DML_EXTERNAL)
+        {
+            auto allocInfo = static_cast<Dml::AllocationInfo*>(m_tensorData);
+            return Dml::D3D12BufferRegion(0, allocInfo->GetUavResource()->GetDesc().Width, allocInfo->GetUavResource(), nullptr, nullptr);
+        }
+
+        auto taggedPointer = Dml::TaggedPointer::Unpack(m_tensorData);
+        return m_winmlExecutionProvider->GetBufferRegion(taggedPointer, m_impl->SizeInBytes());
     }
 
     uint32_t STDMETHODCALLTYPE TensorWrapper::GetDimensionCount() const noexcept

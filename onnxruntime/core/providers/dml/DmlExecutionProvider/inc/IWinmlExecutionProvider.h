@@ -23,6 +23,11 @@ namespace onnxruntime
     class Node;
 }
 
+namespace Dml
+{
+    struct TaggedPointer;
+}
+
 namespace Windows::AI::MachineLearning::Adapter
 {
     interface __declspec(uuid("5b19a18a-5ed5-4df2-a363-21b89380a698"))
@@ -35,10 +40,10 @@ namespace Windows::AI::MachineLearning::Adapter
         // the provider's underlying queues.
         virtual void QueueReference(IUnknown *object) = 0;
 
-        virtual Dml::D3D12BufferRegion GetBufferRegion(void* data, uint64_t size) const = 0;
+        virtual Dml::D3D12BufferRegion GetBufferRegion(const Dml::TaggedPointer& taggedPointer, uint64_t size) const = 0;
 
         virtual uint64_t TryGetPooledAllocationId(
-            void* data,
+            const Dml::TaggedPointer& taggedPointer,
             bool isInternalOperator) = 0;
 
         virtual void GetABIExecutionInterfaceAndInvalidateState(

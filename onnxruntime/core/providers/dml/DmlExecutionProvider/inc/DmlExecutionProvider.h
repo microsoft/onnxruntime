@@ -30,7 +30,7 @@ namespace Dml
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands = true);
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, void* ptr);
+    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);

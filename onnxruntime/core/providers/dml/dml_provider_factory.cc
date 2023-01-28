@@ -20,6 +20,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/framework/error_code_helper.h"
 #include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
+#include "DmlExecutionProvider/src/DmlTaggedPointer.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
 
@@ -100,7 +101,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
     auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
     auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-    
+
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 
@@ -217,7 +218,7 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   if (!allocator) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
-  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), allocation);
+  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation));
   (*d3d_resource)->AddRef();
 #else
   *d3d_resource = nullptr;

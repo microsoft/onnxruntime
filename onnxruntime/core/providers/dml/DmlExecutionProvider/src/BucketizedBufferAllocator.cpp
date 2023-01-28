@@ -380,18 +380,14 @@ namespace Dml
     }
 
     D3D12BufferRegion BucketizedBufferAllocator::CreateBufferRegion(
-        const void* ptr,
+        const TaggedPointer& taggedPointer,
         uint64_t size_in_bytes)
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
-
-        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
-
         // We need to access (mutable) state after this point, so we need to lock
         std::unique_lock<std::mutex> lock(mutex_);
 
         // Find the allocation corresponding to this pointer
-        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        auto it = allocations_by_id_.find(taggedPointer.allocation_id);
         ORT_THROW_HR_IF(E_INVALIDARG, it == allocations_by_id_.end());
 
         // Make sure that we are aligned to 4 bytes to satisfy DML's requirements
@@ -400,24 +396,20 @@ namespace Dml
             (1 + (size_in_bytes - 1) / DML_ALIGNMENT) * DML_ALIGNMENT;
 
         return D3D12BufferRegion(
-            tagged_ptr.offset,
+            taggedPointer.offset,
             size_in_bytes,
             it->second->GetUavResource(),
             it->second->GetCopySrcResource(),
             it->second->GetCopyDstResource());
     }
 
-    AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(const void* ptr)
+    AllocationInfo* BucketizedBufferAllocator::GetAllocationInfo(const TaggedPointer& taggedPointer)
     {
-        ORT_THROW_HR_IF(E_INVALIDARG, ptr == nullptr);
-
-        TaggedPointer tagged_ptr = TaggedPointer::Unpack(ptr);
-
         // We need to access (mutable) state after this point, so we need to lock
         std::unique_lock<std::mutex> lock(mutex_);
 
         // Find the allocation corresponding to this pointer
-        auto it = allocations_by_id_.find(tagged_ptr.allocation_id);
+        auto it = allocations_by_id_.find(taggedPointer.allocation_id);
         return it->second.Get();
     }
 

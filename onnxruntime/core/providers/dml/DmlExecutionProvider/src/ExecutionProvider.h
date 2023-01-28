@@ -28,6 +28,7 @@ namespace Dml
     class DmlCpuAllocator;
     class ExecutionProvider;
     class DmlGpuAllocator;
+    struct TaggedPointer;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
                                   Windows::AI::MachineLearning::Adapter::IWinmlExecutionProvider>
@@ -97,9 +98,9 @@ namespace Dml
         // IWinmlExecutionProvider methods
         void QueueReference(IUnknown* object) override;
 
-        D3D12BufferRegion GetBufferRegion(void* data, uint64_t size) const override;
+        D3D12BufferRegion GetBufferRegion(const TaggedPointer& taggedPointer, uint64_t size) const override;
 
-       uint64_t TryGetPooledAllocationId(void* data, bool isInternalOperator) override;
+        uint64_t TryGetPooledAllocationId(const TaggedPointer& taggedPointer, bool isInternalOperator) override;
 
         void GetABIExecutionInterfaceAndInvalidateState(
             bool isInternalOperator,

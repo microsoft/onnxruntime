@@ -21,8 +21,8 @@ namespace Dml
         ),
         m_subAllocator(std::move(subAllocator)) {}
 
-        void* Alloc(size_t size_in_bytes) { return m_subAllocator->Alloc(size_in_bytes); }
-        void Free(void* ptr) { m_subAllocator->Free(ptr); }
+        void* Alloc(size_t size_in_bytes) final { return m_subAllocator->Alloc(size_in_bytes); }
+        void Free(void* ptr) final { m_subAllocator->Free(ptr); }
     private:
         std::shared_ptr<BucketizedBufferAllocator> m_subAllocator;
     };
