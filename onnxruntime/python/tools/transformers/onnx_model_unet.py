@@ -7,9 +7,9 @@ from logging import getLogger
 from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
+from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_options import FusionOptions
-from fusion_splitgelu import FusionSplitGelu
 from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
 
@@ -59,8 +59,8 @@ class UnetOnnxModel(BertOnnxModel):
             group_norm_fusion.apply()
 
         if (options is None) or options.enable_splitgelu:
-            split_gelu_fusion = FusionSplitGelu(self)
-            split_gelu_fusion.apply()
+            bias_split_gelu_fusion = FusionBiasSplitGelu(self)
+            bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
             self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False)

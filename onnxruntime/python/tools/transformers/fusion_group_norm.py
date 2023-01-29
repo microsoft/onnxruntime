@@ -156,9 +156,11 @@ class FusionGroupNorm(Fusion):
 
         # NCHW to NHWC
         transpose_input = helper.make_node(
-            "Transpose", [input], [input + "_NHWC"],
+            "Transpose",
+            [input],
+            [input + "_NHWC"],
             name=self.model.create_node_name("Transpose", name_prefix="Transpose_NCHW_to_NHWC"),
-            perm=[0, 2, 3, 1]
+            perm=[0, 2, 3, 1],
         )
 
         new_node = helper.make_node(
@@ -175,9 +177,11 @@ class FusionGroupNorm(Fusion):
 
         # NHWC to NCHW
         transpose_output = helper.make_node(
-            "Transpose", [output + "_NHWC"], [output],
-            name = self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
-            perm=[0, 3, 1, 2]
+            "Transpose",
+            [output + "_NHWC"],
+            [output],
+            name=self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
+            perm=[0, 3, 1, 2],
         )
 
         self.nodes_to_add.append(new_node)

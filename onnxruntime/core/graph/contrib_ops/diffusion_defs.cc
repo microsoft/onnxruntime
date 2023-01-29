@@ -64,37 +64,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(float)"}, "Constrain gamma and beta to float tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 
-constexpr const char* SplitGelu_ver1_doc = R"DOC(
-A fusion used in diffusion model that hidden state is sliced into two parts, one part applied Gelu actication, then these
-two parts are multiplied.
+constexpr const char* BiasSplitGelu_ver1_doc = R"DOC(
+A fusion used in diffusion model that after adding bias, hidden state is sliced into two tensors of same size, then left
+tensor multiplies the Gelu activation result of right tensor.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     SplitGelu, 1,
     OpSchema()
-        .SetDoc(SplitGelu_ver1_doc)
+        .SetDoc(BiasSplitGelu_ver1_doc)
         .Input(0,
                "X",
-               "Input data tensor. Dimensions are (N, H*W, D), where N is the batch size, H and W are the height and width of the data, and D is hidden dimension",
+               "Input tensor. Dimensions are (N, S, D), where N is the batch size, S are image size, and D is hidden dimension",
+               "T")
+        .Input(0,
+               "bias",
+               "Bias tensor. Dimensions are (D), where D is the same hidden dimension as input tensor",
                "T")
         .Output(0,
                 "Y",
-                "The output tensor with dimensions (N, H*W, D/2)",
+                "The output tensor with dimensions (N, S, D/2)",
                 "T")
-        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to half tensors.")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input X and output Y types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          if (hasInputShape(ctx, 0)) {
+          if (hasInputShape(ctx, 0) && hasInputShape(ctx, 1)) {
             auto& input_shape = getInputShape(ctx, 0);
             if (input_shape.dim().size() != 3) {
               fail_shape_inference("input shall be 3 dimensions");
             }
 
+            auto& bias_shape = getInputShape(ctx, 1);
+            if (bias_shape.dim().size() != 1) {
+              fail_shape_inference("bias shall be 1 dimension");
+            }
+
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
             *output_shape.add_dim() = input_shape.dim(1);
-            if (input_shape.dim(2).has_dim_value()) {
-              output_shape.add_dim()->set_dim_value(input_shape.dim(2).dim_value() / 2);
+            if (bias_shape.dim(0).has_dim_value()) {
+              output_shape.add_dim()->set_dim_value(bias_shape.dim(0).dim_value() / 2);
             } else {
               output_shape.add_dim();
             }

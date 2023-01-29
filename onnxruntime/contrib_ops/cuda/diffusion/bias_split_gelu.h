@@ -3,17 +3,20 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/common/status.h"
-#include <cstdint>
-#include <cuda.h>
-#include <cuda_fp16.h>
+#include "core/providers/cuda/cuda_kernel.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace onnxruntime::cuda;
+
 template <typename T>
-void LaunchSplitGeluKernel(cudaStream_t stream, int32_t grid_size, int32_t half_hidden_size, T const* input, T* output);
+class BiasSplitGelu final : public CudaKernel {
+ public:
+  BiasSplitGelu(const OpKernelInfo& op_kernel_info);
+  Status ComputeInternal(OpKernelContext* context) const override;
+};
 
 }  // namespace cuda
 }  // namespace contrib

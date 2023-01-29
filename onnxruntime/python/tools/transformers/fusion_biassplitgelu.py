@@ -12,23 +12,23 @@ from onnx_model import OnnxModel
 logger = getLogger(__name__)
 
 
-class FusionSplitGelu(Fusion):
+class FusionBiasSplitGelu(Fusion):
     def __init__(self, model: OnnxModel):
-        super().__init__(model, "SplitGelu", "Gelu")
+        super().__init__(model, "BiasSplitGelu", "Gelu")
 
     def fuse(self, gelu_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
-        [root] -------------------->  Slice ---------------> Mul -->
-            |                            ^                    ^
-            |                            |                    |
-            +----------------------------+---Slice --> Gelu---+
-            |                            |     ^
-            |                            |-----|
-            |                            |     |
-            |                           Mul   Mul
-            |                            ^     ^
-            v                            |     |
-           Shape ---> Gather --> Add --> Div --+
+        [root] --->Add -------------------->  Slice ---------------> Mul -->
+                   |                            ^                    ^
+                   |                            |                    |
+                   +----------------------------+---Slice --> Gelu---+
+                   |                            |     ^
+                   |                            |-----|
+                   |                            |     |
+                   |                           Mul   Mul
+                   |                            ^     ^
+                   v                            |     |
+                  Shape ---> Gather --> Add --> Div --+
         """
         if gelu_node.output[0] not in input_name_to_nodes:
             return
@@ -44,20 +44,23 @@ class FusionSplitGelu(Fusion):
         if self.model.find_constant_input(slice_before_gelu, -1, delta=0.001) != 3:
             return
 
-        subgraph_input = slice_before_gelu.input[0]
+        add_output = slice_before_gelu.input[0]
 
         start_index_nodes = self.model.match_parent_path(
             slice_before_gelu,
-            ["Div", "Add", "Gather", "Shape"],
-            [1, 0, 0, 0],
+            ["Div", "Add", "Gather", "Shape", "Add"],
+            [1, 0, 0, 0, 0],
             output_name_to_node,  # Mul(1) is optional
         )
         if start_index_nodes is None:
             start_index_nodes = self.model.match_parent_path(
-                slice_before_gelu, ["Mul", "Div", "Add", "Gather", "Shape"], [1, 0, 0, 0, 0], output_name_to_node
+                slice_before_gelu,
+                ["Mul", "Div", "Add", "Gather", "Shape", "Add"],
+                [1, 0, 0, 0, 0, 0],
+                output_name_to_node,
             )
 
-        if start_index_nodes is None or start_index_nodes[-1].input[0] != subgraph_input:
+        if start_index_nodes is None or start_index_nodes[-2].input[0] != add_output:
             return
 
         end_index_nodes = self.model.match_parent_path(slice_before_gelu, ["Mul", "Div"], [2, 0], output_name_to_node)
@@ -87,12 +90,14 @@ class FusionSplitGelu(Fusion):
         if not self.model.is_safe_to_fuse_nodes(
             subgraph_nodes, [subgraph_output], input_name_to_nodes, output_name_to_node
         ):
-            logger.info("Skip fuse SplitGelu since it is not safe to fuse the subgraph.")
+            logger.info("Skip fuse BiasSplitGelu since it is not safe to fuse the subgraph.")
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
-        node_name = self.model.create_node_name("SplitGelu", name_prefix="SplitGelu")
-        fused_node = helper.make_node("SplitGelu", inputs=[subgraph_input], outputs=[subgraph_output], name=node_name)
+        node_name = self.model.create_node_name("BiasSplitGelu", name_prefix="BiasSplitGelu")
+        fused_node = helper.make_node(
+            "BiasSplitGelu", inputs=[start_index_nodes[-1].input[0]], outputs=[subgraph_output], name=node_name
+        )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[node_name] = self.this_graph_name

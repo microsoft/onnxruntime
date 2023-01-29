@@ -201,7 +201,7 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "GroupNorm": self._infer_GroupNorm,
-            "SplitGelu": self._infer_SplitGelu,
+            "BiasSplitGelu": self._infer_BiasSplitGelu,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -437,7 +437,7 @@ class SymbolicShapeInference:
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
-            "SplitGelu",
+            "BiasSplitGelu",
         ]
 
         if not skip_infer:
@@ -2063,11 +2063,12 @@ class SymbolicShapeInference:
     def _infer_GroupNorm(self, node):
         self._propagate_shape_and_type(node)
 
-    def _infer_SplitGelu(self, node):
+    def _infer_BiasSplitGelu(self, node):
         input_shape = self._get_shape(node, 0)
-        if input_shape:
+        bias_shape = self._get_shape(node, 1)
+        if input_shape and bias_shape:
             output_shape = input_shape
-            output_shape[2] = int(input_shape[2] / 2)
+            output_shape[2] = int(bias_shape[0] / 2)
             vi = self.known_vi_[node.output[0]]
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
