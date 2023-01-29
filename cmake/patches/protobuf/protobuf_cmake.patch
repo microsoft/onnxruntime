@@ -1,5 +1,5 @@
 diff --git a/cmake/CMakeLists.txt b/cmake/CMakeLists.txt
-index ac92442a1..edea2c42e 100644
+index ac92442a1..e930cbd2e 100644
 --- a/cmake/CMakeLists.txt
 +++ b/cmake/CMakeLists.txt
 @@ -240,9 +240,7 @@ if (MSVC)
@@ -20,3 +20,12 @@ index ac92442a1..edea2c42e 100644
    )
    # Allow big object
    add_definitions(/bigobj)
+@@ -272,6 +269,8 @@ if (MSVC)
+   endif()
+ 
+   configure_file(version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
++else (MSVC)
++  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
+ endif (MSVC)
+ 
+ 
