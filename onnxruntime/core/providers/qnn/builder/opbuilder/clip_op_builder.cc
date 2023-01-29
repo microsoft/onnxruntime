@@ -92,12 +92,13 @@ Status ClipOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                                                      quantize_param.scaleOffsetEncoding.offset),
                       "Cannot get quantization parameter");
 
+    float* ini_data = nullptr;
     std::vector<uint8_t> unpacked_tensor;
     bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
       const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
       ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(*input_tensor, unpacked_tensor));
-      const auto* ini_data = reinterpret_cast<const float*>(unpacked_tensor.data());
+      ini_data = reinterpret_cast<float*>(unpacked_tensor.data());
       if (input_i == 1) {
         min_value_ = *ini_data;
         continue;

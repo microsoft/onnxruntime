@@ -424,8 +424,6 @@ const std::string nearest_mode = "nearest_mode";
 const std::string rounding_mode = "rounding_mode";
 const std::string topk = "k";
 const std::string multiples = "multiples";
-const std::string iou_threshold = "iou_threshold";
-const std::string score_threshold = "score_threshold";
 }  // namespace qnn_def
 
 }  // namespace qnn
