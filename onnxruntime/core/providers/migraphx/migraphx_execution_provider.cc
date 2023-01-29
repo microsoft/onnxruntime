@@ -1044,7 +1044,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         delete static_cast<MIGraphXFuncState*>(state);
     };
 
-    compute_info.compute_func = [this](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+    compute_info.compute_func = [this](FunctionState state, const OrtApi* api, OrtKernelContext* context) {
       Ort::KernelContext ctx(context);
       MIGraphXFuncState* mgx_state = reinterpret_cast<MIGraphXFuncState*>(state);
 
@@ -1173,7 +1173,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 
         #ifdef MIGRAPHX_STREAM_SYNC
         void* rocm_stream;
-        api->KernelContext_GetGPUComputeStream(context, &rocm_stream);
+        Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &rocm_stream));
         auto prog_outputs = prog.run_async(m, static_cast<hipStream_t>(rocm_stream));
         #else
         auto prog_outputs = prog.eval(m);

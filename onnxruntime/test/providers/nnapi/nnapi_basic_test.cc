@@ -16,6 +16,7 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
 #include "test/util/include/test_utils.h"
+#include "core/framework/data_types_internal.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
@@ -502,6 +503,18 @@ TEST(NnapiExecutionProviderTest, TestQDQMatMul) {
                       {2, 2} /* input_shape2 */),
                   "nnapi_qdq_test_graph_matmul",
                   {ExpectedEPNodeAssignment::All});
+}
+
+// zero inputs test
+TEST(NnapiExecutionProviderTest, TestCast) {
+  std::vector<int64_t> input1_shape{1, 2, 3, 4};
+  auto build_func = [input1_shape](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInitializer<float>(input1_shape, -100.f, 100.f);
+    auto* output_arg = builder.MakeOutput();
+
+    builder.AddNode("CastLike", {input_arg, input_arg}, {output_arg});
+  };
+  RunQDQModelTest(build_func, "nnapi_qdq_test_graph_cast", {ExpectedEPNodeAssignment::None});
 }
 
 #endif  // !(ORT_MINIMAL_BUILD)

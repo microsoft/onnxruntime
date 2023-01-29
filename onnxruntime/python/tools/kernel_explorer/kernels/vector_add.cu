@@ -60,11 +60,11 @@ Status VectorAddOp(const VectorAddParams<T>* params) {
       params->n);
 }
 
-#define ADD_OP(threads_per_block)                                \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 1>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 2>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 4>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 8>);
+#define ADD_OP(threads_per_block)                         \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 1>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 2>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 4>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 8>);
 
 // A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementations that have variable performance
 // characteristics. Those implementations may be put into a C++ container for tuner to select.

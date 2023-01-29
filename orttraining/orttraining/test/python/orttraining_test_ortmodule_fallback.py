@@ -14,7 +14,6 @@ import pytest
 import torch
 from _orttraining_ortmodule_models import (
     MyCustomClassInputNet,
-    MyCustomFunctionReluModel,
     NeuralNetCustomClassOutput,
     NeuralNetSinglePositionalArgument,
 )
@@ -480,75 +479,6 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
                     # Initialize with fallback policy because Exception will happen during __init__
                     ort_model = ORTModule(pt_model)
                 assert "ORTModule's extensions were not detected" in str(ex_info.value)
-
-
-@pytest.mark.parametrize(
-    "is_training,fallback_enabled,matching_policy,persist_fallback", list(itertools.product([True, False], repeat=4))
-)
-def test_ortmodule_fallback_onnx_model__custom_autograd(
-    is_training, fallback_enabled, matching_policy, persist_fallback
-):
-    from onnxruntime.training.ortmodule._custom_autograd_function import (
-        custom_autograd_function_enabler,
-        enable_custom_autograd_support,
-    )
-
-    # Disable the autograd support to test the fallback.
-    old_state = custom_autograd_function_enabler.state
-    enable_custom_autograd_support(False)
-
-    # is_training: True for torch.nn.Module training model, eval mode otherwise
-    # fallback_enabled: True PyTorch executes the forward graph instead of ORT backend
-    # matching_policy: True matches FALLBACK_UNSUPPORTED_ONNX_MODEL policy to ORTModuleDeviceException exception.
-    #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
-
-    if fallback_enabled:
-        if matching_policy:
-            policy = "FALLBACK_UNSUPPORTED_ONNX_MODEL"
-        else:
-            policy = "FALLBACK_UNSUPPORTED_DEVICE"
-    else:
-        policy = "FALLBACK_DISABLE"
-    os.environ["ORTMODULE_FALLBACK_POLICY"] = policy
-    os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
-
-    dtype = torch.float
-    device = torch.device("cuda")
-    N, D_in, H, D_out = 64, 1000, 100, 10
-
-    x = torch.randn(N, D_in, device=device, dtype=dtype)
-    y = torch.randn(N, D_out, device=device, dtype=dtype)
-    w1 = torch.randn(D_in, H, device=device, dtype=dtype, requires_grad=True)
-    w2 = torch.randn(H, D_out, device=device, dtype=dtype, requires_grad=True)
-
-    pt_model = MyCustomFunctionReluModel()
-    ort_model = ORTModule(copy.deepcopy(pt_model))
-    ort_model.train(is_training)
-    pt_model.train(is_training)
-
-    for i in range(3):
-        if fallback_enabled:
-            if matching_policy:
-                if i > 0 and persist_fallback:
-                    assert (
-                        ort_model._torch_module._execution_manager(is_training=is_training)._fallback_manager._exception
-                        is not None
-                    )
-                pt_out = pt_model(x.mm(w1)).mm(w2)
-                ort_out = ort_model(x.mm(w1)).mm(w2)
-                _test_helpers.assert_values_are_close(ort_out, pt_out, rtol=1e-03, atol=1e-04)
-            else:
-                with pytest.raises(_fallback.ORTModuleONNXModelException) as ex_info:
-                    _ = ort_model(x.mm(w1)).mm(w2)
-                assert "There was an error while exporting the PyTorch model to ONNX" in str(ex_info.value)
-        else:
-            with pytest.raises(_fallback.ORTModuleONNXModelException) as ex_info:
-                # Initialize with fallback policy because Exception will happen during __init__
-                _ = ort_model(x.mm(w1)).mm(w2)
-            assert "There was an error while exporting the PyTorch model to ONNX" in str(ex_info.value)
-
-    # Restore the autograd support state.
-    enable_custom_autograd_support(old_state)
 
 
 @pytest.mark.parametrize(

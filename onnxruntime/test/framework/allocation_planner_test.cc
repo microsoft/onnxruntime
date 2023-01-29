@@ -7,6 +7,11 @@
 #include <sstream>
 #include "gtest/gtest.h"
 
+#ifdef ORT_ENABLE_STREAM
+#include "nlohmann/json.hpp"
+using json = nlohmann::json;
+#endif
+
 #include "core/framework/session_state.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/op_kernel.h"
@@ -24,7 +29,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
 #endif  // USE_CUDA
-
+#include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
@@ -66,6 +71,11 @@ struct UnaryNode {
 
   UnaryNode(onnxruntime::Graph& graph, onnxruntime::NodeArg* p_input_arg, onnxruntime::NodeArg* p_output_arg)
       : UnaryNode(graph, "Transpose", p_input_arg, p_output_arg) {}
+
+  UnaryNode(onnxruntime::Graph& graph, std::string& node_name, const std::string& op, std::vector<onnxruntime::NodeArg*>& inputs,
+      std::vector<onnxruntime::NodeArg*>& outputs) : input_args(inputs), output_args(outputs) {
+    p_node = &graph.AddNode(node_name, op, "test op", input_args, output_args);
+  }
 };
 
 class DummyOpKernel : public OpKernel {
@@ -151,6 +161,7 @@ class PlannerTest : public ::testing::Test {
   std::unique_ptr<concurrency::ThreadPool> tp_;
   DataTransferManager dtm_;
   profiling::Profiler profiler_;
+  std::unique_ptr<SessionOptions> sess_options_;
   std::unique_ptr<SessionState> state_;
   ShapeMap shape_map_;
   std::optional<SequentialExecutionPlan> plan_;
@@ -183,6 +194,12 @@ class PlannerTest : public ::testing::Test {
     CPUExecutionProviderInfo epi;
     auto execution_provider = std::make_unique<CPUExecutionProvider>(epi);
     ORT_THROW_IF_ERROR(execution_providers_.Add("CPUExecutionProvider", std::move(execution_provider)));
+    sess_options_ = std::make_unique<SessionOptions>();
+    sess_options_->enable_mem_pattern = false;
+    sess_options_->use_deterministic_compute = false;
+    sess_options_->enable_mem_reuse = true;
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
   onnxruntime::NodeArg* Arg(const std::string& name) {
@@ -193,6 +210,15 @@ class PlannerTest : public ::testing::Test {
 
   onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& input, std::string& output) {
     auto node = std::make_unique<UnaryNode>(graph_, kernel_def.OpName(), Arg(input), Arg(output));
+    auto* p_node = node->p_node;
+    p_node->SetExecutionProviderType(kernel_def.Provider());
+    nodes_.push_back(std::move(node));
+    kernel_bindings_.emplace_back(p_node, kernel_def);
+    return p_node;
+  }
+
+  onnxruntime::Node* AddNode(::onnxruntime::KernelDef& kernel_def, std::string& node_name, std::vector<onnxruntime::NodeArg*>& input, std::vector<onnxruntime::NodeArg*>& output) {
+    auto node = std::make_unique<UnaryNode>(graph_, node_name, kernel_def.OpName(), input, output);
     auto* p_node = node->p_node;
     p_node->SetExecutionProviderType(kernel_def.Provider());
     nodes_.push_back(std::move(node));
@@ -255,9 +281,9 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}) {
-    state_.reset(new SessionState(graph_, execution_providers_, false, tp_.get(), nullptr, dtm_,
-                                  DefaultLoggingManager().DefaultLogger(), profiler_));
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+                                  DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
     std::shared_ptr<KernelRegistry> reg = std::make_shared<KernelRegistry>();
@@ -299,14 +325,16 @@ class PlannerTest : public ::testing::Test {
       virtual void RegisterCreateStreamFn(const OrtDevice::DeviceType /*ep_type*/, CreateStreamFn /*f*/) override {}
     };
 
-    onnxruntime::GraphViewer graph_viewer{graph_};
-    status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                           kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                           MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                           "", DefaultLoggingManager().DefaultLogger(), plan_);
+    if (invoke_createPlan_explicityly) {
+      onnxruntime::GraphViewer graph_viewer{graph_};
+      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
+                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
+                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
+                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
 
-    EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
-    // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
+      EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+      // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
+    }
   }
 
   void CheckAllocKind(const std::string& name, AllocKind kind) {
@@ -340,6 +368,9 @@ class PlannerTest : public ::testing::Test {
   const SequentialExecutionPlan& GetPlan() const { return *plan_; }
   const SessionState& GetState() const { return *state_; }
   ExecutionProviders& GetExecutionProviders() { return execution_providers_; }
+  void SetNodePartitionConfigFilePath(const char* config_file_path) {
+    ORT_THROW_IF_ERROR(sess_options_->config_options.AddConfigEntry(kNodePartitionConfigFile, config_file_path));
+  }
 };
 
 TEST_F(PlannerTest, ChainTest) {
@@ -1150,7 +1181,6 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 
 // Test MultiStream scenario for the graph:
 // node1(CPU ep)->node2(CPU ep)->node3(CUDA ep)->node4(CPU ep)
-// TODO(leca): test WaitOnEPStep
 TEST_F(PlannerTest, MultiStream) {
   ONNX_NAMESPACE::TensorProto tensor;
   tensor.add_dims(1);
@@ -1174,26 +1204,188 @@ TEST_F(PlannerTest, MultiStream) {
   execution_provider->RegisterAllocator(am);
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
-  CreatePlan();
+  CreatePlan({}, false);
 
-  EXPECT_EQ(GetPlan().execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
-  EXPECT_EQ(GetPlan().execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 2";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 3";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[4]).name(), "BarrierStep"), nullptr) << "4th step: BarrierStep for node 4";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[0]->steps_[5]).name(), "LaunchKernelStep"), nullptr) << "5th step: LaunchKernelStep for node 4";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3, no Activate/Wait step between node 2 and node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[3]).name(), "BarrierStep"), nullptr) << "3rd step: BarrierStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[4]).name(), "WaitOnEPStep"), nullptr) << "4th step: WaitOnEPStep for node 4";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[5]).name(), "LaunchKernelStep"), nullptr) << "5th step: LaunchKernelStep for node 4";
 
-  EXPECT_EQ(GetPlan().execution_plan[1]->steps_.size(), 4) << "CUDA stream has 4 steps";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 3";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 3";
-  EXPECT_NE(strstr(typeid(*GetPlan().execution_plan[1]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 4";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 4) << "CUDA stream has 4 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "ActivateNotificationStep"), nullptr) << "2nd step: ActivateNofiticationStep by node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[3]).name(), "TriggerDownstreamStep"), nullptr) << "3rd step: TriggerDownstreamStep for node 4";
+}
+
+// Test execution plan for the graph:
+// node1   node2
+//   \       /
+//    \     /
+//      node3
+// All 3 nodes are CUDA EP, node1 is in stream0, node2 is in stream1, node3 is in stream2
+TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernelAdd = KernelDefBuilder().SetName("Add").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
+  std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
+  std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input)}, output1{Arg(Arg1)}, output2{Arg(Arg2)}, input3{Arg(Arg1), Arg(Arg2)}, output3{Arg(Arg3)};
+  AddNode(*cudaKernel, node1, input1, output1);
+  AddNode(*cudaKernel, node2, input1, output2);
+  AddNode(*cudaKernelAdd, node3, input3, output3);
+
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  AllocatorManager am;
+  execution_provider->RegisterAllocator(am);
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  SetNodePartitionConfigFilePath("./testdata/multi_stream_models/3_gpu_streams.json");
+  CreatePlan({}, false);
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 3) << "3 logic streams";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 3) << "stream 0 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 3) << "stream 1 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[2]->steps_.size(), 5) << "stream 2 has 5 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 3, for TriggerDownstreamStep in stream 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[1]).name(), "BarrierStep"), nullptr) << "1st step: BarrierStep for node 3, for TriggerDownstreamStep in stream 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[2]).name(), "WaitOnEPStep"), nullptr) << "2nd step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[3]).name(), "WaitOnEPStep"), nullptr) << "3rd step: WaitOnEPStep for node 3, for ActivateNotificationStep in stream 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[2]->steps_[4]).name(), "LaunchKernelStep"), nullptr) << "4th step: LaunchKernelStep for node 3";
+}
+
+// Test execution plan for the graph:
+// stream 0: node1 (MemcpyToHost, CUDA EP) -> node3 (Transpose, CUDA EP)
+// stream 1: node2 (CPU EP)
+// node1's output, which is consumed by both node2 and node3, is in CPU.
+TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("MemcpyToHost").Provider(kCudaExecutionProvider).SetDefaultOutputMemoryType(OrtMemTypeCPUOutput).Build();
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernelTrans = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
+  std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3");
+  AddNode(*cudaKernel, Graph_input, Arg1);
+  AddNormalNode(Arg1, Arg2);
+  AddNode(*cudaKernelTrans, Arg1, Arg3);
+
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  AllocatorManager am;
+  execution_provider->RegisterAllocator(am);
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  CreatePlan({}, false);
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 5) << "stream 0 has 5 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[3]).name(), "WaitOnEPStep"), nullptr) << "3rd step: WaitOnEPStep for node 3 in the same stream, as node 1's output is to CPU";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[4]).name(), "LaunchKernelStep"), nullptr) << "4th step: LaunchKernelStep for node 3";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 3) << "stream 1 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 2, for TriggerDownstreamStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "WaitOnEPStep"), nullptr) << "1st step: WaitOnEPStep for node 2, for ActivateNotificationStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "LaunchKernelStep"), nullptr) << "2nd step: LaunchKernelStep for node 2";
+}
+
+// Test execution plan for the graph:
+// node1 has 2 outputs which are both consumed by node2, node1 and node2 are in different streams
+// Only 1 WaitOnEPStep is expected before launching node2
+// TODO(leca): there is a bug in the corresponding graph that node2 will be visited twice when traversing node1's output nodes
+// (see: for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) in BuildExecutionPlan()). We can just break the loop and don't need the extra variables once it is fixed
+TEST_F(PlannerTest, MultiStreamMultiOutput) {
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("RNN").Provider(kCudaExecutionProvider).SinceVersion(7).Build();
+  std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2");
+  std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1), Arg(Graph_input2), Arg(Graph_input3)}, output1{Arg(Arg1), Arg(Arg2)}, input2{Arg(Arg1), Arg(Arg2)}, output2{Arg(Arg3)};
+  AddNode(*cudaKernel, node1, input1, output1);
+
+  std::unique_ptr<::onnxruntime::KernelDef> cpuKernel = KernelDefBuilder().SetName("Add").Provider(kCpuExecutionProvider).SinceVersion(7,12).Build();
+  AddNode(*cpuKernel, node2, input2, output2);
+  
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  AllocatorManager am;
+  execution_provider->RegisterAllocator(am);
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  CreatePlan({}, false);
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 3) << "stream 0 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 2";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 3) << "stream 1 has 3 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 2, for TriggerDownstreamStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "WaitOnEPStep"), nullptr) << "1st step: WaitOnEPStep for node 2, for ActivateNotificationStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "LaunchKernelStep"), nullptr) << "2nd step: LaunchKernelStep for node 2";
+}
+
+// Test execution plan for the graph:
+// node1   node2
+//   \       /
+//    \     /
+//      node3
+// node1 and node2 are in the same stream, both has an output which will be consumed by node3 in a different stream
+// TODO(leca): the ideal case is there is only 1 wait step before launching node3, 
+// as there is a specific order between node1 and node2 if they are in the same stream, thus node3 will only need to wait the latter one
+TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream) {
+  std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
+  std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
+  std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1)}, input2{Arg(Graph_input2)}, output1{Arg(Arg1)}, output2{Arg(Arg2)}, input3{Arg(Arg1), Arg(Arg2)}, output3{Arg(Arg3)};
+  AddNode(*cudaKernel, node1, input1, output1);
+  AddNode(*cudaKernel, node2, input2, output2);
+
+  std::unique_ptr<::onnxruntime::KernelDef> cpuKernel = KernelDefBuilder().SetName("Add").Provider(kCpuExecutionProvider).SinceVersion(7, 12).Build();
+  AddNode(*cpuKernel, node3, input3, output3);
+
+  CUDAExecutionProviderInfo epi;
+  onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
+  auto epFactory = ep.CreateExecutionProviderFactory(epi);
+  std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+  AllocatorManager am;
+  execution_provider->RegisterAllocator(am);
+  ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
+
+  CreatePlan({}, false);
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "stream 0 has 6 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "ActivateNotificationStep"), nullptr) << "1st step: ActivateNofiticationStep by node 1";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[2]).name(), "TriggerDownstreamStep"), nullptr) << "2nd step: TriggerDownstreamStep for node 3";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[3]).name(), "LaunchKernelStep"), nullptr) << "3rd step: LaunchKernelStep for node 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[4]).name(), "ActivateNotificationStep"), nullptr) << "4th step: ActivateNofiticationStep by node 2";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[5]).name(), "TriggerDownstreamStep"), nullptr) << "5th step: TriggerDownstreamStep for node 3";
+
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[1]->steps_.size(), 5) << "stream 1 has 5 steps";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[0]).name(), "BarrierStep"), nullptr) << "0th step: BarrierStep for node 1, for TriggerDownstreamStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[1]).name(), "BarrierStep"), nullptr) << "1st step: BarrierStep for node 2, for TriggerDownstreamStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[2]).name(), "WaitOnEPStep"), nullptr) << "2nd step: WaitOnEPStep for node 1, for ActivateNotificationStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[3]).name(), "WaitOnEPStep"), nullptr) << "3rd step: WaitOnEPStep for node 2, for ActivateNotificationStep in stream 0";
+  EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[1]->steps_[4]).name(), "LaunchKernelStep"), nullptr) << "4th step: LaunchKernelStep for node 3";
 }
 #endif
 
-#if not defined(__wasm__)
+#if not defined(__wasm__) and defined(ORT_ENABLE_STREAM)
 
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
@@ -1272,47 +1464,13 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   TypeProto conv_0_out_type, conv_1_out_type, conv_2_out_type, conv_3_out_type, conv_4_out_type;
   conv_0_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_0_out_shape = conv_0_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_0_out_shape->add_dim()->set_dim_value(3L);
-  //conv_0_out_shape->add_dim()->set_dim_value(64L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-  //conv_0_out_shape->add_dim()->set_dim_value(150L);
-
   conv_1_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_1_out_shape = conv_1_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_1_out_shape->add_dim()->set_dim_value(3L);
-  //conv_1_out_shape->add_dim()->set_dim_value(64L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-  //conv_1_out_shape->add_dim()->set_dim_value(75L);
-
   conv_2_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_2_out_shape = conv_2_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_2_out_shape->add_dim()->set_dim_value(3L);
-  //conv_2_out_shape->add_dim()->set_dim_value(64L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-  //conv_2_out_shape->add_dim()->set_dim_value(75L);
-
   conv_3_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_3_out_shape = conv_3_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_3_out_shape->add_dim()->set_dim_value(3L);
-  //conv_3_out_shape->add_dim()->set_dim_value(256L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-  //conv_3_out_shape->add_dim()->set_dim_value(75L);
-
   conv_4_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* conv_4_out_shape = conv_4_out_type.mutable_tensor_type()->mutable_shape();
-  //conv_4_out_shape->add_dim()->set_dim_value(3L);
-  //conv_4_out_shape->add_dim()->set_dim_value(256L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
-  //conv_4_out_shape->add_dim()->set_dim_value(75L);
 
   TypeProto graph_out_type;
   graph_out_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
-  //auto* graph_out_shape = graph_out_type.mutable_tensor_type()->mutable_shape();
-  //graph_out_shape->add_dim()->set_dim_value(3L);
-  //graph_out_shape->add_dim()->set_dim_value(256L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
-  //graph_out_shape->add_dim()->set_dim_value(75L);
 
   onnxruntime::Model model("main_graph", false, ModelMetaData(),
                            PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -1320,8 +1478,6 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   auto& main_graph = model.MainGraph();
 
   auto& graph_in = main_graph.GetOrCreateNodeArg("graph_in", &graph_in_type);
-  //main_graph.AddOuterScopeNodeArg("graph_in");
-  //main_graph.AddValueInfo(&graph_in);
 
   auto& maxpool_0_out = main_graph.GetOrCreateNodeArg("maxpool_out", &maxpool_0_out_type);
   auto& relu_0_out = main_graph.GetOrCreateNodeArg("relu_0_out", &relu_0_out_type);
@@ -1633,8 +1789,8 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   SessionOptions so;
   so.graph_optimization_level = TransformerLevel::Default;
-  ASSERT_TRUE(so.config_options.AddConfigEntry("session.node_partition_config_file",
-                                               "./testdata/multi_stream_models/simplified_ssd_cpu.csv")
+  ASSERT_TRUE(so.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                               "./testdata/multi_stream_models/simplified_ssd_cpu.json")
                   .IsOK());
   InferenceSession sess{so, GetEnvironment()};
 
@@ -1665,38 +1821,124 @@ TEST_F(PlannerTest, ParaPlanCreation) {
     auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
       std::string reused;
-      // std::string current;
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
-      // ORT_ENFORCE(main_graph_ort_value_index_map.GetName(i, current).IsOK());
       reuse_pairs.erase(reused);
-      // std::cout << reused << " resused by " << current << std::endl;
     }  //if
   }    //for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 1);
 
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_cpu_gpu.csv");
+  const char* type = "DeviceBasedPartitioner";
+  constexpr size_t type_len = 22;
+
+  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_single_stream.json"));
+
+  ASSERT_TRUE(graph_partitioner_cpu &&
+              strncmp(graph_partitioner_cpu->Type(), type, type_len) == 0 &&
+              graph_partitioner_cpu->Streams() == 1);
+
+  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(
+      DefaultLoggingManager().DefaultLogger(),
+      ORT_TSTR("./testdata/multi_stream_models/multi_stream_double_stream.json"));
+
   ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 2);
+              strncmp(graph_partitioner_cpu_gpu->Type(), type, type_len) == 0 &&
+              graph_partitioner_cpu_gpu->Streams() == 2);
 }
 
-TEST_F(PlannerTest, TestMultiStreamConfigMisshaped) {
-  auto graph_partitioner_cpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_nodes.csv");
-  ASSERT_TRUE(graph_partitioner_cpu &&
-              graph_partitioner_cpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu->Devices() == 0);
+// Save partition config to a file and check its completeness
+TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream.json";
+  {
+    SessionOptions sess_opt;
+    sess_opt.graph_optimization_level = TransformerLevel::Default;
+    ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                       config_file_path)
+                    .IsOK());
 
-  auto graph_partitioner_cpu_gpu = IGraphPartitioner::CreateGraphPartitioner(DefaultLoggingManager().DefaultLogger(), "./testdata/multi_stream_models/multi_stream_single_cpu_missing_devices.csv");
-  ASSERT_TRUE(graph_partitioner_cpu_gpu &&
-              graph_partitioner_cpu_gpu->Name() == "DeviceBasedPartitioner" &&
-              graph_partitioner_cpu_gpu->Devices() == 0);
+    InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+    auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Load();
+    ASSERT_TRUE(status.IsOK());
+
+    status = sess.Initialize();
+    ASSERT_TRUE(status.IsOK());
+  }
+
+  std::ifstream if_stream(config_file_path);
+  ASSERT_TRUE(if_stream.is_open());
+  std::set<std::string> node_set{"model_41/conv2d_34/Conv2D__2321",
+                                 "model_41/conv2d_34/Conv2D",
+                                 "model_41/lambda_9/add",
+                                 "model_41/activation_27/Relu",
+                                 "Transpose__2331"};
+
+  try {
+    json json_config = json::parse(if_stream);
+    ASSERT_TRUE(json_config["type"] == "DeviceBasedPartitioner");
+
+    for (const auto& node_stream : json_config["streams"]) {
+      ASSERT_TRUE(node_stream.is_array());
+
+      for (const auto& node_name : node_stream) {
+        ASSERT_TRUE(node_name.is_string());
+        auto iter = node_set.find(node_name);
+
+        ASSERT_TRUE(iter != node_set.end());
+        node_set.erase(iter);
+      }
+    }
+  } catch (...) {
+    ASSERT_TRUE(false);
+  }
+  if_stream.close();
+  ASSERT_TRUE(node_set.empty());
+}
+
+// Load with partition config where a node is missing, session load expected to fail.
+TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
+}
+
+// Load with partition config where streams and devices has mismatch
+TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+  const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+  ASSERT_TRUE(sess_opt.config_options.AddConfigEntry(kNodePartitionConfigFile,
+                                                     config_file_path)
+                  .IsOK());
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/conv_add_relu.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Load();
+  ASSERT_TRUE(status.IsOK());
+
+  status = sess.Initialize();
+  ASSERT_TRUE(!status.IsOK());
 }
 
 #endif

@@ -66,41 +66,44 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                   const T* left_x_data, const T* right_x_data, T* output_y_data,
                   const TensorShape& left_shape, const TensorShape& right_shape,
                   bool transa, bool transb, bool trans_batch_a, bool trans_batch_b,
-                  const float t_alpha, const float t_zero, onnxruntime::Stream* stream) {
+                  const float alpha, onnxruntime::Stream* stream) {
   typedef typename ToHipType<T>::MappedType HipT;
 
-  const HipT alpha = ToHipType<T>::FromFloat(t_alpha);
-  const HipT zero = ToHipType<T>::FromFloat(t_zero);
+  using tunable::blas::BlasOp;
+  BlasOp transA = transa ? BlasOp::Trans : BlasOp::NonTrans;
+  BlasOp transB = transb ? BlasOp::Trans : BlasOp::NonTrans;
 
-  rocblas_operation transA = transa ? rocblas_operation_transpose : rocblas_operation_none;
-  rocblas_operation transB = transb ? rocblas_operation_transpose : rocblas_operation_none;
   const int lda = helper.Lda(transa);
   const int ldb = helper.Ldb(transb);
   const int ldc = helper.Ldc();
   int64_t stride_A, stride_B, stride_C, batch_count;
 
+  auto hip_stream = static_cast<hipStream_t>(stream->GetHandle());
+  auto rocblas_handle = op->GetRocblasHandle(static_cast<RocmStream*>(stream));
+
   if (helper.OutputOffsets().size() == 1) {
-    using tunable::blas::BlasOp;
-    BlasOp transA = transa ? BlasOp::Trans : BlasOp::NonTrans;
-    BlasOp transB = transb ? BlasOp::Trans : BlasOp::NonTrans;
     return tunable::blas::column_major::Gemm(
-        op->IsTunableOpEnabled(), static_cast<hipStream_t>(stream->GetHandle()),
-        op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int64_t>(helper.N()),
-        static_cast<int64_t>(helper.M()), static_cast<int64_t>(helper.K()), t_alpha,
+        op->IsTunableOpEnabled(), hip_stream, rocblas_handle,
+        transB, transA,
+        helper.N(), helper.M(), helper.K(),
+        alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb,
-        reinterpret_cast<const HipT*>(left_x_data), lda, t_zero,
+        reinterpret_cast<const HipT*>(left_x_data), lda,
+        /*beta=*/0.0f,
         reinterpret_cast<HipT*>(output_y_data), ldc);
   } else if (CanUseStridedBatchedGemm(left_shape, right_shape,
                                       transa, transb, trans_batch_a, trans_batch_b,
                                       stride_A, stride_B, stride_C, batch_count)) {
-    ROCBLAS_RETURN_IF_ERROR(rocblasGemmStridedBatchedHelper(
-        op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int>(helper.N()),
-        static_cast<int>(helper.M()), static_cast<int>(helper.K()), &alpha,
+    return tunable::blas::column_major::StridedBatchedGemm(
+        op->IsTunableOpEnabled(), hip_stream, rocblas_handle,
+        transB, transA,
+        helper.N(), helper.M(), helper.K(),
+        alpha,
         reinterpret_cast<const HipT*>(right_x_data), ldb, stride_B,
-        reinterpret_cast<const HipT*>(left_x_data), lda, stride_A, &zero,
+        reinterpret_cast<const HipT*>(left_x_data), lda, stride_A,
+        /*beta=*/0.0f,
         reinterpret_cast<HipT*>(output_y_data), ldc, stride_C,
-        static_cast<int>(batch_count)));
-    return Status::OK();
+        batch_count);
   }
 
   // Fill offsets when needed.
@@ -123,14 +126,16 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
 
   // note that onnxruntime OrtValue is row major, while rocblas is column major,
   // so swap left/right operands
-  ROCBLAS_RETURN_IF_ERROR(rocblasGemmBatchedHelper(
-      op->GetRocblasHandle(static_cast<RocmStream*>(stream)), transB, transA, static_cast<int>(helper.N()),
-      static_cast<int>(helper.M()), static_cast<int>(helper.K()), &alpha,
+  return tunable::blas::column_major::BatchedGemm(
+      op->IsTunableOpEnabled(), hip_stream, rocblas_handle,
+      transB, transA,
+      helper.N(), helper.M(), helper.K(),
+      alpha,
       right_arrays.GpuPtr(), ldb,
-      left_arrays.GpuPtr(), lda, &zero,
+      left_arrays.GpuPtr(), lda,
+      /*beta=*/0.0f,
       output_arrays.GpuPtr(), ldc,
-      static_cast<int>(helper.OutputOffsets().size())));
-  return Status::OK();
+      static_cast<int64_t>(helper.OutputOffsets().size()));
 }
 
 #define SPECIALIZED_IMPL(T)                                                                    \
@@ -139,7 +144,7 @@ Status MatMulImpl(const RocmKernel* op, MatMulComputeHelper& helper,
                                 const TensorShape& left_shape, const TensorShape& right_shape, \
                                 bool transa, bool transb,                                      \
                                 bool trans_batch_a, bool trans_batch_b,                        \
-                                const float t_alpha, const float t_zero, onnxruntime::Stream* stream);
+                                const float t_alpha, onnxruntime::Stream* stream);
 
 SPECIALIZED_IMPL(float)
 SPECIALIZED_IMPL(double)

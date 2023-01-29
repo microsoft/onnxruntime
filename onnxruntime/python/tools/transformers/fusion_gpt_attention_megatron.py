@@ -59,6 +59,8 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
                 helper.make_attribute("unidirectional", 0),  # unidirectional shall not be ON for 4D attention mask
             ]
         )
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
         nodes_to_add = [attention_node]
         self.nodes_to_add.extend(nodes_to_add)
@@ -79,6 +81,11 @@ class FusionGptAttentionMegatron(FusionGptAttentionPastBase):
             logger.debug("fuse_attention: failed to match unidirectional mask path")
             return None
         (mul_mask, sub_mask, last_slice_mask, slice_mask) = mask_nodes
+
+        if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+            _, mul_val = self.model.get_constant_input(mask_nodes[0])
+            if mul_val != 10000:
+                self.mask_filter_value = -mul_val
 
         if mul_qk.input[1] != last_slice_mask.output[0]:
             logger.debug("fuse_attention failed: mul_qk.input[1] != last_slice_mask.output[0]")

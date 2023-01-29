@@ -44,7 +44,7 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
 PartialGraphExecutionState::~PartialGraphExecutionState() {
 }
 
-DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
+DeviceStreamCollection* PartialGraphExecutionState::GetDeviceStreamCollection(const SessionState& session_state) {
   if (device_stream_collection_ == nullptr) {
     device_stream_collection_ = session_state.AcquireDeviceStreamCollection();
     // the life-time of partial graph execution state is in-consistant with session,
@@ -53,7 +53,7 @@ DeviceStreamCollection& PartialGraphExecutionState::GetDeviceStreamCollection(co
     // so let's always delete the stream collections.
     // luckily, for ort module, we always running with default stream, so no impact to perf.
   }
-  return *device_stream_collection_;
+  return device_stream_collection_.get();
 }
 
 StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::span<const int>& feed_mlvalue_idxs, gsl::span<const OrtValue>& feeds,
@@ -61,7 +61,7 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
                                                                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
-                                                                        const DeviceStreamCollection& device_streams) {
+                                                                        const DeviceStreamCollection* device_streams) {
   if (execution_context_ == nullptr) {
     auto* execution_plan = session_state.GetExecutionPlan();
     LOGS(sess_logger, INFO) << "Number of streams: " << execution_plan->execution_plan.size();

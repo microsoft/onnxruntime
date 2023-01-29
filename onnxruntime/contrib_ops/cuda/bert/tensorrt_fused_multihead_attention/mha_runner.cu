@@ -100,7 +100,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     // The number of xmmas in the M dimension. We use one uint32_t per XMMA in the M dimension.
     xmmas_m = (S + 16 * warps_m - 1) / (16 * warps_m);
 
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -121,7 +121,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
   }
 
   void setup_causal_masked_fmha(const int S, const int B) {
-    const float scale_bmm1 = interface->mRsqrtHeadSize;
+    const float scale_bmm1 = interface->mScale;
     const float scale_softmax = 1.f;  // Seems to be only required for int8
     const float scale_bmm2 = 1.f;
 
@@ -159,7 +159,7 @@ class FusedMHARunnerFP16v2::mhaImpl {
     params.o_ptr = output;
     params.cu_seqlens = static_cast<int*>(const_cast<void*>(cu_seqlens));
 
-    if (use_flash_attention && flash_attention_kernel != nullptr) {
+    if (use_flash_attention && flash_attention_kernel != nullptr && !has_causal_mask) {
       flash_attention_kernel->run(params, stream);
     } else {
       xmmaKernel->run(params, stream, use_flash_attention, has_causal_mask);
@@ -219,8 +219,16 @@ class FusedMHARunnerFP16v2::mhaImpl {
   bool has_causal_mask = false;
 };
 
-FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads, const int headSize, const int sm, bool causal_mask, bool enable_flash_attention)
-    : MHARunner(numHeads, headSize, 2, causal_mask), mSm(sm), mEnableFlashAttention(enable_flash_attention), pimpl(new mhaImpl(this)) {
+FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float scale)
+    : MHARunner(numHeads, headSize, 2, causal_mask, scale),
+      mSm(sm),
+      mEnableFlashAttention(enable_flash_attention),
+      pimpl(new mhaImpl(this)) {
 }
 
 void FusedMHARunnerFP16v2::setup(const int S, const int B) {

@@ -522,6 +522,11 @@ class Gpt2Helper:
             # Potentially, we can add other optimization like unpad for effective transformer
             optimization_options.attention_mask_format = AttentionMaskFormat.MaskIndexEnd
 
+        # TODO(hasesh): Investigate parity issue for GPT-2 fp16 when SkipLayerNormalization
+        # is enabled
+        if is_float16:
+            optimization_options.enable_skip_layer_norm = False
+
         m = optimize_model(
             onnx_model_path,
             model_type="gpt2",
