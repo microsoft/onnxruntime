@@ -183,10 +183,17 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
+static Tensor CloneTensor(const Tensor& in_tensor, OpKernelContext* context, const DataTransferManager& dtm) {
+  AllocatorPtr alloc;
+  ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+  Tensor tmp(in_tensor.DataType(), onnxruntime::TensorShape(in_tensor.Shape()), alloc);
+  ORT_THROW_IF_ERROR(dtm.CopyTensor(in_tensor, tmp));
+  return tmp;
+}
+
 Status SequenceInsert::Compute(OpKernelContext* context) const {
   const auto* S = context->Input<TensorSeq>(0);
   const auto* X = context->Input<Tensor>(1);
-  const auto* XValue = context->GetInputOrtValue(1);
 
   // Data type of the input tensor MUST be same as that of the input sequence
   if (!S->IsSameDataType(*X)) {
@@ -217,14 +224,14 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
-      Y->Add(*XValue);
+      Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
       Y->Add(S->GetAt(i));
     } else {
       Y->Add(S->GetAt(i));
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
-      Y->Add(*XValue);
+    Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
 
   return Status::OK();
@@ -303,7 +310,8 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   Y->SetElements({});
   Y->Reserve(SafeInt<size_t>(num_inputs));
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
-    Y->Add(*context->GetInputOrtValue(input_idx));
+    const auto* X = context->Input<Tensor>(input_idx);
+    Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
   return Status::OK();
 }
