@@ -36,7 +36,7 @@ __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
                                            const bool is_bidirectional,
                                            const int max_distance) {
   const int head_id = blockIdx.x;
-  for (int seq_id = threadIdx.x; seq_id < seq_len * seq_len; seq_id += blockDim.x * gridDim.y) {
+  for (int seq_id = threadIdx.x; seq_id < seq_len * seq_len; seq_id += blockDim.x) {
     int row_id = seq_id / seq_len;
     int col_id = seq_id % seq_len;
 
@@ -101,22 +101,24 @@ Status LaunchRelPosAttnBiasKernel(
                                                            is_bidirectional,
                                                            max_distance);
     return CUDA_CALL(cudaGetLastError());
-  } else if (seq_len >= 128 && seq_len <= 384) {
-    dim3 grid(num_heads, seq_len);
-    dim3 block(seq_len);
-    buildRelativeAttentionBias<<<grid, block, 0, stream>>>(output,
-                                                           bias_table,
-                                                           num_heads,
-                                                           seq_len,
-                                                           num_bucket,
-                                                           is_bidirectional,
-                                                           max_distance);
-    return CUDA_CALL(cudaGetLastError());
+  // } else if (seq_len >= 128 && seq_len <= 384) {
+  //   dim3 grid(num_heads, seq_len);
+  //   dim3 block(seq_len);
+  //   buildRelativeAttentionBias<<<grid, block, 0, stream>>>(output,
+  //                                                          bias_table,
+  //                                                          num_heads,
+  //                                                          seq_len,
+  //                                                          num_bucket,
+  //                                                          is_bidirectional,
+  //                                                          max_distance);
+  //   return CUDA_CALL(cudaGetLastError());
   } else {
-    int blockSize = max_threads_per_block;
-    const int grid_y_Size = (squared_sq_len + blockSize - 1) / blockSize;
-    dim3 grid(num_heads, grid_y_Size);
-    dim3 block(blockSize);
+    // int blockSize = max_threads_per_block;
+    // const int grid_y_Size = (squared_sq_len + blockSize - 1) / blockSize;
+    // dim3 grid(num_heads, grid_y_Size);
+    // dim3 block(blockSize);
+    dim3 grid(num_heads);
+    dim3 block(256);
     buildRelativeAttentionBias<<<grid, block, 0, stream>>>(output,
                                                            bias_table,
                                                            num_heads,
