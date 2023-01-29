@@ -58,7 +58,7 @@ class UnetOnnxModel(BertOnnxModel):
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
 
-        if (options is None) or options.enable_splitgelu:
+        if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
             bias_split_gelu_fusion.apply()
 

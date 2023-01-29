@@ -39,7 +39,7 @@ Status BiasSplitGelu<T>::ComputeInternal(OpKernelContext* context) const {
                            "input is expected to have 3 dimensions, got ", input_dims.size());
   }
 
-  const Tensor* bias = context->Input<Tensor>(0);
+  const Tensor* bias = context->Input<Tensor>(1);
   const auto& bias_dims = bias->Shape().GetDims();
   if (bias_dims.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -57,10 +57,10 @@ Status BiasSplitGelu<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int32_t grid_size = static_cast<int32_t>(input_dims[0] * input_dims[1]);
   const int32_t half_hidden_size = static_cast<int32_t>(input_dims[2] / 2);
-  LaunchSplitGeluKernel<CudaT>(Stream(context), grid_size, half_hidden_size,
-                               reinterpret_cast<const CudaT*>(input->Data<T>()),
-                               reinterpret_cast<const CudaT*>(bias->Data<T>()),
-                               reinterpret_cast<CudaT*>(output->MutableData<T>()));
+  LaunchBiasSplitGeluKernel<CudaT>(Stream(context), grid_size, half_hidden_size,
+                                   reinterpret_cast<const CudaT*>(input->Data<T>()),
+                                   reinterpret_cast<const CudaT*>(bias->Data<T>()),
+                                   reinterpret_cast<CudaT*>(output->MutableData<T>()));
 
   CUDA_RETURN_IF_ERROR(cudaPeekAtLastError());
   return Status::OK();

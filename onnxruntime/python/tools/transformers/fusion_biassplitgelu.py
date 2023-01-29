@@ -93,10 +93,15 @@ class FusionBiasSplitGelu(Fusion):
             logger.info("Skip fuse BiasSplitGelu since it is not safe to fuse the subgraph.")
             return
 
+        add_node = start_index_nodes[-1]
+        bias_index, _bias = self.model.get_constant_input(add_node)
         self.nodes_to_remove.extend(subgraph_nodes)
         node_name = self.model.create_node_name("BiasSplitGelu", name_prefix="BiasSplitGelu")
         fused_node = helper.make_node(
-            "BiasSplitGelu", inputs=[start_index_nodes[-1].input[0]], outputs=[subgraph_output], name=node_name
+            "BiasSplitGelu",
+            inputs=[add_node.input[1 - bias_index], add_node.input[bias_index]],
+            outputs=[subgraph_output],
+            name=node_name,
         )
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)

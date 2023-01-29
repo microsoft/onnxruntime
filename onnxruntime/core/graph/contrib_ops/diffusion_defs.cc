@@ -70,14 +70,14 @@ tensor multiplies the Gelu activation result of right tensor.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    SplitGelu, 1,
+    BiasSplitGelu, 1,
     OpSchema()
         .SetDoc(BiasSplitGelu_ver1_doc)
         .Input(0,
                "X",
                "Input tensor. Dimensions are (N, S, D), where N is the batch size, S are image size, and D is hidden dimension",
                "T")
-        .Input(0,
+        .Input(1,
                "bias",
                "Bias tensor. Dimensions are (D), where D is the same hidden dimension as input tensor",
                "T")

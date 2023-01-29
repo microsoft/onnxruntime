@@ -37,7 +37,7 @@ class FusionOptions:
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
         self.enable_group_norm = model_type == "unet"
-        self.enable_splitgelu = model_type == "unet"
+        self.enable_bias_splitgelu = model_type == "unet"
         self.attention_mask_format = AttentionMaskFormat.AttentionMask
 
     def use_raw_attention_mask(self, use_raw_mask=True):
