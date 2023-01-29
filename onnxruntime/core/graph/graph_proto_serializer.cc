@@ -1,12 +1,14 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <deque>
+
 #include "core/graph/graph_proto_serializer.h"
 
 namespace onnxruntime {
 
-void GraphViewerToProto(const GraphViewer& graph_view, 
-                        ONNX_NAMESPACE::GraphProto& graph_proto, 
+void GraphViewerToProto(const GraphViewer& graph_view,
+                        ONNX_NAMESPACE::GraphProto& graph_proto,
                         bool include_initializer,
                         bool include_outer_scope_args) {
   graph_proto.set_name(graph_view.Name());
@@ -24,7 +26,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_value_info()->Add()) = value_info->ToProto();
   }
 
-  if (include_outer_scope_args){
+  if (include_outer_scope_args) {
     // add the NodeArg info for outer scope NodeArgs so we capture the type information
     for (const auto& name : graph_view.GetOuterScopeNodeArgNames()) {
       auto* node_arg = graph_view.GetNodeArg(name);
@@ -32,7 +34,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       *(graph_proto.mutable_value_info()->Add()) = node_arg->ToProto();
     }
   }
-  
+
   // Nodes must be sorted in Topological Order in the GraphProto per ONNX spec.
   for (auto& node_idx : graph_view.GetNodesInTopologicalOrder()) {
     const gsl::not_null<ONNX_NAMESPACE::NodeProto*> node_proto{graph_proto.add_node()};
@@ -51,7 +53,6 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       *p_initializer = *(it.second);
       current_scope_initializer_set.insert(it.first);
     }
-
 
     // handle outer scope value which is a constant initializer
     if (include_outer_scope_args) {
@@ -72,4 +73,4 @@ void GraphViewerToProto(const GraphViewer& graph_view,
   }
 }
 
-}
+}  // namespace onnxruntime

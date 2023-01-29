@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <deque>
+
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
 

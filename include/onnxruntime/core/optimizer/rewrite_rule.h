@@ -9,23 +9,23 @@
 namespace onnxruntime {
 
 /**
-@class RewriteRule 
+@class RewriteRule
 
-The base class for a rewrite rule. A rewrite rule represents a semantics-preserving transformation of a 
-computation graph. It can be used to represent, for example, the elimination of operators that serve as 
-no-ops (e.g., dropout during inference), as well as inlining of "function" definitions or the dual operation 
-of replacing a complex expression by an equivalent function-call). Unlike the more general GraphTransformer, 
-a rewrite rule is a more local transformation that is triggered on a particular node of the graph. 
+The base class for a rewrite rule. A rewrite rule represents a semantics-preserving transformation of a
+computation graph. It can be used to represent, for example, the elimination of operators that serve as
+no-ops (e.g., dropout during inference), as well as inlining of "function" definitions or the dual operation
+of replacing a complex expression by an equivalent function-call). Unlike the more general GraphTransformer,
+a rewrite rule is a more local transformation that is triggered on a particular node of the graph.
 
-Each rule has a set of conditions and a body. The conditions have to be satisfied for the body of the rule 
-to be triggered. Therefore, when creating a new rewrite rule, two main functions have to be implemented: 
-- SatisfyCondition defines the condition checks. It is advisable to add the more selective checks first, 
+Each rule has a set of conditions and a body. The conditions have to be satisfied for the body of the rule
+to be triggered. Therefore, when creating a new rewrite rule, two main functions have to be implemented:
+- SatisfyCondition defines the condition checks. It is advisable to add the more selective checks first,
   because those will lead to discarding fast rules that cannot be applied on a node.
 - Apply is the actual body of the rule that will be executed if SatisfyCondition returns true for a particular
   node. Note that additional, more complex checks can be included in the Apply if putting them in the
   SatisfyCondition would lead to duplicate work (e.g., when we make a check on a Node attribute but we need
   that attribute to execute the rule too).
-In general, simple fast checks are a better fit for SatisfyCondition, whereas more complex ones can be added 
+In general, simple fast checks are a better fit for SatisfyCondition, whereas more complex ones can be added
 in the Apply.
 
 In order to avoid evaluating the SatisfyCondition for each rule and each node of the graph, each rewrite rule
@@ -75,13 +75,13 @@ class RewriteRule {
 
   const std::string name_;
 
-  /** Checks if the Node of the given Graph satisfies the conditions of this rule. The body of the rule will be 
-      evaluated if this condition function returns true. This can include a more complex pattern matching (conditions 
-      on the ascending or descending nodes of the node for which this rule was triggered) or some other properties 
+  /** Checks if the Node of the given Graph satisfies the conditions of this rule. The body of the rule will be
+      evaluated if this condition function returns true. This can include a more complex pattern matching (conditions
+      on the ascending or descending nodes of the node for which this rule was triggered) or some other properties
       of the nodes. */
   virtual bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const = 0;
 
-  /** This is the actual body of the rule that performs the graph transformation. The transformation happens in-place. 
+  /** This is the actual body of the rule that performs the graph transformation. The transformation happens in-place.
       The return-value of node may be different from the input-value due to rewriting.
       The value of "rule_effect" indicates whether and how the graph was modified by the rule. */
   virtual common::Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const = 0;

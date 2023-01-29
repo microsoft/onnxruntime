@@ -5,7 +5,10 @@
 
 #include "core/graph/graph.h"
 #include "core/framework/session_options.h"
+
+#include <string>
 #include <unordered_set>
+#include <utility>
 
 namespace onnxruntime {
 class Function;
