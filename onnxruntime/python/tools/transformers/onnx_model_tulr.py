@@ -83,13 +83,11 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         table_weight = self.model.get_initializer(gemm.input[0])
         table_weight_np = NumpyHelper.to_array(table_weight)
-        table_weight_np_t = table_weight_np.transpose()
-        print(np.shape(table_weight_np_t)[0])
         bias_table = helper.make_tensor(
             name="bias_table_weight",
             data_type=TensorProto.FLOAT,
-            dims=[np.shape(table_weight_np_t)[0], np.shape(table_weight_np_t)[1]],
-            vals=table_weight_np_t.flatten().tolist(),
+            dims=[np.shape(table_weight_np)[1], np.shape(table_weight_np)[0]],
+            vals=table_weight_np.flatten().tolist(),
         )
         self.model.add_initializer(bias_table, self.this_graph_name)
         inputs = [bias_table.name, range.input[1], range.input[1]]
