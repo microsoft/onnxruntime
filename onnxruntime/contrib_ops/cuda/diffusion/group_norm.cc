@@ -59,7 +59,7 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
-  if (gamma_dims[0] != input_dims[1]) {
+  if (gamma_dims[0] != input_dims[3]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Number of channels in gamma and input does not match");
   }
@@ -69,15 +69,16 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "beta is expected to have 1 dimension, got ", beta_dims.size());
   }
-  if (beta_dims[0] != input_dims[1]) {
+  if (beta_dims[0] != input_dims[3]) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Number of channels in beta and input does not match");
   }
 
+  // Input and output format is NHWC
   int batch_size = static_cast<int>(input_dims[0]);
-  int num_channels = static_cast<int>(input_dims[1]);
-  int height = static_cast<int>(input_dims[2]);
-  int width = static_cast<int>(input_dims[3]);
+  int num_channels = static_cast<int>(input_dims[3]);
+  int height = static_cast<int>(input_dims[1]);
+  int width = static_cast<int>(input_dims[2]);
 
   if (num_channels % num_groups_ != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
