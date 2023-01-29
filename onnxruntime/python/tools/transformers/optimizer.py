@@ -31,6 +31,7 @@ from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
+from onnx_model_tulr import TulrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ MODEL_TYPES = {
         0,
     ),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
+    "tulr": (TulrOnnxModel, "pytorch", 1),
     "unet": (UnetOnnxModel, "pytorch", 1),
 }
 
