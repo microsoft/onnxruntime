@@ -14,7 +14,12 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
                            const IExecutionProvider& execution_provider,
                            const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                            const OrtValueNameIdxMap& ort_value_name_idx_map,
-                           const DataTransferManager& data_transfer_mgr)
+                           const DataTransferManager& data_transfer_mgr
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+                           ,
+                           const IKernelTypeStrResolver& kernel_type_str_resolver
+#endif
+                           )
     : OpNodeProtoHelper(&proto_helper_context_),
       node_(node),
       kernel_def_(kernel_def),
@@ -22,7 +27,14 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
       constant_initialized_tensors_(constant_initialized_tensors),
       ort_value_name_idx_map_(ort_value_name_idx_map),
       data_transfer_mgr_(data_transfer_mgr),
-      proto_helper_context_(node){}
+      proto_helper_context_(node)
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+      ,
+      kernel_type_str_resolver_{kernel_type_str_resolver}
+#endif
+
+{
+}
 
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,

@@ -84,7 +84,7 @@ class Node {
 
   explicit Node() = default;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
        std::string_view op_type,
        std::string_view description,

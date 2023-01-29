@@ -12,7 +12,7 @@
 #pragma warning(disable : 26400)
 #endif
 
-#ifdef ORT_MINIMAL_BUILD
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 ORT_API_STATUS_IMPL(OrtApis::CreateOpAttr,
                     _In_ const char*,
@@ -78,7 +78,6 @@ namespace onnxruntime {
 namespace standalone {
 
 using NodePtr = std::unique_ptr<onnxruntime::Node>;
-
 using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
 using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
 
@@ -94,10 +93,28 @@ class NodeRepo {
 
   onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
     std::lock_guard<std::mutex> guard(mutex_);
+    auto* node = node_ptr.get();
     auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
     if (!ret.second) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
+    nodes_.push_back(node);
+
+    return Status::OK();
+  }
+
+  common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    for (auto* node : nodes_) {
+      if (!node->Op()) {
+        // in theory this should never fail if the kernel lookup earlier was successful.
+        ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*node), "Unable to find schema for node. Domain:'",
+                          node->Domain(), "' op_type:", node->OpType());
+      }
+
+      kernel_type_str_resolver.RegisterNodeOpSchema(*node);
+    }
+
     return Status::OK();
   }
 
@@ -140,7 +157,12 @@ class NodeRepo {
 
   std::mutex mutex_;
   NodeResourceMap resource_map_;
+  std::vector<Node*> nodes_;
 };
+
+common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
+  return NodeRepo::GetInstance().RegisterCustomOpNodeSchemas(kernel_type_str_resolver, graph);
+}
 
 // For invoking kernels without a graph
 class StandAloneKernelContext : public OpKernelContext {
@@ -343,13 +365,6 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     proto.mutable_tensor_type()->set_elem_type(type_constraint_values[i]);
     type_constraint_map[type_constraint_names[i]] = DataTypeImpl::TypeFromProto(proto);
   }
-  auto status = kernel_registry->TryFindKernel(op_name,
-                                               domain,
-                                               version,
-                                               type_constraint_map,
-                                               ep->Type(),
-                                               &kernel_create_info);
-  ORT_RETURN_IF_ERROR(status);
 
   ArgPtrs arg_ptrs;
   std::vector<onnxruntime::NodeArg*> input_args;
@@ -365,11 +380,28 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     output_args.push_back(arg_ptrs.back().get());
   }
 
-  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "", input_args, output_args, nullptr, domain);
+  NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "",
+                                                         input_args, output_args, nullptr, domain);
+
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
     node_ptr->AddAttributeProto(*attr_proto);
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  auto status = kernel_registry->TryFindKernel(op_name,
+                                               domain,
+                                               version,
+                                               type_constraint_map,
+                                               ep->Type(),
+                                               &kernel_create_info);
+#else
+  // minimal build with custom ops enabled.
+  // kernel lookup uses the constraint resolver information from the ORT format model.
+  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), kernel_info->GetKernelTypeStrResolver(),
+                                               &kernel_create_info);
+#endif
+  ORT_RETURN_IF_ERROR(status);
 
   auto kernel_def_builder = KernelDefBuilder::Create();
   kernel_def_builder->SetName(op_name);
@@ -380,14 +412,17 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
-  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap, kernel_info->GetDataTransferManager());
+  OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
+                               kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   static FuncManager kFuncMgr;
   status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
   ORT_RETURN_IF_ERROR(status);
+
   status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), std::move(arg_ptrs));
   ORT_RETURN_IF_ERROR(status);
+
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;
 }

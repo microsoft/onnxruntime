@@ -5,6 +5,7 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
+// #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
@@ -12,9 +13,10 @@
 
 namespace onnxruntime {
 
-class OrtValueNameIdxMap;
-class FuncManager;
 class DataTransferManager;
+class FuncManager;
+class IKernelTypeStrResolver;
+class OrtValueNameIdxMap;
 struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
@@ -27,7 +29,16 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr);
+                        const DataTransferManager& data_transfer_mgr
+						// TODO: Is it worth the complexity of only enabling this arg based on an ifdef? 
+						// The IKernelTypeStrResolver is available either way, it will just be unused unless 
+						// this is a minimal build with custom ops with standalone kernels.
+						// Alternatively we could also have a setter for it so it's not a ctor arg
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+                        ,
+                        const IKernelTypeStrResolver& kernel_type_str_resolver
+#endif
+  );
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -45,6 +56,12 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  const IKernelTypeStrResolver& GetKernelTypeStrResolver() const noexcept {
+    return kernel_type_str_resolver_;
+  }
+#endif
+
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -58,6 +75,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
+#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  const IKernelTypeStrResolver& kernel_type_str_resolver_;
+#endif
 };
 
 }  // namespace onnxruntime
