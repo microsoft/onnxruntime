@@ -154,10 +154,17 @@ class FusionGroupNorm(Fusion):
             cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.FLOAT))])
             self.model.add_node(cast_node)
 
+        # NCHW to NHWC
+        transpose_input = helper.make_node(
+            "Transpose", [input], [input + "_NHWC"],
+            name=self.model.create_node_name("Transpose", name_prefix="Transpose_NCHW_to_NHWC"),
+            perm=[0, 2, 3, 1]
+        )
+
         new_node = helper.make_node(
             "GroupNorm",
-            inputs=[input, group_norm_name + "_gamma", group_norm_name + "_beta"],
-            outputs=[output],
+            inputs=[input + "_NHWC", group_norm_name + "_gamma", group_norm_name + "_beta"],
+            outputs=[output + "_NHWC"],
             name=group_norm_name,
         )
 
@@ -165,6 +172,19 @@ class FusionGroupNorm(Fusion):
         new_node.attribute.extend([helper.make_attribute("groups", 32)])
         new_node.attribute.extend([helper.make_attribute("activation", 1 if has_swish_activation else 0)])
         new_node.domain = "com.microsoft"
+
+        # NHWC to NCHW
+        transpose_output = helper.make_node(
+            "Transpose", [output + "_NHWC"], [output],
+            name = self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
+            perm=[0, 3, 1, 2]
+        )
+
         self.nodes_to_add.append(new_node)
+        self.nodes_to_add.append(transpose_input)
+        self.nodes_to_add.append(transpose_output)
+
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[transpose_input.name] = self.this_graph_name
+        self.node_name_to_graph_name[transpose_output.name] = self.this_graph_name
         return True

@@ -89,14 +89,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             if (input_shape.dim().size() != 3) {
               fail_shape_inference("input shall be 3 dimensions");
             }
-            if (input_shape.dim(2).has_dim_value()) {
-              fail_shape_inference("input dim 2 shall have dim value");
-            }
 
             TensorShapeProto output_shape;
             *output_shape.add_dim() = input_shape.dim(0);
             *output_shape.add_dim() = input_shape.dim(1);
-            output_shape.add_dim()->set_dim_value(input_shape.dim(2).dim_value() / 2);
+            if (input_shape.dim(2).has_dim_value()) {
+              output_shape.add_dim()->set_dim_value(input_shape.dim(2).dim_value() / 2);
+            } else {
+              output_shape.add_dim();
+            }
+
             updateOutputShape(ctx, 0, output_shape);
           }
         }));

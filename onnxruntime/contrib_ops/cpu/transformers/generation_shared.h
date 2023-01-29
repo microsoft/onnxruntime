@@ -171,7 +171,7 @@ struct IGenerationParameters {
 #ifdef DEBUG_GENERATION
 #define DUMP_TENSOR_LEVEL 2
 #else
-#define DUMP_TENSOR_LEVEL 1 // change it to 0 if want to disable dumping for code not in generation.
+#define DUMP_TENSOR_LEVEL 0 // change it to 0 if want to disable dumping for code not in generation.
 #endif
 
 #if DUMP_TENSOR_LEVEL > 0
