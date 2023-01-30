@@ -18,24 +18,23 @@ nav_order: 1
  
 ## Steps to Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
 
-1. [Download and install the CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive) based on the supported version for the ONNX Runtime Version you are using based on the table below. 
+- [Download and install the CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive) based on the supported version for the ONNX Runtime Version.
 
-2. [Download and install the cuDNN version](https://developer.nvidia.com/rdp/cudnn-archive) based on the supported version for the ONNX Runtime Version you are using based on the table below.
+- [Download and install the cuDNN version](https://developer.nvidia.com/rdp/cudnn-archive) based on the supported version for the ONNX Runtime Version.
 
-See this table below for current supported versions:
+See this table for supported versions:
 
 | ONNX Runtime Version | CUDA Toolkit Version | cuDNN Version|
 |----------------------|----------------------|--------------|
 | 1.13                 | 11.6                 | 8.5.0.96     |
 | 1.9 - 1.12           | 11.4                 | 8.2.2.26     |
 
-- NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
+NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
 
 
+- Follow step [2. Installing cuDNN on Windows here](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
 
-3. Follow step [2. Installing cuDNN on Windows here](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
-
-5. Restart your computer and verify the installation by running the following command in a command prompt or in python with PyTorch:
+- Restart your computer and verify the installation by running the following command in a command prompt or in python with PyTorch:
 
 ```bash
 nvcc --version
@@ -46,7 +45,7 @@ import torch
 torch.cuda.is_available()
 ```
 
-6. Now you can enable GPU in the C# ONNX Runtime API with the following code:
+- Now you can enable GPU in the C# ONNX Runtime API with the following code:
 
 ```cs
 var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
