@@ -36,7 +36,7 @@ __global__ void buildRelativeAttentionBias(T* relative_attention_bias,
                                            const bool is_bidirectional,
                                            const int max_distance) {
   const int head_id = blockIdx.x;
-  for (int seq_id = gridDim.y * blockIdx.y + threadIdx.x; seq_id < seq_len * seq_len; seq_id += blockDim.x * gridDim.y) {
+  for (int seq_id = blockDim.x * blockIdx.y + threadIdx.x; seq_id < seq_len * seq_len; seq_id += blockDim.x * gridDim.y) {
     int row_id = seq_id / seq_len;
     int col_id = seq_id % seq_len;
 
