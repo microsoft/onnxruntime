@@ -2246,6 +2246,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
+  InlinedVector<NodeIndex> index_of_MemcpyToHost;
   if (node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
 
     InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
@@ -2267,11 +2268,14 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
         device_types_.push_back(device_type);
         it = device_to_stream.find(device_type);
       }
-      // put the node into the belonging stream
-      if (node_name.empty()) {
-        node_names_by_stream_[it->second].push_back(op_type + std::to_string(op_type_counter[op_type]++));
-      } else {
+      std::string node_name_or_type = node_name;
+      if (node_name_or_type.empty()) {
+        node_name_or_type = op_type + std::to_string(op_type_counter[op_type]++);
+      }
+      if (node_name_or_type.find("MemcpyToHost") == std::string::npos) {
         node_names_by_stream_[it->second].push_back(node_name);
+      } else {
+        index_of_MemcpyToHost.push_back(node->Index());
       }
     }
   }
@@ -2295,6 +2299,9 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
     auto iter = node_stream_map.find(node_name);
     ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
     stream_nodes[node_stream_map[node_name]].push_back(node_index);
+  }
+  if (index_of_MemcpyToHost.size() > 0) {
+    stream_nodes.push_back(index_of_MemcpyToHost);
   }
   return Status::OK();
 }
@@ -2366,7 +2373,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
                                                                              const PathString& config_file) {
   // use device based partitioner by default
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type =
-      IGraphPartitioner::GraphPartitioningStrategy::Unknown;
+      IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!config_file.empty()) {
     std::ifstream f(config_file);
     if (f.is_open()) {
@@ -2384,11 +2391,8 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
       f.close();
     }
   }
-  if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::Unknown) {
-    partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
-    LOGS(logger, INFO) << "Use DeviceBasedPartition as default";
-  }
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
+    LOGS(logger, INFO) << "Use DeviceBasedPartition as default";
     return std::make_unique<DeviceBasedPartitioner>(logger, config_file);
   }  // else if other partitioner types ...
   ORT_THROW("Failed to create partitioner");
