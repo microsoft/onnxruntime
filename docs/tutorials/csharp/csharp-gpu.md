@@ -1,5 +1,5 @@
 ---
-title: Configure CUDA for C#
+title: Configure CUDA for GPU with C#
 description: Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
 parent: Inference with C#
 grand_parent: Tutorials
@@ -7,8 +7,7 @@ has_children: false
 nav_order: 1
 ---
 
-
-# Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
+# Configure CUDA and cuDNN for GPU with ONNX Runtime and C# on Windows 11
 
 {: .no_toc }
 
