@@ -29,8 +29,8 @@ export const lrn: OperatorImplementation<LrnAttributes> =
 
 export const parseLrnAttributes: OperatorInitialization<LrnAttributes> = (node: Graph.Node): LrnAttributes => {
   const alpha = node.attributes.getFloat('alpha', 0.0001);
-  const beta = node.attributes.getFloat('alpha', 0.75);
-  const bias = node.attributes.getFloat('alpha', 1.0);
+  const beta = node.attributes.getFloat('beta', 0.75);
+  const bias = node.attributes.getFloat('bias', 1.0);
   const size = node.attributes.getInt('size');
 
   return createAttributeWithCacheKey({alpha, beta, bias, size});
