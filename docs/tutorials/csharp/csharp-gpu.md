@@ -31,9 +31,10 @@ See this table for supported versions:
 NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
 
 
-- Follow step [2. Installing cuDNN on Windows here](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
+- Follow step [2. Installing cuDNN on Windows here](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). 
+NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
 
-- Restart your computer and verify the installation by running the following command in a command prompt or in python with PyTorch:
+- Restart your computer and verify the installation by running the following command or in python with PyTorch:
 
 ```bash
 nvcc --version
