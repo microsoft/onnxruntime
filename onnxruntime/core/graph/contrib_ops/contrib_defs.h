@@ -53,7 +53,7 @@ void RegisterContribSchemas();
 void RegisterNchwcSchemas();
 void RegisterQuantizationSchemas();
 
-#if defined(USE_MPI) && defined(ORT_USE_NCCL)
+#if defined(USE_MPI)
 void RegisterCollectiveOps();
 #endif
 

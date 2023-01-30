@@ -76,7 +76,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_framework PRIVATE ${dlpack_SOURCE_DIR}/include)
   endif()
 endif()
-if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
+if (onnxruntime_USE_MPI)
   target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 endif()
 
