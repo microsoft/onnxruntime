@@ -106,14 +106,14 @@ ONNX Runtime 1.13.1 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic li
 |-|-|
 |onnxruntime-mobile|xxx MB|
 |onnxruntime-android|xxx MB|
-|custom (MobileNet)||
+|custom (MobileNet)|xxx MB|
 
 ONNX Runtime 1.13.1 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
 
 |Package|Size|
 |-|-|
 |onnxruntime-mobile-c|xxx MB|
-|onnxruntime-c|xxx MB||
-|custom (MobileNet)||
+|onnxruntime-c|xxx MB|xxx MB|
+|custom (MobileNet)|xxx MB|
 
 Note: The iOS package is a static framework that will have a reduced binary size impact when compiled into your app.
