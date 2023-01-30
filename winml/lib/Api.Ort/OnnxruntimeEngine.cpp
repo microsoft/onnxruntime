@@ -632,11 +632,6 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(ID3D12Resour
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateMemoryInfo("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemType::OrtMemTypeDefault, &ort_memory_info),
                           ort_api);
 
-  OrtAllocator* ort_allocator;
-  RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateAllocator(session_.get(), ort_memory_info, &ort_allocator),
-                          ort_api);
-  auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
-
   void* dml_allocator_resource;
   RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->CreateGPUAllocationFromD3DResource(d3d_resource, &dml_allocator_resource),
                           engine_factory_->UseOrtApi());
