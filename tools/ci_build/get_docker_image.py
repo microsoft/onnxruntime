@@ -119,12 +119,18 @@ def main():
         log.info("Building image...")
         run(
             args.docker_path,
+            "--log-level",
+            "error",
+            "buildx",
             "build",
-            "--pull",
-            *shlex.split(args.docker_build_args),
             "--tag",
             full_image_name,
-            "--file",
+            "--cache-from",
+            full_image_name,
+            "--build-arg",
+            "BUILDKIT_INLINE_CACHE=1",
+            *shlex.split(args.docker_build_args),
+            "-f",
             args.dockerfile,
             args.context,
         )

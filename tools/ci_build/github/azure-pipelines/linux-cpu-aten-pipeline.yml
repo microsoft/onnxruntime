@@ -16,6 +16,7 @@ jobs:
     # cache docker image
     repository: 'onnxruntimecpubuildaten'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
+    tag: '$(Build.BuildId)'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: Linux-CPU-2019-beta
   steps:
@@ -43,25 +44,25 @@ jobs:
 
   - script: |
       docker load -i $(Pipeline.Workspace)/docker/cache.tar
+      docker image ls
+      docker image inspect ${{variables.repository}}
     displayName: Docker restore
-    condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
-  - ${{ if ne(variables.IMAGE_CACHE_RESTORED, 'true') }}:
-    - template: templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-        Repository: '$(repository)'
-        UseImageCacheContainerRegistry: false
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: '$(repository)'
+      UseImageCacheContainerRegistry: false
 
   - script: |
       set -ex
       mkdir -p $(Pipeline.Workspace)/docker
       docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}
       docker image ls
+      docker system df
     displayName: Docker save
-    condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
 
   - script: |
       echo $(Pipeline.Workspace)/docker
