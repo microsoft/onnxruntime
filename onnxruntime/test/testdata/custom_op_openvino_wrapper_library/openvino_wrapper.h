@@ -34,7 +34,7 @@ struct KernelOpenVINO {
   ov::OutputVector ov_outputs_;
   Ort::Value weights_;
   std::string device_type_;
-  Ort::Logger logger_;
+  Ort::CachedSeverityLogger logger_;
 };
 
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {

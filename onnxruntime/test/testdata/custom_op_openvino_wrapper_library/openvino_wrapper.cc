@@ -133,11 +133,11 @@ static ov::Tensor OrtToOpenVINOTensor(Ort::UnownedValue ort_tensor) {
 
 KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info,
                                const std::unordered_map<std::string, std::string>& session_configs)
-    : weights_(nullptr), logger_(nullptr) {
+    : weights_(nullptr) {
   Ort::ConstKernelInfo kinfo(info);
   Ort::AllocatorWithDefaultOptions allocator;
 
-  this->logger_ = kinfo.GetLogger();
+  this->logger_ = Ort::CachedSeverityLogger{kinfo.GetLogger()};
 
   ORT_CXX_LOG(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Creating KernelOpenVINO");
 

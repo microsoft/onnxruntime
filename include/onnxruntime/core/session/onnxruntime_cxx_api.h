@@ -351,14 +351,14 @@ using AllocatedStringPtr = std::unique_ptr<char, detail::AllocatedFree>;
  *  constructors to construct an instance of a Status object from exceptions.
  */
 struct Status : detail::Base<OrtStatus> {
-  explicit Status(std::nullptr_t) {}       ///< Create an empty object, must be assigned a valid one to be used
-  explicit Status(OrtStatus* status);      ///< Takes ownership of OrtStatus instance returned from the C API.
-  explicit Status(const Exception&);       ///< Creates status instance out of exception
-  explicit Status(const std::exception&);  ///< Creates status instance out of exception
-  Status(const char* message, OrtErrorCode code);  ///< Creates status instance out of null-terminated string message.
+  explicit Status(std::nullptr_t) noexcept {}       ///< Create an empty object, must be assigned a valid one to be used
+  explicit Status(OrtStatus* status) noexcept;  ///< Takes ownership of OrtStatus instance returned from the C API.
+  explicit Status(const Exception&) noexcept;       ///< Creates status instance out of exception
+  explicit Status(const std::exception&) noexcept;  ///< Creates status instance out of exception
+  Status(const char* message, OrtErrorCode code) noexcept;  ///< Creates status instance out of null-terminated string message.
   std::string GetErrorMessage() const;
   OrtErrorCode GetErrorCode() const;
-  bool IsOK() const;  ///< Returns true if instance represents an OK (non-error) status.
+  bool IsOK() const noexcept;  ///< Returns true if instance represents an OK (non-error) status.
 };
 
 /** \brief The ThreadingOptions
@@ -1512,47 +1512,221 @@ struct KernelContext {
   OrtKernelContext* ctx_;
 };
 
-// Logs a message using the provider Ort::Logger, which must be passed by value or reference.
-// Does not throw exceptions, so can be used in destructors and catch clauses.
-// Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
-#define ORT_CXX_LOG(logger, severity, message) \
-  std::ignore = logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message)
+/**
+ * Macro that logs a message using the provided logger. Throws an exception if OrtApi::Logger_LogMessage fails.
+ * Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+ *
+ * \param logger The logger instance (e.g., Ort::Logger or Ort::CachedSeverityLogger) to use.
+                 Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param message A null-terminated UTF-8 message to log.
+ */
+#define ORT_CXX_LOG(logger, message_severity, message) \
+  Ort::ThrowOnError(logger.LogMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
-// Logs a message using the provider Ort::Logger, which must be passed by value or reference.
-// Throws an exception on failure.
-// Example: ORT_CXX_LOG_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
-#define ORT_CXX_LOG_CHECKED(logger, severity, message) \
-  Ort::ThrowOnError(logger.LogMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
+/**
+ * Macro that logs a message using the provided logger. Can be used in noexcept code since errors are silently ignored.
+ * Example: ORT_CXX_LOG_NOEXCEPT(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
+ *
+ * \param logger The logger instance (e.g., Ort::Logger or Ort::CachedSeverityLogger) to use.
+                 Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param message A null-terminated UTF-8 message to log.
+ */
+#define ORT_CXX_LOG_NOEXCEPT(logger, message_severity, message) \
+  static_cast<void>(logger.LogMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
-// Logs a formatted message using the provided Ort::Logger, which must be passed by value or reference.
-// Does not throw exceptions, so can be used in destructors and catch clauses.
-// Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
-#define ORT_CXX_LOGF(logger, severity, ...) \
-  std::ignore = logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__)
+/**
+ * Macro that logs a printf-like formatted message using the provided logger. Throws an exception if
+ * OrtApi::Logger_LogMessage fails or if a formatting error occurs.
+ * Example: ORT_CXX_LOGF(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+ *
+ * \param logger The logger instance (e.g., Ort::Logger or Ort::CachedSeverityLogger) to use.
+                 Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+ *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+ * \param ... Zero or more variadic arguments referenced by the format string.
+ */
+#define ORT_CXX_LOGF(logger, message_severity, /*format,*/ ...) \
+  Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
 
-// Logs a formatted message using the provided Ort::Logger, which must be passed by value or reference.
-// Throws an exception on failure.
-// Example: ORT_CXX_LOGF_CHECKED(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
-#define ORT_CXX_LOGF_CHECKED(logger, severity, ...) \
-  Ort::ThrowOnError(logger.LogFormattedMessage(severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
+/**
+ * Macro that logs a printf-like formatted message using the provided logger. Can be used in noexcept code since errors
+ * are silently ignored.
+ * Example: ORT_CXX_LOGF_NOEXCEPT(logger, ORT_LOGGING_LEVEL_INFO, "Log an int: %d", 12);
+ *
+ * \param logger The logger instance (e.g., Ort::Logger or Ort::CachedSeverityLogger) to use.
+                 Must be a value or reference.
+ * \param message_severity The logging severity level of the message.
+ * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+ *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+ * \param ... Zero or more variadic arguments referenced by the format string.
+ */
+#define ORT_CXX_LOGF_NOEXCEPT(logger, message_severity, /*format,*/ ...) \
+  static_cast<void>(logger.LogFormattedMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
 
+/// <summary>
+/// This class represents an ONNX Runtime logger that can be used to log information with an
+/// associated severity level and source code location (file path, line number, function name).
+///
+/// A Logger can be obtained from within custom operators by calling Ort::KernelInfo::GetLogger().
+/// Instances of Ort::Logger are pointer-sized and can be freely passed by value.
+///
+/// Use the ORT_CXX_LOG macros to ensure the source code location is set properly from the callsite.
+/// </summary>
 struct Logger {
-  explicit Logger(const OrtLogger* logger);  ///< Uses an existing ::OrtLogger instance
+  explicit Logger(const OrtLogger* logger);  ///< Creates logger from an existing ::OrtLogger instance
 
-  OrtLoggingLevel GetLoggingSeverityLevel() const;  ///< Wraps OrtApi::Logger_GetLoggingSeverityLevel
+  /**
+   * Returns the logger's current severity level. Wraps OrtApi::Logger_GetLoggingSeverityLevel.
+   *
+   * \return The current ::OrtLoggingLevel.
+   */
+  OrtLoggingLevel GetLoggingSeverityLevel() const;
 
-  ///< Wraps OrtApi::Logger_LogMessage. Typically called via the ORT_CXX_LOG or ORT_CXX_LOF_CHECHED macros.
+  /**
+   * Logs the provided message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOG or ORT_CXX_LOG_NOEXCEPT
+   * macros to properly set the source code location arguments from the actual callsite.
+   *
+   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
+   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param message The message to log.
+   * \return A Ort::Status value to indicate error or success.
+   */
   Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
                     const char* func_name, const char* message) const noexcept;
 
-  ///< Prints a formatted message to a buffer and then calls OrtApi::Logger_LogMessage.
-  ///< Typically called via the ORT_CXX_LOGF or ORT_CXX_LOGF_CHECKED macros.
+  /**
+   * Logs a printf-like formatted message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOGF or ORT_CXX_LOGF_NOEXCEPT
+   * macros to properly set the source code location arguments from the actual callsite. Returns an error status if
+   * a formatting error occurs.
+   *
+   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
+   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+   *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+   * \param args... Zero or more variadic arguments referenced by the format string.
+   * \return A Ort::Status value to indicate error or success.
+   */
   template <typename... Args>
   Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
-                             const char* func_name, const char* format, Args... args) const noexcept;
+                             const char* func_name, const char* format, Args&&... args) const noexcept;
 
  private:
   const OrtLogger* logger_{};
+};
+
+/// <summary>
+/// This class wraps an existing Ort::Logger instance and uses a custom logging severity level. All logging calls are
+/// forwarded to the wrapped Ort::Logger. The custom logging severity is used to preemptively filter out messages
+/// before calling into the wrapped Ort::Logger.
+///
+/// A Logger can be obtained from within custom operators by calling Ort::KernelInfo::GetLogger().
+/// Example: Ort::CachedSeverityLogger = Ort::CachedSeverityLogger{kernel_info.GetLogger()};
+///
+/// Instances of Ort::CachedSeverityLogger are the size of two pointers and can be freely passed by value.
+///
+/// Use the ORT_CXX_LOG* macros to ensure the source code location is set properly from the callsite.
+/// </summary>
+struct CachedSeverityLogger {
+  CachedSeverityLogger() : logger_{nullptr}, custom_severity_level_{} {}  ///< Creates empty logger.
+
+  /**
+   * Wraps the provided Ort::Logger and caches its current logging severity level. Throws an exception if
+   * calling Ort::Logger::GetLoggingSeverityLevel fails.
+   *
+   * \param logger The Ort::Logger instance to wrap.
+   */
+  explicit CachedSeverityLogger(Logger logger);
+
+  /**
+   * Wraps the provided Ort::Logger and caches the provided custom logging severity level.
+   *
+   * \param logger The Ort::Logger instance to wrap.
+   * \param custom_severity_level The logging severity level used to preemptively filter out logged messages.
+   */
+  CachedSeverityLogger(Logger logger, OrtLoggingLevel custom_severity_level);
+
+  // Default copy/move constructors and assignment operators.
+  CachedSeverityLogger(const CachedSeverityLogger&) = default;
+  CachedSeverityLogger& operator=(const CachedSeverityLogger&) = default;
+  CachedSeverityLogger(CachedSeverityLogger&&) = default;
+  CachedSeverityLogger& operator=(CachedSeverityLogger&&) = default;
+
+  /**
+   * Sets the instance's custom logging severity level, which is used to preemptively filter out messages without
+   * calling the wrapped Ort::Logger's logging methods.
+   *
+   * \param custom_severity_level The custom logging severity level.
+   */
+  void SetCachedLoggingSeverityLevel(OrtLoggingLevel custom_severity_level) noexcept;
+
+  /**
+   * Returns the custom logging severity level used to preemptively filter out messages. Note that this severity level
+   * may differ from the wrapped Ort::Logger's actual severity level.
+   *
+   * \return custom_severity_level The custom logging severity level used to preemptively filter out logged messages.
+   */
+  OrtLoggingLevel GetCachedLoggingSeverityLevel() const noexcept;
+
+  /**
+   * Sets the instance's wrapped Ort::Logger.
+   * \param logger The Ort::Logger to set.
+   */
+  void SetLogger(Logger logger) noexcept;
+
+  /**
+   * Returns the instance's wrapped Ort::Logger.
+   * \return The current Ort::Logger.
+   */
+  Logger GetLogger() const noexcept;
+
+  /**
+   * Logs the provided message via the wrapped Ort::Logger instance if the message's severity level exceeds the
+   * instance's custom severity level. Use the ORT_CXX_LOG or ORT_CXX_LOG_NOEXCEPT macros to properly set the
+   * source code location arguments from the actual callsite.
+   *
+   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
+   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param message The message to log.
+   * \return A Ort::Status value to indicate error or success.
+   */
+  Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                    const char* func_name, const char* message) const noexcept;
+
+  /**
+   * Logs a printf-like formatted message via the wrapped Ort::Logger instance if the message's severity level
+   * exceeds the instance's custom severity level. Use the ORT_CXX_LOGF or ORT_CXX_LOGF_NOEXCEPT
+   * macros to properly set the source code location arguments from the actual callsite. Returns an error status if
+   * a formatting error occurs.
+   *
+   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
+   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
+   * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
+   * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
+   *               Refer to https://en.cppreference.com/w/cpp/io/c/fprintf for information on valid formats.
+   * \param args... Zero or more variadic arguments referenced by the format string.
+   * \return A Ort::Status value to indicate error or success.
+   */
+  template <typename... Args>
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                             const char* func_name, const char* format, Args&&... args) const noexcept;
+
+ private:
+  Logger logger_;
+  OrtLoggingLevel custom_severity_level_;
 };
 
 struct KernelInfo;

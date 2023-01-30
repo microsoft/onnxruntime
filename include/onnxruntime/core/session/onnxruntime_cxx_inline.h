@@ -30,18 +30,18 @@ inline void ThrowOnError(const Status& st) {
   }
 }
 
-inline Status::Status(OrtStatus* status) : Base<OrtStatus>{status} {
+inline Status::Status(OrtStatus* status) noexcept : Base<OrtStatus>{status} {
 }
 
-inline Status::Status(const std::exception& e) {
+inline Status::Status(const std::exception& e) noexcept {
   p_ = GetApi().CreateStatus(ORT_FAIL, e.what());
 }
 
-inline Status::Status(const Exception& e) {
+inline Status::Status(const Exception& e) noexcept {
   p_ = GetApi().CreateStatus(e.GetOrtErrorCode(), e.what());
 }
 
-inline Status::Status(const char* message, OrtErrorCode code) {
+inline Status::Status(const char* message, OrtErrorCode code) noexcept {
   p_ = GetApi().CreateStatus(code, message);
 }
 
@@ -54,7 +54,7 @@ inline OrtErrorCode Status::GetErrorCode() const {
   return GetApi().GetErrorCode(p_);
 }
 
-inline bool Status::IsOK() const {
+inline bool Status::IsOK() const noexcept {
   return (p_ == nullptr);
 }
 
@@ -1437,18 +1437,18 @@ inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const {
   return out;
 }
 
+
 inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
                                  const char* func_name, const char* message) const noexcept {
-  OrtStatus* status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, message, file_path, line_number,
+  OrtStatus* status = GetApi().Logger_LogMessage(logger_, log_severity_level, message, file_path, line_number,
                                                  func_name);
   return Status{status};
 }
 
 template <typename... Args>
-inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path,
-                                          int line_number, const char* func_name, const char* format,
-                                          Args... args) const noexcept {
-  int msg_len = snprintf(nullptr, 0U, format, args...);
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+                                          const char* func_name, const char* format, Args&&... args) const noexcept {
+  int msg_len = snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
 
   if (msg_len < 0) {  // Formatting error
     return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
@@ -1461,15 +1461,57 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
 
   if (buffer_size < kStackBufferSize) {
     char buffer[kStackBufferSize];
-    snprintf(buffer, kStackBufferSize, format, args...);
-    status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, buffer, file_path, line_number, func_name);
+    snprintf(buffer, kStackBufferSize, format, std::forward<Args>(args)...);
+    status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer, file_path, line_number, func_name);
   } else {
     auto buffer = std::make_unique<char[]>(buffer_size);
-    snprintf(buffer.get(), buffer_size, format, args...);
-    status = GetApi().Logger_LogMessage(this->logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
+    snprintf(buffer.get(), buffer_size, format, std::forward<Args>(args)...);
+    status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
   }
 
   return Status{status};
+}
+
+inline CachedSeverityLogger::CachedSeverityLogger(Logger logger) : logger_{ logger } {
+  custom_severity_level_ = logger.GetLoggingSeverityLevel();
+}
+
+inline CachedSeverityLogger::CachedSeverityLogger(Logger logger, OrtLoggingLevel custom_severity_level)
+    : logger_{logger}, custom_severity_level_{custom_severity_level} {
+}
+
+inline void CachedSeverityLogger::SetCachedLoggingSeverityLevel(OrtLoggingLevel custom_severity_level) noexcept {
+  custom_severity_level_ = custom_severity_level;
+}
+
+inline OrtLoggingLevel CachedSeverityLogger::GetCachedLoggingSeverityLevel() const noexcept {
+  return custom_severity_level_;
+}
+
+inline void CachedSeverityLogger::SetLogger(Logger logger) noexcept { logger_ = logger; }
+
+inline Logger CachedSeverityLogger::GetLogger() const noexcept { return logger_; }
+
+inline Status CachedSeverityLogger::LogMessage(OrtLoggingLevel log_severity_level, const char* file_path,
+                                               int line_number, const char* func_name,
+                                               const char* message) const noexcept {
+  if (log_severity_level < custom_severity_level_) {
+    return Status{nullptr};
+  }
+
+  return logger_.LogMessage(log_severity_level, file_path, line_number, func_name, message);
+}
+
+template <typename... Args>
+inline Status CachedSeverityLogger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path,
+                                                        int line_number, const char* func_name, const char* format,
+                                                        Args&&... args) const noexcept {
+  if (log_severity_level < custom_severity_level_) {
+    return Status{nullptr};
+  }
+
+  return logger_.LogFormattedMessage(log_severity_level, file_path, line_number, func_name, format,
+                                     std::forward<Args>(args)...);
 }
 
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
