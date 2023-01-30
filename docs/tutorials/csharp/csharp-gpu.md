@@ -23,11 +23,12 @@ nav_order: 1
 2. [Download and install the cuDNN version](https://developer.nvidia.com/rdp/cudnn-archive) based on the supported version for the ONNX Runtime Version you are using based on the table below.
 
 See this table below for current supported versions:
-<!--create table-->
-| ONNX Runtime Version | CUDA Toolkit Version | cuDNN Version |
+
+| ONNX Runtime Version | CUDA Toolkit Version | cuDNN Version|
 |----------------------|----------------------|--------------|
 | 1.13                 | 11.6                 | 8.5.0.96     |
 | 1.9 - 1.12           | 11.4                 | 8.2.2.26     |
+
 - NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
 
 
