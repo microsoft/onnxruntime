@@ -140,7 +140,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
 
     Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
-                                     {node.MutableOutputDefs()[0]}, split_outputs);
+                                     {node.MutableOutputDefs()[0]}, indices_n_dims == 0 ? split_outputs: gather_outputs);
     split_node.AddAttribute("axis", split_axis);
     split_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
