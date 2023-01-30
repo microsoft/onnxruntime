@@ -46,7 +46,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT)
         .Input(0,
                "X",
-               "Input data tensor. Dimensions are (N x C x H x W), where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
+               "Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data",
                "T")
         .Input(1,
                "gamma",
