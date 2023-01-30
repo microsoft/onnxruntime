@@ -17,7 +17,7 @@ jobs:
     repository: 'onnxruntimecpubuildaten'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: Linux-CPU-2019
+  pool: Linux-CPU-2019-beta
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
