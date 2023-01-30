@@ -143,3 +143,7 @@ jobs:
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml
+
+  - script: |
+      df -h
+    displayName: check disk space
