@@ -30,7 +30,6 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 #include <vector>
 #include <unordered_map>
 #include <utility>
@@ -1693,8 +1692,7 @@ struct CachedSeverityLogger {
    * instance's custom severity level. Use the ORT_CXX_LOG or ORT_CXX_LOG_NOEXCEPT macros to properly set the
    * source code location arguments from the actual callsite.
    *
-   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
-   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param log_severity_level The message's logging severity level.
    * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
    * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
@@ -1710,8 +1708,7 @@ struct CachedSeverityLogger {
    * macros to properly set the source code location arguments from the actual callsite. Returns an error status if
    * a formatting error occurs.
    *
-   * \param log_severity_level The message's logging severity level. The internal logging implementation only logs
-   *                           messages with a severity that meets or exceeds the logger's current severity level.
+   * \param log_severity_level The message's logging severity level.
    * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
    * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
