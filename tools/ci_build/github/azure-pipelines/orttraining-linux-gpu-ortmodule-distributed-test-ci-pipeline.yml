@@ -91,7 +91,7 @@ jobs:
         --volume $(Build.BinariesDirectory):/build \
         --volume /mnist:/mnist \
         onnxruntime_ortmodule_distributed_tests_image \
-          bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'mpirun -n 4 -x NCCL_DEBUG=INFO python onnxruntime_test_collective.py' --cwd /onnxruntime_src/onnxruntime/test/python" \
+          bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && mpirun -n 4 -x NCCL_DEBUG=INFO python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_collective.py" \
     displayName: 'Run onnxruntime_test_collective.py'
     condition: succeededOrFailed()
     timeoutInMinutes: 30
