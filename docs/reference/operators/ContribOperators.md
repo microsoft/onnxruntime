@@ -10,6 +10,7 @@ The contrib operator schemas are documented in the ONNX Runtime repository.
 | Release | Documentation |
 |---------|---------------|
 | Current master | [https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md) |
+| 1.14 | [https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ContribOperators.md)|
 | 1.13 | [https://github.com/microsoft/onnxruntime/blob/rel-1.13.1/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.13.1/docs/ContribOperators.md)|
 | 1.12 | [https://github.com/microsoft/onnxruntime/blob/rel-1.12.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.12.0/docs/ContribOperators.md)|
 | 1.11 | [https://github.com/microsoft/onnxruntime/blob/rel-1.11.0/docs/ContribOperators.md](https://github.com/microsoft/onnxruntime/blob/rel-1.11.0/docs/ContribOperators.md)|
