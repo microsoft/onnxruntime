@@ -37,9 +37,10 @@ See this table below for current supported versions:
 
 5. Restart your computer and verify the installation by running the following command in a command prompt or in python with PyTorch:
 
-```cmd
+```bash
 nvcc --version
 ```
+
 ```python
 import torch
 torch.cuda.is_available()
