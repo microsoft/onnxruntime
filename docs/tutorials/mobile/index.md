@@ -37,6 +37,7 @@ Which language bindings and runtime package you use depends on your chosen devel
 * Android Java/C/C++: onnxruntime-android package
 * iOS C/C++: onnxruntime-c package
 * iOS Objective-C: onnxruntime-objc package
+* Android and iOS C# in MAUI/Xamarin: [Microsoft.ML.OnnxRuntime](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/) and [Microsoft.ML.OnnxRuntime.Managed](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Managed/)
 
 See the [install guide](https://onnxruntime.ai/docs/install/#install-on-web-and-mobile) for package specific instructions.
 
@@ -48,9 +49,13 @@ You have a choice of hardware accelerators to use in your app, depending on the 
 * Applications that run on Android also have support for NNAPI and XNNPACK
 * Applications that run on iOS also have support for CoreML and XNNPACK
 
-Accelerators (called Execution Providers in ONNX Runtime) are configured in the SessionOptions, when the ONNXRuntime session is created and the model is loaded. For more detail, see your language [API docs](../../api).
+Accelerators are called Execution Providers in ONNX Runtime.
 
-TODO: add guidance on which EP should be tried first  
+If the model is quantized, start with the CPU Execution Provider. If the model is not quantized start with XNNPACK. These are the simplest and most consistent as everything is running on CPU.
+
+If CPU/XNNPACK do not meet the application's performance results, then try NNAPI/CoreML. Performance with these execution providers is device and model specific. If the model is broken into multiple partitions due to the model using operators that ONNX Runtime, NNAPI/CoreML. or the device doesn't support (e.g. older NNAPI versions), performance may degrade.
+
+Specific execution providers are configured in the SessionOptions, when the ONNXRuntime session is created and the model is loaded. For more detail, see your language [API docs](../../api).
 
 ### Measure the application's performance
 
@@ -81,7 +86,7 @@ There are two options for reducing the ONNX Runtime binary size.
    * iOS C/C++: onnxruntime-mobile-c
    * iOS Objective-C: onnxruntime-mobile-objc
 
-   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format][(../reference/ort-format-models.html#convert-onnx-models-to-ort-format).
+   These mobile packages have a smaller binary size but limited feature support, like a reduced set of operator implementations and the model must be converted to [ORT format](../../reference/ort-format-models.md#convert-onnx-models-to-ort-format).
 
    See the [install guide](../../install/#install-on-web-and-mobile) for package specific instructions.
 
@@ -91,13 +96,7 @@ There are two options for reducing the ONNX Runtime binary size.
 
    One of the outputs of the ORT format conversion is a build configuration file, containing a list of operators from your model(s) and their types. You can use this configuration as input to the custom runtime binary build script.
 
-   [Custom builds](../../build/custom.md) use the same build scripts as standard ONNX Runtime builds, with some extra parameters.
-
-3. Build a minimal custom build
-
-   If the runtime binary size of your custom build still exceeds requirements then you can add the ``--minimal_build` flag to the custom build above, and this will disable exceptions and real time type inference (RTTI) to further reduce the binary size.
-
-   See [here](../../install/index.md#install-on-web-and-mobile) for installation instructions.
+   The process to build a [custom runtime](../../build/custom.md) uses the same build scripts as standard ONNX Runtime, with some extra parameters.
 
 To give an idea of the binary size difference between mobile and full packages:
 
@@ -107,12 +106,14 @@ ONNX Runtime 1.13.1 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic li
 |-|-|
 |onnxruntime-mobile|xxx MB|
 |onnxruntime-android|xxx MB|
+|custom (MobileNet)||
 
 ONNX Runtime 1.13.1 iOS package `onnxruntime.xcframework/ios-arm64/onnxruntime.framework/onnxruntime` static library file size:
 
 |Package|Size|
 |-|-|
 |onnxruntime-mobile-c|xxx MB|
-|onnxruntime-c|xxx MB|
+|onnxruntime-c|xxx MB||
+|custom (MobileNet)||
 
 Note: The iOS package is a static framework that will have a reduced binary size impact when compiled into your app.
