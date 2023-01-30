@@ -144,10 +144,6 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       onnx_opset_version = graph.DomainToVersionMap().at(kOnnxDomain);
     }
 
-    if (onnx_opset_version >= 18) {
-      split_node.AddAttribute("num_outputs", static_cast<int64_t>(split_outputs.size()));
-    }
-
     if (onnx_opset_version < 13) {
       for (size_t i = 0; i < output_count; ++i) {
         Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
@@ -156,6 +152,10 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
         squeeze_node.SetExecutionProviderType(node.GetExecutionProviderType());
       }
     } else {
+      if (onnx_opset_version >= 18) {
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(split_outputs.size()));
+      }
+
       ONNX_NAMESPACE::TensorProto axes_initializer_proto;
       axes_initializer_proto.set_name(graph.GenerateNodeName("SqueezeAxesInitializer"));
       axes_initializer_proto.add_dims(static_cast<int64_t>(1));
