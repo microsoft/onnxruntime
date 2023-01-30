@@ -75,15 +75,6 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, cons
   return HIP_CALL(hipGetLastError());
 }
 
-#define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t)                                                                                                                                                        \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count); \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
-
-SPECIALIZED_SOFTMAX_IMPL(float, float, float)
-SPECIALIZED_SOFTMAX_IMPL(half, half, float)
-SPECIALIZED_SOFTMAX_IMPL(double, double, double)
-SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
-
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
 Status dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, const input_t* input, int softmax_elements,
                                           int input_stride, int output_stride, int batch_count) {
@@ -102,7 +93,13 @@ Status dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, 
   return HIP_CALL(hipGetLastError());
 }
 
-#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                   \
+#define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t)                             \
+  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>(  \
+      hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements,    \
+      int softmax_elements_stride, int batch_count);                                   \
+  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(   \
+      hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements,    \
+      int softmax_elements_stride, int batch_count);                                   \
   template Status dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>( \
       hipStream_t stream, output_t * output, const input_t* src, int softmax_elements, \
       int input_stride, int output_stride, int batch_count);                           \
@@ -110,10 +107,10 @@ Status dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, 
       hipStream_t stream, output_t * output, const input_t* src, int softmax_elements, \
       int input_stride, int output_stride, int batch_count);
 
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
+SPECIALIZED_SOFTMAX_IMPL(float, float, float)
+SPECIALIZED_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_SOFTMAX_IMPL(double, double, double)
+SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
 #ifndef DISABLE_CONTRIB_OPS
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)  // used by BeamSearch op
