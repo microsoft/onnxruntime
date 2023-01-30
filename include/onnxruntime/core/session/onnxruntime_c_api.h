@@ -96,6 +96,13 @@ extern "C" {
 #endif
 #endif
 
+// On Windows, ORT_FILE is a wchar_t version of the __FILE__ macro.
+// Otherwise, ORT_FILE is equivalent to __FILE__.
+#ifndef ORT_FILE
+#define ORT_FILE_INTERNAL(x) ORT_TSTR(x)
+#define ORT_FILE ORT_FILE_INTERNAL(__FILE__)
+#endif
+
 // Any pointer marked with _In_ or _Out_, cannot be NULL.
 
 // Windows users should use unicode paths when possible to bypass the MAX_PATH limitation
@@ -3912,7 +3919,7 @@ struct OrtApi {
    * \param[in] logger The ::OrtLogger instance.
    * \param[in] log_severity_level The message's severity level.
    * \param[in] message The message to log.
-   * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param[in] file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
    * \param[in] line_number The file line number in which the message is logged. Usually the value of __LINE__.
    * \param[in] func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    *
@@ -3920,7 +3927,7 @@ struct OrtApi {
    * \since Version 1.15
    */
   ORT_API2_STATUS(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
-                  _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                  _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                   _In_z_ const char* func_name);
 
   /** \brief Get the logging severity level of the ::OrtLogger.

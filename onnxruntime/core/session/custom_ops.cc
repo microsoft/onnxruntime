@@ -300,7 +300,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
-                    _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                     _In_z_ const char* func_name) {
   API_IMPL_BEGIN
   const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
@@ -308,7 +308,12 @@ ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, Or
   const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
 
   if (actual_logger.OutputIsEnabled(severity, log_data_type)) {
+#ifdef _WIN32
+    const std::string file_path_str = onnxruntime::ToUTF8String(file_path);
+    onnxruntime::CodeLocation location(file_path_str.c_str(), line_number, func_name);
+#else
     onnxruntime::CodeLocation location(file_path, line_number, func_name);
+#endif
 
     onnxruntime::logging::Capture(
         actual_logger,

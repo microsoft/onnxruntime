@@ -434,7 +434,7 @@ ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options
 ORT_API_STATUS_IMPL(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
 
 ORT_API_STATUS_IMPL(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
-                    _In_z_ const char* message, _In_z_ const char* file_path, int line_number,
+                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                     _In_z_ const char* func_name);
 ORT_API_STATUS_IMPL(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out);
 }  // namespace OrtApis

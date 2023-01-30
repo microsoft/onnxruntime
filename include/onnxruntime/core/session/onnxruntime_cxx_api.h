@@ -1521,7 +1521,7 @@ struct KernelContext {
  * \param message A null-terminated UTF-8 message to log.
  */
 #define ORT_CXX_LOG(logger, message_severity, message) \
-  Ort::ThrowOnError(logger.LogMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
+  Ort::ThrowOnError(logger.LogMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
 /**
  * Macro that logs a message using the provided logger. Can be used in noexcept code since errors are silently ignored.
@@ -1533,7 +1533,7 @@ struct KernelContext {
  * \param message A null-terminated UTF-8 message to log.
  */
 #define ORT_CXX_LOG_NOEXCEPT(logger, message_severity, message) \
-  static_cast<void>(logger.LogMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), message))
+  static_cast<void>(logger.LogMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), message))
 
 /**
  * Macro that logs a printf-like formatted message using the provided logger. Throws an exception if
@@ -1548,7 +1548,7 @@ struct KernelContext {
  * \param ... Zero or more variadic arguments referenced by the format string.
  */
 #define ORT_CXX_LOGF(logger, message_severity, /*format,*/ ...) \
-  Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
+  Ort::ThrowOnError(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
 
 /**
  * Macro that logs a printf-like formatted message using the provided logger. Can be used in noexcept code since errors
@@ -1563,7 +1563,7 @@ struct KernelContext {
  * \param ... Zero or more variadic arguments referenced by the format string.
  */
 #define ORT_CXX_LOGF_NOEXCEPT(logger, message_severity, /*format,*/ ...) \
-  static_cast<void>(logger.LogFormattedMessage(message_severity, __FILE__, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
+  static_cast<void>(logger.LogFormattedMessage(message_severity, ORT_FILE, __LINE__, static_cast<const char*>(__FUNCTION__), __VA_ARGS__))
 
 /// <summary>
 /// This class represents an ONNX Runtime logger that can be used to log information with an
@@ -1596,7 +1596,7 @@ struct Logger {
    * \param message The message to log.
    * \return A Ort::Status value to indicate error or success.
    */
-  Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+  Status LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
                     const char* func_name, const char* message) const noexcept;
 
   /**
@@ -1615,7 +1615,7 @@ struct Logger {
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>
-  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
                              const char* func_name, const char* format, Args&&... args) const noexcept;
 
  private:
@@ -1699,7 +1699,7 @@ struct CachedSeverityLogger {
    * \param message The message to log.
    * \return A Ort::Status value to indicate error or success.
    */
-  Status LogMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+  Status LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
                     const char* func_name, const char* message) const noexcept;
 
   /**
@@ -1718,7 +1718,7 @@ struct CachedSeverityLogger {
    * \return A Ort::Status value to indicate error or success.
    */
   template <typename... Args>
-  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const char* file_path, int line_number,
+  Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
                              const char* func_name, const char* format, Args&&... args) const noexcept;
 
  private:
