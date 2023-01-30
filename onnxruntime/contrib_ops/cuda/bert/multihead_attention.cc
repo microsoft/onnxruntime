@@ -132,9 +132,14 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if USE_FLASH_ATTENTION
+  bool is_long_sequence = sizeof(T) == 2 ||  // sequence length threshold is 0 for FP16
+                          parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
+                          parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
+
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
+                                        is_long_sequence &&
                                         nullptr == key_padding_mask &&  // TODO: support 1D mask
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
