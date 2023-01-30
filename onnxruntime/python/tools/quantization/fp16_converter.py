@@ -21,7 +21,7 @@ class FP16Converter:
             return numpy_helper.from_array(new_tensor, new_name)
         return initializer
 
-    def __conversion(self, op):
+    def __convert_all_io(self, op):
         model = ONNXModel(self.model)
         conv_nodes = model.find_nodes_by_type(op)
         initializer_name_set = model.get_initializer_name_set()
@@ -61,7 +61,7 @@ class FP16Converter:
             print("Unsupported op: " + op)
             print("Supported ops: " + str(self.supported_ops))
             return False
-        return self.__conversion(op)
+        return self.__convert_all_io(op)
 
     def convert_all(self):
         return map(self.convert_op, self.supported_ops)
