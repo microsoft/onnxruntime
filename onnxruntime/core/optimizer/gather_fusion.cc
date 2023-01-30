@@ -19,8 +19,11 @@ bool GatherToSplitFusion::IsSupportedGather(const Graph& graph, const Node& node
   if (!optimizer_utils::IsScalar(input_arg)) return false;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
   if (!tensor_proto) return false;
-  Initializer init_const{*tensor_proto, graph.ModelPath()};
   if (tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) return false;
+  // the optimization works only if indices is a tensor with a single value and a single dimension
+  if (tensor_proto->dims_size() != 1) return false;
+  if (tensor_proto->dims(0) != 1) return false;
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
   index = *(init_const.data<int64_t>());
   axis = 0;  // Default value.
   auto& attrs = node.GetAttributes();
@@ -139,6 +142,10 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     int onnx_opset_version = -1;
     if (graph.DomainToVersionMap().find(kOnnxDomain) != graph.DomainToVersionMap().end()) {
       onnx_opset_version = graph.DomainToVersionMap().at(kOnnxDomain);
+    }
+
+    if (onnx_opset_version >= 18) {
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(split_outputs.size()));
     }
 
     if (onnx_opset_version < 13) {

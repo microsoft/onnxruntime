@@ -6270,7 +6270,7 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     builder.AddNode("Transpose", {gather_out_3}, {transpose_out_3}).AddAttribute("perm", std::vector<int64_t>{0, 2, 1});
   };
 
-  auto pre_graph_checker = [&](Graph& graph) { TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] ==3); return Status::OK(); };
+  auto pre_graph_checker = [&](Graph& graph) { TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 3); return Status::OK(); };
 
   // OpSet-12
   {
@@ -6325,6 +6325,50 @@ TEST_F(GraphTransformationTests, GatherToSplitFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker));
   }
+
+  // OpSet-18
+  {
+    auto post_graph_checker = [&](Graph& graph) {
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Gather"] == 0);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Split"] == 1);
+      TEST_RETURN_IF_NOT(CountOpsInGraph(graph)["Squeeze"] == 3);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Split") {
+          auto& attrs = node.GetAttributes();
+          TEST_RETURN_IF_NOT(attrs.find("axis") != attrs.end());
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(attrs.at("axis").i()));
+        } else if (node.OpType() == "Squeeze") {
+          const NodeArg& input_arg = *(node.InputDefs()[1]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{*tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSplitFusion>();
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, GatherToSplitFusion_NoSqueeze) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "transform/gather_to_split.onnx";
+
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+
+  ASSERT_STATUS_OK(session_object.Load(model_uri));
+
+  const auto& graph = session_object.GetGraph();
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Squeeze"] == 0);
+  ASSERT_TRUE(op_to_count["Split"] == 1);
 }
 
 TEST_F(GraphTransformationTests, GatherToSplitFusion_Invalid) {
