@@ -1379,20 +1379,71 @@ using MLAS_FP16 = onnxruntime::MLFloat16;
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
 
-class MLAS_HALF_GEMM_OUTPUT_PROCESSOR {
+/**
+ * @brief Interface for half gemm post processors.
+ * 
+ * Example implementation of this interface includes activations,
+ * conversion from half precision to single precision, etc.
+ * 
+ * Half GEMM is computed tile by tile. When a tile of result matrix
+ * is produced, the method Process() is called to process this tile.
+ * Parameters of this method describe the location and shape of the
+ * tile.
+*/
+class MLAS_HALF_GEMM_POSTPROCESSOR {
 public:
     virtual
     void
     Process(
-        const MLAS_FP16*, // Supplies the address of matrix to process
-        size_t,           // Supplies the start row index of matrix
-        size_t,           // Supplies the start col index of matrix
-        size_t,           // Supplies the element count per row to process
-        size_t,           // Supplies the element count per col to process
-        size_t            // Supplies the leading dimension of matrix
+        const MLAS_FP16*, /**< the address of matrix to process */
+        size_t,           /**< the start row index of matrix */
+        size_t,           /**< the start col index of matrix */
+        size_t,           /**< the element count per row to process */
+        size_t,           /**< the element count per col to process */
+        size_t            /**< the leading dimension of matrix */
         ) const = 0;
 
-    virtual ~MLAS_HALF_GEMM_OUTPUT_PROCESSOR() {}
+    virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
+};
+
+/**
+ * @brief Convert half gemm result matrix to single precision float matrix
+*/
+class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
+        float* Output,    /**< address of the output matrix, row major */
+        size_t RowStride  /**< row stride of the output matrix */
+    ) :
+            Output_(Output),
+            RowStride_(RowStride)
+    {}
+
+    void
+    Process(
+        const MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
+
+private:
+    inline
+    void
+    ProcessImpl(
+        const MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const;
+
+private:
+    float* Output_;
+    size_t RowStride_;
 };
 
 
@@ -1408,7 +1459,7 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
     size_t lda = 0;                   /**< leading dimension of A */
     size_t ldb = 0;                   /**< leading dimension of B, 0 when B is pre-packed*/
     size_t ldc = 0;                   /**< leading dimension of C*/
-    const MLAS_HALF_GEMM_OUTPUT_PROCESSOR* OutputProcessor = nullptr;
+    const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
     bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
     bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
 };

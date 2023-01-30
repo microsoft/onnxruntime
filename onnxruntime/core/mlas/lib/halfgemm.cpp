@@ -156,6 +156,96 @@ MlasHalfGemmConvertPackB(
 
 
 //
+//  Post Processor Implementations
+//
+
+void
+MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
+    const MLAS_FP16* C,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc
+    ) const
+{
+    ProcessImpl(
+        C,
+        StartM,
+        StartN,
+        CountM,
+        CountN,
+        ldc);
+}
+
+MLAS_FORCEINLINE
+void
+CvtHalf2Float(
+    float* dest,
+    const _mlas_fp16_* src,
+    size_t len
+)
+{
+#ifdef MLAS_TARGET_ARM64
+    while (len >= 4) {
+        const auto* srcPtr = reinterpret_cast<const float16x4_t*>(src);
+        auto* dstPtr = reinterpret_cast<float32x4_t*>(dest);
+        *dstPtr = vcvt_f32_f16(*srcPtr);
+        src += 4;
+        dest += 4;
+        len -= 4;
+    }
+
+    if (0 == len) {
+        return;
+    }
+
+    float16x4_t buf;
+    std::memcpy(&buf, src, len * sizeof(_mlas_fp16_));
+    float32x4_t res = vcvt_f32_f16(buf);
+
+    if ((len & 2) != 0) {
+        vst1q_lane_f64(dest, res, 0);
+        res = vdupq_laneq_f64(res, 1);
+        dest += 2;
+    }
+    if ((len & 1) != 0) {
+        vst1q_lane_f32(dest, res, 0);
+    }
+#else
+    throw std::invalid_argument("FP16 acceleration not supported in this platform!");
+#endif  // MLAS_TARGET_ARM64
+
+}
+
+MLAS_FORCEINLINE
+void
+MLAS_HALF_GEMM_2FLOAT_PROCESSOR::ProcessImpl(
+    const MLAS_FP16* C,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc) const
+{
+    //
+    // TODO!! use templates to add activations in this impl
+    //
+    float* Output = Output_;
+    const auto* CRow = reinterpret_cast<const _mlas_fp16_*>(C);
+    CRow += StartM * ldc + StartN;
+    Output += StartM * RowStride_ + StartN;
+
+    while (CountM-- > 0) {
+        CvtHalf2Float(Output, CRow, CountN);
+
+        CRow += ldc;
+        Output += RowStride_;
+    }
+}
+
+
+//
 // Dummy C++ implementation that runs very slowly
 //
 

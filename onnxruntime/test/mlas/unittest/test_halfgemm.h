@@ -81,6 +81,7 @@ private:
   MatrixGuardBuffer<MLFp16> BufferBias;
   MatrixGuardBuffer<MLFp16> BufferC;
   MatrixGuardBuffer<float> BufferCReference;
+  MatrixGuardBuffer<float> BufferFloatC;
   MLAS_THREADPOOL* threadpool_;
 
   void* PackB(size_t N, size_t K, const BType* B, size_t ldb) {
@@ -107,7 +108,10 @@ private:
                 size_t ldb,
                 const MLFp16* Bias,
                 MLFp16* C,
-                size_t ldc) {
+                size_t ldc,
+                float* Cfloat) {
+    std::vector<MLAS_HALF_GEMM_2FLOAT_PROCESSOR> Converters;
+    Converters.reserve(BatchSize);
 
     std::vector<MLAS_HALF_GEMM_DATA_PARAMS> GemmParameters(BatchSize);
 
@@ -133,6 +137,8 @@ private:
       }
       params.AIsfp32 = std::is_same<AType, float>::value;
       params.BIsfp32 = std::is_same<BType, float>::value;
+      Converters.emplace_back(Cfloat + (M * N * i), N);
+      params.OutputProcessor = &(Converters[i]);
     }
 
     MlasHalfGemmBatch(M, N, K, BatchSize, GemmParameters.data(), threadpool_);
@@ -211,13 +217,14 @@ public:
     }
 
     MLFp16* C = BufferC.GetFilledBuffer(N * M * BatchSize, SmallFloatFill<MLFp16>);
+    float* Cfloat = BufferFloatC.GetBuffer(N * M * BatchSize, true);
     float* CReference = BufferCReference.GetFilledBuffer(
         N * M * BatchSize,
         [](float* start, size_t size) {
           std::fill_n(start, size, -1.0f);
         });
 
-    this->CallGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N);
+    this->CallGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N, Cfloat);
     ReferenceQgemm(M, N, K, BatchSize, A, B, Bias, CReference);
 
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
@@ -225,6 +232,9 @@ public:
         for (size_t n = 0; n < N; n++, f++) {
           ASSERT_EQ(float(C[f]), CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
                                                 << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
+          ASSERT_EQ(Cfloat[f], CReference[f]) << "Converted@[" << batch << "x" << m << "x" << n << "], "
+                                                << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
+
         }
       }
     }

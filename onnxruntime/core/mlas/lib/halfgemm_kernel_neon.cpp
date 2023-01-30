@@ -57,42 +57,6 @@ struct MLAS_HALF_GEMM_KERNEL_NEON {
 
 MLAS_FORCEINLINE
 void
-CvtHalf2Float(
-    float* dest,
-    const _mlas_fp16_* src,
-    size_t len
-)
-{
-    while (len >= 4) {
-        const auto* srcPtr = reinterpret_cast<const float16x4_t*>(src);
-        auto* dstPtr = reinterpret_cast<float32x4_t*>(dest);
-        *dstPtr = vcvt_f32_f16(*srcPtr);
-        src += 4;
-        dest += 4;
-        len -= 4;
-    }
-
-    if (0 == len) {
-        return;
-    }
-
-    float16x4_t buf;
-    std::memcpy(&buf, src, len * sizeof(_mlas_fp16_));
-    float32x4_t res = vcvt_f32_f16(buf);
-
-    if ((len & 2) != 0) {
-        vst1q_lane_f64(dest, res, 0);
-        res = vdupq_laneq_f64(res, 1);
-        dest += 2;
-    }
-    if ((len & 1) != 0) {
-        vst1q_lane_f32(dest, res, 0);
-    }
-}
-
-
-MLAS_FORCEINLINE
-void
 CvtFloat2Half(
     _mlas_fp16_* dest,
     const float* src,
