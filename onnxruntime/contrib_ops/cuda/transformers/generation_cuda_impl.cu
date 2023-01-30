@@ -756,24 +756,24 @@ __global__ void PickGptPastStateKernelImpl(
     int max_seq_length,
     int num_heads,
     int head_size) {
-  int layer_id = blockIdx.z / 2;
-  int is_v = blockIdx.z % 2;
-  int batch_beam_id = blockIdx.y;
-  int seq_id = blockIdx.x;
-  int head_id = threadIdx.y;
 
-  int block_per_layer = 2 * batch_beam * num_heads * max_seq_length * head_size;
+    int layer_id = blockIdx.z % batch_beam;
+    int is_v = blockIdx.z / batch_beam;
+    int batch_beam_id = blockIdx.y;
+    int head_id = blockIdx.x;
 
-  int block_per_head = past_seq_length * head_size;
-  int block_per_beam = num_heads * block_per_head;
-  int block_per_past_state = batch_beam * block_per_beam;
+    int block_per_layer = 2 * batch_beam * num_heads * max_seq_length * head_size;
 
-  int input_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (beam_indices[batch_beam_id] * block_per_beam) + (head_id * block_per_head) + (seq_id * head_size);
-  int output_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (batch_beam_id * block_per_beam) + (head_id * block_per_head) + (seq_id * head_size);
+    int block_per_head = past_seq_length * head_size;
+    int block_per_beam = num_heads * block_per_head;
+    int block_per_past_state = batch_beam * block_per_beam;
 
-  for (int i = threadIdx.x; i < head_size; i += blockDim.x) {
-    past_state[output_offset + i] = present_state[input_offset + i];
-  }
+    int input_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (beam_indices[batch_beam_id] * block_per_beam) + (head_id * block_per_head);
+    int output_offset = (layer_id * block_per_layer) + (is_v * block_per_past_state) + (batch_beam_id * block_per_beam) + (head_id * block_per_head);
+
+    for (int i = threadIdx.x; i < block_per_head; i += blockDim.x) {
+        past_state[output_offset + i] = present_state[input_offset + i];
+    }
 }
 
 template <>
@@ -791,46 +791,21 @@ void PickGptPastStateKernel(
     cudaStream_t stream) {
   assert(past_seq_length > 0 && max_seq_length > 0);
 
-  if ((head_size % 2) == 0) {
-    int H = head_size / 2;
-    if (H * num_heads <= max_threads_per_block) {
-      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-      dim3 block(H, num_heads, 1);
+  int H = head_size / 2;
+  dim3 grid(num_heads, batch_beam, num_layers * 2);  // (num_heads, beam_batch, layer_num * 2)
+  dim3 block(std::min(past_seq_length * H, max_threads_per_block), 1, 1); // std::min((past_seq_length * H), max_threads_per_block)
 
-      PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
-          reinterpret_cast<float2*>(past_state),
-          reinterpret_cast<const float2*>(present_state),
-          beam_indices,
-          batch_beam,
-          past_seq_length,
-          max_seq_length,
-          num_heads,
-          H);
-    } else {
-      // TODO(hasesh): Support this case
-      assert(false);
-    }
-  } else {
-    // TODO(hasesh): Support cases where this is > max_threads_per_block
-    if (head_size * num_heads <= max_threads_per_block) {
-      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-      dim3 block(head_size, num_heads, 1);
-
-      PickGptPastStateKernelImpl<float><<<grid, block, 0, stream>>>(
-          past_state,
-          present_state,
-          beam_indices,
-          batch_beam,
-          past_seq_length,
-          max_seq_length,
-          num_heads,
-          head_size);
-    } else {
-      // TODO(hasesh): Support this case
-      assert(false);
-    }
-  }
+  PickGptPastStateKernelImpl<float2> << <grid, block, 0, stream >> > (
+      reinterpret_cast<float2*>(past_state),
+      reinterpret_cast<const float2*>(present_state),
+      beam_indices,
+      batch_beam,
+      past_seq_length,
+      max_seq_length,
+      num_heads,
+      H);
 }
+
 
 template <>
 void PickGptPastStateKernel(
@@ -845,65 +820,21 @@ void PickGptPastStateKernel(
     int num_layers,
     int max_threads_per_block,
     cudaStream_t stream) {
-  assert(past_seq_length > 0 && max_seq_length > 0);
+    assert(past_seq_length > 0 && max_seq_length > 0);
 
-  if ((head_size % 4) == 0) {
     int H = head_size / 4;
-    if (H * num_heads <= max_threads_per_block) {
-      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-      dim3 block(H, num_heads, 1);
+    dim3 grid(num_heads, batch_beam, num_layers * 2);  // (num_heads, beam_batch, layer_num * 2)
+    dim3 block(std::min(past_seq_length * H, max_threads_per_block), 1, 1); // std::min((past_seq_length * H), max_threads_per_block)
 
-      PickGptPastStateKernelImpl<float2><<<grid, block, 0, stream>>>(
-          reinterpret_cast<float2*>(past_state),
-          reinterpret_cast<const float2*>(present_state),
-          beam_indices,
-          batch_beam,
-          past_seq_length,
-          max_seq_length,
-          num_heads,
-          H);
-    } else {
-      // TODO(hasesh): Support this case
-      assert(false);
-    }
-  } else if (0 == (head_size & 1)) {
-    int H = head_size / 2;
-    if (H * num_heads <= max_threads_per_block) {
-      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-      dim3 block(H, num_heads, 1);
-
-      PickGptPastStateKernelImpl<half2><<<grid, block, 0, stream>>>(
-          reinterpret_cast<half2*>(past_state),
-          reinterpret_cast<const half2*>(present_state),
-          beam_indices,
-          batch_beam,
-          past_seq_length,
-          max_seq_length,
-          num_heads,
-          H);
-    } else {
-      // TODO(hasesh): Support this case
-      assert(false);
-    }
-  } else {
-    if (head_size * num_heads <= max_threads_per_block) {
-      dim3 grid(past_seq_length, batch_beam, num_layers * 2);  // '2' is for 'K' and 'V'
-      dim3 block(head_size, num_heads, 1);
-
-      PickGptPastStateKernelImpl<half><<<grid, block, 0, stream>>>(
-          past_state,
-          present_state,
-          beam_indices,
-          batch_beam,
-          past_seq_length,
-          max_seq_length,
-          num_heads,
-          head_size);
-    } else {
-      // TODO(hasesh): Support this case
-      assert(false);
-    }
-  }
+    PickGptPastStateKernelImpl<float2> << <grid, block, 0, stream >> > (
+        reinterpret_cast<float2*>(past_state),
+        reinterpret_cast<const float2*>(present_state),
+        beam_indices,
+        batch_beam,
+        past_seq_length,
+        max_seq_length,
+        num_heads,
+        H);
 }
 
 template void PickGptPastStateKernel(
