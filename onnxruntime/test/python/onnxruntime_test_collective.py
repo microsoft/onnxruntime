@@ -66,7 +66,7 @@ class ORTBertPretrainTest(unittest.TestCase):
 
         expected_output = np.zeros((128, 128), dtype=np.float32)
         for _ in range(size - 1):
-            expected_output = np.concatenate((expected_output, np.ones((128, 128) * (_ + 1))))
+            expected_output = np.concatenate((expected_output, np.ones((128, 128), dtype=np.float32) * (_ + 1)))
 
         assert np.allclose(outputs[0], expected_output)
 
