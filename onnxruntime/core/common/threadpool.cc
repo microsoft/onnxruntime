@@ -442,12 +442,14 @@ void ThreadPool::TrySimpleParallelFor(ThreadPool* tp,
   }
 }
 
+constexpr std::ptrdiff_t unit_block_size = 1;
+
 void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
                                      std::ptrdiff_t total,
                                      const SimpleFN& simple_fn,
                                      std::ptrdiff_t num_batches) {
   if (tp && total && num_batches) {
-    auto batch_size = std::max(static_cast<std::ptrdiff_t>(std::ceil(static_cast<double>(total) / num_batches)), 1LL);
+    auto batch_size = std::max(static_cast<std::ptrdiff_t>(std::ceil(static_cast<double>(total) / num_batches)), unit_block_size);
     SimpleFN simple_fn_wrapper = [batch_size, total, simple_fn](std::ptrdiff_t ith_batch) {
       auto from = ith_batch * batch_size;
       auto to = std::min(total, from + batch_size);
@@ -466,8 +468,7 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
 #ifdef USE_OCT
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
-  //octopus::StaticPartitioner partitioner(std::max(total/(10*dop_), 1LL));
-  octopus::AffinityPartitioner partitioner(2, std::max(total / (10 * dop_), 1LL));
+  octopus::AffinityPartitioner partitioner(2, std::max(total / (10 * dop_), unit_block_size));
   ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
 }
 
