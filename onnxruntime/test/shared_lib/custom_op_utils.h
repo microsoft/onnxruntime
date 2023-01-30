@@ -69,7 +69,9 @@ struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu
   };
 
   OrtMemType GetInputMemoryType(size_t i) const {
-    if (i == 1) { return OrtMemTypeCPUInput; }
+    if (i == 1) {
+      return OrtMemTypeCPUInput;
+    }
     return OrtMemTypeDefault;
   };
 
@@ -179,11 +181,7 @@ struct TemplatedCustomOp : Ort::CustomOpBase<TemplatedCustomOp<T>, T> {
                     bool input_homogeneity, std::vector<ONNXTensorElementDataType> output_types,
                     std::vector<OrtCustomOpInputOutputCharacteristic> output_characs, int output_min_arity,
                     bool output_homogeneity)
-      : op_name_(op_name), input_types_(std::move(input_types)),
-      input_characs_(std::move(input_characs)), input_min_arity_(input_min_arity),
-      input_homogeneity_(input_homogeneity), output_types_(std::move(output_types)),
-      output_characs_(std::move(output_characs)), output_min_arity_(output_min_arity),
-      output_homogeneity_(output_homogeneity) {}
+      : op_name_(op_name), input_types_(std::move(input_types)), input_characs_(std::move(input_characs)), input_min_arity_(input_min_arity), input_homogeneity_(input_homogeneity), output_types_(std::move(output_types)), output_characs_(std::move(output_characs)), output_min_arity_(output_min_arity), output_homogeneity_(output_homogeneity) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
     return new T(info);
@@ -325,6 +323,7 @@ struct StandaloneCustomKernel {
   void Compute(OrtKernelContext* context);
 
  private:
+#if !defined(REDUCED_OPS_BUILD)
   void InitTopK();
   void InvokeTopK(OrtKernelContext* context);
 
@@ -333,10 +332,12 @@ struct StandaloneCustomKernel {
 
   void InitInvokeConv(OrtKernelContext* context);  // create Conv and invoke in Compute(...)
 
-  Ort::KernelInfo info_copy_{nullptr};
-  Ort::Op op_add_{nullptr};
   Ort::Op op_topk_{nullptr};
   Ort::Op op_gru_{nullptr};
+#endif
+
+  Ort::KernelInfo info_copy_{nullptr};
+  Ort::Op op_add_{nullptr};
 };
 
 struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCustomKernel> {

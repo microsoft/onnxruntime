@@ -572,6 +572,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetSparseTensorValues, _In_ const OrtValue* ort_val
 ORT_API_STATUS_IMPL(OrtApis::CreateCustomOpDomain, _In_ const char* domain, _Outptr_ OrtCustomOpDomain** out) {
   API_IMPL_BEGIN
   auto custom_op_domain = std::make_unique<OrtCustomOpDomain>();
+  if (domain == nullptr || strlen(domain) == 0) {
+    // schema lookup gets broken if we allow registration of custom ops with the empty string used for the ONNX domain.
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 "Custom operator domain must be provided and cannot be an empty string, "
+                                 "as that clashes with the official ONNX domain.");
+  }
+
   custom_op_domain->domain_ = domain;
   *out = custom_op_domain.release();
   return nullptr;

@@ -83,8 +83,8 @@ ONNX_NAMESPACE::OpSchema GetFooSchema() {
   return schema;
 }
 
-//For test purpose, we register this Foo kernel to Mul op.
-//Once the custom schema is ready, should update this.
+// For test purpose, we register this Foo kernel to Mul op.
+// Once the custom schema is ready, should update this.
 KernelDefBuilder FooKernelDef(const char* schema_name) {
   KernelDefBuilder def;
   def.SetName(schema_name)
@@ -164,7 +164,7 @@ class OptionalOpKernel : public OpKernel {
       }
     }
 
-    //W is used or not
+    // W is used or not
     if (W) {
       auto* W_Data = W->Data<T>();
       for (size_t i = 0; i < size; i++) {
@@ -189,7 +189,6 @@ Status CreateOptionalOpKernel(FuncManager&, const OpKernelInfo& kernel_info, std
 
 static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
 static const std::string FOO_MODEL_URI = "testdata/foo_1.onnx";
-static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.onnx";
 
 static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.onnx";
 
@@ -265,12 +264,12 @@ TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
   InferenceSession session_object{so, GetEnvironment()};
   EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
 
-  //register foo schema
+  // register foo schema
   auto foo_schema = GetFooSchema();
   std::vector<OpSchema> schemas = {foo_schema};
   EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 5, 7).IsOK());
   auto def = FooKernelDef("Foo");
-  //Register a foo kernel which is doing Add, but bind to Mul.
+  // Register a foo kernel which is doing Add, but bind to Mul.
   EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateFooKernel).IsOK());
 
   EXPECT_TRUE(session_object.Load(FOO_MODEL_URI).IsOK());
@@ -297,7 +296,7 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
 
   so.session_logid = "InferenceSessionTests.NoTimeout";
 
-  //reigster optional schema
+  // reigster optional schema
   auto optional_schema = GetOptionalOpSchema();
   std::vector<OpSchema> schemas = {optional_schema};
 
@@ -305,7 +304,7 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
 
   EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 5, 7).IsOK());
   auto def = OptionalKernelDef();
-  //Register a foo kernel which is doing Add, but bind to Mul.
+  // Register a foo kernel which is doing Add, but bind to Mul.
   EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateOptionalOpKernel).IsOK());
 
   InferenceSession session_object{so, GetEnvironment()};

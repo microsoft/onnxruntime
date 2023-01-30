@@ -72,11 +72,10 @@ void MyCustomKernelSecondInputOnCpu::Compute(OrtKernelContext* context) {
   ASSERT_EQ(y_mem_type, OrtMemType::OrtMemTypeCPUInput);
 
   // copy the second input to GPU
-  const int64_t y_size =  input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
-  float* Y_cuda {};
+  const int64_t y_size = input_Y.GetTensorTypeAndShapeInfo().GetElementCount();
+  float* Y_cuda{};
   cudaMalloc(&Y_cuda, y_size * sizeof(float));
   cudaMemcpy(Y_cuda, Y, y_size * sizeof(float), cudaMemcpyHostToDevice);
-
 
   // Setup output
   auto dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
@@ -361,10 +360,13 @@ StandaloneCustomKernel::StandaloneCustomKernel(const OrtKernelInfo* k_info) {
                             add_type_constraint_values,
                             1, nullptr, 0, 2, 1);
 
+#if !defined(REDUCED_OPS_BUILD)
   InitTopK();
   InitGru();
+#endif
 }
 
+#if !defined(REDUCED_OPS_BUILD)
 void StandaloneCustomKernel::InitTopK() {
   const char* type_constraint_names[2] = {"T", "I"};
   ONNXTensorElementDataType type_constraint_values[2] = {ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64};
@@ -593,6 +595,8 @@ void StandaloneCustomKernel::InitInvokeConv(OrtKernelContext* context) {
   }
 }
 
+#endif  // !defined(REDUCED_OPS_BUILD)
+
 void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
   auto input_X = ctx.GetInput(0);
@@ -605,7 +609,8 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
   OrtValue* outputs[1] = {output};
 
   op_add_.Invoke(context, inputs, 2, outputs, 1);
-#ifndef USE_CUDA
+
+#if !defined(USE_CUDA) && !defined(REDUCED_OPS_BUILD)
   InvokeTopK(context);
   InvokeGru(context);
   InitInvokeConv(context);

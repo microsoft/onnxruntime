@@ -103,20 +103,19 @@ class NodeRepo {
     return Status::OK();
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
     std::lock_guard<std::mutex> guard(mutex_);
     for (auto* node : nodes_) {
-      if (!node->Op()) {
-        // in theory this should never fail if the kernel lookup earlier was successful.
-        ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*node), "Unable to find schema for node. Domain:'",
-                          node->Domain(), "' op_type:", node->OpType());
-      }
-
-      kernel_type_str_resolver.RegisterNodeOpSchema(*node);
+      // in theory this should never fail if the kernel lookup earlier was successful.
+      ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*node), "Unable to find schema for node. Domain:'",
+                        node->Domain(), "' op_type:", node->OpType());
+      ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterNodeOpSchema(*node));
     }
 
     return Status::OK();
   }
+#endif
 
   onnxruntime::Status ValidateInputOutputCounts(const onnxruntime::OpKernel* kernel,
                                                 int input_count,
@@ -160,9 +159,11 @@ class NodeRepo {
   std::vector<Node*> nodes_;
 };
 
+#if !defined(ORT_MINIMAL_BUILD)
 common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
   return NodeRepo::GetInstance().RegisterCustomOpNodeSchemas(kernel_type_str_resolver, graph);
 }
+#endif
 
 // For invoking kernels without a graph
 class StandAloneKernelContext : public OpKernelContext {
@@ -398,6 +399,7 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
 #else
   // minimal build with custom ops enabled.
   // kernel lookup uses the constraint resolver information from the ORT format model.
+  node_ptr->SetSinceVersion(version);
   auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), kernel_info->GetKernelTypeStrResolver(),
                                                &kernel_create_info);
 #endif

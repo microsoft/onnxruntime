@@ -29,16 +29,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
                         const IExecutionProvider& execution_provider,
                         const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
                         const OrtValueNameIdxMap& mlvalue_name_idx_map,
-                        const DataTransferManager& data_transfer_mgr
-						// TODO: Is it worth the complexity of only enabling this arg based on an ifdef? 
-						// The IKernelTypeStrResolver is available either way, it will just be unused unless 
-						// this is a minimal build with custom ops with standalone kernels.
-						// Alternatively we could also have a setter for it so it's not a ctor arg
-#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-                        ,
-                        const IKernelTypeStrResolver& kernel_type_str_resolver
-#endif
-  );
+                        const DataTransferManager& data_transfer_mgr);
 
   OpKernelInfo(const OpKernelInfo& other);
 
@@ -56,9 +47,18 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
+  // if we have a minimal build with custom ops enabled the standalone op invoker may be used to call ORT kernels for
+  // ONNX operators. due to that we need a mechanism for the KernelRegistryManager to provide the
+  // IKernelTypeStrResolver so that the kernel can be looked up.
 #if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  const IKernelTypeStrResolver& GetKernelTypeStrResolver() const noexcept {
-    return kernel_type_str_resolver_;
+  void SetKernelTypeStrResolver(const IKernelTypeStrResolver& kernel_type_str_resolver) noexcept {
+    kernel_type_str_resolver_ = &kernel_type_str_resolver;
+  }
+
+  const IKernelTypeStrResolver& GetKernelTypeStrResolver() const {
+    ORT_ENFORCE(kernel_type_str_resolver_ != nullptr,
+                "SetKernelTypeStrResolver must be called first by KernelRegistryManager.");
+    return *kernel_type_str_resolver_;
   }
 #endif
 
@@ -76,7 +76,7 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
 #if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  const IKernelTypeStrResolver& kernel_type_str_resolver_;
+  const IKernelTypeStrResolver* kernel_type_str_resolver_{nullptr};
 #endif
 };
 
