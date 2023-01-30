@@ -14,7 +14,6 @@ jobs:
   variables:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     # cache docker image
-    CCACHE_IMAGE_DIR: $(Pipeline.Workspace)/image
     repository: 'onnxruntimecpubuildaten'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
@@ -36,14 +35,14 @@ jobs:
     displayName: Cache Docker Image Task
     inputs:
       key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_IMAGE_DIR)
+      path: $(Pipeline.Workspace)/docker
       restoreKeys: |
         docker | "$(Build.SourceBranch)"
         docker |
       cacheHitVar: IMAGE_CACHE_RESTORED
 
   - script: |
-      docker load -i $(CCACHE_IMAGE_DIR)/cache.tar
+      docker load -i $(Pipeline.Workspace)/docker/cache.tar
     displayName: Docker restore
     condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
 
@@ -58,12 +57,16 @@ jobs:
 
   - script: |
       set -ex
-      mkdir -p $(CCACHE_IMAGE_DIR)
-      chmod 777 $(CCACHE_IMAGE_DIR)
-      docker save -o $(CCACHE_IMAGE_DIR)/cache.tar ${{variables.repository}}
+      mkdir -p $(Pipeline.Workspace)/docker
+      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}
       docker image ls
     displayName: Docker save
     condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
+
+  - script: |
+      echo $(Pipeline.Workspace)/docker
+      ls -lah $(Pipeline.Workspace)/docker
+    displayName: Display docker dir
 
   - task: Cache@2
     inputs:
