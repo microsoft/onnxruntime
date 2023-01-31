@@ -19,11 +19,11 @@
 #include "core/platform/path_lib.h"
 
 #include "orttraining/core/framework/checkpoint_common.h"
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/optimizer.h"
-#include "orttraining/training_api/include/checkpoint_property.h"
-#include "orttraining/training_api/include/checkpoint.h"
-#include "orttraining/training_api/include/lr_scheduler.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/optimizer.h"
+#include "orttraining/training_api/checkpoint_property.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/lr_scheduler.h"
 
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
