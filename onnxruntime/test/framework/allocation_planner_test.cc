@@ -73,7 +73,7 @@ struct UnaryNode {
       : UnaryNode(graph, "Transpose", p_input_arg, p_output_arg) {}
 
   UnaryNode(onnxruntime::Graph& graph, std::string& node_name, const std::string& op, std::vector<onnxruntime::NodeArg*>& inputs,
-      std::vector<onnxruntime::NodeArg*>& outputs) : input_args(inputs), output_args(outputs) {
+            std::vector<onnxruntime::NodeArg*>& outputs) : input_args(inputs), output_args(outputs) {
     p_node = &graph.AddNode(node_name, op, "test op", input_args, output_args);
   }
 };
@@ -1314,9 +1314,9 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
   std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1), Arg(Graph_input2), Arg(Graph_input3)}, output1{Arg(Arg1), Arg(Arg2)}, input2{Arg(Arg1), Arg(Arg2)}, output2{Arg(Arg3)};
   AddNode(*cudaKernel, node1, input1, output1);
 
-  std::unique_ptr<::onnxruntime::KernelDef> cpuKernel = KernelDefBuilder().SetName("Add").Provider(kCpuExecutionProvider).SinceVersion(7,12).Build();
+  std::unique_ptr<::onnxruntime::KernelDef> cpuKernel = KernelDefBuilder().SetName("Add").Provider(kCpuExecutionProvider).SinceVersion(7, 12).Build();
   AddNode(*cpuKernel, node2, input2, output2);
-  
+
   CUDAExecutionProviderInfo epi;
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
@@ -1345,7 +1345,7 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
 //    \     /
 //      node3
 // node1 and node2 are in the same stream, both has an output which will be consumed by node3 in a different stream
-// TODO(leca): the ideal case is there is only 1 wait step before launching node3, 
+// TODO(leca): the ideal case is there is only 1 wait step before launching node3,
 // as there is a specific order between node1 and node2 if they are in the same stream, thus node3 will only need to wait the latter one
 TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream) {
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
@@ -1385,7 +1385,7 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 }
 #endif
 
-#if not defined(__wasm__) and defined(ORT_ENABLE_STREAM)
+#if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
 
 TEST_F(PlannerTest, ParaPlanCreation) {
   TypeProto graph_in_type;
@@ -1823,13 +1823,12 @@ TEST_F(PlannerTest, ParaPlanCreation) {
       std::string reused;
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
       reuse_pairs.erase(reused);
-    }  //if
-  }    //for
+    }  // if
+  }    // for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
-
   const char* type = "DeviceBasedPartitioner";
   constexpr size_t type_len = 22;
 
