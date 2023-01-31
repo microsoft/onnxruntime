@@ -763,7 +763,7 @@ if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
   # However, this is test code. We are less concerned.
-  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451" "/wd4244")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
