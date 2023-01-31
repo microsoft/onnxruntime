@@ -385,7 +385,7 @@ if (onnxruntime_USE_CUDA)
     endif()
     if (NOT onnxruntime_USE_NCCL)
       list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/*.cc"
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
       )
     endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
