@@ -374,12 +374,12 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return E_NOTIMPL;
     }
 
-    // IMLOperatorKernelCreationContextNonGraphNode methods.
+    // IMLOperatorKernelCreationContextNodeWrapperPrivate methods.
 
-    uint32_t STDMETHODCALLTYPE GetUtf8NameSizeInBytes() const noexcept override;
+    uint32_t STDMETHODCALLTYPE GetUtf8NameBufferSizeInBytes() const noexcept override;
     HRESULT STDMETHODCALLTYPE GetUtf8Name(uint32_t bufferSizeInBytes, char* name) const noexcept override;
 
-    uint32_t STDMETHODCALLTYPE GetWideNameSizeInBytes() const noexcept override;
+    uint32_t STDMETHODCALLTYPE GetWideNameBufferSizeInBytes() const noexcept override;
     HRESULT STDMETHODCALLTYPE GetWideName(uint32_t bufferSizeInBytes, wchar_t* name) const noexcept override;
 
 private:

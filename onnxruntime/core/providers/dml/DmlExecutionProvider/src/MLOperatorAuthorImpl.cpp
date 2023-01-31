@@ -982,7 +982,7 @@ namespace Windows::AI::MachineLearning::Adapter
         m_abiExecutionObject.CopyTo(executionInterface);
     }
 
-    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8NameSizeInBytes() const noexcept
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8NameBufferSizeInBytes() const noexcept
     {
         // Include null terminator.
         return static_cast<uint32_t>(m_impl->node().Name().size() + 1);
@@ -1006,7 +1006,7 @@ namespace Windows::AI::MachineLearning::Adapter
         return S_OK;
     }
 
-    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideNameSizeInBytes() const noexcept
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideNameBufferSizeInBytes() const noexcept
     {
         const auto& name = m_impl->node().Name(); 
         if (name.empty())
