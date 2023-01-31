@@ -24,6 +24,7 @@
 #include "DmlGpuAllocator.h"
 #include "DmlBuffer.h"
 #include "DmlTaggedPointer.h"
+#include "DmlExternalGpuAllocator.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -89,6 +90,7 @@ namespace Dml
         InsertAllocator(m_impl->GetGpuAllocator());
         InsertAllocator(m_impl->GetCpuInputAllocator());
         InsertAllocator(m_impl->GetCpuOutputAllocator());
+        InsertAllocator(std::make_shared<DmlExternalGpuAllocator>());
     }
 
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
@@ -978,12 +980,6 @@ namespace Dml
         bool enableMetacommands)
     {
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
-    }
-
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer)
-    {
-        Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
-        return pAllocationInfo->GetAllocationInfo(taggedPointer)->GetUavResource();
     }
 
     void FlushContext(onnxruntime::IExecutionProvider* provider)

@@ -188,8 +188,7 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
     auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
     winrt::com_ptr<ID3D12Resource> resource;
-    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data,
-                                                                                 resource.put()),
+    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data, resource.put()),
                             ort_api);
     out = _winml::Resource(resource.get(), [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {

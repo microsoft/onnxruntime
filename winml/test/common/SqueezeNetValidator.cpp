@@ -211,11 +211,11 @@ void ModelValidator::SqueezeNet(
     auto modulePath = FileHelpers::GetModulePath();
     auto fullModelPath = modulePath + modelFileName;
     auto outputFileName = modulePath + outputDataFileName;
-    
+
     // WinML model creation
     LearningModel model = nullptr;
     model = LearningModel::LoadFromFilePath(fullModelPath);
-    
+
     LearningModelSession modelSession = nullptr;
     modelSession = LearningModelSession(model, LearningModelDevice(deviceKind));
 

@@ -20,6 +20,7 @@ using Microsoft::WRL::ComPtr;
 #include "core/framework/error_code_helper.h"
 #include "DmlExecutionProvider/src/ErrorHandling.h"
 #include "DmlExecutionProvider/src/GraphicsUnknownHelper.h"
+#include "DmlExecutionProvider/src/DmlAllocationInfo.h"
 #include "DmlExecutionProvider/src/DmlTaggedPointer.h"
 #include "DmlExecutionProvider/inc/DmlExecutionProvider.h"
 #include "core/platform/env.h"
@@ -218,8 +219,10 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   if (!allocator) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
-  *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation));
+
+  *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
   (*d3d_resource)->AddRef();
+
 #else
   *d3d_resource = nullptr;
 #endif  // USE_DML

@@ -14,7 +14,7 @@ namespace Dml
         DmlBfcAllocator(std::shared_ptr<BucketizedBufferAllocator> subAllocator)
         : onnxruntime::IAllocator(
             OrtMemoryInfo(
-                "DML",
+                onnxruntime::DML,
                 OrtAllocatorType::OrtDeviceAllocator,
                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
             )

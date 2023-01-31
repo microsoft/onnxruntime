@@ -14,9 +14,10 @@ namespace Dml
     DmlGpuAllocator::DmlGpuAllocator(onnxruntime::IAllocator* bfcAllocator, std::shared_ptr<BucketizedBufferAllocator> subAllocator)
     : onnxruntime::IAllocator(
         OrtMemoryInfo(
-            "DML",
+            onnxruntime::DML,
             OrtAllocatorType::OrtDeviceAllocator,
-            OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
+            OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0),
+            0
         )
     ),
     m_bfcAllocator(bfcAllocator),
