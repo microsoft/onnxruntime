@@ -98,9 +98,10 @@ There are two options for reducing the ONNX Runtime binary size.
 
    The process to build a [custom runtime](../../build/custom.md) uses the same build scripts as standard ONNX Runtime, with some extra parameters.
 
-To give an idea of the binary size difference between the full packages and the mobile optimzed packages:
+To give an idea of the binary size difference between the full packages and the mobile optimized packages:
 
-ONNX Runtime 1.13.1 Android package library file size:
+[ONNX Runtime 1.13.1 Android](https://central.sonatype.com/namespace/com.microsoft.onnxruntime) library file size
+
 |Architecture|Package|Size|
 |-|-|-|
 |arm64|onnxruntime-android|12.2 MB|
