@@ -35,17 +35,15 @@ jobs:
   - task: Cache@2
     displayName: Cache Docker Image Task
     inputs:
-      key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: '$(TODAY) | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
       path: $(Pipeline.Workspace)/docker
       restoreKeys: |
-        docker | "$(Build.SourceBranch)"
-        docker |
+        $(TODAY) | "$(Build.SourceBranch)"
       cacheHitVar: IMAGE_CACHE_RESTORED
 
   - script: |
       docker load -i $(Pipeline.Workspace)/docker/cache.tar
       docker image ls
-      docker image inspect ${{variables.repository}}
     displayName: Docker restore
 
   - template: templates/get-docker-image-steps.yml

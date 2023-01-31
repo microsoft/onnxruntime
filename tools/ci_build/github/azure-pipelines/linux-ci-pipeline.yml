@@ -14,13 +14,7 @@ jobs:
   variables:
     skipComponentGovernanceDetection: true
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
-    # cache docker image
-    CCACHE_IMAGE_DIR: $(Pipeline.Workspace)/image
-    repository: 'onnxruntimecpubuild'
-    dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
-    tag: '$(Build.BuildId)'
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -40,37 +34,12 @@ jobs:
       versionSpec: '3.8'
       addToPath: true
 
-  - task: Cache@2
-    displayName: Cache Docker Image Task
-    inputs:
-      key: 'docker | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_IMAGE_DIR)
-      restoreKeys: |
-        docker | "$(Build.SourceBranch)"
-        docker |
-      cacheHitVar: IMAGE_CACHE_RESTORED
-
-  - script: |
-      docker load -i $(CCACHE_IMAGE_DIR)/cache.tar
-    displayName: Docker restore
-    condition: and(not(canceled()), eq(variables.IMAGE_CACHE_RESTORED, 'true'))
-
-  - ${{ if ne(variables.IMAGE_CACHE_RESTORED, 'true') }}:
-    - template: templates/get-docker-image-steps.yml
-      parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-        Context: tools/ci_build/github/linux/docker
-        DockerBuildArgs: "--build-arg BUILD_UID=$(tag)"
-        Repository: '$(repository)'
-        UseImageCacheContainerRegistry: false
-
-  - script: |
-      set -ex
-      mkdir -p $(CCACHE_IMAGE_DIR)
-      chmod 777 $(CCACHE_IMAGE_DIR)
-      docker save -o $(CCACHE_IMAGE_DIR)/cache.tar ${{variables.repository}}
-    displayName: Docker save
-    condition: and(not(canceled()), or(failed(), ne(variables.IMAGE_CACHE_RESTORED, 'true')))
+  - template: templates/get-docker-image-steps.yml
+    parameters:
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Context: tools/ci_build/github/linux/docker
+      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+      Repository: onnxruntimecpubuild
 
   - task: Cache@2
     inputs:
@@ -81,7 +50,6 @@ jobs:
         "$(TODAY)" | "$(Build.SourceBranch)"
         "$(TODAY)" |
     displayName: Cach Task
-
 
   - script: |
       sudo mkdir -p $(Pipeline.Workspace)/ccache
