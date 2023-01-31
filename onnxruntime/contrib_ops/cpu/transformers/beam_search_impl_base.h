@@ -57,13 +57,17 @@ struct BeamSearchState : public IBeamSearchState<T> {
     }
 
     if (use_preallocated_past_and_present_buffers) {
-      size_t all_layers_kv_past_state_size = (SafeInt<size_t>(num_layers) * 2 * batch_beam_size * num_heads * max_length * head_size);
+      size_t all_layers_kv_past_state_size = (SafeInt<size_t>(num_layers) * 2 *
+                                              batch_beam_size * num_heads *
+                                              max_length * head_size);
 
       // '2' is to allocate both past and present states
-      this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * all_layers_kv_past_state_size);
+      this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_,
+                                                          SafeInt<size_t>(2) * all_layers_kv_past_state_size);
 
       past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size);
-      past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size, all_layers_kv_past_state_size);
+      past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size,
+                                                                        all_layers_kv_past_state_size);
 
       // TODO(hasesh): We need this scratch buffer on CUDA because currently, the BeamScorer runs on CPU and selects the beams
       // for the next iteration and hence the chosen next indices is on CPU.

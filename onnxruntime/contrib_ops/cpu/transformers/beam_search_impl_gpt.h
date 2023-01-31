@@ -261,10 +261,13 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                                                                    gpt_subgraph_.head_size);
 
       int64_t dims[] = {2, parameters->batch_size * parameters->num_beams,
-                        gpt_subgraph_.num_heads, parameters->sequence_length, gpt_subgraph_.head_size};
+                        gpt_subgraph_.num_heads, parameters->sequence_length,
+                        gpt_subgraph_.head_size};
+
       TensorShape shape(&dims[0], 5);
 
-      Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, current_layer_present_buffer.data(), this->temp_space_allocator_->Info(), present_tensor);
+      Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, current_layer_present_buffer.data(),
+                           this->temp_space_allocator_->Info(), present_tensor);
 
       fetches.push_back(present_tensor);
     }
@@ -374,7 +377,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
         fetches[i] = OrtValue();
       }
 
-      // Re-adjust present state fetches for next iteration
+      // Re-adjust shapes of present state fetches for next iteration
       for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_layers); i++) {
         auto fetch_offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
 
