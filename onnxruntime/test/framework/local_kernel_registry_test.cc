@@ -64,9 +64,9 @@ class FooKernel : public OpKernel {
   }
 };
 
-ONNX_NAMESPACE::OpSchema GetFooSchema(const std::string& domain = "test", int since_version = 1) {
+ONNX_NAMESPACE::OpSchema GetFooSchema() {
   ONNX_NAMESPACE::OpSchema schema("Foo", "unknown", 0);
-  schema.SetDomain(domain);
+  schema.SetDomain("test");
   schema.Input(0,
                "A",
                "First operand, should share the type with the second operand.",
@@ -82,7 +82,7 @@ ONNX_NAMESPACE::OpSchema GetFooSchema(const std::string& domain = "test", int si
       "T",
       OpSchema::numeric_types_for_math_reduction(),
       "Constrain input and output types to high-precision numeric tensors.");
-  schema.SinceVersion(since_version);
+  schema.SinceVersion(1);
   return schema;
 }
 
