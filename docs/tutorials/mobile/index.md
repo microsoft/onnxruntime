@@ -100,7 +100,7 @@ There are two options for reducing the ONNX Runtime binary size.
 
 To give an idea of the binary size difference between mobile and full packages:
 
-ONNX Runtime 1.13.1 Android package `jni/arm64-v8a/libonnxruntime.so` dynamic library file size:
+ONNX Runtime 1.13.1 Android package library file size:
 
 |Package|Size|
 |-|-|
