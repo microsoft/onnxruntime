@@ -149,64 +149,7 @@ This project is a library for running ONNX models on browsers. It is the success
 
 ### Build
 
-1. Install NPM packages
-
-   1. in `<ORT_ROOT>/js/`, run `npm ci`.
-   2. in `<ORT_ROOT>/js/common/`, run `npm ci`.
-   3. in `<ORT_ROOT>/js/web/`, run `npm ci`.
-
-2. Prepare ONNX Runtime WebAssembly artifacts.
-
-   You can either use the prebuilt artifacts or build it by yourself.
-
-   - Setup by script.
-
-     In `<ORT_ROOT>/js/web/`, run `npm run pull:wasm` to pull WebAssembly artifacts for latest main branch from CI pipeline.
-
-   - Download artifacts from pipeline manually.
-
-     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifacts "Release_ort-wasm" and "Release_ort-wasm-threaded" and unzip. See instructions below to put files into destination folders.
-
-   - Build WebAssembly artifacts.
-
-     1. Build ONNX Runtime WebAssembly
-
-        ~~Follow [instructions](https://www.onnxruntime.ai/docs/how-to/build.html#apis-and-language-bindings) for building ONNX Runtime WebAssembly. (TODO: document is not ready. we are working on it. Please see steps described as below.)~~
-
-        in `<ORT_ROOT>/`, run one of the following commands to build WebAssembly:
-
-        ```sh
-        # In windows, use 'build' to replace './build.sh'
-
-        # The following command build debug.
-        ./build.sh --build_wasm
-
-        # The following command build debug with debug info.
-        ./build.sh --build_wasm --skip_tests --enable_wasm_debug_info
-
-        # The following command build release.
-        ./build.sh --config Release --build_wasm --skip_tests --disable_wasm_exception_catching --disable_rtti
-        ```
-
-        To build with multi-thread support, append flag `--enable_wasm_threads` to the command. To build with SIMD support, append flag `--enable_wasm_simd` to the command. Make sure to build both single-thread and multi-thread with and without SIMD before next step.
-
-     2. Copy following files from build output folder to `<ORT_ROOT>/js/web/dist/`:
-
-        - ort-wasm.wasm
-        - ort-wasm-threaded.wasm (build with flag '--enable_wasm_threads')
-        - ort-wasm-simd.wasm (build with flag '--enable_wasm_simd')
-        - ort-wasm-simd-threaded.wasm (build with flags '--enable_wasm_threads --enable_wasm_simd')
-
-     3. Copy following files from build output folder to `<ORT_ROOT>/js/web/lib/wasm/binding/`:
-
-        - ort-wasm.js
-        - ort-wasm-threaded.js (build with flag '--enable_wasm_threads')
-        - ort-wasm-threaded.worker.js (build with flag '--enable_wasm_threads')
-
-3. Use following command in folder `<ORT_ROOT>/js/web` to build:
-   ```
-   npm run build
-   ```
+[onnxruntime-web build instructions](https://onnxruntime.ai/docs/build/web.html)
 
 ### Test
 

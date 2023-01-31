@@ -5,8 +5,9 @@
 #pragma once
 
 #include <memory>
-#include <set>
 #include <vector>
+#include <string>
+#include <unordered_map>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/framework/allocatormgr.h"
@@ -16,8 +17,17 @@
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
+#include "core/providers/cann/cann_graph.h"
 
 namespace onnxruntime {
+
+// Information to construct kernel function state.
+struct CannFuncState {
+  AllocateFunc allocate_func = nullptr;
+  DestroyFunc release_func = nullptr;
+  AllocatorHandle allocate_handle = nullptr;
+  std::string node_name;
+};
 
 class CANNExecutionProvider : public IExecutionProvider {
  public:
@@ -59,9 +69,16 @@ class CANNExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
+  std::unique_ptr<IndexedSubGraph> GetSubGraph(
+      const std::vector<std::size_t>& graph_nodes_index,
+      const GraphViewer& graph_viewer) const;
+
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
+      const onnxruntime::GraphViewer& graph_viewer,
       const IKernelLookup& kernel_lookup) const override;
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   ProviderOptions GetProviderOptions() const override {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
@@ -73,6 +90,10 @@ class CANNExecutionProvider : public IExecutionProvider {
  private:
   CANNExecutionProviderInfo info_;
   aclrtStream stream_ = nullptr;
+  const char* soc_name_ = nullptr;
+
+  std::unordered_map<std::string, std::string> models_;
+  std::unordered_map<std::string, std::unordered_map<std::size_t, std::string>> names_;
 };
 
 }  // namespace onnxruntime

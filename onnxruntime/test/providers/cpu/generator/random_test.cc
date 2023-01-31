@@ -71,7 +71,8 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
 
   test.AddOutput<float>("Y", dims, expected_output);
 
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  // TensorRT does not support manual seed overrides and there will be result mismatch
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {

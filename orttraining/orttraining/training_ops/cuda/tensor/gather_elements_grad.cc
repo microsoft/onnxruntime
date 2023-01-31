@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 #define CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF (*KernelDefBuilder::Create()).MayStridedInput(2)
 #else
 #define CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF (*KernelDefBuilder::Create())
@@ -77,7 +77,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   Tensor* dX = context->Output(0, data_shape);
   if (data_shape.Size() == 0) return Status::OK();
 
-  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream()));
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(dX->MutableDataRaw(), 0, dX->SizeInBytes(), Stream(context)));
 
   GatherScatterElementsArgs args;
   args.indices_size = indices_shape.Size();
@@ -85,7 +85,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   TensorShapeVector* p_indices_strides_vec = nullptr;
   TensorShapeVector indices_strids_vec;
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
   if (!indices_tensor->IsContiguous()) {
     indices_strids_vec = ToShapeVector(indices_tensor->Strides());
     p_indices_strides_vec = &indices_strids_vec;
@@ -101,7 +101,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
   }
 
   utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
-  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
+  return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(), dX->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);
 }
 

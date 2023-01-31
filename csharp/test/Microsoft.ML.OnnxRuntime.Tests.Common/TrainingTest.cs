@@ -129,7 +129,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     TensorElementType.Int32, labelsShape, labels.Length * sizeof(Int32)));
 
                 var outputs = trainingSession.TrainStep(pinnedInputs);
-                trainingSession.ResetGrad();
+                trainingSession.LazyResetGrad();
                 outputs = trainingSession.TrainStep(pinnedInputs);
                 var outputBuffer = outputs.ElementAtOrDefault(0);
 
@@ -233,7 +233,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
                     Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
 
-                    trainingSession.ResetGrad();
+                    trainingSession.LazyResetGrad();
 
                     trainingSession.TrainStep(pinnedInputs, pinnedOutputs);
                     Assert.Equal(expectedOutput_1, outputBuffer, new FloatComparer());
@@ -316,5 +316,5 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 #endif
-        }
+    }
 }

@@ -99,7 +99,7 @@ Status SkipLayerNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return LaunchSkipLayerNormKernel<HipT>(
       IsTunableOpEnabled(),
-      Stream(),
+      Stream(ctx),
       reinterpret_cast<HipT*>(output->MutableData<T>()),
       reinterpret_cast<const HipT*>(input->Data<T>()),
       reinterpret_cast<const HipT*>(skip->Data<T>()),

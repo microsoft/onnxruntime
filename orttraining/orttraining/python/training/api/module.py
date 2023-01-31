@@ -5,7 +5,7 @@
 import numpy as np
 
 from onnxruntime.capi import _pybind_state as C
-from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
+from onnxruntime.capi.onnxruntime_inference_collection import OrtValue, get_ort_device_type
 from onnxruntime.capi.onnxruntime_pybind11_state import OrtValueVector
 
 
@@ -17,14 +17,23 @@ class Module:
 
     training: bool
 
-    def __init__(self, train_model_uri, state, eval_model_uri=None) -> None:
+    def __init__(self, train_model_uri, state, eval_model_uri=None, device: str = "cpu") -> None:
         """
         Initializes Model for Training.
         __init__ will call an internatl function to create the model.
         """
         # TODO : Add support for bytes on train_model_uri and eval_model_uri.
         self.training = True
-        self._model = C.Module(train_model_uri, state._state, eval_model_uri)
+        options = device.split(":")
+        self._device_type = options[0]
+        device_id = 0 if len(options) < 2 else int(options[1])
+
+        self._device = C.OrtDevice(
+            get_ort_device_type(self._device_type, device_id),
+            C.OrtDevice.default_memory(),
+            device_id,
+        )
+        self._model = C.Module(train_model_uri, state._state, eval_model_uri, self._device)
 
     def __call__(self, user_inputs):
         """
@@ -71,11 +80,14 @@ class Module:
         """
         return self.train(False)
 
-    def reset_grad(self):
+    def lazy_reset_grad(self):
+        """Lazily resets the training gradients.
+
+        This function sets the internal state of the module such that the module gradients
+        will be scheduled to be reset just before the new gradients are computed on the next invocation
+        of train().
         """
-        Resets the gradient of the parameters.
-        """
-        return self._model.reset_grad()
+        return self._model.lazy_reset_grad()
 
     def save_checkpoint(self, ckpt_uri):
         """
@@ -94,8 +106,8 @@ class Module:
                 self.get_parameters_size(trainable_only),
             ],
             np.float32,
-            "cpu",
-            0,
+            self._device_type,
+            self._device.device_id(),
         )._ortvalue
         self._model.copy_parameters_to_buffer(parameters)
 
@@ -117,4 +129,5 @@ class Module:
         """
         Exports the model for inferencing.
         """
+        self._model.export_model_for_inferencing(inference_model_uri, graph_output_names)
         self._model.export_model_for_inferencing(inference_model_uri, graph_output_names)

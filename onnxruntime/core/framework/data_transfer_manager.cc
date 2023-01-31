@@ -28,16 +28,6 @@ const IDataTransfer* DataTransferManager::GetDataTransfer(const OrtDevice& src_d
 }
 
 Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst) const {
-  return CopyTensor(src, dst, 0);
-}
-
-#if !defined(DISABLE_SPARSE_TENSORS)
-common::Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const {
-  return CopySparseTensor(src, dst, 0);
-}
-#endif
-
-Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_queue_id) const {
   if (src.Shape().Size() != dst.Shape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
@@ -47,7 +37,28 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_
       continue;
     }
 
-    return data_transfer->CopyTensor(src, dst, exec_queue_id);
+    return data_transfer->CopyTensor(src, dst);
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME,
+                         FAIL,
+                         "There's no data transfer registered for copying tensors from ",
+                         src.Location().device.ToString(),
+                         " to ",
+                         dst.Location().device.ToString());
+}
+
+Status DataTransferManager::CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
+  if (src.Shape().Size() != dst.Shape().Size()) {
+    return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
+  }
+
+  for (auto& data_transfer : datatransfers_) {
+    if (!data_transfer->CanCopy(src.Location().device, dst.Location().device)) {
+      continue;
+    }
+
+    return data_transfer->CopyTensorAsync(src, dst, stream);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME,
@@ -59,7 +70,7 @@ Status DataTransferManager::CopyTensor(const Tensor& src, Tensor& dst, int exec_
 }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
-Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst, int exec_queue_id) const {
+Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTensor& dst) const {
   if (src.DenseShape().Size() != dst.DenseShape().Size()) {
     return Status(ONNXRUNTIME, FAIL, "Tensor size mismatch");
   }
@@ -69,7 +80,7 @@ Status DataTransferManager::CopySparseTensor(const SparseTensor& src, SparseTens
       continue;
     }
 
-    return src.Copy(*data_transfer, dst, exec_queue_id);
+    return src.Copy(*data_transfer, dst);
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME,
@@ -123,10 +134,11 @@ common::Status DataTransferManager::CopyTensors(const std::vector<IDataTransfer:
   // batch as much as possible.
 
   // copy the first one as we already did the IDataTransfer lookup
-  ORT_RETURN_IF_ERROR(first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get(), first_pair.exec_queue_id));
+  ORT_RETURN_IF_ERROR(first_pair.src_stream ? first_dt->CopyTensorAsync(first_pair.src.get(), first_pair.dst.get(), *(first_pair.src_stream))
+                        : first_dt->CopyTensor(first_pair.src.get(), first_pair.dst.get()));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
-    ORT_RETURN_IF_ERROR(CopyTensor(cur_pair->src, cur_pair->dst, cur_pair->exec_queue_id));
+    ORT_RETURN_IF_ERROR(!cur_pair->src_stream ? CopyTensor(cur_pair->src, cur_pair->dst) : CopyTensorAsync(cur_pair->src, cur_pair->dst, *(cur_pair->src_stream)));
   }
 
   return Status::OK();
@@ -175,10 +187,10 @@ common::Status DataTransferManager::CopySparseTensors(const std::vector<IDataTra
   // batch as much as possible.
 
   // copy the first one as we already did the IDataTransfer lookup
-  ORT_RETURN_IF_ERROR(first_pair.src.get().Copy(*first_dt, first_pair.dst, first_pair.exec_queue_id));
+  ORT_RETURN_IF_ERROR(first_pair.src.get().Copy(*first_dt, first_pair.dst));
 
   for (auto cur_pair = src_dst_pairs.cbegin() + 1, end_pair = src_dst_pairs.cend(); cur_pair != end_pair; ++cur_pair) {
-    ORT_RETURN_IF_ERROR(CopySparseTensor(cur_pair->src, cur_pair->dst, cur_pair->exec_queue_id));
+    ORT_RETURN_IF_ERROR(CopySparseTensor(cur_pair->src, cur_pair->dst));
   }
 
   return Status::OK();

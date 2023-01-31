@@ -34,11 +34,12 @@ template <>
 Scan<9>::Scan(const OpKernelInfo& info) : onnxruntime::Scan<9>(info) {
   scan::detail::DeviceHelpers helpers;
 
-  helpers.transpose_func = [this](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
+  helpers.transpose_func = [this](const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output, Stream* stream) {
     // TODO: We construct a Transpose kernel on each call as doing so is fairly lightweight.
     // We could potentially keep a single instance and reuse it if that isn't performant enough.
     const OpKernelInfo& info = OpKernel::Info();
-    return cuda::Transpose::DoTranspose(cuda::Transpose(info), permutations, input, output);
+    Transpose transpose_kernel = cuda::Transpose(info);
+    return cuda::Transpose::DoTranspose(transpose_kernel, stream, permutations, input, output);
   };
 
   // copy into base class

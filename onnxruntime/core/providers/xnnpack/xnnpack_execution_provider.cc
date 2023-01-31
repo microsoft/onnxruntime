@@ -14,6 +14,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
 #include "core/providers/shared/node_unit/node_unit.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "xnnpack_init.h"
 
@@ -123,10 +124,28 @@ using namespace xnnpack;
 
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider, true} {
-  if (info.xnn_thread_pool_size > 1) {
-    // pthreadpool is independent of ort-threadpoool, so we have to disable cpu spinning for ort-threadpool.
-    // otherwise, the pthreadpool will be starved and harm performance a lot.
-    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(info.xnn_thread_pool_size));
+  int xnn_thread_pool_size = info.xnn_thread_pool_size;
+  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
+  bool allow_intra_op_spinning = (info.session_options == nullptr) ||
+                                 (info.session_options &&
+                                  info.session_options->config_options.GetConfigOrDefault(
+                                      kOrtSessionOptionsConfigAllowIntraOpSpinning, "1") == "1");
+  if (xnn_thread_pool_size > 1 && allow_intra_op_spinning && ort_thread_pool_size > 1) {
+    LOGS_DEFAULT(WARNING)
+        << "The XNNPACK EP utilizes an internal pthread-based thread pool for multi-threading."
+           "If ORT's thread pool size is > 1 and spinning is enabled, "
+           "there will be contention between the two thread pools, and performance will suffer."
+           "Please set either intra_op_param.allow_spinning to 0 in the SessionOption config params,"
+           "or the ORT intra-op threadpool size to 1.";
+  }
+
+  if (xnn_thread_pool_size == 0) {
+    xnn_thread_pool_size = ort_thread_pool_size;
+  }
+
+  if (xnn_thread_pool_size > 1) {
+    // pthreadpool is independent of ort-threadpoool, so we had better disable cpu spinning for ort-threadpool.
+    xnnpack_thread_pool_ = pthreadpool_create(static_cast<size_t>(xnn_thread_pool_size));
   }
 }
 

@@ -1,30 +1,12 @@
 [submodule "cmake/external/protobuf"]
 	path = cmake/external/protobuf
 	url = https://github.com/protocolbuffers/protobuf.git
-[submodule "cmake/external/googletest"]
-	path = cmake/external/googletest
-	url = https://github.com/google/googletest.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
 	url = https://github.com/onnx/onnx.git
-[submodule "cmake/external/date"]
-	path = cmake/external/date
-	url = https://github.com/HowardHinnant/date.git
-[submodule "cmake/external/nsync"]
-	path = cmake/external/nsync
-	url = https://github.com/google/nsync.git
-[submodule "cmake/external/re2"]
-	path = cmake/external/re2
-	url = https://github.com/google/re2.git
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://gitlab.com/libeigen/eigen.git
-[submodule "cmake/external/tensorboard"]
-	path = cmake/external/tensorboard
-	url = https://github.com/tensorflow/tensorboard.git
-[submodule "cmake/external/wil"]
-	path = cmake/external/wil
-	url = https://github.com/microsoft/wil.git
 [submodule "cmake/external/libprotobuf-mutator"]
 	path = cmake/external/libprotobuf-mutator
 	url = https://github.com/google/libprotobuf-mutator.git
@@ -35,10 +17,3 @@
 [submodule "cmake/external/onnxruntime-extensions"]
 	path = cmake/external/onnxruntime-extensions
 	url = https://github.com/microsoft/onnxruntime-extensions.git
-[submodule "cmake/external/pytorch_cpuinfo"]
-	path = cmake/external/pytorch_cpuinfo
-	url = https://github.com/pytorch/cpuinfo.git
-[submodule "cmake/external/onnx-tensorrt"]
-	path = cmake/external/onnx-tensorrt
-	url = https://github.com/onnx/onnx-tensorrt.git
-	branch = 8.4-GA

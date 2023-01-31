@@ -30,7 +30,8 @@ class T5EncoderSubgraph : public Subgraph {
       const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer,
-      OrtValue& expanded_decoder_input_ids);
+      OrtValue& expanded_decoder_input_ids,
+      Stream* ort_stream);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

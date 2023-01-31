@@ -1630,7 +1630,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // (they're internally available to the fused node but removed from the Graph instance).
             // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
             bool check = node.NodeType() != Node::Type::Fused;
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING_CORE)
             // Only check initial model load for training as graph modifications there also render inputs 'invalid'.
             check = check && num_resolves_ == 0;
 #endif

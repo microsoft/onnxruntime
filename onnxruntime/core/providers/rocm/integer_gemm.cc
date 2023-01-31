@@ -19,11 +19,11 @@ inline int roundoff(int v, int d) {
 Status GemmInt8(int m, int n, int k,
                 int32_t alpha, int32_t beta,
                 const int8_t* a, int lda, const int8_t* b, int ldb, int32_t* c, int ldc,
-                const RocmKernel* rocm_kernel) {
+                const RocmKernel* rocm_kernel, onnxruntime::Stream* ort_stream) {
   ORT_ENFORCE(a != nullptr && b != nullptr && c != nullptr, "input matrix should not be null");
   ORT_ENFORCE(rocm_kernel != nullptr, "kernel is null");
 
-  hipStream_t stream = rocm_kernel->Stream();
+  hipStream_t stream = ort_stream ? static_cast<hipStream_t>(ort_stream->GetHandle()) : nullptr;
 
   // pad A and B to make their leading dimension be multiples of 32
   // because cublasGemmEx requires:
@@ -35,7 +35,7 @@ Status GemmInt8(int m, int n, int k,
   IAllocatorUniquePtr<int8_t> a_padded;
   if ((mask & lda_aligned) != 0) {
     lda_aligned = roundoff(lda, 32);
-    a_padded = rocm_kernel->GetScratchBuffer<int8_t>(m * lda_aligned);
+    a_padded = rocm_kernel->GetScratchBuffer<int8_t>(m * lda_aligned, ort_stream);
     HIP_RETURN_IF_ERROR(hipMemcpy2DAsync(a_padded.get(), lda_aligned, a, lda, k, m, hipMemcpyDeviceToDevice, stream));
   }
 
@@ -43,12 +43,12 @@ Status GemmInt8(int m, int n, int k,
   IAllocatorUniquePtr<int8_t> b_padded;
   if ((mask & ldb_aligned) != 0) {
     ldb_aligned = roundoff(ldb, 32);
-    b_padded = rocm_kernel->GetScratchBuffer<int8_t>(k * ldb_aligned);
+    b_padded = rocm_kernel->GetScratchBuffer<int8_t>(k * ldb_aligned, ort_stream);
     HIP_RETURN_IF_ERROR(hipMemcpy2DAsync(b_padded.get(), ldb_aligned, b, ldb, n, k, hipMemcpyDeviceToDevice, stream));
   }
 
-  auto handle = rocm_kernel->RocblasHandle();
-  rocblas_set_stream(handle, stream);
+  RocmStream* ort_rocm_stream = static_cast<RocmStream*>(ort_stream);
+  auto handle = ort_rocm_stream->rocblas_handle_;
   ROCBLAS_RETURN_IF_ERROR(rocblas_gemm_ex(
       handle,
       rocblas_operation_none, rocblas_operation_none,
