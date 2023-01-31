@@ -194,11 +194,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
 
   float thread_data = -CUDART_INF_F;
   if (threadIdx.x < all_sequence_length) {
-    if (add_before_softmax == nullptr) {
-      thread_data = float(input[index]) * rsqrt_head_size;
-    } else {
-      thread_data = float(input[index] + add_before_softmax[index]) * rsqrt_head_size;
-    }
+    thread_data = float(input[index]) * rsqrt_head_size;
 
     const int sequence_index = blockIdx.x % sequence_length;
     if (is_unidirectional) {
@@ -228,6 +224,10 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
       if (mask) {
         thread_data = -CUDART_INF_F;
       }
+    }
+
+    if (add_before_softmax != nullptr) {
+      thread_data += float(add_before_softmax[index]);
     }
   }
 
