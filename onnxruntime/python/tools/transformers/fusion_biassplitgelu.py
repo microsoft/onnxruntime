@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict, Optional
+from typing import Dict
 
 from fusion_base import Fusion
 from onnx import helper
@@ -94,7 +94,9 @@ class FusionBiasSplitGelu(Fusion):
             return
 
         add_node = start_index_nodes[-1]
-        bias_index, _bias = self.model.get_constant_input(add_node)
+        bias_index, _value = self.model.get_constant_input(add_node)
+        if not isinstance(bias_index, int):
+            return
         self.nodes_to_remove.extend(subgraph_nodes)
         node_name = self.model.create_node_name("BiasSplitGelu", name_prefix="BiasSplitGelu")
         fused_node = helper.make_node(

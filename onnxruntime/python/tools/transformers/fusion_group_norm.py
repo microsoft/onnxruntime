@@ -64,10 +64,15 @@ class FusionGroupNorm(Fusion):
             return
 
         weight = self.model.get_constant_value(weight_input)
+        if weight is None:
+            return
+
         if not (len(weight.shape) == 3 and weight.shape[1] == 1 and weight.shape[2] == 1):
             return
 
         bias = self.model.get_constant_value(bias_input)
+        if weight is None:
+            return
         if not (len(bias.shape) == 3 and bias.shape[1] == 1 and bias.shape[2] == 1):
             return
 

@@ -41,7 +41,6 @@ class FusionUtils:
 
         cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
 
-        to_type = -1
         if target_type == "int32":
             to_type = int(TensorProto.INT32)
         elif target_type == "float32":
