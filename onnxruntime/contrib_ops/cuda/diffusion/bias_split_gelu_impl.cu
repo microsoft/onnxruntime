@@ -23,6 +23,7 @@
 #include <cuda_runtime_api.h>
 #include <cub/cub.cuh>
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/bias_split_gelu_impl.h"
 
 namespace onnxruntime {
@@ -37,8 +38,8 @@ __global__ void biasSplitGeluKernel(T const* input, T const* bias, T* output) {
 
 #pragma unroll
   for (int32_t i = 0; i < HHS / TPB; ++i) {
-    auto value_left = static_cast<float>(input[index_input] + bias[index_bias]);
-    auto value_right = static_cast<float>(input[index_input + HHS] + bias[index_bias + HHS]);
+    auto value_left = float(input[index_input] + bias[index_bias]);
+    auto value_right = float(input[index_input + HHS] + bias[index_bias + HHS]);
 
     // Gelu is applied to right side only: Gelu(x) = x * 0.5 * (erf(x / sqrt(2)) + 1.0)
     float gelu_right = value_right * 0.5f * (erff(value_right / 1.41421356237f) + 1.0f);
