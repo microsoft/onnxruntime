@@ -99,7 +99,6 @@ Status CheckInputs(const T* query,
                              "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
                              relative_position_bias_dims.size());
     }
-    std::cout << "relative_position_bias_dims" << relative_position_bias_dims[0] << " " << relative_position_bias_dims[1] << " " << relative_position_bias_dims[2] << " " << relative_position_bias_dims[3] << std::endl;
     if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ",
