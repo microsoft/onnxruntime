@@ -780,7 +780,9 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     gsl::span<T> past_state_buffer = beam_state->GetPastStateBuffer();
 
     for (int i = 0; i < num_present_tensors; ++i) {
-      gsl::span<T> current_layer_past_state_buffer = past_state_buffer.subspan(i * 2 * batch_beam_size * num_heads * max_seq_length * head_size);
+      gsl::span<T> current_layer_past_state_buffer = past_state_buffer.subspan(i * 2 * batch_beam_size *
+                                                                               num_heads * max_seq_length *
+                                                                               head_size);
 
       // Create a tensor with same shape as the present state (use `representative_shape`).
       OrtValue past;
