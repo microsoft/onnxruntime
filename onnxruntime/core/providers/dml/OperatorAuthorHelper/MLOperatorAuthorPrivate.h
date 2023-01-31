@@ -58,7 +58,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
 };
 
 interface __declspec(uuid("1d2e1226-a918-4236-8775-175cf1f52c9a"))
-IMLOperatorKernelCreationContextNodeWrapperPrivate : public IUnknown
+IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCreationContextPrivate
 {
     //! Gets the minimum size of a char buffer to store the node name (including null terminator).
     //! Returns 1 if the node has no name (calling GetUtf8Name will write a single null terminator).
