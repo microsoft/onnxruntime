@@ -76,8 +76,8 @@ class FusionGroupNorm(Fusion):
         if not (len(bias.shape) == 3 and bias.shape[1] == 1 and bias.shape[2] == 1):
             return
 
-        weight_elements = np.prod(weight.shape)
-        bias_elements = np.prod(bias.shape)
+        weight_elements = int(np.prod(weight.shape))
+        bias_elements = int(np.prod(bias.shape))
         if weight_elements != bias_elements:
             return
 
@@ -196,4 +196,3 @@ class FusionGroupNorm(Fusion):
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
         self.node_name_to_graph_name[transpose_input.name] = self.this_graph_name
         self.node_name_to_graph_name[transpose_output.name] = self.this_graph_name
-        return True

@@ -108,4 +108,3 @@ class FusionBiasSplitGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[node_name] = self.this_graph_name
-        return True
