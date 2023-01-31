@@ -97,12 +97,10 @@ class NodeRepo {
 
   onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
     std::lock_guard<std::mutex> guard(mutex_);
-    auto* node = node_ptr.get();
     auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
     if (!ret.second) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
-    nodes_.push_back(node);
 
     return Status::OK();
   }
@@ -110,15 +108,17 @@ class NodeRepo {
 #if !defined(ORT_MINIMAL_BUILD)
   common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
     std::lock_guard<std::mutex> guard(mutex_);
-    for (auto* node : nodes_) {
+
+    for (auto cur = resource_map_.begin(), end = resource_map_.end(); cur != end; ++cur) {
       // Lookup the schema for the operator so we include it in the ORT format model and can match the kernel
       // in a minimal build.
       // The opset version will not necessarily match the model, so we need to call GetSchema directly to plug that in.
-      // in theory this should never fail if the kernel lookup earlier was successful.
-      auto* schema = graph.GetSchemaRegistry()->GetSchema(node->OpType(), node->SinceVersion(), node->Domain());
+      // In theory this should never fail if the kernel lookup earlier was successful.
+      const Node& node = *cur->second.first;
+      auto* schema = graph.GetSchemaRegistry()->GetSchema(node.OpType(), node.SinceVersion(), node.Domain());
 
-      ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'",
-                        node->Domain(), "' op_type:", node->OpType());
+      ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'", node.Domain(),
+                        "' op_type:", node.OpType());
       ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*schema));
     }
 
@@ -165,7 +165,6 @@ class NodeRepo {
 
   std::mutex mutex_;
   NodeResourceMap resource_map_;
-  std::vector<Node*> nodes_;
 };
 
 #if !defined(ORT_MINIMAL_BUILD)

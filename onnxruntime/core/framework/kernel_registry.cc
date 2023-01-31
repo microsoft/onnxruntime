@@ -220,17 +220,6 @@ Status KernelRegistry::TryFindKernel(const std::string& op_name, const std::stri
     int end_ver{};
     kci.kernel_def->SinceVersion(&start_ver, &end_ver);
     if (start_ver <= version && end_ver >= version) {  // try match the version
-      // auto& kci_constraints = kci.kernel_def->TypeConstraints();
-      // bool match = true;
-      // for (auto& constraint : type_constraints) {  // try match type constraints
-      //   auto iter = kci_constraints.find(constraint.first);
-      //   if (iter == kci_constraints.end() ||
-      //       find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
-      //     match = false;
-      //     break;
-      //   }
-      // }
-
       bool match = MatchKernelDefTypes(kci.kernel_def->TypeConstraints(), type_constraints);
 
       if (match) {

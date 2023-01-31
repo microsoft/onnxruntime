@@ -1342,6 +1342,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_common
       onnxruntime_flatbuffers
     )
+
+    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+      list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_language_interop onnxruntime_pyop)
+    endif()
+
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
       ${onnxruntime_EXTERNAL_LIBRARIES}

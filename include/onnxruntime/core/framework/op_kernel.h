@@ -143,7 +143,7 @@ struct KernelCreateInfo {
                    KernelCreateFn create_func)
       : kernel_def(std::move(definition)),
         kernel_create_func(create_func) {
-		// TEMPORARY - checking assertion this never happens by running CIs with this to validate
+    // TEMPORARY - checking assertion this never happens by running CIs with this to validate
     ORT_ENFORCE(kernel_def, "Null definition");
   }
 
