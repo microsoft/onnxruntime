@@ -251,8 +251,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       OrtValue present_tensor;
       gsl::span<T> present_state_buffer = beam_state.GetPresentStateBuffer();
 
-      gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer *
-                                                                                   2 * parameters->batch_size * parameters->num_beams * gpt_subgraph_.num_heads * parameters->max_length * gpt_subgraph_.head_size,
+      gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer * 2 * parameters->batch_size *
+                                                                                   parameters->num_beams * gpt_subgraph_.num_heads *
+                                                                                   parameters->max_length * gpt_subgraph_.head_size,
 
                                                                                2 * parameters->batch_size *
                                                                                    parameters->num_beams * gpt_subgraph_.num_heads *
