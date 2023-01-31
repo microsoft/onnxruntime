@@ -1588,7 +1588,8 @@ struct KernelContext {
 /// A Logger can be obtained from within custom operators by calling Ort::KernelInfo::GetLogger().
 /// Instances of Ort::Logger are the size of two pointers and can be passed by value.
 ///
-/// Use the ORT_CXX_LOG macros to ensure the source code location is set properly from the callsite.
+/// Use the ORT_CXX_LOG macros to ensure the source code location is set properly from the callsite
+/// and to take advantage of a cached logging severity level that can bypass calls to the underlying C API.
 /// </summary>
 struct Logger {
   /**
@@ -1627,7 +1628,7 @@ struct Logger {
   /**
    * Logs the provided message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOG or ORT_CXX_LOG_NOEXCEPT
    * macros to properly set the source code location and to use the cached severity level to potentially bypass
-   * calls to the underyling C API.
+   * calls to the underlying C API.
    *
    * \param log_severity_level The message's logging severity level.
    * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
@@ -1642,7 +1643,7 @@ struct Logger {
   /**
    * Logs a printf-like formatted message via OrtApi::Logger_LogMessage. Use the ORT_CXX_LOGF or ORT_CXX_LOGF_NOEXCEPT
    * macros to properly set the source code location and to use the cached severity level to potentially bypass
-   * calls to the underyling C API. Returns an error status if a formatting error occurs.
+   * calls to the underlying C API. Returns an error status if a formatting error occurs.
    *
    * \param log_severity_level The message's logging severity level.
    * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
