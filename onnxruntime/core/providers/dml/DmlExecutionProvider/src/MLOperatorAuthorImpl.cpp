@@ -985,8 +985,7 @@ namespace Windows::AI::MachineLearning::Adapter
     uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8NameSizeInBytes() const noexcept
     {
         // Include null terminator.
-        const auto& name = m_impl->node().Name(); 
-        return name.empty() ? 0 : name.size() + 1;
+        return static_cast<uint32_t>(m_impl->node().Name().size() + 1);
     }
 
     HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8Name(uint32_t bufferSizeInBytes, char* outputName) const noexcept
@@ -1012,14 +1011,15 @@ namespace Windows::AI::MachineLearning::Adapter
         const auto& name = m_impl->node().Name(); 
         if (name.empty())
         {
-            return 0;
+            // Include null terminator.
+            return sizeof(wchar_t);
         }
         
-        int requiredSize = MultiByteToWideChar(CP_UTF8, 0, name.data(), name.size(), nullptr, 0);
-        assert(requiredSize > 0);
+        int requiredSizeInChars = MultiByteToWideChar(CP_UTF8, 0, name.data(), name.size(), nullptr, 0);
+        assert(requiredSizeInChars > 0);
 
         // Include null terminator.
-        return static_cast<uint32_t>(requiredSize) + 1;
+        return static_cast<uint32_t>((requiredSizeInChars + 1) * sizeof(wchar_t));
     }
 
     HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideName(uint32_t bufferSizeInBytes, wchar_t* outputName) const noexcept
@@ -1040,25 +1040,28 @@ namespace Windows::AI::MachineLearning::Adapter
         uint32_t bufferSizeInChars = bufferSizeInBytes / sizeof(wchar_t);
         int charsCopiedIfSucceeded = MultiByteToWideChar(CP_UTF8, 0, nodeName.data(), nodeName.size(), outputName, bufferSizeInChars);
 
-        auto lastError = GetLastError();
-        if (lastError == ERROR_INSUFFICIENT_BUFFER)
+        if (charsCopiedIfSucceeded > 0)
         {
-            // Buffer was too small. Truncate and overwrite last char with null terminator.
-            outputName[bufferSizeInChars - 1] = '\0';
+            // The return value is only > 0 if ALL characters copied successfully. 
+            // Write null terminator at the end of copied chars, which may not be at the end of the buffer.
+            outputName[charsCopiedIfSucceeded] = L'\0';
             return S_OK;
         }
 
-        if (charsCopiedIfSucceeded == 0)
+        // An error must have occurred in MultiByteToWideChar. 
+        assert(charsCopiedIfSucceeded <= 0);
+        auto lastError = GetLastError();
+
+        if (lastError == ERROR_INSUFFICIENT_BUFFER)
         {
-            assert(lastError == ERROR_INVALID_PARAMETER || lastError == ERROR_NO_UNICODE_TRANSLATION);
-            return E_INVALIDARG;
+            // The buffer was too small, but MultiByteToWideChar will have copied as many chars as possible. 
+            // Truncate and overwrite last char with null terminator. Don't treat this as an error.
+            outputName[bufferSizeInChars - 1] = L'\0';
+            return S_OK;
         }
 
-        // All characters copied successfully. Write null terminator at the end of copied chars.
-        assert(lastError == 0);
-        outputName[charsCopiedIfSucceeded] = '\0';
-
-        return S_OK;
+        assert(lastError == ERROR_INVALID_PARAMETER || lastError == ERROR_NO_UNICODE_TRANSLATION);
+        return E_INVALIDARG;
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>

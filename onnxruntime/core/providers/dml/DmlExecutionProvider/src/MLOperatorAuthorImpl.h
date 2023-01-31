@@ -331,7 +331,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
-        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate1, IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
+        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
         IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {

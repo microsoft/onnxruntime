@@ -494,9 +494,9 @@ public:
         return m_impl;
     }
 
-    Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate1> GetInterfacePrivate() const noexcept
+    IMLOperatorKernelCreationContextPrivate* GetInterfacePrivate() const noexcept
     {
-        return m_implPrivate;
+        return m_implPrivate.Get();
     }
 
     Microsoft::WRL::ComPtr<IUnknown> GetExecutionInterface() const noexcept
@@ -561,7 +561,7 @@ public:
 
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
-    Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate1> m_implPrivate;
+    Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;
 };
 
 class MLShapeInferenceContext : public MLOperatorAttributes
