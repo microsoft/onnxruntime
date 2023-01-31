@@ -24,18 +24,11 @@ struct TensorrtProviderFactory : IExecutionProviderFactory {
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override;
 
-  //OrtProviderCustomOpDomain* GetCustomOpDomain();
   void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
 
  private:
   TensorrtExecutionProviderInfo info_;
 };
-
-/*
-OrtProviderCustomOpDomain* TensorrtProviderFactory::GetCustomOpDomain() {
-  return info_.custom_op_domain_ptr;
-}
-*/
 
 void TensorrtProviderFactory::GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) {
   custom_op_domain_list = info_.custom_op_domain_list;
@@ -58,10 +51,9 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
-    //common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
     common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
     if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
+      LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
     }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -91,10 +83,9 @@ struct Tensorrt_Provider : Provider {
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
 
-    //common::Status status = CreateTensorRTCustomOpDomain(&info.custom_op_domain_ptr);
     common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
     if (!status.IsOK()) {
-      LOGS_DEFAULT(WARNING) << "Can't successfully get TRT plugins from TRT plugin registration.";
+      LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
     }
     return std::make_shared<TensorrtProviderFactory>(info);
   }
@@ -170,13 +161,6 @@ struct Tensorrt_Provider : Provider {
     return onnxruntime::TensorrtExecutionProviderInfo::ToProviderOptions(options);
   }
   
-  /*
-  void GetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** custom_op_domain_ptr) override {
-    TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
-    *custom_op_domain_ptr = trt_factory->GetCustomOpDomain();
-  }
-  */
-
   void GetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_ptr) override {
     TensorrtProviderFactory* trt_factory = reinterpret_cast<TensorrtProviderFactory*>(factory);
     trt_factory->GetCustomOpDomainList(custom_op_domains_ptr);

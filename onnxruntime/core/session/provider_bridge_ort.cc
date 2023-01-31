@@ -1433,15 +1433,8 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtS
 
   options->provider_factories.push_back(factory);
 
-  /*
-  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
-  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
-  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
-  */
-
   std::vector<onnxruntime::OrtProviderCustomOpDomain*> custom_op_domains;
   TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
-
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(ptr));
   }
@@ -1470,15 +1463,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT, _In
   }
 
   options->provider_factories.push_back(factory);
-  /*
-  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
-  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
-  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
-  */
 
   std::vector<onnxruntime::OrtProviderCustomOpDomain*> custom_op_domains;
   TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
-
   for (auto ptr : custom_op_domains) {
     options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(ptr));
   }
@@ -1584,15 +1571,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
   }
 
   options->provider_factories.push_back(factory);
-  /*
-  onnxruntime::OrtProviderCustomOpDomain* custom_op_domain = nullptr;
-  TensorrtProviderGetCustomOpDomain(factory.get(), &custom_op_domain);
-  options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(custom_op_domain));
-  */
 
   std::vector<onnxruntime::OrtProviderCustomOpDomain*> custom_op_domains;
   TensorrtProviderGetCustomOpDomainList(factory.get(), custom_op_domains);
-
   for (auto ptr : custom_op_domains) {
       options->custom_op_domains_.push_back(reinterpret_cast<OrtCustomOpDomain*>(ptr));
   }

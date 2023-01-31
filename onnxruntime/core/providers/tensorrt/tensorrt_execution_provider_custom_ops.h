@@ -11,10 +11,6 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-#define TEMP_CUSTOM_OP_NUM_INPUTS 20
-#define TEMP_CUSTOM_OP_NUM_OUTPUTS TEMP_CUSTOM_OP_NUM_INPUTS
-
-common::Status CreateTensorRTCustomOpDomain(OrtProviderCustomOpDomain** domain);
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_list);
 void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain);
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
@@ -24,7 +20,7 @@ struct TensorRTCustomKernel {
       : compute_stream_(compute_stream) {
   }
 
-  void Compute(OrtKernelContext* context) {};  // The implementation is in TensorRT OSS repos. No need to implement it here.
+  void Compute(OrtKernelContext* context) {};  // The implementation is in TensorRT plugin. No need to implement it here.
 
  private:
   void* compute_stream_;
@@ -45,23 +41,23 @@ struct TensorRTCustomOp : Ort::CustomOpBase<TensorRTCustomOp, TensorRTCustomKern
 
   void SetInputTypeCount(size_t num) { num_inputs_ = num; };
 
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL; };
+  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };   
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };   
 
   size_t GetOutputTypeCount() const { return num_outputs_; };
 
   void SetOutputTypeCount(size_t num) { num_outputs_ = num; };
 
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_ALL; };
+  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
 
  private:
   const char* provider_{onnxruntime::kTensorrtExecutionProvider};
   void* compute_stream_;
   const char* name_;
-  size_t num_inputs_ = TEMP_CUSTOM_OP_NUM_INPUTS;
-  size_t num_outputs_ = TEMP_CUSTOM_OP_NUM_OUTPUTS;
+  size_t num_inputs_ = 1;  // set to 1 to match with default min_arity for variadic input  
+  size_t num_outputs_ = 1; // set to 1 to match with default min_arity for variadic output 
 };
 }

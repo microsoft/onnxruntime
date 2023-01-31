@@ -495,7 +495,6 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   if (!external_stream_ && stream_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
-  //ReleaseTensorRTCustomOpDomain(info_.custom_op_domain_ptr);
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
 }
 

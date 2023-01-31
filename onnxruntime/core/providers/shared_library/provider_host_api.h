@@ -26,9 +26,6 @@ struct Provider {
   // Update provider options from key-value string configuration
   virtual void UpdateProviderOptions(void* /*provider options to be configured*/, const ProviderOptions& /*key-value string provider options*/){};
 
-  // Get provider specific custom op domain. Provider has the resposibility to release OrtProviderCustomOpDomain instance it creates.
-  virtual void GetCustomOpDomain(IExecutionProviderFactory* /*pointer to factory instance*/, OrtProviderCustomOpDomain** /*pointer to provider custom op domain*/){};
-
   // Get provider specific custom op domain list. Provider has the resposibility to release OrtProviderCustomOpDomain instances it creates.
   virtual void GetCustomOpDomainList(IExecutionProviderFactory* /*pointer to factory instance*/, std::vector<OrtProviderCustomOpDomain*>& /*provider custom op domain list*/){};
 
