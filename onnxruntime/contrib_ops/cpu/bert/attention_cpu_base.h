@@ -19,18 +19,18 @@ class AttentionCPUBase : public AttentionBase {
   : AttentionBase(info, require_same_hidden_size) {}
 
   template <typename T>
-  Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH
-                        const T* K,                  // K data with shape BxNxSxH
-                        const T* V,                  // V value with size BxNxSxH_v
-                        const Tensor* mask_index,    // mask index. nullptr if no mask or its size is B
-                        const Tensor* past,          // past state
-                        Tensor* output,              // output tensor
-                        int batch_size,              // batch size (B)
-                        int sequence_length,         // sequence length (S)
-                        int qk_head_size,            // head size of Q or K (H)
-                        int v_head_size,             // head size of V (H_v)
-                        int v_hidden_size,           // hidden size of V (D_v)
-                        const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
+  Status ApplyAttention(const T* Q,                           // Q data with shape BxNxSxH
+                        const T* K,                           // K data with shape BxNxSxH
+                        const T* V,                           // V value with size BxNxSxH_v
+                        const Tensor* mask_index,             // mask index. nullptr if no mask or its size is B
+                        const Tensor* past,                   // past state
+                        Tensor* output,                       // output tensor
+                        int batch_size,                       // batch size (B)
+                        int sequence_length,                  // sequence length (S)
+                        int qk_head_size,                     // head size of Q or K (H)
+                        int v_head_size,                      // head size of V (H_v)
+                        int v_hidden_size,                    // hidden size of V (D_v)
+                        const Tensor* relative_position_bias, // bias addition in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
     const int kv_sequence_length = sequence_length;
 
@@ -67,16 +67,16 @@ class AttentionCPUBase : public AttentionBase {
     const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
     T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
 
-    const T* extra_add_qk_data = nullptr;
-    if (extra_add_qk != nullptr) {
-      extra_add_qk_data = extra_add_qk->Data<T>();
+    const T* relative_position_bias_data = nullptr;
+    if (relative_position_bias != nullptr) {
+      relative_position_bias_data = relative_position_bias->Data<T>();
     }
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
                              batch_size, sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size,
-                             past_data, present_data, tp, extra_add_qk_data);
+                             past_data, present_data, tp, relative_position_bias_data);
 
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     auto out_tmp_data =
@@ -112,7 +112,7 @@ class AttentionCPUBase : public AttentionBase {
                              const T* past,                             // past state
                              T* present,                                // present state
                              ThreadPool* tp,                            // thread pool
-                             const T* extra_add_qk_data                 // extra add matrix with shape BxNxSxT
+                             const T* relative_position_bias_data       // bias addition matrix with shape BxNxSxT
   ) const {
     const int total_sequence_length = past_sequence_length + sequence_length;                // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // P x H
@@ -175,9 +175,9 @@ class AttentionCPUBase : public AttentionBase {
             }
           }
 
-          if (extra_add_qk_data != nullptr) {
+          if (relative_position_bias_data != nullptr) {
             for (int j = 0; j < sequence_length * total_sequence_length; j++) {
-              output[j] += extra_add_qk_data[output_offset + j];
+              output[j] += relative_position_bias_data[output_offset + j];
             }
           }
         }

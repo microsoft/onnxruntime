@@ -278,7 +278,7 @@ TEST(QOrderedTest, Attention_WithData_ROW_ORDER) {
   test_qorder.AddInput<float>("scale_values_gemm", {}, {attn_out_scale}, true);
   test_qorder.AddInput<int32_t>("mask_index", {batch_size, sequence_len}, input_mask.data(), input_mask.size());
   test_qorder.AddOptionalInputEdge<int8_t>();  // past
-  test_qorder.AddOptionalInputEdge<float>();   // extra_add
+  test_qorder.AddOptionalInputEdge<float>();   // relative_position_bias
 
   test_qorder.AddOutput<int8_t>("output", {batch_size, sequence_len, hidden_size}, attn_out_q8.data(), attn_out_q8.size());
 
