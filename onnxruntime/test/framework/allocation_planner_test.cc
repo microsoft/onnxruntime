@@ -372,6 +372,7 @@ class PlannerTest : public ::testing::Test {
     ORT_THROW_IF_ERROR(sess_options_->config_options.AddConfigEntry(kNodePartitionConfigFile, config_file_path));
   }
   std::unique_ptr<::onnxruntime::KernelDef>& GetStdKernel() { return std_kernel_; }
+#ifdef USE_CUDA
   void MemcpyToHostInCuda_TransposeInCudaAndCpu(const char* partitionConfigFile = nullptr) {
     std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("MemcpyToHost").Provider(kCudaExecutionProvider).SetDefaultOutputMemoryType(OrtMemTypeCPUOutput).Build();
     std::unique_ptr<::onnxruntime::KernelDef> cudaKernelTrans = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
@@ -392,6 +393,7 @@ class PlannerTest : public ::testing::Test {
     if (partitionConfigFile != nullptr) SetNodePartitionConfigFilePath(partitionConfigFile);
     CreatePlan({}, false);
   }
+#endif  // USE_CUDA
 };
 
 TEST_F(PlannerTest, ChainTest) {
