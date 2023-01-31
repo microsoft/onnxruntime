@@ -16,7 +16,7 @@ steps:
   parameters :
     condition : 'succeeded'
 
-- script: docker system df && docker image prune -f && docker system df
+- script: docker system df && docker system prune -a -f && docker system df
   displayName: Clean docker images
   condition: eq(variables['Agent.OS'], 'Linux')
   continueOnError: true
