@@ -153,7 +153,7 @@ class FusionAttentionUnet(Fusion):
             kw_in_size = kw.shape[0]
             vw_in_size = vw.shape[0]
 
-            assert qw_in_size == kw_in_size == vw_in_size
+            assert qw_in_size == kw_in_size and kw_in_size == vw_in_size
 
             if hidden_size > 0 and hidden_size != qw_in_size:
                 raise ValueError(
@@ -192,7 +192,7 @@ class FusionAttentionUnet(Fusion):
                 qw_out_size = qw.shape[1]
                 kw_out_size = kw.shape[1]
                 vw_out_size = vw.shape[1]
-                assert qw_out_size == vw_out_size == vw_out_size
+                assert qw_out_size == vw_out_size and kw_out_size == vw_out_size
 
                 C = kw_in_size
                 N = num_heads
@@ -330,11 +330,11 @@ class FusionAttentionUnet(Fusion):
 
         qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Mul", "MatMul"], [0, 0, 0])
         if qk_nodes is not None:
-            (softmax_qk, mul_qk, matmul_qk) = qk_nodes
+            (_softmax_qk, _mul_qk, matmul_qk) = qk_nodes
         else:
             qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
             if qk_nodes is not None:
-                (softmax_qk, add_zero, mul_qk, matmul_qk) = qk_nodes
+                (_softmax_qk, _add_zero, _mul_qk, matmul_qk) = qk_nodes
             else:
                 logger.debug("fuse_attention: failed to match qk path")
                 return

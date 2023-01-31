@@ -71,7 +71,7 @@ class FusionGroupNorm(Fusion):
             return
 
         bias = self.model.get_constant_value(bias_input)
-        if weight is None:
+        if bias is None:
             return
         if not (len(bias.shape) == 3 and bias.shape[1] == 1 and bias.shape[2] == 1):
             return
