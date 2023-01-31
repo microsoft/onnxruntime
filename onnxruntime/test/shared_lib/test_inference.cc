@@ -92,8 +92,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           OrtCustomOpDomain* custom_op_domain_ptr,
                           const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
-                          void* cuda_compute_stream = nullptr) {
-  Ort::SessionOptions session_options;
+                          void* cuda_compute_stream = nullptr,
+                          Ort::SessionOptions* predefined_session_options = nullptr) {
+  Ort::SessionOptions default_session_options;
+  Ort::SessionOptions& session_options = predefined_session_options ? *predefined_session_options
+                                                                    : default_session_options;
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
@@ -396,7 +399,7 @@ TEST(CApiTest, custom_op_handler) {
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
@@ -427,7 +430,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
   MyCustomOpSecondInputOnCpu custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   auto x_mem_type = custom_op.GetInputMemoryType(0);
@@ -441,9 +444,8 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
-// disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, standalone_op_handler) {
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, StandaloneOpHandler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -459,13 +461,22 @@ TEST(CApiTest, standalone_op_handler) {
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&standalone_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr);
 #else
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  Ort::SessionOptions session_options;
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
+  session_options.SetOptimizedModelFilePath(ort_file.c_str());
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr, false, nullptr, &session_options);
+
+  TestInference<float>(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
 #endif
 }
 #endif
@@ -596,7 +607,7 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1042,7 +1053,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
   // In this test, we are going to try and run 2 models - one with the optional input and one without
   // the optional input.
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1123,7 +1134,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
 TEST(CApiTest, custom_op_with_attributes_handler) {
   MyCustomOpWithAttributes custom_op{onnxruntime::kCpuExecutionProvider};
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1182,7 +1193,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider};
   // We are going to test session creation only - hence it is not a problem to use the default stream as the compute stream for the custom op
   MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider};
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
 
@@ -1190,7 +1201,6 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
                        expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
-
 
 #if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
@@ -1329,7 +1339,7 @@ TEST(CApiTest, test_custom_op_library_registration_error) {
 #elif defined(__APPLE__)
   lib_name = ORT_TSTR("libcustom_op_invalid_library.dylib");
 #else
-  lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
+lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
 #endif
 
   Ort::SessionOptions session_options;
