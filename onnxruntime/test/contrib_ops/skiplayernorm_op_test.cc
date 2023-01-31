@@ -17,7 +17,7 @@ static void RunTest(
     const std::vector<float>& beta_data,
     const std::vector<float>& bias_data,
     const std::vector<float>& output_data,
-    const std::vector<float>& skip_input_add_output_data,
+    const std::vector<float>& skip_input_bias_add_output_data,
     float epsilon,
     int batch_size,
     int sequence_length,
@@ -61,14 +61,14 @@ static void RunTest(
 
     test.AddOutput<float>("output", output_dims, output_data);
 
-    if (skip_input_add_output_data.size() != 0) {
+    if (skip_input_bias_add_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<float>();
       test.AddOptionalOutputEdge<float>();
 
-      test.AddOutput<float>("input_skip_input_add_output",
+      test.AddOutput<float>("skip_input_bias_add_output",
                             output_dims,
-                            skip_input_add_output_data);
+                            skip_input_bias_add_output_data);
     }
 
     test.Run();
@@ -93,14 +93,14 @@ static void RunTest(
 
     test.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
 
-    if (skip_input_add_output_data.size() != 0) {
+    if (skip_input_bias_add_output_data.size() != 0) {
       // The second and third outputs are reserved for something else
       test.AddOptionalOutputEdge<MLFloat16>();
       test.AddOptionalOutputEdge<MLFloat16>();
 
-      test.AddOutput<MLFloat16>("input_skip_input_add_output",
+      test.AddOutput<MLFloat16>("skip_input_bias_add_output",
                                 output_dims,
-                                ToFloat16(skip_input_add_output_data));
+                                ToFloat16(skip_input_bias_add_output_data));
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -470,8 +470,16 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
       0.55470430850982666, -0.15080101788043976, -2.3229825496673584, 3.255286693572998,
       0.15631480515003204, 0.21066918969154358, 4.9432611465454102, -1.7957965135574341};
 
-  std::vector<float> input_skip_add_output_data(batch_size * sequence_length * hidden_size, 0.f);
-  std::transform(input_data.cbegin(), input_data.cend(), skip_data.cbegin(), input_skip_add_output_data.begin(), [](const float& i, const float& s) { return i + s; });
+  std::vector<float> input_skip_bias_add_output_data(batch_size * sequence_length * hidden_size, 0.f);
+  std::transform(input_data.cbegin(), input_data.cend(), skip_data.cbegin(), input_skip_bias_add_output_data.begin(), [](const float& i, const float& s) { return i + s; });
+  // Add bias
+  for (int i = 0; i < batch_size * sequence_length; ++i) {
+    int offset = i * hidden_size;
+
+    for (int j = 0; j < hidden_size; ++j) {
+      input_skip_bias_add_output_data[offset + j] += bias_data[j];
+    }
+  }
 
   RunTest(input_data,
           skip_data,
@@ -479,7 +487,7 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
           beta_data,
           bias_data,
           output_data,
-          input_skip_add_output_data,
+          input_skip_bias_add_output_data,
           epsilon_,
           batch_size,
           sequence_length,
@@ -503,8 +511,8 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
       0.3f, 0.2f, 4.0f, 2.2f};
 
   std::vector<float> output_data = {
-      0.3491f, -0.1455f,  0.0000f,  3.2005f,
-      0.3487f,  0.0930f,  2.7899f, -3.0689f};
+      0.3491f, -0.1455f, 0.0000f, 3.2005f,
+      0.3487f, 0.0930f, 2.7899f, -3.0689f};
 
   RunTest(input_data,
           skip_data,

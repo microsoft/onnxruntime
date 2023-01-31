@@ -47,13 +47,13 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   const Tensor* gamma = ctx->Input<Tensor>(2);
 
   const Tensor* beta = Simplified ? nullptr : ctx->Input<Tensor>(3);
-  const Tensor* bias = Simplified ? ctx->Input<Tensor>(3): ctx->Input<Tensor>(4);
+  const Tensor* bias = Simplified ? ctx->Input<Tensor>(3) : ctx->Input<Tensor>(4);
 
   Tensor* output = ctx->Output(0, input->Shape());
 
   // For inferencing, we support one more optional output which is the sum
   // of the input and skip tensors
-  Tensor* skip_input_add_output = ctx->Output(3, input->Shape());
+  Tensor* skip_input_bias_add_output = ctx->Output(3, input->Shape());
 
   if (input->Shape() != skip->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -115,7 +115,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   return LaunchSkipLayerNormKernel<CudaT, Simplified>(
       Stream(ctx),
       reinterpret_cast<CudaT*>(output->MutableData<T>()),
-      skip_input_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_add_output->MutableData<T>()) : nullptr,
+      skip_input_bias_add_output != nullptr ? reinterpret_cast<CudaT*>(skip_input_bias_add_output->MutableData<T>()) : nullptr,
       reinterpret_cast<const CudaT*>(input->Data<T>()),
       reinterpret_cast<const CudaT*>(skip->Data<T>()),
       reinterpret_cast<const CudaT*>(gamma->Data<T>()),

@@ -128,7 +128,7 @@ static bool RegisterCustomSchemas() {
       .Output(2, "y_zero_point", "Output zero point. It's a scalar, which means a per-tensor/layer quantization.", "T2")
       .TypeConstraint("T1", {"tensor(float)"}, "Constrain 'x' to float tensor.")
       .TypeConstraint("T2", {"tensor(uint8)"}, "Constrain 'y_zero_point' and 'y' to 8-bit unsigned integer tensor.")
-      .FunctionBody([]() {
+      .FunctionBody((const std::vector<NodeProto>&)([]() {
         auto nodes = ONNX_NAMESPACE::FunctionBodyHelper::BuildNodes({// nodes: {outputs, op, inputs, attributes}
                                                                      ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Min", 0.f),
                                                                      ONNX_NAMESPACE::FunctionBodyHelper::Const<float>("Q_Max", 255.f),
@@ -148,8 +148,8 @@ static bool RegisterCustomSchemas() {
             node.set_domain(kMSNchwcDomain);
           }
         }
-        return nodes; }(),
-                    []() {
+        return nodes; }()),
+          (const std::vector<OperatorSetIdProto>&)([]() {
                       std::vector<OperatorSetIdProto> operator_sets(2);
                       auto& onnx_opset = operator_sets[0];
                       onnx_opset.set_domain("");
@@ -160,7 +160,7 @@ static bool RegisterCustomSchemas() {
                       test_opset.set_version(1);
 
                       return operator_sets;
-                    }());
+                    }()));
 
   return true;
 }

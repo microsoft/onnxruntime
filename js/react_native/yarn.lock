@@ -5197,7 +5197,7 @@ onetime@^5.1.0, onetime@^5.1.2:
     mimic-fn "^2.1.0"
 
 "onnxruntime-common@file:../common":
-  version "1.14.0"
+  version "1.15.0"
 
 open@^6.2.0:
   version "6.4.0"

@@ -33,6 +33,17 @@ class TestFusion(unittest.TestCase):
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
+    def test_multi_head_attention_fusion(self):
+        model = create_bert_attention()
+        dir = "."
+        model_path = os.path.join(dir, "attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_multi_head_attention = True
+        optimized_model = optimize_model(model_path, optimization_options=options)
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "attention_mha.onnx")
+
     def test_attention_fusion(self):
         model = create_bert_attention()
         dir = "."

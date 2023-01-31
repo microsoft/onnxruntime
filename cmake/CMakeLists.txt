@@ -64,6 +64,8 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
+option(onnxruntime_USE_FLASH_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
 option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
@@ -142,7 +144,6 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
-# For building with onnxruntime_ENABLE_TRAINING_APIS, onnxruntime_ENABLE_TRAINING must be ON.
 option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
@@ -194,9 +195,15 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
+option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
-option(onnxruntime_USE_CLOUD "Build with cloud inferencing support" OFF)
+option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
+# https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
+cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
+
+option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -217,6 +224,29 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
+# ENABLE_TRAINING includes all training functionality
+# The following 2 entry points
+# 1. ORTModule
+# 2. ORT Training APIs
+# It includes all the feature additions as well like
+# 1. Python OP
+# 2. Aten Fallback
+# 3. Strided Tensors
+# 4. All training ops including communication and  collectives ops
+# 5. ONNXBlock (Front end for training preparation when using training apis)
+# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
+# when using python env
+if (onnxruntime_ENABLE_TRAINING)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+  set(onnxruntime_ENABLE_TRAINING_APIS ON)
+  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
+  set(onnxruntime_ENABLE_ATEN ON)
+endif()
+
+if (onnxruntime_ENABLE_TRAINING_APIS)
+  set(onnxruntime_ENABLE_TRAINING_OPS ON)
+endif()
+
 if (onnxruntime_USE_CUDA)
   set(onnxruntime_DISABLE_RTTI OFF)
 endif()
@@ -234,7 +264,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -279,6 +309,11 @@ if (onnxruntime_USE_ROCM)
   string(TOUPPER ${CMAKE_BUILD_TYPE} BUILD_TYPE)
   message("CMAKE_HIP_FLAGS_${BUILD_TYPE}: ${CMAKE_HIP_FLAGS_${BUILD_TYPE}}")
   add_definitions(-DROCM_VERSION=${ROCM_VERSION_DEV_INT})
+
+  if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
+    message(WARNING "composable kernel is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
+  endif()
 endif()
 
 if (APPLE)
@@ -563,9 +598,30 @@ set(ORT_PROVIDER_FLAGS)
 set(ORT_PROVIDER_CMAKE_FLAGS)
 
 if (onnxruntime_USE_CUDA)
+  enable_language(CUDA)
+  message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+
+  if (onnxruntime_DISABLE_CONTRIB_OPS)
+    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
+    message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
+    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+else()
+  set(onnxruntime_USE_FLASH_ATTENTION OFF)
+endif()
+
+if (onnxruntime_USE_CUDA)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
+
+    if (onnxruntime_USE_FLASH_ATTENTION)
+      message( STATUS "Enable flash attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
+    endif()
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
@@ -653,10 +709,10 @@ if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
-if (onnxruntime_USE_CLOUD)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CLOUD=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CLOUD=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES cloud)
+if (onnxruntime_USE_AZURE)
+    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AZURE=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 
 if (onnxruntime_ENABLE_EAGER_MODE)
@@ -681,6 +737,18 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   # cleaner.
 endif()
 
+if(MSVC)
+  # Replace /Zi and /ZI with /Z7
+  if(MSVC_Z7_OVERRIDE)
+    foreach(flag_var
+      CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG  CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG  CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if(${flag_var} MATCHES "/Z[iI]")
+        string(REGEX REPLACE "/Z[iI]" "/Z7" ${flag_var} "${${flag_var}}")
+      endif(${flag_var} MATCHES "/Z[iI]")
+    endforeach(flag_var)
+  endif(MSVC_Z7_OVERRIDE)
+endif()
 
 function(onnxruntime_set_compile_flags target_name)
     if (CPUINFO_SUPPORTED)
@@ -851,6 +919,7 @@ function(onnxruntime_configure_target target_name)
   if(MSVC AND NOT onnxruntime_target_platform MATCHES "ARM")
     target_link_options(${target_name} PRIVATE "/CETCOMPAT")
   endif()
+
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
@@ -1066,18 +1135,18 @@ if (onnxruntime_USE_OPENVINO)
   endif()
 
   # Check OpenVINO version for support
-  if (${VER} MATCHES "2021.4" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2021.4")
-    set(OPENVINO_VERSION "2021.4")
-    add_definitions(-DOPENVINO_2021_4=1)
-  elseif (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
+  if (${VER} MATCHES "2022.1" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.1")
     set(OPENVINO_VERSION "2022.1")
     add_definitions(-DOPENVINO_2022_1=1)
   elseif (${VER} MATCHES "2022.2" OR $ENV{INTEL_OPENVINO_DIR} MATCHES "2022.2")
     set(OPENVINO_VERSION "2022.2")
     add_definitions(-DOPENVINO_2022_2=1)
+  elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "2022.3")
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   elseif ($ENV{INTEL_OPENVINO_DIR} MATCHES "openvino")
-    set(OPENVINO_VERSION "2022.2")
-    add_definitions(-DOPENVINO_2022_2=1)
+    set(OPENVINO_VERSION "2022.3")
+    add_definitions(-DOPENVINO_2022_3=1)
   else()
     message(FATAL_ERROR "Unsupported OpenVINO version: ${INTEL_OPENVINO_DIR}")
   endif()
@@ -1188,8 +1257,6 @@ endif()
 
 if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
-  enable_language(CUDA)
-  message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDNN_HOME)
     file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)
@@ -1268,6 +1335,7 @@ if (onnxruntime_USE_DML)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_TRAINING_APIS)
 endif()
 
@@ -1284,8 +1352,9 @@ if (onnxruntime_ENABLE_ROCM_PROFILING)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
-  add_compile_definitions(ENABLE_TRAINING)
+  add_compile_definitions(ENABLE_TRAINING_CORE)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
+  add_compile_definitions(ENABLE_TRAINING)
 
   if (UNIX)
     if (EXISTS "${onnxruntime_MPI_HOME}")

@@ -442,9 +442,14 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     KernelScope kernel_scope(session_scope, kernel_ctx, *p_kernel);
     ORT_TRY {
 #ifdef ENABLE_TRAINING
+      // AllocateInputsContiguously - is only required for NCCL kernels
+      // can be moved under USE_NCCL
       if (p_kernel->KernelDef().AllocateInputsContiguously()) {
         ORT_RETURN_IF_ERROR(utils::VerifyInputTensorsAllocatedContiguously(&kernel_ctx));
       }
+
+      // This is most probably deprecated code and is causing unnecessary complexity.
+      // Can be removed.
       // Cache lookup. Currently we only cache single-output nodes,
       // to keep memory overhead impact in check. Hence we only look in cache
       // if the current node has one output.

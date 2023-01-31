@@ -20,7 +20,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include "core/framework/cloud_executor.h"
 #endif
 #ifdef ENABLE_TRAINING
@@ -631,13 +631,10 @@ ExecuteGraphImpl(const SessionState& session_state,
   bool is_subgraph = session_state.GetGraphViewer().ParentNode() != nullptr;
   // in following two cases, we execute the workload in main thread:
   // 1. execution mode is sequential.
-  // 2. execute a subgraph. Because in current implmentation, the execute of subgraph is launched through parent kernel.
+  // 2. execute a subgraph. Because in current implementation, the execute of subgraph is launched through parent kernel.
   //    the parent kernel will occupy a thread in thread pool. if we use multiple threads to execute subgraph, it may cause
   //    deadlock when we reach the limitation of thread pool.
   bool single_thread_mode = execution_mode == ExecutionMode::ORT_SEQUENTIAL || is_subgraph;
-#ifdef ENABLE_TRAINING
-  single_thread_mode = true;
-#endif
 
   // see if we can skip copies due to the types of execution providers available
   if (device_copy_checks.status == DeviceCopyCheck::NoCopy) {
@@ -785,8 +782,8 @@ common::Status ExecuteGraph(const SessionState& session_state,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                             ExecutionMode execution_mode, const RunOptions& run_options,
                             const logging::Logger& logger) {
-#ifdef USE_CLOUD
-  const auto iter = run_options.config_options.configurations.find("use_cloud");
+#ifdef USE_AZURE
+  const auto iter = run_options.config_options.configurations.find("use_azure");
   if (iter != run_options.config_options.configurations.end() && iter->second != "0") {
     CloudExecutor cloud_executor(run_options.config_options.configurations);
     const auto& feeds_fetches_info = feeds_fetches_manager.GetFeedsFetchesInfo();
@@ -1005,6 +1002,7 @@ int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType onn
 }
 
 #ifdef ENABLE_TRAINING
+// Needed only when NCCL kernels are enabled.
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context) {
   const Tensor* prev_input = context->Input<Tensor>(0);
   for (int i = 1; i < context->InputCount(); i++) {

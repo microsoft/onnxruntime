@@ -11,8 +11,14 @@ import shlex
 import shutil
 import subprocess
 import sys
-from distutils.version import LooseVersion
 from pathlib import Path
+
+try:
+    from packaging.version import Version as LooseVersion
+except ImportError:
+    # This is deprecated and will be removed in Python 3.12.
+    # See https://docs.python.org/3/library/distutils.html.
+    from distutils.version import LooseVersion  # pylint: disable=W4901
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
@@ -494,11 +500,6 @@ def parse_arguments():
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
-    parser.add_argument(
-        "--skip_and_perform_filtered_tests",
-        action="store_true",
-        help="Skip time-consuming and only perform filtered tests for TensorRT EP",
-    )
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
@@ -676,7 +677,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
-    parser.add_argument("--use_cloud", action="store_true", help="Enable cloud EP.")
+    parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
     parser.add_argument("--use_cache", action="store_true", help="Use compiler cache in CI")
 
@@ -888,7 +889,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if args.test_all_timeout == "10800" else "OFF"),
+        + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
@@ -965,10 +966,14 @@ def generate_build_tree(
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
     ]
     if args.use_cache:
-        cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
-        cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-        if args.use_cuda:
+        cmake_args.append("-Donnxruntime_BUILD_CACHE=ON")
+        if not (is_windows() and args.cmake_generator != "Ninja"):
+            cmake_args.append("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
+            if args.use_cuda:
+                cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+            if args.use_rocm:
+                cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -1267,8 +1272,8 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_PREBUILT_PYTORCH_PATH=%s" % os.path.dirname(torch.__file__)]
         cmake_args += ["-D_GLIBCXX_USE_CXX11_ABI=" + str(int(torch._C._GLIBCXX_USE_CXX11_ABI))]
 
-    if args.use_cloud:
-        add_default_definition(cmake_extra_defines, "onnxruntime_USE_CLOUD", "ON")
+    if args.use_azure:
+        add_default_definition(cmake_extra_defines, "onnxruntime_USE_AZURE", "ON")
 
     cmake_args += ["-D{}".format(define) for define in cmake_extra_defines]
 
@@ -1369,9 +1374,10 @@ def build_targets(args, cmake_path, build_dir, configs, num_parallel_jobs, targe
         if num_parallel_jobs != 1:
             if is_windows() and args.cmake_generator != "Ninja" and not args.build_wasm:
                 build_tool_args += [
-                    "/maxcpucount:{}".format(num_parallel_jobs),
+                    f"/maxcpucount:{num_parallel_jobs}",
                     # if nodeReuse is true, msbuild processes will stay around for a bit after the build completes
                     "/nodeReuse:False",
+                    f"/p:CL_MPCount={num_parallel_jobs}",
                 ]
             elif is_macOS() and args.use_xcode:
                 # CMake will generate correct build tool args for Xcode
@@ -1595,46 +1601,48 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 run_adb_shell("{0}/onnx_test_runner -e nnapi {0}/test".format(device_dir))
             else:
                 run_adb_shell("{0}/onnx_test_runner {0}/test".format(device_dir))
+
             # run shared_lib_test if necessary
             if args.build_shared_lib:
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
+                adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+                adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell("chmod +x {}/onnxruntime_shared_lib_test".format(device_dir))
+                adb_shell("chmod +x {}/onnxruntime_customopregistration_test".format(device_dir))
                 run_adb_shell("LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_shared_lib_test".format(device_dir))
+                run_adb_shell(
+                    "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:{0} {0}/onnxruntime_customopregistration_test".format(device_dir)
+                )
 
 
 def run_ios_tests(args, source_dir, config, cwd):
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
-            "onnxruntime_test_all_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+    xc_test_schemes = [
+        "onnxruntime_test_all_xc",
+    ]
 
-    run_subprocess(
-        [
-            "xcodebuild",
-            "test-without-building",
-            "-project",
-            "./onnxruntime.xcodeproj",
-            "-configuration",
-            config,
-            "-scheme",
+    if args.build_shared_lib:
+        xc_test_schemes += [
             "onnxruntime_shared_lib_test_xc",
-            "-destination",
-            "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
-        ],
-        cwd=cwd,
-    )
+            "onnxruntime_customopregistration_test_xc",
+        ]
+
+    for xc_test_scheme in xc_test_schemes:
+        run_subprocess(
+            [
+                "xcodebuild",
+                "test-without-building",
+                "-project",
+                "./onnxruntime.xcodeproj",
+                "-configuration",
+                config,
+                "-scheme",
+                xc_test_scheme,
+                "-destination",
+                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+            ],
+            cwd=cwd,
+        )
 
     if args.build_apple_framework:
         package_test_py = os.path.join(source_dir, "tools", "ci_build", "github", "apple", "test_ios_packages.py")
@@ -1715,6 +1723,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_shared_lib_test.exe")
                     executables.append("onnxruntime_global_thread_pools_test.exe")
                     executables.append("onnxruntime_api_tests_without_env.exe")
+                    executables.append("onnxruntime_customopregistration_test")
+
                 run_subprocess(
                     [
                         "vstest.console.exe",
@@ -1735,6 +1745,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     executables.append("onnxruntime_shared_lib_test")
                     executables.append("onnxruntime_global_thread_pools_test")
                     executables.append("onnxruntime_api_tests_without_env")
+                    executables.append("onnxruntime_customopregistration_test")
+
                 for exe in executables:
                     run_subprocess([os.path.join(cwd, exe)], cwd=cwd, dll_path=dll_path)
 
@@ -1914,7 +1926,7 @@ def build_python_wheel(
     use_armnn,
     use_dml,
     use_cann,
-    use_cloud,
+    use_azure,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1973,8 +1985,8 @@ def build_python_wheel(
             args.append("--wheel_name_suffix=directml")
         elif use_cann:
             args.append("--use_cann")
-        elif use_cloud:
-            args.append("--use_cloud")
+        elif use_azure:
+            args.append("--use_azure")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2661,7 +2673,7 @@ def main():
                 args.use_armnn,
                 args.use_dml,
                 args.use_cann,
-                args.use_cloud,
+                args.use_azure,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

@@ -336,7 +336,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training. \n");
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
             }
             var options = sessOptions;
             if (sessOptions == null)

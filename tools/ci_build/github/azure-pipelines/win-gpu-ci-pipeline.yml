@@ -43,6 +43,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-T4
 
 - stage: training
@@ -60,6 +61,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-training-T4
         isTraining: true
 
@@ -78,6 +80,7 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
+        WITH_CACHE: true
         # DirectML cannot run on T4 GPUs.
         MachinePool: onnxruntime-Win2019-GPU-dml
 
@@ -98,4 +101,5 @@ stages:
         RunStaticCodeAnalysis: false
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-T4
