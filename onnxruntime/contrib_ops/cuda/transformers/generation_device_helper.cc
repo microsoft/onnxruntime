@@ -772,14 +772,13 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     const TensorShape& representative_shape = representative_present.Get<Tensor>().Shape();
 
     // The following data stays the same for the past/present states from all layers
-    int batch_beam_size = representative_shape[1];
-    int num_heads = representative_shape[2];
-    int past_seq_length = representative_shape[3];
-    int head_size = representative_shape[4];
+    int batch_beam_size = static_cast<int>(representative_shape[1]);
+    int num_heads = static_cast<int>(representative_shape[2]);
+    int past_seq_length = static_cast<int>(representative_shape[3]);
+    int head_size = static_cast<int>(representative_shape[4]);
 
     gsl::span<T> past_state_buffer = beam_state->GetPastStateBuffer();
 
-    //
     for (int i = 0; i < num_present_tensors; ++i) {
       gsl::span<T> current_layer_past_state_buffer = past_state_buffer.subspan(i * 2 * batch_beam_size * num_heads * max_seq_length * head_size);
 
@@ -793,7 +792,8 @@ Status PickGptPastState(const std::vector<OrtValue>& last_outputs,
     }
 
     // Copy the selected beam indices to the device to launch the PickGptPastStateKernel kernel
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->selected_next_indices.data(), beam_indices.data(), beam_indices.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state->selected_next_indices.data(), beam_indices.data(),
+                                         beam_indices.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
 
     typedef typename ToCudaType<T>::MappedType CudaT;
     bool is_kernel_launch_successful = cuda::PickGptPastStateKernel<CudaT>(
