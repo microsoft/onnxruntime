@@ -407,18 +407,18 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
 template <typename T>
 Status GreedySearchProcessLogits(
-  const OrtValue& logits,                                     // logits output of subgraph
-  transformers::IGreedySearchState<T>* greedy_state,          // state
-  transformers::ISamplingState<T>* sampling_state,        // sampling_state
-  transformers::ISequences* sequences,                        // sequences
-  AllocatorPtr& allocator,                                    // default allocator
-  onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-  transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IGenerationParameters* parameters,      // parameters
-  bool do_sampling,                                           // whether to do sampling
-  int step,                                                   // iteration counter
-  Stream* stream,                                             // cuda stream (for CUDA only)
-  const transformers::IConsoleDumper* dumper) {               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISamplingState<T>* sampling_state,        // sampling_state
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IGenerationParameters* parameters,  // parameters
+    bool do_sampling,                                       // whether to do sampling
+    int step,                                               // iteration counter
+    Stream* stream,                                         // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper) {           // tensor dumper
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -499,8 +499,8 @@ Status GreedySearchProcessLogits(
                            topk_indices));
 
 #ifdef DEBUG_GENERATION
-    dumper->Print("topk_scores", topk_scores);
-    dumper->Print("topk_indices", topk_indices);
+  dumper->Print("topk_scores", topk_scores);
+  dumper->Print("topk_indices", topk_indices);
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
@@ -637,7 +637,7 @@ Status UpdateGptFeeds(
     return Status::OK();
   }
 
-  if (num_beams == 1) {   // Update past state
+  if (num_beams == 1) {  // Update past state
     // feed present_* output to past_* inputs one by one
     const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
     for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {

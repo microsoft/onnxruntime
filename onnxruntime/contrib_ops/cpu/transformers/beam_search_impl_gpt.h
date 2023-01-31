@@ -14,13 +14,13 @@ namespace contrib {
 namespace transformers {
 
 namespace beam_search_gpt_impl_detail {
-    // Environment variable to enable or disable pre-allocation of past/present buffers.
-    // The present buffer will be used to make up the present state fetches for the GPT2 execution.
-    // The past buffer will be used to form the past state feeds for the GPT2 execution.
-    // This will also optimize the selection of the next run's past state from the previous run's present state
-    // for the selected beams.
-    constexpr const char* kDisableBeamSearchPreallocatedFetches = "ORT_DISABLE_BEAM_SEARCH_PREALLOCATED_FETCHES";
-}
+// Environment variable to enable or disable pre-allocation of past/present buffers.
+// The present buffer will be used to make up the present state fetches for the GPT2 execution.
+// The past buffer will be used to form the past state feeds for the GPT2 execution.
+// This will also optimize the selection of the next run's past state from the previous run's present state
+// for the selected beams.
+constexpr const char* kDisableBeamSearchPreallocatedFetches = "ORT_DISABLE_BEAM_SEARCH_PREALLOCATED_FETCHES";
+}  // namespace beam_search_gpt_impl_detail
 
 // Beam search implementation for GPT-2 model.
 template <typename T>
@@ -54,7 +54,7 @@ class BeamSearchGpt : public BeamSearchBase<T> {
         add_to_feeds_func_(add_to_feeds_func),
         init_beam_state_func_(init_beam_state_func),
         update_feeds_func_(update_feeds_func),
-      max_threads_per_block_(max_threads_per_block) {
+        max_threads_per_block_(max_threads_per_block) {
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -64,9 +64,9 @@ class BeamSearchGpt : public BeamSearchBase<T> {
 
   // Using pre-allocated past and present buffers is only supported on CUDA for now.
   // TODO(hasesh): Support it on CPU as well.
-  bool use_preallocated_past_and_present_buffers_ = this->IsCuda() && 
+  bool use_preallocated_past_and_present_buffers_ = this->IsCuda() &&
                                                     !ParseEnvironmentVariableWithDefault<bool>(
-                                                          beam_search_gpt_impl_detail::kDisableBeamSearchPreallocatedFetches, false);
+                                                        beam_search_gpt_impl_detail::kDisableBeamSearchPreallocatedFetches, false);
 
  private:
   // Prepare the inputs for first inference of subgraph
@@ -148,7 +148,6 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     gsl::span<const int32_t> beam_next_tokens,
     gsl::span<const int32_t> beam_indices,
     IBeamSearchState<T>* beam_state) {
-    
   return update_feeds_func_(this->temp_space_allocator_,
                             this->ort_stream_,
                             last_outputs,
@@ -194,7 +193,6 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   // TODO(tianleiwu): allocate logits ?
   std::vector<OrtValue> fetches;
 
-
   // Initialize resources
   onnxruntime::OrtStlAllocator<HypothesisScore> hypothesis_score_allocator(this->cpu_allocator_);
   onnxruntime::OrtStlAllocator<BeamHypotheses> beam_hyps_allocator(this->cpu_allocator_);
@@ -231,7 +229,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                   parameters->sequence_length,
                   parameters->max_length,
                   gpt_subgraph_.num_layers,
-                  gpt_subgraph_.num_heads, 
+                  gpt_subgraph_.num_heads,
                   gpt_subgraph_.head_size,
                   parameters->output_scores,
                   use_position,
@@ -243,36 +241,33 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                         parameters->num_beams,
                         this->ort_stream_);
 
-  // Allocate present state fetches. 
+  // Allocate present state fetches.
   // We will use the same buffer always - it is pre-allocated to hold max_sequence_length of present state values.
   if (use_preallocated_past_and_present_buffers_) {
-      // init run and other run subgraphs are expected to have same past/present info. So, use any one of them below.
-      fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
-      fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
-      for (int64_t layer = 0; layer < static_cast<int64_t>(gpt_subgraph_.num_layers); layer++) {
-          OrtValue present_tensor;
-          gsl::span<T> present_state_buffer = beam_state.GetPresentStateBuffer();
+    // init run and other run subgraphs are expected to have same past/present info. So, use any one of them below.
+    fetches.reserve(static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()) + gpt_subgraph_.num_layers);
+    fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
+    for (int64_t layer = 0; layer < static_cast<int64_t>(gpt_subgraph_.num_layers); layer++) {
+      OrtValue present_tensor;
+      gsl::span<T> present_state_buffer = beam_state.GetPresentStateBuffer();
 
-          gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer * 
-              2 * parameters->batch_size * parameters->num_beams 
-              * gpt_subgraph_.num_heads * parameters->max_length 
-              * gpt_subgraph_.head_size, 
-              
-              2 * parameters->batch_size * 
-              parameters->num_beams * gpt_subgraph_.num_heads * 
-              parameters->sequence_length * 
-              gpt_subgraph_.head_size);
+      gsl::span<T> current_layer_present_buffer = present_state_buffer.subspan(layer *
+                                                                                   2 * parameters->batch_size * parameters->num_beams * gpt_subgraph_.num_heads * parameters->max_length * gpt_subgraph_.head_size,
 
-          int64_t dims[] = {2, parameters->batch_size * parameters->num_beams, 
-                            gpt_subgraph_.num_heads, parameters->sequence_length, gpt_subgraph_.head_size };
-          TensorShape shape(&dims[0], 5);
+                                                                               2 * parameters->batch_size *
+                                                                                   parameters->num_beams * gpt_subgraph_.num_heads *
+                                                                                   parameters->sequence_length *
+                                                                                   gpt_subgraph_.head_size);
 
-          Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, current_layer_present_buffer.data(), this->temp_space_allocator_->Info(), present_tensor);
+      int64_t dims[] = {2, parameters->batch_size * parameters->num_beams,
+                        gpt_subgraph_.num_heads, parameters->sequence_length, gpt_subgraph_.head_size};
+      TensorShape shape(&dims[0], 5);
 
-          fetches.push_back(present_tensor);
-      }
+      Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), shape, current_layer_present_buffer.data(), this->temp_space_allocator_->Info(), present_tensor);
+
+      fetches.push_back(present_tensor);
+    }
   }
-
 
   gsl::span<const int32_t> input_ids = expanded_input_ids_in_cpu.Get<Tensor>().DataAsSpan<int32_t>();
   cpu_state.SetSequence(input_ids,
@@ -373,36 +368,33 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     }
 
     if (use_preallocated_past_and_present_buffers_) {
-        // Clear fetches before present state(s)
-        for(int64_t i=0; i < static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()); ++i) {
-            fetches[i] = OrtValue();
-        }
+      // Clear fetches before present state(s)
+      for (int64_t i = 0; i < static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex()); ++i) {
+        fetches[i] = OrtValue();
+      }
 
-        // Re-adjust present state fetches for next iteration
-        for (int64_t i = 0; i < static_cast<int64_t>(gpt_subgraph_.num_layers); i++) {
-            auto fetch_offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
+      // Re-adjust present state fetches for next iteration
+      for (int64_t i = 0; i < static_cast<int64_t>(gpt_subgraph_.num_layers); i++) {
+        auto fetch_offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
 
-            OrtValue fetch = fetches[fetch_offset + i];
-            auto* fetch_tensor = fetch.GetMutable<Tensor>();
+        OrtValue fetch = fetches[fetch_offset + i];
+        auto* fetch_tensor = fetch.GetMutable<Tensor>();
 
-            OrtValue adjusted_fetch;
+        OrtValue adjusted_fetch;
 
-            // Adjusted fetch will have same buffer as the old fetch but its shape in the sequence
-            // dim will be incremented by 1.
-            TensorShape adjusted_shape = fetch_tensor->Shape();
-            adjusted_shape[3] += 1;
+        // Adjusted fetch will have same buffer as the old fetch but its shape in the sequence
+        // dim will be incremented by 1.
+        TensorShape adjusted_shape = fetch_tensor->Shape();
+        adjusted_shape[3] += 1;
 
-            Tensor::InitOrtValue(fetch_tensor->DataType(), adjusted_shape, fetch_tensor->MutableData<T>(),
-                fetch_tensor->Location(), adjusted_fetch);
+        Tensor::InitOrtValue(fetch_tensor->DataType(), adjusted_shape, fetch_tensor->MutableData<T>(),
+                             fetch_tensor->Location(), adjusted_fetch);
 
-            fetches[fetch_offset + i] = adjusted_fetch;
+        fetches[fetch_offset + i] = adjusted_fetch;
+      }
 
-        }
-
-
-    }
-    else {
-        fetches.clear();
+    } else {
+      fetches.clear();
     }
   }
 

@@ -96,9 +96,9 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
 
 template <typename T, typename ParametersT>
 Status GreedySearchGpt<T, ParametersT>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths,
-                                              OrtValue& expanded_input_ids,
-                                              std::vector<OrtValue>& feeds,
-                                              IAllocatorUniquePtr<char>& buffer) {
+                                                           OrtValue& expanded_input_ids,
+                                                           std::vector<OrtValue>& feeds,
+                                                           IAllocatorUniquePtr<char>& buffer) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(6);
@@ -201,7 +201,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
-  if (gpt_subgraph_.past_present_share_buffer_) { // Reuse past and present
+  if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
     fetches.reserve((int64_t)gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
@@ -342,16 +342,16 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   // Debug the one step filtered logits for sampling
   int64_t filtered_logits_dims[] = {parameters->batch_size, parameters->vocab_size};
   TensorShape filtered_logits_shape(&filtered_logits_dims[0],
-                                 sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
+                                    sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
   Tensor* filtered_logits = this->context_.Output(1, filtered_logits_shape);
   if (filtered_logits != nullptr) {
     gsl::span<float> filtered_logits_span = filtered_logits->MutableDataAsSpan<float>();
     for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
       auto batch_output = filtered_logits_span.subspan(
-        static_cast<size_t>(batch_id) * parameters->vocab_size,
-        parameters->vocab_size);
+          static_cast<size_t>(batch_id) * parameters->vocab_size,
+          parameters->vocab_size);
       gsl::span<const float> batch_filtered_logits = gsl::make_span(sampling_state.h_softmaxed_score.data() +
-                                                                    batch_id * parameters->vocab_size,
+                                                                        batch_id * parameters->vocab_size,
                                                                     parameters->vocab_size);
 
       gsl::copy(batch_filtered_logits, batch_output);

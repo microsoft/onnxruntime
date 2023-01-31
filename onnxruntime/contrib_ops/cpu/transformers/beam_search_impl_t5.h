@@ -195,7 +195,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters->max_length,
                   // (TODO):hasesh It is okay to pass 0 for num_layers, num_heads, head_size
                   // as we only use it to allocate past/present buffers for GPT2
-                 // When we enable similar optimization for T5, we can re-adjust this
+                  // When we enable similar optimization for T5, we can re-adjust this
                   0,
                   0,
                   0,

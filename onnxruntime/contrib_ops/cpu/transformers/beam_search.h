@@ -85,6 +85,7 @@ class BeamSearch : public IControlFlowKernel {
 
   // Will be used for the CUDA implementation
   int max_threads_per_block_ = 0;
+
  private:
   // Device specific functions
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;

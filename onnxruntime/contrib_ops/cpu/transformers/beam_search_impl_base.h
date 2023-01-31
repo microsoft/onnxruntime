@@ -57,33 +57,33 @@ struct BeamSearchState : public IBeamSearchState<T> {
     }
 
     if (use_preallocated_past_and_present_buffers) {
-        size_t all_layers_kv_past_state_size = (SafeInt<size_t>(num_layers) * 2 * batch_beam_size * num_heads * max_length * head_size);
+      size_t all_layers_kv_past_state_size = (SafeInt<size_t>(num_layers) * 2 * batch_beam_size * num_heads * max_length * head_size);
 
-        // '2' is to allocate both past and present states
-        this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * all_layers_kv_past_state_size);
+      // '2' is to allocate both past and present states
+      this->past_present_state_buffer = AllocateBuffer<T>(allocator, past_present_state_temp_buffer_, SafeInt<size_t>(2) * all_layers_kv_past_state_size);
 
-        past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size);
-        past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size, all_layers_kv_past_state_size);
+      past_present_states_[0] = this->past_present_state_buffer.subspan(0, all_layers_kv_past_state_size);
+      past_present_states_[1] = this->past_present_state_buffer.subspan(all_layers_kv_past_state_size, all_layers_kv_past_state_size);
 
-        // TODO(hasesh): We need this scratch buffer on CUDA because currently, the BeamScorer runs on CPU and selects the beams
-        // for the next iteration and hence the chosen next indices is on CPU.
-        // We will use this scratch buffer to take them to device because we need them on the device to launch the CUDA
-        // kernel that will update the next iteration's past state.
-        // Remove this once BeamScorer runs on CUDA and we have the selected next indices on CUDA.
-        this->selected_next_indices = AllocateBuffer<int32_t>(allocator, selected_next_indices_buffer_, batch_beam_size);
+      // TODO(hasesh): We need this scratch buffer on CUDA because currently, the BeamScorer runs on CPU and selects the beams
+      // for the next iteration and hence the chosen next indices is on CPU.
+      // We will use this scratch buffer to take them to device because we need them on the device to launch the CUDA
+      // kernel that will update the next iteration's past state.
+      // Remove this once BeamScorer runs on CUDA and we have the selected next indices on CUDA.
+      this->selected_next_indices = AllocateBuffer<int32_t>(allocator, selected_next_indices_buffer_, batch_beam_size);
     }
   }
 
   gsl::span<T> GetPastStateBuffer() override {
-      return past_present_states_[0];
+    return past_present_states_[0];
   }
 
   gsl::span<T> GetPresentStateBuffer() override {
-      return past_present_states_[1];
+    return past_present_states_[1];
   }
 
   int GetMaxLength() override {
-      return max_length_; 
+    return max_length_;
   }
 
  private:
@@ -164,7 +164,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
 
 // Base class of beam search implementation that is common for both GPT-2 and T5.
 template <typename T>
-class BeamSearchBase : public GenerateBase  {
+class BeamSearchBase : public GenerateBase {
  public:
   BeamSearchBase(OpKernelContextInternal& context,
                  const SessionState& decoder_session_state,
@@ -176,13 +176,13 @@ class BeamSearchBase : public GenerateBase  {
                  const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                  const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                  const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func)
-      :  GenerateBase(context,
-                      decoder_session_state,
-                      thread_pool,
-                      ort_stream,
-                      cuda_dumper,
-                      topk_func,
-                      device_copy_func),
+      : GenerateBase(context,
+                     decoder_session_state,
+                     thread_pool,
+                     ort_stream,
+                     cuda_dumper,
+                     topk_func,
+                     device_copy_func),
         parameters_(&params),
         process_logits_func_(process_logits_func),
         device_copy_int32_func_(device_copy_int32_func) {
@@ -228,11 +228,11 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),     // input_ids
-                                            context.Input<Tensor>(7),     // vocab_mask
-                                            context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(9),    // attention_mask
-                                            nullptr));                    // presence_mask
+                                            context.Input<Tensor>(0),  // input_ids
+                                            context.Input<Tensor>(7),  // vocab_mask
+                                            context.Input<Tensor>(8),  // prefix_vocab_mask
+                                            context.Input<Tensor>(9),  // attention_mask
+                                            nullptr));                 // presence_mask
 
   return Status::OK();
 }
