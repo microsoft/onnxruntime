@@ -286,8 +286,8 @@ class FusionTulrAttention(FusionAttention):
         add_k = None
         matmul_k = k_nodes[-1]
 
-        extra_add_qk_nodes = self.model.match_parent_path(add_qk, ["Mul"])
-        if extra_add_qk_nodes is None:
+        relative_position_bias_nodes = self.model.match_parent_path(add_qk, ["Mul"])
+        if relative_position_bias_nodes is None:
             return
 
         mask_nodes = self.model.match_parent_path(

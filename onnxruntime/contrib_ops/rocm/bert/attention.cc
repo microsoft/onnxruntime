@@ -39,7 +39,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
@@ -47,7 +47,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
+                                  relative_position_bias,
                                   nullptr,
                                   device_prop.maxThreadsPerBlock));
 
@@ -129,7 +129,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
       mask_filter_value_,
       nullptr == past ? nullptr : past->Data<T>(),
-      nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
+      nullptr == relative_position_bias ? nullptr : relative_position_bias->Data<T>(),
       work_space.get(),
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>());
