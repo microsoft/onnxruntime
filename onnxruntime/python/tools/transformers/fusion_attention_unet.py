@@ -194,12 +194,12 @@ class FusionAttentionUnet(Fusion):
                 vw_out_size = vw.shape[1]
                 assert qw_out_size == vw_out_size and kw_out_size == vw_out_size
 
-                C = kw_in_size
-                N = num_heads
-                H = kw_out_size // N
+                c = kw_in_size
+                n = num_heads
+                h = kw_out_size // num_heads
 
                 # Concat and interleave weights so that the output of fused KV GEMM has [B, S_kv, N, 2, H] shape
-                kv_weight = np.dstack([kw.reshape(C, N, H), vw.reshape(C, N, H)]).reshape(C, N * 2 * H)
+                kv_weight = np.dstack([kw.reshape(c, n, h), vw.reshape(c, n, h)]).reshape(c, n * 2 * h)
 
                 matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_KV")
                 weight = helper.make_tensor(
@@ -223,7 +223,7 @@ class FusionAttentionUnet(Fusion):
                     name=matmul_node_name + "_reshape_shape",
                     data_type=TensorProto.INT64,
                     dims=[5],
-                    vals=[0, 0, N, 2, H],
+                    vals=[0, 0, n, 2, h],
                 )
                 self.model.add_initializer(shape_tensor, self.this_graph_name)
 

@@ -94,7 +94,7 @@ class FusionGroupNorm(Fusion):
             and instance_norm_scale.shape == instance_norm_bias.shape
             and instance_norm_scale.shape[0] == 32
         ):
-            logger.info(f"InstanceNormalization groups={instance_norm_scale.shape[0]}")
+            logger.info("InstanceNormalization groups=%d", instance_norm_scale.shape[0])
             return
 
         if not np.allclose(np.ones_like(instance_norm_scale), instance_norm_scale):
@@ -105,7 +105,7 @@ class FusionGroupNorm(Fusion):
         group_norm_name = self.model.create_node_name("GroupNorm", name_prefix="GroupNorm")
 
         if weight_elements not in [320, 640, 960, 1280, 1920, 2560] + [128, 256, 512]:
-            logger.info(f"GroupNorm channels={weight_elements}")
+            logger.info("GroupNorm channels=%d", weight_elements)
 
         gamma = helper.make_tensor(
             name=group_norm_name + "_gamma",
