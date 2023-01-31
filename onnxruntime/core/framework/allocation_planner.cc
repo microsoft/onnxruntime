@@ -2272,10 +2272,10 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       if (node_name_or_type.empty()) {
         node_name_or_type = op_type + std::to_string(op_type_counter[op_type]++);
       }
-      if (node_name_or_type.find("MemcpyToHost") == std::string::npos) {
-        node_names_by_stream_[it->second].push_back(node_name);
-      } else {
+      if (op_type == "MemcpyToHost") {
         index_of_MemcpyToHost.push_back(node->Index());
+      } else {
+        node_names_by_stream_[it->second].push_back(node_name);
       }
     }
   }
@@ -2297,8 +2297,11 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       node_name = op_type + std::to_string(op_type_counter[op_type]++);
     }
     auto iter = node_stream_map.find(node_name);
-    ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
-    stream_nodes[node_stream_map[node_name]].push_back(node_index);
+    if (iter != node_stream_map.end()) {
+      stream_nodes[iter->second].push_back(node_index);
+    } else if (!config_file_.empty()) { // only check node name if user provided config file. Otherwise no need to check as the node name is loaded from model
+      ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
+    }
   }
   if (index_of_MemcpyToHost.size() > 0) {
     stream_nodes.push_back(index_of_MemcpyToHost);
