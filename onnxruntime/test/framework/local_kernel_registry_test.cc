@@ -317,11 +317,11 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
 }
 
-// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory resetting `version` before falling through
-// to the ONNX schema lookup.
+// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory needing to reset `version` before 
+// falling through to the ONNX schema lookup.
 //
 // If there is a custom registry that matches the ONNX domain but not the current op, we fall though but need to
-// use the input opset and ignore any opset values found in the custom registry.
+// use the original opset version and ignore any version values found in the custom registry.
 //
 // If we regress we will match Clip(1) which only had one input. The model uses Clip(11) and has two inputs. The ONNX
 // checker will fail if this happens.
