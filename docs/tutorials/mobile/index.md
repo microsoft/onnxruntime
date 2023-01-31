@@ -108,6 +108,6 @@ To give an idea of the binary size difference between the full packages and the 
 ||onnxruntime-mobile|3.2 MB|
 |arm32|onnxruntime-android|8.4 MB|
 ||onnxruntime-mobile|2.3 MB|
-|custom (MobileNet)|_Coming soon_|
+||custom (MobileNet)|_Coming soon_|
 
 The iOS package is a static framework and so the library package size is not a good indication of the actual contribution to the application binary size. The above sizes for Android are good estimates for iOS.
