@@ -55,7 +55,11 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     STDMETHOD(SetDmlOperator)(
         _In_ const MLOperatorGraphDesc* operatorGraphDesc
     ) const noexcept PURE;
+};
 
+interface __declspec(uuid("1d2e1226-a918-4236-8775-175cf1f52c9a"))
+IMLOperatorKernelCreationContextNodeWrapperPrivate : public IUnknown
+{
     //! Gets the minimum size of a char buffer to store the node name (including null terminator).
     //! Returns 1 if the node has no name (calling GetUtf8Name will write a single null terminator).
     STDMETHOD_(uint32_t, GetUtf8NameSizeInBytes)() const noexcept PURE;
@@ -67,7 +71,7 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
         ) const noexcept PURE;
 
     //! Gets the minimum size of a wchar buffer to store the node name (including null terminator).
-    //! Returns sizeof(wchar_t) if the node has no name (calling GetWideName will write a single null terminator).
+    //! Returns sizeof(wchar_t) if the node has no name (calling GetWideName will write a null terminator).
     STDMETHOD_(uint32_t, GetWideNameSizeInBytes)() const noexcept PURE;
 
     //! Writes the node name and null terminator into a wchar buffer.

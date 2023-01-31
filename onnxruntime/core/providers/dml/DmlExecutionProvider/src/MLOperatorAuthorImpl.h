@@ -332,7 +332,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
         Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1, IMLOperatorKernelCreationContextNodeWrapperPrivate>,
     onnxruntime::null_type>
 {
  public:
@@ -373,6 +373,8 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     {
         return E_NOTIMPL;
     }
+
+    // IMLOperatorKernelCreationContextNonGraphNode methods.
 
     uint32_t STDMETHODCALLTYPE GetUtf8NameSizeInBytes() const noexcept override;
     HRESULT STDMETHODCALLTYPE GetUtf8Name(uint32_t bufferSizeInBytes, char* name) const noexcept override;

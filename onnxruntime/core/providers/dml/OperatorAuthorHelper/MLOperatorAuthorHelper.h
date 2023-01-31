@@ -486,6 +486,7 @@ public:
     MLOperatorKernelCreationContext(IMLOperatorKernelCreationContext* impl) : MLOperatorAttributes(impl), m_impl(impl)
     {
         m_impl.As(&m_implPrivate);
+        m_impl.As(&m_nodeWrapperImpl);
     }
 
     // For cases of interop where the caller needs to pass the unwrapped class across a boundary.
@@ -494,9 +495,9 @@ public:
         return m_impl;
     }
 
-    IMLOperatorKernelCreationContextPrivate* GetInterfacePrivate() const noexcept
+    IMLOperatorKernelCreationContextNodeWrapperPrivate* GetNodeWrapperInterface() const noexcept
     {
-        return m_implPrivate.Get();
+        return m_nodeWrapperImpl.Get();
     }
 
     Microsoft::WRL::ComPtr<IUnknown> GetExecutionInterface() const noexcept
@@ -562,6 +563,7 @@ public:
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;
+    Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextNodeWrapperPrivate> m_nodeWrapperImpl;
 };
 
 class MLShapeInferenceContext : public MLOperatorAttributes

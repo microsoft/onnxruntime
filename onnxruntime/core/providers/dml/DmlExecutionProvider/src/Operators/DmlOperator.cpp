@@ -92,7 +92,7 @@ namespace Dml
             
             // Static buffer (might truncate name) to avoid excessive dynamic allocation only for debugging purposes.
             wchar_t nodeName[512];
-            ORT_THROW_IF_FAILED(kernelInfo.GetInterfacePrivate()->GetWideName(sizeof(nodeName), nodeName));
+            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->GetWideName(sizeof(nodeName), nodeName));
             ORT_THROW_IF_FAILED(m_compiledOperator->SetName(nodeName));
 
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
