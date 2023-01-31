@@ -1283,10 +1283,6 @@ std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Creat
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
 }
 
-void TensorrtProviderGetCustomOpDomain(IExecutionProviderFactory* factory, OrtProviderCustomOpDomain** domain) {
-  s_library_tensorrt.Get().GetCustomOpDomain(factory, domain);
-}
-
 void TensorrtProviderGetCustomOpDomainList(IExecutionProviderFactory* factory, std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_ptr) {
   s_library_tensorrt.Get().GetCustomOpDomainList(factory, custom_op_domains_ptr);
 }
