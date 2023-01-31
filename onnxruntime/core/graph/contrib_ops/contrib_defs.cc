@@ -2557,6 +2557,7 @@ void RegisterContribSchemas() {
         output_shape.add_dim()->set_dim_value(pooled_size);
         updateOutputShape(ctx, 0, output_shape);
       });
+
   static const char* DisentangledAttention_TRT_ver1_doc =
       R"DOC(Disentangled Attention TensorRT Plugin.)DOC";
 
