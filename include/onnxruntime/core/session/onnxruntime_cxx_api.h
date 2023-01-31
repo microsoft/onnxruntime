@@ -1630,7 +1630,7 @@ struct Logger {
    * calls to the underyling C API.
    *
    * \param log_severity_level The message's logging severity level.
-   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
    * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    * \param message The message to log.
@@ -1645,7 +1645,7 @@ struct Logger {
    * calls to the underyling C API. Returns an error status if a formatting error occurs.
    *
    * \param log_severity_level The message's logging severity level.
-   * \param file_path The filepath of the file in which the message is logged. Usually the value of __FILE__.
+   * \param file_path The filepath of the file in which the message is logged. Usually the value of ORT_FILE.
    * \param line_number The file line number in which the message is logged. Usually the value of __LINE__.
    * \param func_name The name of the function in which the message is logged. Usually the value of __FUNCTION__.
    * \param format A null-terminated UTF-8 format string forwarded to a printf-like function.
