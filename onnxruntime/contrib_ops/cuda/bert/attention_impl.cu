@@ -637,10 +637,10 @@ Status QkvToContext(
     bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
-    DUMP_ATTENTION_D("extra_add_qk", data.extra_add_qk, batch_size, num_heads, sequence_length, total_sequence_length);
+    DUMP_ATTENTION_D("relative_position_bias", data.relative_position_bias, batch_size, num_heads, sequence_length, total_sequence_length);
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, nullptr, data.extra_add_qk, scratch1, scratch2,
+                                     mask_index, nullptr, data.relative_position_bias, scratch1, scratch2,
                                      parameters.is_unidirectional, scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax,
                                      persistent_softmax_workspace, mask_filter_value));
@@ -650,10 +650,10 @@ Status QkvToContext(
     const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
-        mask_index, mask_start, data.extra_add_qk, scratch1, scratch2, parameters.is_unidirectional));
+        mask_index, mask_start, data.relative_position_bias, scratch1, scratch2, parameters.is_unidirectional));
   } else {  // no mask
     ORT_RETURN_IF_ERROR(
-        ComputeSoftmax<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads, data.extra_add_qk,
+        ComputeSoftmax<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads, data.relative_position_bias,
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
