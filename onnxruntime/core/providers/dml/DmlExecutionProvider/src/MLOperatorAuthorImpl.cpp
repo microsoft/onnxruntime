@@ -1015,7 +1015,7 @@ namespace Windows::AI::MachineLearning::Adapter
             return sizeof(wchar_t);
         }
         
-        int requiredSizeInChars = MultiByteToWideChar(CP_UTF8, 0, name.data(), name.size(), nullptr, 0);
+        int requiredSizeInChars = MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), nullptr, 0);
         assert(requiredSizeInChars > 0);
 
         // Include null terminator.
@@ -1038,7 +1038,7 @@ namespace Windows::AI::MachineLearning::Adapter
         }
 
         uint32_t bufferSizeInChars = bufferSizeInBytes / sizeof(wchar_t);
-        int charsCopiedIfSucceeded = MultiByteToWideChar(CP_UTF8, 0, nodeName.data(), nodeName.size(), outputName, bufferSizeInChars);
+        int charsCopiedIfSucceeded = MultiByteToWideChar(CP_UTF8, 0, nodeName.data(), static_cast<int>(nodeName.size()), outputName, bufferSizeInChars);
 
         if (charsCopiedIfSucceeded > 0)
         {
