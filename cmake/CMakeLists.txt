@@ -1372,14 +1372,15 @@ if (onnxruntime_ENABLE_TRAINING)
         mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
         list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
       else ()
-        set(onnxruntime_USE_NCCL OFF)
-        set(onnxruntime_USE_MPI OFF)
-        message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
+        message(
+          FATAL_ERROR
+          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+        )
       endif()
     endif()
 
     # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+    if (onnxruntime_USE_NCCL)
       if (onnxruntime_USE_CUDA)
         set(NCCL_LIBNAME "nccl")
       elseif (onnxruntime_USE_ROCM)
@@ -1437,13 +1438,15 @@ if (onnxruntime_ENABLE_TRAINING)
         add_definitions(-DORT_USE_NCCL=1)
         message( STATUS "NCCL is enabled in Linux GPU Build." )
       else ()
-        set(onnxruntime_USE_NCCL OFF)
-        message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
+        message(
+          FATAL_ERROR
+          "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled."
+        )
       endif()
     endif()
   endif()
 
-  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
+  if (onnxruntime_USE_MPI)
     add_definitions(-DUSE_MPI=1)
   endif()
 
