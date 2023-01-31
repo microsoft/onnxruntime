@@ -215,9 +215,10 @@ class SymbolicShapeInference:
             "_adaptive_avg_pool2d": self._infer_aten_pool2d,
             "numpy_T": self._infer_Transpose,
             "native_group_norm": self._infer_aten_group_norm,
-            "upsample_nearest1d": self._infer_aten_upsample_nearest,
-            "upsample_nearest2d": self._infer_aten_upsample_nearest,
-            "upsample_nearest3d": self._infer_aten_upsample_nearest,
+            "upsample_nearest1d": self._infer_aten_upsample,
+            "upsample_nearest2d": self._infer_aten_upsample,
+            "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bilinear2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1382,7 +1383,7 @@ class SymbolicShapeInference:
                     )
                 )
 
-    def _infer_aten_upsample_nearest(self, node):
+    def _infer_aten_upsample(self, node):
         new_shape = None
         input_shape = self._get_shape(node, 0)
         if input_shape is not None:
