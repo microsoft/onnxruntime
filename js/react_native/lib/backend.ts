@@ -48,25 +48,35 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
 
+  #pathOrBuffer: string|Uint8Array;
+
   inputNames: string[];
   outputNames: string[];
 
-  constructor(path: string) {
+  constructor(pathOrBuffer: string|Uint8Array) {
     this.#inferenceSession = binding;
-    this.#key = normalizePath(path);
+    this.#pathOrBuffer = pathOrBuffer;
+    this.#key = '';
+
     this.inputNames = [];
     this.outputNames = [];
   }
 
   async loadModel(options: InferenceSession.SessionOptions): Promise<void> {
     try {
+      let results: Binding.ModelLoadInfoType;
       // load a model
-      const results: Binding.ModelLoadInfoType = await this.#inferenceSession.loadModel(this.#key, options);
-      // resolve promise if onnxruntime session is successfully created
-      if (results.key !== this.#key) {
-        throw new Error('Session key is invalid');
+      if (typeof this.#pathOrBuffer === 'string') {
+        results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
+      } else {
+        if (!this.#inferenceSession.loadModelFromBase64EncodedBuffer) {
+          throw new Error('Native module method "loadModelFromBase64EncodedBuffer" is not defined');
+        }
+        const modelInBase64String = Buffer.from(this.#pathOrBuffer).toString('base64');
+        results = await this.#inferenceSession.loadModelFromBase64EncodedBuffer(modelInBase64String, options);
       }
-
+      // resolve promise if onnxruntime session is successfully created
+      this.#key = results.key;
       this.inputNames = results.inputNames;
       this.outputNames = results.outputNames;
     } catch (e) {
@@ -156,9 +166,6 @@ class OnnxruntimeBackend implements Backend {
 
   async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
       Promise<SessionHandler> {
-    if (typeof pathOrBuffer !== 'string') {
-      throw new Error('Uint8Array is not supported');
-    }
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
     await handler.loadModel(options || {});
     return handler;
