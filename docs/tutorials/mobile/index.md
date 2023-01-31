@@ -72,7 +72,7 @@ If the application does not meet its requirements, there are optimizations that 
 
 #### Reduce model size
 
-One method of reducing model size is to quantize the model. This reduces an original model with 32-bit weights by approximately a factor of 4, as the weights are reduced to 8-bit.
+One method of reducing model size is to quantize the model. This reduces an original model with 32-bit weights by approximately a factor of 4, as the weights are reduced to 8-bit. See the ONNX Runtime [quantization guide](../../performance/quantization.md) for instructions on how to do this.
 
 Another way of reducing the model size is to find a new model with the same inputs, outputs and architecture that has already been optimized for mobile. For example: MobileNet and MobileBert.
 
@@ -98,14 +98,15 @@ There are two options for reducing the ONNX Runtime binary size.
 
    The process to build a [custom runtime](../../build/custom.md) uses the same build scripts as standard ONNX Runtime, with some extra parameters.
 
-To give an idea of the binary size difference between mobile and full packages:
+To give an idea of the binary size difference between the full packages and the mobile optimzed packages:
 
 ONNX Runtime 1.13.1 Android package library file size:
-
-|Package|Size|
-|-|-|
-|onnxruntime-mobile|18.8 MB|
-|onnxruntime-android|5.6 MB|
+|Architecture|Package|Size|
+|-|-|-|
+|arm64|onnxruntime-android|12.2 MB|
+||onnxruntime-mobile|3.2 MB|
+|arm32|onnxruntime-android|8.4 MB|
+||onnxruntime-mobile|2.3 MB|
 |custom (MobileNet)|_Coming soon_|
 
 The iOS package is a static framework and so the library package size is not a good indication of the actual contribution to the application binary size. The above sizes for Android are good estimates for iOS.
