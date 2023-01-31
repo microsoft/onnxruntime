@@ -60,3 +60,5 @@ make install
 
 cd /
 rm -rf /tmp/src
+
+echo "test change"
