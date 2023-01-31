@@ -111,7 +111,10 @@ class NodeRepo {
   common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
     std::lock_guard<std::mutex> guard(mutex_);
     for (auto* node : nodes_) {
-      // in theory this should never fail if the kernel lookup earlier was successful
+      // Lookup the schema for the operator so we include it in the ORT format model and can match the kernel
+      // in a minimal build.
+      // The opset version will not necessarily match the model, so we need to call GetSchema directly to plug that in.
+      // in theory this should never fail if the kernel lookup earlier was successful.
       auto* schema = graph.GetSchemaRegistry()->GetSchema(node->OpType(), node->SinceVersion(), node->Domain());
 
       ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'",
@@ -389,23 +392,6 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
 
   NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "",
                                                          input_args, output_args, nullptr, domain);
-  // Set the requested opset version. Technically this isn't exact as we'd have to do a schema lookup for the op
-  // to find the start version for the matching opset range. It's good enough for kernel lookup.
-  //
-  // NOTE: this assumes operator kernels that have conditional behavior based on the opset do NOT use exact matching
-  //       of an opset. e.g operator changed in opset 7 and 10. for a version of 7, 8 or 9 the schema for 7..9 is used.
-  //       if the kernel implementation looked for SinceVersion() == 7 instead of >= 7 && < 10 it would not behave
-  //       correctly with this inexact version value.
-  //
-  // We could potentially add schema lookup here, but that doesn't resolve the issue in an ORT format model where we
-  // have nowhere to save the exact version for these dynamically created nodes.
-  //
-  // Going with it being better to be invalid in all builds because:
-  //   - this feature is not widely used
-  //   - the engineering effort and complexity added to solve this for ORT format models would be significant
-  //   - only a few
-  // instead of just minimal builds.
-  // node_ptr->SetSinceVersion(version);
 
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
@@ -421,22 +407,30 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
                                                &kernel_create_info);
 #else
   // minimal build with custom ops enabled.
-  // kernel lookup uses the constraint resolver information from the ORT format model.
+  // kernel lookup uses the constraint resolver information from the ORT format model and the type_constraint_map
+  // as the new Node will not have any type info for its NodeArgs.
+  // Use the provided version for initial lookup. We will set it to the exact value from the kernel def once found.
+  node_ptr->SetSinceVersion(version);
   auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), kernel_info->GetKernelTypeStrResolver(),
-                                               &kernel_create_info);
+                                               &kernel_create_info, type_constraint_map);
 #endif
   ORT_RETURN_IF_ERROR(status);
 
+  auto& kernel_def = kernel_create_info->kernel_def;
+  ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'",
+                    node_ptr->Domain(), "' op_type:", node_ptr->OpType());
+
+  // set SinceVersion to the exact value
   int start = -1, end = -1;
   kernel_create_info->kernel_def->SinceVersion(&start, &end);
   node_ptr->SetSinceVersion(start);
 
+  // TODO: This doesn't look like it's required. Can add as fallback if kernel_create_info->kernel_def is empty.
   // auto kernel_def_builder = KernelDefBuilder::Create();
   // kernel_def_builder->SetName(op_name);
   // kernel_def_builder->SetDomain(domain);
   // kernel_def_builder->SinceVersion(version);
   // auto kernel_def = kernel_def_builder->Build();
-  auto& kernel_def = kernel_create_info->kernel_def;
 
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;

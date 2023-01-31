@@ -444,8 +444,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD)  // && !defined(REDUCED_OPS_BUILD)
-// disable test in reduced-op-build since TOPK and GRU are excluded there
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, StandaloneOpHandler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
@@ -462,17 +461,17 @@ TEST(CApiTest, StandaloneOpHandler) {
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&standalone_op);
 
+#ifdef USE_CUDA
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr);
+#else
   Ort::SessionOptions session_options;
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
   session_options.SetOptimizedModelFilePath(ort_file.c_str());
 
-#ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
-                       custom_op_domain, nullptr, false, nullptr, &session_options);
-#else
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr, false, nullptr, &session_options);
 
