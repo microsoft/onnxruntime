@@ -2275,7 +2275,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       if (op_type == "MemcpyToHost") {
         index_of_MemcpyToHost.push_back(node->Index());
       } else {
-        node_names_by_stream_[it->second].push_back(node_name);
+        node_names_by_stream_[it->second].push_back(node_name_or_type);
       }
     }
   }
