@@ -5,6 +5,7 @@
 
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
+#include <pybind11/stl_bind.h>
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/tunable/util.h"
@@ -37,28 +38,26 @@ class DeviceArray {
     py::buffer_info buf = x.request();
     size_ = buf.size;
     itemsize_ = buf.itemsize;
-    CALL_THROW(MALLOC(&x_device_, size_ * itemsize_));
-    x_host_ = x.request().ptr;
-    CALL_THROW(MEMCPY(x_device_, x_host_, size_ * itemsize_, MEMCPY_HOST_TO_DEVICE));
+    void* dev_ptr;
+    CALL_THROW(MALLOC(&dev_ptr, size_ * itemsize_));
+    device_.reset(dev_ptr, [](void* dev_ptr) { CALL_THROW(FREE(dev_ptr)); });
+    host_ = x.request().ptr;
+    CALL_THROW(MEMCPY(device_.get(), host_, size_ * itemsize_, MEMCPY_HOST_TO_DEVICE));
   }
-  DeviceArray(const DeviceArray&) = delete;
-  DeviceArray& operator=(DeviceArray&) = delete;
+  DeviceArray(const DeviceArray&) = default;
+  DeviceArray& operator=(DeviceArray&) = default;
 
   void UpdateHostNumpyArray() {
-    CALL_THROW(MEMCPY(x_host_, x_device_, size_ * itemsize_, MEMCPY_DEVICE_TO_HOST));
+    CALL_THROW(MEMCPY(host_, device_.get(), size_ * itemsize_, MEMCPY_DEVICE_TO_HOST));
   }
 
   void* ptr() const {
-    return x_device_;
-  }
-
-  ~DeviceArray() {
-    CALL_THROW(FREE(x_device_));
+    return device_.get();
   }
 
  private:
-  void* x_device_;
-  void* x_host_;
+  std::shared_ptr<void> device_;
+  void* host_;
   ssize_t size_;
   ssize_t itemsize_;
 };

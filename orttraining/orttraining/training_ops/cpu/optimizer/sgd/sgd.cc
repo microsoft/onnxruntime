@@ -47,7 +47,7 @@ Status SGDOptimizerV2Base::PrepareForCompute(OpKernelContext* ctx, SGDOptimizerV
         }
       });
 
-  prepare.updated_flag = ctx->Output(0, prepare.learning_rate->Shape());
+  prepare.update_completed = ctx->Output(0, prepare.learning_rate->Shape());
   prepare.updated_weights = ctx->Output<TensorSeq>(1);
 
   return Status::OK();
@@ -58,7 +58,7 @@ Status SGDOptimizerV2<T>::Compute(OpKernelContext* ctx) const {
   SGDOptimizerV2Base::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
 
-  bool* updated_flag_ptr = p.updated_flag->template MutableData<bool>();
+  bool* updated_flag_ptr = p.update_completed->template MutableData<bool>();
   const Tensor* update_signal = ctx->Input<Tensor>(3);
   if (update_signal == nullptr || *update_signal->template Data<bool>()) {
     const float lr = *p.learning_rate->template Data<float>();

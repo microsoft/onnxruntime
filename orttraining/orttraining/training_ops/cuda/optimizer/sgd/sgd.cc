@@ -28,7 +28,7 @@ Status SGDOptimizerV2::ComputeInternal(OpKernelContext* ctx) const {
   SGDOptimizerV2Base::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
 
-  bool* updated_flag_ptr = p.updated_flag->template MutableData<bool>();
+  bool* updated_flag_ptr = p.update_completed->template MutableData<bool>();
 
   // Currently placed on CPU, need revisit when we had mixed precision training requirement.
   const Tensor* update_signal = ctx->Input<Tensor>(3);

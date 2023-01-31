@@ -1684,7 +1684,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     OpDef op_def(node_def.op_type, node_def.domain);
     std::vector<ArgDef> input_args;
     for (const auto& input : node_def.inputs) {
-      if (input.find("GO(") == 0) {
+      if (input == "") {
+        input_args.emplace_back(ArgDef());
+      } else if (input.find("GO(") == 0) {
         int index = std::stoi(input.substr(3, input.length() - 4));
         input_args.emplace_back(GO(static_cast<size_t>(index)));
       } else if (input.find("I(") == 0) {

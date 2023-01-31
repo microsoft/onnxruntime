@@ -47,9 +47,9 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 }
 #endif
 
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/include/onnxruntime_training_c_api.h"
-#include "orttraining/training_api/include/ort_training_apis.h"
+#include "orttraining/training_api/ort_training_apis.h"
 #endif
 
 #ifdef USE_CANN
@@ -600,18 +600,58 @@ ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* optio
 ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary, _Inout_ OrtSessionOptions* options, _In_ const char* library_path, _Outptr_ void** library_handle) {
   API_IMPL_BEGIN
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(library_path, false, library_handle));
+  auto path_str = ToPathString(library_path);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().LoadDynamicLibrary(path_str, false, library_handle));
   if (!*library_handle)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Failed to load library");
 
-  OrtStatus*(ORT_API_CALL * RegisterCustomOps)(OrtSessionOptions * options, const OrtApiBase* api);
-
+  RegisterCustomOpsFn RegisterCustomOps;
   ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(*library_handle, "RegisterCustomOps",
                                                                       (void**)&RegisterCustomOps));
   if (!RegisterCustomOps)
     return OrtApis::CreateStatus(ORT_FAIL, "RegisterCustomOpsLibrary: Entry point RegisterCustomOps not found in library");
 
   return RegisterCustomOps(options, OrtGetApiBase());
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
+                    _In_ const ORTCHAR_T* library_name) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->RegisterCustomOpsLibrary(library_name));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(library_name);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Custom operator libraries are not supported in this build");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
+                    _In_ const char* registration_func_name) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (!registration_func_name) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "RegisterCustomOpsUsingFunction: Registration function name must be specified.");
+  }
+
+  RegisterCustomOpsFn RegisterCustomOps;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(Env::Default().GetSymbolFromLibrary(nullptr, registration_func_name,
+                                                                      (void**)&RegisterCustomOps));
+  if (!RegisterCustomOps) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "RegisterCustomOpsUsingFunction: Registration function was not found");
+  }
+
+  return RegisterCustomOps(options, OrtGetApiBase());
+#else
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(registration_func_name);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Custom operator libraries are not supported in this build");
+#endif
   API_IMPL_END
 }
 
@@ -2277,15 +2317,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-#ifdef ENABLE_TRAINING_ON_DEVICE
+#ifdef ENABLE_TRAINING_APIS
   return OrtTrainingApis::GetTrainingApi(version);
 #else
 
   ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training and enable_training_on_device to "
-          "retrieve the training APIs.\n");
+          "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
 #endif
@@ -2610,6 +2649,21 @@ static constexpr OrtApi ort_api_1_to_14 = {
     &OrtApis::MemoryInfoGetDeviceType,
     &OrtApis::UpdateEnvWithCustomLogLevel,
     &OrtApis::SetGlobalIntraOpThreadAffinity,
+    &OrtApis::RegisterCustomOpsLibrary_V2,
+    &OrtApis::RegisterCustomOpsUsingFunction,
+    &OrtApis::KernelInfo_GetInputCount,
+    &OrtApis::KernelInfo_GetOutputCount,
+    &OrtApis::KernelInfo_GetInputName,
+    &OrtApis::KernelInfo_GetOutputName,
+    &OrtApis::KernelInfo_GetInputTypeInfo,
+    &OrtApis::KernelInfo_GetOutputTypeInfo,
+    &OrtApis::KernelInfoGetAttribute_tensor,
+    &OrtApis::HasSessionConfigEntry,
+    &OrtApis::GetSessionConfigEntry,
+    // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
+
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2631,10 +2685,10 @@ static_assert(offsetof(OrtApi, ReleaseKernelInfo) / sizeof(void*) == 218, "Size 
 static_assert(offsetof(OrtApi, ReleaseCANNProviderOptions) / sizeof(void*) == 224, "Size of version 13 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.14.0",
+static_assert(std::string_view(ORT_VERSION) == "1.15.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
-// 2. If there were any APIs added to ort_api_1_to_14 above:
+// 2. If there were any APIs added to ort_api_1_to_15 above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 

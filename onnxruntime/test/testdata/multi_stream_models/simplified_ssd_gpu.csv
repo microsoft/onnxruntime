@@ -1,4 +1,0 @@
-DeviceBasedPartitioner
-Devices:1
-CpuExecutionProvider:2
-CudaExecutionProvider:2

@@ -1331,6 +1331,88 @@ TEST(PoolTest, LpPool) {
   test.Run();
 }
 
+// test data generated with lp_pool_test_generator.py
+TEST(PoolTest, LpPool1d) {
+  std::vector<int64_t> kernel_sizes[2] = {{2}, {3}};
+  std::vector<int64_t> strides[2] = {{1}, {2}};
+  std::vector<float> ys[4] = {
+      {2.2361f, 3.6056f, 5.0000f},
+      {2.2361f, 5.0000f},
+      {3.7417f, 5.3852f},
+      {3.7417f}};
+  std::vector<int64_t> y_sizes[4] = {
+      {1, 1, 3},
+      {1, 1, 2},
+      {1, 1, 2},
+      {1, 1, 1},
+  };
+  int y_count = 0;
+  for (int kernel_size_count = 0; kernel_size_count < 2; kernel_size_count++)
+    for (int stride_count = 0; stride_count < 2; stride_count++) {
+      OpTester test("LpPool", 18);
+      test.AddAttribute("auto_pad", "");
+      test.AddAttribute("p", static_cast<int64_t>(2));
+      test.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
+      test.AddAttribute("strides", strides[stride_count]);
+      test.AddAttribute("kernel_shape", kernel_sizes[kernel_size_count]);
+
+      test.AddOutput<float>("Y", y_sizes[y_count], ys[y_count]);
+
+      // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
+      // TensorRT does not support 1d pooling
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+      y_count++;
+    }
+}
+
+// test data generated with lp_pool_test_generator.py
+TEST(PoolTest, LpPool2d) {
+  std::vector<int64_t> kernel_sizes[2] = {{2, 2}, {3, 3}};
+  std::vector<int64_t> strides[2] = {{1, 1}, {2, 2}};
+  std::vector<float> ys[4] = {
+      {8.1240f, 9.8995f, 11.7473f, 15.5563f, 17.4929f, 19.4422f, 23.3666f, 25.3377f, 27.3130f},
+      {8.1240f, 11.7473f, 23.3666f, 27.3130f},
+      {20.6398f, 23.3024f, 31.6544f, 34.5109f},
+      {20.6398f}};
+  std::vector<int64_t> y_sizes[4] = {
+    {1, 1, 3, 3},
+    {1, 1, 2, 2},
+    {1, 1, 2, 2},
+    {1, 1, 1, 1},
+  };
+  int y_count = 0;
+  for (int kernel_size_count = 0; kernel_size_count < 2; kernel_size_count++)
+    for (int stride_count = 0; stride_count < 2; stride_count++) {
+      OpTester test("LpPool", 18);
+      test.AddAttribute("auto_pad", "");
+      test.AddAttribute("p", static_cast<int64_t>(2));
+      test.AddInput<float>("X", {1, 1, 4, 4},
+                           {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+      test.AddAttribute("strides", strides[stride_count]);
+      test.AddAttribute("kernel_shape", kernel_sizes[kernel_size_count]);
+
+      test.AddOutput<float>("Y", y_sizes[y_count], ys[y_count]);
+      test.Run();
+      y_count++;    
+    }
+}
+
+TEST(PoolTest, LpPoolCeilMode) {
+  OpTester test("LpPool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", vector<int64_t>{3});
+  test.AddAttribute("ceil_mode", static_cast<int64_t>(1));
+  test.AddAttribute("p", static_cast<int64_t>(1));
+  test.AddInput<float>("X", {1, 1, 4}, {1, 2, 3, 4});
+  test.AddOutput<float>("Y", {1, 1, 2}, {6, 7});
+
+  // https://docs.nvidia.com/deeplearning/tensorrt/api/c_api/classnvinfer1_1_1_i_network_definition.html#a94f434942252e6d98ac17705c06ce060
+  // TensorRT does not support 1d pooling
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(PoolTest, GlobalLpPool) {
   OpTester test("GlobalLpPool");
   test.AddAttribute("p", static_cast<int64_t>(3));

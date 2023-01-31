@@ -1015,7 +1015,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
   // TODO This change was introduced in 1.13. Remove this note a few releases later, e.g., 1.15.
   constexpr auto* kOrtFormatVersion5BreakingChangeNote =
       "This build doesn't support ORT format models older than version 5. "
-      "See: https://github.com/microsoft/onnxruntime/blob/rel-1.13.0/docs/ORT_Format_Update_in_1.13.md";
+      "See: https://github.com/microsoft/onnxruntime/blob/rel-1.14.0/docs/ORT_Format_Update_in_1.13.md";
 
   ORT_RETURN_IF(!is_supported,
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
@@ -1324,14 +1324,12 @@ common::Status InferenceSession::Initialize() {
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
         execution_providers_,
-        session_options_.enable_mem_pattern && session_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL,
         GetIntraOpThreadPoolToUse(),
         GetInterOpThreadPoolToUse(),
         data_transfer_mgr_,
         *session_logger_,
         session_profiler_,
-        session_options_.use_deterministic_compute,
-        session_options_.enable_mem_reuse,
+        session_options_,
         prepacked_weights_container_);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -1474,7 +1472,6 @@ common::Status InferenceSession::Initialize() {
 
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
-                                             session_options_,
                                              // need to keep the initializers if saving the optimized model
                                              !saving_model,
                                              saving_ort_format));
@@ -1986,9 +1983,8 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
       ORT_CHECK_AND_SET_RETVAL(utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
-                                                   session_options_.execution_mode, run_options.terminate, run_logger,
-                                                   run_options.synchronize_execution_providers,
-                                                   run_options.only_execute_path_to_fetches));
+                                                   session_options_.execution_mode,
+                                                   run_options, run_logger));
     }
     ORT_CATCH(const std::exception& e) {
       ORT_HANDLE_EXCEPTION([&]() {

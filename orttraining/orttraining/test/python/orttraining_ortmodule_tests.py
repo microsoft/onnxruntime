@@ -142,6 +142,14 @@ def run_data_sampler_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
+def run_pytorch_export_contrib_ops_tests(cwd, log):
+    log.debug("Running: PyTorch Export Contrib Ops Tests")
+
+    command = [sys.executable, "-m", "pytest", "-sv", "test_pytorch_export_contrib_ops.py"]
+
+    run_subprocess(command, cwd=cwd, log=log).check_returncode()
+
+
 def main():
     args = parse_arguments()
     cwd = args.cwd
@@ -177,6 +185,9 @@ def main():
     run_data_sampler_tests(cwd, log)
 
     run_experimental_gradient_graph_tests(cwd, log)
+
+    # TODO(bmeswani): Enable this test once it can run with latest pytorch
+    # run_pytorch_export_contrib_ops_tests(cwd, log)
 
     return 0
 

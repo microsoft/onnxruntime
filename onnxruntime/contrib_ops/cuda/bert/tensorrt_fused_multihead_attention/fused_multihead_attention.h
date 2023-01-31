@@ -1,12 +1,11 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 1993-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -36,14 +35,15 @@ class TFusedMultiHeadAttentionXMMAKernel {
  public:
   using KernelMeta = TKernelMeta;
   using KernelParam = TKernelParam;
-  inline uint64_t hashID(uint32_t s, uint32_t d) const {
+  inline uint64_t hashID(unsigned int s, unsigned int d) const {
     return (uint64_t)s << 32 | d;
   }
   virtual uint64_t hashID(const KernelMeta& kernelMeta) const {
     return hashID(kernelMeta.mS, kernelMeta.mD);
   }
 
-  TFusedMultiHeadAttentionXMMAKernel(const TKernelMeta* pMetaStart, uint32_t nMetaCount, Data_type type, uint32_t sm)
+  TFusedMultiHeadAttentionXMMAKernel(
+      const TKernelMeta* pMetaStart, unsigned int nMetaCount, Data_type type, unsigned int sm)
       : mDataType(type), mKernelMeta(pMetaStart), mKernelMetaCount(nMetaCount), mSM(sm) {
   }
 
@@ -54,7 +54,7 @@ class TFusedMultiHeadAttentionXMMAKernel {
       if (kernelMeta.mSM == smVersion &&
           kernelMeta.mDataType == mDataType &&
           mFunctions.find(kernelKey) == mFunctions.end()) {
-        const uint32_t DEFAULT_SMEM_SIZE{48 * 1024};
+        constexpr uint32_t DEFAULT_SMEM_SIZE = 48 * 1024;
         if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
           int32_t deviceID{0};
           cudaGetDevice(&deviceID);
@@ -63,12 +63,11 @@ class TFusedMultiHeadAttentionXMMAKernel {
                   &sharedMemPerMultiprocessor, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID) != cudaSuccess ||
               sharedMemPerMultiprocessor < static_cast<int32_t>(kernelMeta.mSharedMemBytes)) {
             // skip load function because not enough shared memory to launch the kernel
-            printf("skip loading trt fused attention kernel %s because not enough shared memory",
+            printf("skip loading trt fused attention kernel %s because no enough shared memory",
                    kernelMeta.mFuncName);
             continue;
           }
         }
-
         CUmodule hmod{0};
         auto findModuleIter = mModules.find(kernelMeta.mCubin);
         if (findModuleIter != mModules.end()) {
@@ -77,7 +76,6 @@ class TFusedMultiHeadAttentionXMMAKernel {
           cuErrCheck(mDriver.cuModuleLoadData(&hmod, kernelMeta.mCubin), mDriver);
           mModules.insert(std::make_pair(kernelMeta.mCubin, hmod));
         }
-
         FusedMultiHeadAttentionKernelInfo funcInfo;
         funcInfo.mMetaInfoIndex = i;
         cuErrCheck(mDriver.cuModuleGetFunction(&funcInfo.mDeviceFunction, hmod, kernelMeta.mFuncName), mDriver);
@@ -93,9 +91,6 @@ class TFusedMultiHeadAttentionXMMAKernel {
         }
         mFunctions.insert({kernelKey, funcInfo});
         const int s = static_cast<int>(kernelMeta.mS);
-#ifndef NDEBUG
-        printf("loaded trt fused attention kernel (%s)\n", kernelMeta.mFuncName);
-#endif
         if (mValidSequences.find(s) == mValidSequences.end()) {
           mValidSequences.insert(s);
         }
@@ -109,10 +104,10 @@ class TFusedMultiHeadAttentionXMMAKernel {
     }
 
     loadXMMAKernels(mSM);
-
-    // sm_86 chips prefer sm_86 sass, but can also use sm_80 sass if sm_86 not exist.
-    // sm_87 cannot run sm_80 sass
-    if (mSM == kSM_86) {
+    
+    // sm_86 chips prefer sm_86 kernel, but can also use sm_80 kernel if sm_86 not exist.
+    // sm_89 will reuse sm_80 kernels
+    if (mSM == kSM_86 || mSM == kSM_89) {
       loadXMMAKernels(kSM_80);
     }
   }
@@ -121,7 +116,10 @@ class TFusedMultiHeadAttentionXMMAKernel {
     return (mValidSequences.find(s) != mValidSequences.end());
   }
 
-  virtual void run(TKernelParam& params, cudaStream_t ss) const {
+  virtual void run(TKernelParam& params, cudaStream_t ss, bool flash_attention = false, bool causal_mask = false) const {
+    ORT_UNUSED_PARAMETER(flash_attention);
+    ORT_UNUSED_PARAMETER(causal_mask);
+
     const auto findIter = mFunctions.find(hashID(params.s, params.d));
     ORT_ENFORCE(findIter != mFunctions.end());
 
@@ -141,11 +139,11 @@ class TFusedMultiHeadAttentionXMMAKernel {
 
   Data_type mDataType;
   const TKernelMeta* mKernelMeta;
-  uint32_t mKernelMetaCount;
-  uint32_t mSM;
+  unsigned int mKernelMetaCount;
+  unsigned int mSM;
   std::unordered_map<const unsigned char*, CUmodule> mModules;
   struct FusedMultiHeadAttentionKernelInfo {
-    uint32_t mMetaInfoIndex;
+    unsigned int mMetaInfoIndex;
     CUfunction mDeviceFunction;
   };
   std::unordered_map<uint64_t, FusedMultiHeadAttentionKernelInfo> mFunctions;
@@ -155,8 +153,8 @@ class TFusedMultiHeadAttentionXMMAKernel {
 template <typename TFusedMHAKernelList>
 class TFusedMHAKernelFactory {
  public:
-  const TFusedMHAKernelList* getXMMAKernels(
-      const typename TFusedMHAKernelList::KernelMeta* pKernelList, uint32_t nbKernels, Data_type type, uint32_t sm) {
+  const TFusedMHAKernelList* getXMMAKernels(const typename TFusedMHAKernelList::KernelMeta* pKernelList,
+                                            unsigned int nbKernels, Data_type type, unsigned int sm) {
     static std::mutex s_mutex;
     std::lock_guard<std::mutex> lg(s_mutex);
 
@@ -183,10 +181,7 @@ class TFusedMHAKernelFactory {
     // use deviceID in hasID for multi GPU support before driver support context-less loading of cubin
     int32_t deviceID{0};
     CUDA_CALL_THROW(cudaGetDevice(&deviceID));
-
     ORT_ENFORCE((deviceID & 0xFFFF) == deviceID);
-    ORT_ENFORCE((type & 0xFFFF) == type);
-    ORT_ENFORCE((sm & 0xFFFFFFFF) == sm);
     return (uint64_t)type << 48 | (uint64_t)deviceID << 32 | sm;
   }
 

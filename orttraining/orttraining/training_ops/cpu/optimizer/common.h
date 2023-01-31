@@ -19,8 +19,8 @@ TC compute_bias_correction_coefficient(const TC momentum_update_coefficient, con
   }
 }
 
-Status CopyIfNotSameCPUBuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* values,
-                              TensorSeq* updated_values);
+Status CopyIfNotSameCPUBuffer(OpKernelContext* ctx, size_t number_of_values, const TensorSeq* src_values,
+                              TensorSeq* dest_values);
 
 }  // namespace contrib
 }  // namespace onnxruntime
