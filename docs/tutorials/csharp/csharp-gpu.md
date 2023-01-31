@@ -1,5 +1,5 @@
 ---
-title: Configure CUDA for C#
+title: Configure CUDA for GPU with C#
 description: Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
 parent: Inference with C#
 grand_parent: Tutorials
@@ -7,8 +7,7 @@ has_children: false
 nav_order: 1
 ---
 
-
-# Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
+# Configure CUDA and cuDNN for GPU with ONNX Runtime and C# on Windows 11
 
 {: .no_toc }
 
@@ -18,18 +17,34 @@ nav_order: 1
  
 ## Steps to Configure CUDA and cuDNN for ONNX Runtime with C# on Windows 11
 
-1. Install CUDA toolkit based on the supported version for the ONNX Runtime Version. See this link for compatible versions:
-[NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+- [Download and install the CUDA toolkit](https://developer.nvidia.com/cuda-toolkit-archive) based on the supported version for the ONNX Runtime Version.
 
-2. Install Driver from NVIDIA based on your GPU. Find the driver download here: [Official Drivers - NVIDIA](https://www.nvidia.com/download/index.aspx?lang=en-us)
+- [Download and install the cuDNN version](https://developer.nvidia.com/rdp/cudnn-archive) based on the supported version for the ONNX Runtime Version.
 
-3. Install the cuDNN version based on the supported version for the ONNX Runtime Version. See this link for compatible versions: [NVIDIA - CUDA - ONNX Runtime](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html) then download the cuDNN version from here: [cuDNN Archive - NVIDIA Developer](https://developer.nvidia.com/rdp/cudnn-archive)
+See this table for supported versions:
 
-4. Follow the steps here from [Installation Guide - NVIDIA Deep Learning cuDNN Documentation](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
+| ONNX Runtime Version | CUDA Toolkit Version | cuDNN Version|
+|----------------------|----------------------|--------------|
+| 1.13                 | 11.6                 | 8.5.0.96     |
+| 1.9 - 1.12           | 11.4                 | 8.2.2.26     |
 
-5. Restart your computer.
+NOTE: Full table can be found [here](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements)
 
-6. Now you can enable GPU in the C# ONNX Runtime API with the following code:
+
+- Follow section [2. Installing cuDNN on Windows](https://docs.nvidia.com/deeplearning/cudnn/install-guide/index.html#install-windows). NOTE: Skip step 5 in section 2.3 on updating Visual Studio settings, this is only for C++ projects.
+
+- Restart your computer and verify the installation by running the following command or in python with PyTorch:
+
+```bash
+nvcc --version
+```
+
+```python
+import torch
+torch.cuda.is_available()
+```
+
+- Now you can enable GPU in the C# ONNX Runtime API with the following code:
 
 ```cs
 var session = new InferenceSession(modelPath, SessionOptions.MakeSessionOptionWithCudaProvider(0));
