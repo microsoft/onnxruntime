@@ -302,6 +302,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
+        .Input(5,
+               "relative_position_bias",
+               "relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
+               " or (1, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",

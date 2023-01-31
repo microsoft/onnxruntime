@@ -62,6 +62,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -70,6 +71,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       value,
                                                                       bias,
                                                                       key_padding_mask,
+                                                                      relative_position_bias,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
@@ -94,6 +96,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
+                                   nullptr == relative_position_bias &&
                                    parameters.hidden_size == parameters.v_hidden_size &&
                                    has_fused_cross_attention_kernel(sm, parameters.head_size,
                                                                     parameters.kv_sequence_length);
@@ -111,6 +114,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool use_fused_runner = !disable_fused_runner_ &&
                           fused_cross_attention_kernel == nullptr &&
+                          nullptr == relative_position_bias &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -141,6 +145,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
                                         nullptr == key_padding_mask &&  // TODO: support 1D mask
+                                        nullptr == relative_position_bias &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
@@ -169,7 +174,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
-  data.extra_add_qk = nullptr;
+  data.extra_add_qk = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;

@@ -146,6 +146,20 @@ class FusionTulrAttention(FusionAttention):
 
         attention_node_name = self.model.create_node_name("Attention")
 
+        use_multi_head_attention = False
+        if not use_multi_head_attention:
+            weight = helper.make_tensor(
+                name=attention_node_name + "_qkv_weight",
+                data_type=TensorProto.FLOAT,
+                dims=[qw_in_size, qkv_weight_dim],
+                vals=qkv_weight.flatten().tolist(),
+            )
+
+            # Sometimes weights and bias are stored in fp16
+            if q_weight.data_type == 10:
+                weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
+            self.model.add_initializer(weight, self.this_graph_name)
+
         bias = helper.make_tensor(
             name=attention_node_name + "_qkv_bias",
             data_type=TensorProto.FLOAT,
@@ -156,24 +170,45 @@ class FusionTulrAttention(FusionAttention):
             bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
-        attention_inputs = [
-            q_matmul.output[0],
-            k_matmul.output[0],
-            v_matmul.output[0],
-            attention_node_name + "_qkv_bias",
-        ]
-        if mask_index is not None:
-            attention_inputs.append(mask_index)
-        if add_qk_str is not None:
-            attention_inputs.append(add_qk_str)
+        if use_multi_head_attention:
+            attention_inputs = [
+                q_matmul.output[0],
+                k_matmul.output[0],
+                v_matmul.output[0],
+                attention_node_name + "_qkv_bias",
+            ]
+            if mask_index is not None:
+                attention_inputs.append(mask_index)
+            if add_qk_str is not None:
+                attention_inputs.append(add_qk_str)
 
-        attention_node = helper.make_node(
-            "MultiHeadAttention",
-            inputs=attention_inputs,
-            outputs=[output],
-            name=attention_node_name,
-        )
+            attention_node = helper.make_node(
+                "MultiHeadAttention",
+                inputs=attention_inputs,
+                outputs=[output],
+                name=attention_node_name,
+            )
+        else:
+            attention_inputs = [
+                input,
+                attention_node_name + "_qkv_weight",
+                attention_node_name + "_qkv_bias",
+            ]
+            if mask_index is not None:
+                attention_inputs.append(mask_index)
+            else:
+                attention_inputs.append("")
 
+            if add_qk_str is not None:
+                attention_inputs.append("")  # no past
+                attention_inputs.append(add_qk_str)
+
+            attention_node = helper.make_node(
+                "Attention",
+                inputs=attention_inputs,
+                outputs=[output],
+                name=attention_node_name,
+            )
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
@@ -353,7 +388,6 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         self.nodes_to_add.append(rpb_node)
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
-
 
 
 class TulrOnnxModel(BertOnnxModel):
