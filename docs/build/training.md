@@ -94,7 +94,7 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 2. Create the ONNX Runtime wheel
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
-   * Run `./build.sh --config Release --enable_training --build_wheel --parallel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
+   * Run `./build.sh --config Release --enable_training --build_wheel --parallel --skip_tests --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
     This produces the .whl file in `./build/Linux/Release/dist` for ONNX Runtime Training.
 
