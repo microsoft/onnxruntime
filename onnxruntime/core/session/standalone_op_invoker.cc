@@ -7,6 +7,10 @@
 #include "core/session/ort_apis.h"
 #include <unordered_map>
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/graph/schema_registry.h"
+#endif
+
 #if defined(_MSC_VER) && !defined(__clang__)
 // disabling warning on calling of raw "delete" operator
 #pragma warning(disable : 26400)
@@ -107,10 +111,12 @@ class NodeRepo {
   common::Status RegisterCustomOpNodeSchemas(KernelTypeStrResolver& kernel_type_str_resolver, Graph& graph) {
     std::lock_guard<std::mutex> guard(mutex_);
     for (auto* node : nodes_) {
-      // in theory this should never fail if the kernel lookup earlier was successful.
-      ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*node), "Unable to find schema for node. Domain:'",
+      // in theory this should never fail if the kernel lookup earlier was successful
+      auto* schema = graph.GetSchemaRegistry()->GetSchema(node->OpType(), node->SinceVersion(), node->Domain());
+
+      ORT_RETURN_IF_NOT(schema, "Unable to find schema for node. Domain:'",
                         node->Domain(), "' op_type:", node->OpType());
-      ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterNodeOpSchema(*node));
+      ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*schema));
     }
 
     return Status::OK();
@@ -383,6 +389,23 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
 
   NodePtr node_ptr = std::make_unique<onnxruntime::Node>(std::string("standalone_") + op_name, op_name, "",
                                                          input_args, output_args, nullptr, domain);
+  // Set the requested opset version. Technically this isn't exact as we'd have to do a schema lookup for the op
+  // to find the start version for the matching opset range. It's good enough for kernel lookup.
+  //
+  // NOTE: this assumes operator kernels that have conditional behavior based on the opset do NOT use exact matching
+  //       of an opset. e.g operator changed in opset 7 and 10. for a version of 7, 8 or 9 the schema for 7..9 is used.
+  //       if the kernel implementation looked for SinceVersion() == 7 instead of >= 7 && < 10 it would not behave
+  //       correctly with this inexact version value.
+  //
+  // We could potentially add schema lookup here, but that doesn't resolve the issue in an ORT format model where we
+  // have nowhere to save the exact version for these dynamically created nodes.
+  //
+  // Going with it being better to be invalid in all builds because:
+  //   - this feature is not widely used
+  //   - the engineering effort and complexity added to solve this for ORT format models would be significant
+  //   - only a few
+  // instead of just minimal builds.
+  // node_ptr->SetSinceVersion(version);
 
   for (int i = 0; i < attr_count; ++i) {
     auto attr_proto = reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attr_values[i]);
@@ -399,17 +422,21 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
 #else
   // minimal build with custom ops enabled.
   // kernel lookup uses the constraint resolver information from the ORT format model.
-  node_ptr->SetSinceVersion(version);
   auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), kernel_info->GetKernelTypeStrResolver(),
                                                &kernel_create_info);
 #endif
   ORT_RETURN_IF_ERROR(status);
 
-  auto kernel_def_builder = KernelDefBuilder::Create();
-  kernel_def_builder->SetName(op_name);
-  kernel_def_builder->SetDomain(domain);
-  kernel_def_builder->SinceVersion(version);
-  auto kernel_def = kernel_def_builder->Build();
+  int start = -1, end = -1;
+  kernel_create_info->kernel_def->SinceVersion(&start, &end);
+  node_ptr->SetSinceVersion(start);
+
+  // auto kernel_def_builder = KernelDefBuilder::Create();
+  // kernel_def_builder->SetName(op_name);
+  // kernel_def_builder->SetDomain(domain);
+  // kernel_def_builder->SinceVersion(version);
+  // auto kernel_def = kernel_def_builder->Build();
+  auto& kernel_def = kernel_create_info->kernel_def;
 
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;

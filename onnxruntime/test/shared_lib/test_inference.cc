@@ -462,7 +462,7 @@ TEST(CApiTest, StandaloneOpHandler) {
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("test");
+  Ort::CustomOpDomain custom_op_domain("");
   custom_op_domain.Add(&standalone_op);
 
   Ort::SessionOptions session_options;

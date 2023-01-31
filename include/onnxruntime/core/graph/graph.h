@@ -565,7 +565,7 @@ class Node {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   void Init(const std::string& name,
             const std::string& op_type,
             const std::string& description,
@@ -573,9 +573,7 @@ class Node {
             const std::vector<NodeArg*>& output_args,
             const NodeAttributes* attributes,
             const std::string& domain);
-#endif
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
   Definitions& MutableDefinitions() noexcept;
 

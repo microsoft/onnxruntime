@@ -189,6 +189,7 @@ Status CreateOptionalOpKernel(FuncManager&, const OpKernelInfo& kernel_info, std
 
 static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
 static const std::string FOO_MODEL_URI = "testdata/foo_1.onnx";
+static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.onnx";
 
 static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.onnx";
 
@@ -221,10 +222,11 @@ void RunSession(InferenceSession& session_object,
   ASSERT_EQ(values_y, found);
 }
 
-TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
+// This tests that a custom op can override an ONNX operator implemented by ORT.
+TEST(CustomKernelTests, CustomKernelWithBuiltInSchema) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "CustomKernelWithBuiltInSchema";
 
   // Register a foo kernel which is doing Add, but bind to Mul.
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();

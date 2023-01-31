@@ -282,8 +282,18 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     checked_registry_indices.push_back(index);
   }
 
+  // reset the version to the input op_set_version in case there was an unchecked registry using the same domain.
+  // we have no control over the opset values in those registries and the version values aren't guaranteed to
+  // match the real ONNX ones. 
+  // e.g. a user could add a custom registry to override an ONNX operator. the custom op infrastructure would 
+  //      create the custom registry with an opset range of 1 to 1000. the above loop processing the unchecked
+  //      registry would find the opset range of 1 to 1000 and set new_version to 1, which would result in version
+  //      being set to 1. that would override the op_set_version value provided and result in us only ever looking for
+  //      opset 1 schemas.
+  // 
+  version = op_set_version;
+
   // Reject versions greater than what is actually supported.
-  *latest_schema = nullptr;
   if (!IsDomainVersionBeyondSupportedRange(domain, version)) {
     // if not found in registered custom schema registry, search in ONNX schema registry
     *latest_schema = ONNX_NAMESPACE::OpSchemaRegistry::Schema(key, version, domain);
