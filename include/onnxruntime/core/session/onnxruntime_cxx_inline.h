@@ -1429,14 +1429,12 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 // Custom OP Inlines
 //
 inline Logger::Logger(const OrtLogger* logger) : logger_(logger) {
+  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->logger_, &this->cached_severity_level_));
 }
 
-inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const {
-  OrtLoggingLevel out{};
-  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->logger_, &out));
-  return out;
+inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const noexcept {
+  return cached_severity_level_;
 }
-
 
 inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
                                  const char* func_name, const char* message) const noexcept {
@@ -1470,48 +1468,6 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
   }
 
   return Status{status};
-}
-
-inline CachedSeverityLogger::CachedSeverityLogger(Logger logger) : logger_{ logger } {
-  custom_severity_level_ = logger.GetLoggingSeverityLevel();
-}
-
-inline CachedSeverityLogger::CachedSeverityLogger(Logger logger, OrtLoggingLevel custom_severity_level)
-    : logger_{logger}, custom_severity_level_{custom_severity_level} {
-}
-
-inline void CachedSeverityLogger::SetCachedLoggingSeverityLevel(OrtLoggingLevel custom_severity_level) noexcept {
-  custom_severity_level_ = custom_severity_level;
-}
-
-inline OrtLoggingLevel CachedSeverityLogger::GetCachedLoggingSeverityLevel() const noexcept {
-  return custom_severity_level_;
-}
-
-inline void CachedSeverityLogger::SetLogger(Logger logger) noexcept { logger_ = logger; }
-
-inline Logger CachedSeverityLogger::GetLogger() const noexcept { return logger_; }
-
-inline Status CachedSeverityLogger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
-                                               int line_number, const char* func_name,
-                                               const char* message) const noexcept {
-  if (log_severity_level < custom_severity_level_) {
-    return Status{nullptr};
-  }
-
-  return logger_.LogMessage(log_severity_level, file_path, line_number, func_name, message);
-}
-
-template <typename... Args>
-inline Status CachedSeverityLogger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
-                                                        int line_number, const char* func_name, const char* format,
-                                                        Args&&... args) const noexcept {
-  if (log_severity_level < custom_severity_level_) {
-    return Status{nullptr};
-  }
-
-  return logger_.LogFormattedMessage(log_severity_level, file_path, line_number, func_name, format,
-                                     std::forward<Args>(args)...);
 }
 
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
