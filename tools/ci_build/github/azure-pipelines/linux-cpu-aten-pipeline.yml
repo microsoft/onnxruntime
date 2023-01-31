@@ -42,10 +42,9 @@ jobs:
       cacheHitVar: CACHE_RESTORED
 
   - script: |
-      docker load -i $(Pipeline.Workspace)/docker/cache.tar
+      test -f $(Pipeline.Workspace)/docker/cache.tar && docker load -i $(Pipeline.Workspace)/docker/cache.tar
       docker image ls
     displayName: Docker restore
-    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
 
   - template: templates/get-docker-image-steps.yml
     parameters:
