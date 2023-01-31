@@ -9,24 +9,51 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      GroupNorm,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      GroupNorm<T>);
+#define GROUP_NORM_TYPES float, MLFloat16
 
-REGISTER_KERNEL_TYPED(MLFloat16);
-REGISTER_KERNEL_TYPED(float);
+ONNX_OPERATOR_KERNEL_EX(
+    GroupNorm, kMSDomain, 1, kCudaExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<GROUP_NORM_TYPES>()), GroupNorm);
 
 using namespace ONNX_NAMESPACE;
 
+namespace {
 template <typename T>
-GroupNorm<T>::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
+struct DispatchGroupNorm {
+  Status operator()(cudaStream_t stream,
+                    Tensor* output,
+                    const Tensor* input,
+                    const Tensor* gamma,
+                    const Tensor* beta,
+                    void* workspace,
+                    float epsilon,
+                    int batch_size,
+                    int num_channels,
+                    int height,
+                    int width,
+                    int num_groups,
+                    bool use_swish_activation) {
+    typedef typename ToCudaType<T>::MappedType CudaT;
+    return LaunchGroupNormKernel<CudaT>(
+        stream,
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
+        reinterpret_cast<const CudaT*>(input->Data<T>()),
+        gamma->Data<float>(),
+        beta->Data<float>(),
+        workspace,
+        epsilon,
+        batch_size,
+        num_channels,
+        height,
+        width,
+        num_groups,
+        use_swish_activation);
+  }
+};
+
+}  // namespace
+
+GroupNorm::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
   epsilon_ = op_info.GetAttrOrDefault<float>("epsilon", 1e-5f);
   ORT_ENFORCE(epsilon_ >= 0);
 
@@ -41,8 +68,7 @@ GroupNorm<T>::GroupNorm(const OpKernelInfo& op_info) : CudaKernel(op_info) {
   use_swish_activation_ = (activation == 1);
 }
 
-template <typename T>
-Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
+Status GroupNorm::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* gamma = context->Input<Tensor>(1);
   const Tensor* beta = context->Input<Tensor>(2);
@@ -87,22 +113,15 @@ Status GroupNorm<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto workspace = GetScratchBuffer<void>(GetGroupNormWorkspaceSizeInBytes(), context->GetComputeStream());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-
-  return LaunchGroupNormKernel<CudaT>(
-      Stream(context),
-      reinterpret_cast<CudaT*>(output->MutableData<T>()),
-      reinterpret_cast<const CudaT*>(input->Data<T>()),
-      gamma->Data<float>(),
-      beta->Data<float>(),
-      reinterpret_cast<float*>(workspace.get()),
-      epsilon_,
-      batch_size,
-      num_channels,
-      height,
-      width,
-      num_groups_,
-      use_swish_activation_);
+  utils::MLTypeCallDispatcher<GROUP_NORM_TYPES> dispatcher(input->GetElementType());
+  return dispatcher.InvokeRet<Status, DispatchGroupNorm>(Stream(context), output, input, gamma, beta, workspace.get(),
+                                                         epsilon_,
+                                                         batch_size,
+                                                         num_channels,
+                                                         height,
+                                                         width,
+                                                         num_groups_,
+                                                         use_swish_activation_);
 }
 
 }  // namespace cuda

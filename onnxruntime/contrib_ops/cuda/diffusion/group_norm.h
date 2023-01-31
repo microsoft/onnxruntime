@@ -11,7 +11,6 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
 class GroupNorm final : public CudaKernel {
  public:
   GroupNorm(const OpKernelInfo& op_kernel_info);
