@@ -20,3 +20,8 @@ steps:
   displayName: Clean docker images
   condition: eq(variables['Agent.OS'], 'Linux')
   continueOnError: true
+
+- script: sudo rm -rf /tmp/*
+  displayName: Clean /tmp
+  condition: eq(variables['Agent.OS'], 'Linux')
+  continueOnError: true
