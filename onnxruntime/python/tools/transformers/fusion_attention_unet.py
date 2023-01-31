@@ -19,11 +19,14 @@ class FusionAttentionUnet(Fusion):
     Fuse Attention subgraph of UNet into one Attention node.
     """
 
-    def __init__(self, model: OnnxModel, hidden_size: int, num_heads: int, is_cross_attention: bool):
+    def __init__(
+        self, model: OnnxModel, hidden_size: int, num_heads: int, is_cross_attention: bool, enable_packed_kv: bool
+    ):
         super().__init__(model, "MultiHeadAttention" if is_cross_attention else "Attention", ["LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.is_cross_attention = is_cross_attention
+        self.enable_packed_kv = enable_packed_kv
 
         # Flags to show warning only once
         self.num_heads_warning = True
@@ -105,7 +108,7 @@ class FusionAttentionUnet(Fusion):
         if is_self_attention:
             if q_matmul.input[0] != input or k_matmul.input[0] != input or v_matmul.input[0] != input:
                 logger.debug(
-                    "For self attention, input hidden state for q and k/v shall be different. Got %s, %s, %s",
+                    "For self attention, input hidden state for q and k/v shall be same. Got %s, %s, %s",
                     q_matmul.input[0],
                     k_matmul.input[0],
                     v_matmul.input[0],
@@ -176,8 +179,63 @@ class FusionAttentionUnet(Fusion):
             )
 
             self.model.add_initializer(weight, self.this_graph_name)
-        else:
+        else:  # cross attention
             attention_node_name = self.model.create_node_name("MultiHeadAttention")
+            if self.enable_packed_kv:
+                if kw.shape != vw.shape:
+                    return None
+
+                kw_in_size = kw.shape[0]
+                vw_in_size = vw.shape[0]
+                assert kw_in_size == vw_in_size
+
+                qw_out_size = qw.shape[1]
+                kw_out_size = kw.shape[1]
+                vw_out_size = vw.shape[1]
+                assert qw_out_size == vw_out_size == vw_out_size
+
+                C = kw_in_size
+                N = num_heads
+                H = kw_out_size // N
+
+                # Concat and interleave weights so that the output of fused KV GEMM has [B, S_kv, N, 2, H] shape
+                kv_weight = np.dstack([kw.reshape(C, N, H), vw.reshape(C, N, H)]).reshape(C, N * 2 * H)
+
+                matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_KV")
+                weight = helper.make_tensor(
+                    name=matmul_node_name + "_weight",
+                    data_type=TensorProto.FLOAT,
+                    dims=[kv_weight.shape[0], kv_weight.shape[1]],
+                    vals=kv_weight.flatten().tolist(),
+                )
+
+                self.model.add_initializer(weight, self.this_graph_name)
+
+                matmul_node = helper.make_node(
+                    "MatMul",
+                    inputs=[k_matmul.input[0], matmul_node_name + "_weight"],
+                    outputs=[matmul_node_name + "_out"],
+                    name=matmul_node_name,
+                )
+                self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
+
+                shape_tensor = helper.make_tensor(
+                    name=matmul_node_name + "_reshape_shape",
+                    data_type=TensorProto.INT64,
+                    dims=[5],
+                    vals=[0, 0, N, 2, H],
+                )
+                self.model.add_initializer(shape_tensor, self.this_graph_name)
+
+                reshape_node = helper.make_node(
+                    "Reshape",
+                    inputs=[matmul_node_name + "_out", matmul_node_name + "_reshape_shape"],
+                    outputs=[k_matmul.output[0]],
+                    name=matmul_node_name + "_reshape",
+                )
+                self.node_name_to_graph_name[reshape_node.name] = self.this_graph_name
+                self.nodes_to_add.extend([matmul_node, reshape_node])
+                self.nodes_to_remove.extend([k_matmul, v_matmul])
 
         # No bias, use zeros
         qkv_bias = np.zeros([3, hidden_size], dtype=np.float32)
@@ -198,12 +256,18 @@ class FusionAttentionUnet(Fusion):
                 attention_node_name + "_qkv_bias",
             ]
         else:
-            attention_inputs = [
-                q_matmul.output[0],
-                k_matmul.output[0],
-                v_matmul.output[0],
-                attention_node_name + "_qkv_bias",
-            ]
+            if not self.enable_packed_kv:
+                attention_inputs = [
+                    q_matmul.output[0],
+                    k_matmul.output[0],
+                    v_matmul.output[0],
+                    attention_node_name + "_qkv_bias",
+                ]
+            else:
+                attention_inputs = [
+                    q_matmul.output[0],
+                    k_matmul.output[0],
+                ]
 
         attention_node = helper.make_node(
             "Attention" if is_self_attention else "MultiHeadAttention",
@@ -214,6 +278,14 @@ class FusionAttentionUnet(Fusion):
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
+        counter_name = (
+            "Attention (self attention)"
+            if is_self_attention
+            else "MultiHeadAttention ({})".format(
+                "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
+            )
+        )
+        self.increase_counter(counter_name)
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):

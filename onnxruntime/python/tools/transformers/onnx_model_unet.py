@@ -63,10 +63,11 @@ class UnetOnnxModel(BertOnnxModel):
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False)
+            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
             self_attention_fusion.apply()
 
-            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True)
+            enable_packed_kv = (options is None) or options.enable_packed_kv
+            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
             cross_attention_fusion.apply()
 
         if (options is None) or options.enable_skip_layer_norm:

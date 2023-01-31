@@ -2001,15 +2001,23 @@ class SymbolicShapeInference:
 
     def _infer_MultiHeadAttention(self, node):
         # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # Without packed KV:
+        #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+        #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # With packed KV:
+        #   Input 1 (key) has shape (batch_size, kv_sequence_length, num_heads, 2, head_size)
+        #   Input 2 (value) is nullptr
         # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
         query_shape = self._get_shape(node, 0)
-        value_shape = self._get_shape(node, 2)
+        key_shape = self._get_shape(node, 1)
+        assert len(query_shape) == 3
 
-        assert len(query_shape) == 3 and len(value_shape) == 3
+        # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
         output_shape = query_shape
-        output_shape[2] = value_shape[2]
+        if len(key_shape) == 3:
+            value_shape = self._get_shape(node, 2)
+            assert len(value_shape) == 3
+            output_shape[2] = value_shape[2]
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]

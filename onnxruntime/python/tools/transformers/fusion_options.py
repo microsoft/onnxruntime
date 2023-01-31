@@ -6,9 +6,16 @@ from argparse import ArgumentParser
 
 
 class AttentionMaskFormat:
+    # Build 1D mask indice (sequence length). It requires right side padding! Recommended for BERT model to get best performance.
     MaskIndexEnd = 0
+
+    # For experiment only. Do not use it in production.
     MaskIndexEndAndStart = 1
+
+    # Raw attention mask with 0 means padding (or no attention) and 1 otherwise.
     AttentionMask = 2
+
+    # No attention mask
     NoMask = 3
 
 
@@ -36,9 +43,17 @@ class FusionOptions:
 
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
+
+        # Set default to sequence length for BERT model to use fused attention to speed up.
+        # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
+        self.attention_mask_format = (
+            AttentionMaskFormat.MaskIndexEnd if model_type == "bert" else AttentionMaskFormat.AttentionMask
+        )
+
+        # options for stable diffusion
         self.enable_group_norm = model_type == "unet"
         self.enable_bias_splitgelu = model_type == "unet"
-        self.attention_mask_format = AttentionMaskFormat.AttentionMask
+        self.enable_packed_kv = model_type == "unet"
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
@@ -76,10 +91,14 @@ class FusionOptions:
             options.enable_gemm_fast_gelu = True
         if args.use_mask_index:
             options.use_raw_attention_mask(False)
+        if args.use_raw_attention_mask:
+            options.use_raw_attention_mask(True)
         if args.no_attention_mask:
             options.disable_attention_mask()
-        if args.enable_group_norm:
-            options.enable_group_norm = True
+        if args.disable_group_norm:
+            options.enable_group_norm = False
+        if args.disable_packed_kv:
+            options.enable_packed_kv = False
         return options
 
     @staticmethod
@@ -168,9 +187,17 @@ class FusionOptions:
             "--use_mask_index",
             required=False,
             action="store_true",
-            help="use mask index instead of raw attention mask in attention operator",
+            help="use mask index to activate fused attention to speed up. It requires right-side padding!",
         )
         parser.set_defaults(use_mask_index=False)
+
+        parser.add_argument(
+            "--use_raw_attention_mask",
+            required=False,
+            action="store_true",
+            help="use raw attention mask. Use this option if your input is not right-side padding. This might deactivate fused attention and get worse performance.",
+        )
+        parser.set_defaults(use_raw_attention_mask=False)
 
         parser.add_argument(
             "--no_attention_mask",
@@ -191,9 +218,17 @@ class FusionOptions:
         parser.set_defaults(use_multi_head_attention=False)
 
         parser.add_argument(
-            "--enable_group_norm",
+            "--disable_group_norm",
             required=False,
             action="store_true",
-            help="fuse GroupNorm. Only works for model_type=unet",
+            help="not fuse GroupNorm. Only works for model_type=unet",
         )
-        parser.set_defaults(enable_group_norm=False)
+        parser.set_defaults(disable_group_norm=False)
+
+        parser.add_argument(
+            "--disable_packed_kv",
+            required=False,
+            action="store_true",
+            help="not use packed kv in cross attention. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_packed_kv=False)

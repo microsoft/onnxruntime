@@ -317,7 +317,34 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv,
                              true, v_head_size, qkv_add_bias, 3);
     }
-  } else {  // gemm_buffer == nullptr
+  } else if (data.value == nullptr) {  // gemm_buffer == nullptr and packed kv
+    // TODO: unpack kv to BNSH for unfused kernel so that we can remove the following constraint.
+    // CheckInputs verified this constraint.
+    assert(data.bias == nullptr);
+    assert(qk_head_size == v_head_size);
+
+    DUMP_ATTENTION_D("packed_kv", data.key, batch_size * kv_sequence_length, num_heads, 2, qk_head_size);
+
+    if (use_memory_efficient_attention) {
+      // unpack kv to BSNH. Note that there is no bias so we need not output query to q.
+      constexpr int format = 4;
+      T* qkv_add_bias = nullptr;
+      const T* kv_bias = (data.bias == nullptr ? data.bias : data.bias + parameters.hidden_size);
+      LaunchAddBiasTranspose(stream, 2, format, max_threads_per_block,
+                             batch_size, kv_sequence_length, num_heads, qk_head_size,
+                             data.key, kv_bias, k,
+                             true, v_head_size, qkv_add_bias, 2);
+      DUMP_ATTENTION_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_ATTENTION_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    } else {
+      if (data.fused_cross_attention_kernel == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "packed KV format is not implemented for current GPU. Please disable packed kv in fusion options.");
+      }
+
+      qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
+    }
+  } else {  // gemm_buffer == nullptr and not packed kv
     assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
     DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
@@ -419,8 +446,7 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
-  assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) +
-         int(data.fused_cross_attention_kernel != nullptr) <= 1);
+  assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
 
   const int batches = batch_size * num_heads;
   const int size_per_batch_q = sequence_length * qk_head_size;
@@ -481,7 +507,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
         stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
         batch_size, qk_head_size, num_heads, max_threads_per_block,
-        use_fused_causal ? nullptr : data.bias, // For fused causal, bias has been added to gemm_buffer
+        use_fused_causal ? nullptr : data.bias,  // For fused causal, bias has been added to gemm_buffer
         data.gemm_buffer, data.present));
 
     present_size_per_batch_k = parameters.max_sequence_length * qk_head_size;
@@ -514,18 +540,26 @@ Status QkvToContext(
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(data.fused_cross_attention_kernel);
 
+    // When there is no bias, we can directly use q and packed kv from inputs. TODO: not need qkv in workspace.
+    void const* query = q;
+    void const* packed_kv = k;
+    if (data.value == nullptr && data.bias == nullptr) {
+      query = data.query;
+      packed_kv = data.key;
+    }
+
     run_fused_cross_attention(
-        q,                          // Q
-        k,                          // packed KV
-        q_sequence_offset,          // cumulated sequence length of Q
-        kv_sequence_offset,         // cumulated sequence length of KV
-        data.output,                // output
-        cross_attention_kernel,     // kernels
-        batch_size,                 // batch size
-        num_heads,                  // number of heads
-        qk_head_size,               // head size of Q/K/V
-        sequence_length,            // sequence length of Q
-        kv_sequence_length,         // sequence length of KV
+        query,                   // Q
+        packed_kv,               // packed KV
+        q_sequence_offset,       // cumulated sequence length of Q
+        kv_sequence_offset,      // cumulated sequence length of KV
+        data.output,             // output
+        cross_attention_kernel,  // kernels
+        batch_size,              // batch size
+        num_heads,               // number of heads
+        qk_head_size,            // head size of Q/K/V
+        sequence_length,         // sequence length of Q
+        kv_sequence_length,      // sequence length of KV
         stream);
 
     DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
@@ -570,6 +604,13 @@ Status QkvToContext(
     assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
+    const void* query = q;
+    const void* key = k;
+    const void* value = v;
+    if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
+      query = data.query;
+    }
+
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
@@ -582,9 +623,9 @@ Status QkvToContext(
     p.causal = parameters.is_unidirectional;
     p.cu_seqlens_q = nullptr;
     p.cu_seqlens_k = nullptr;
-    p.query = q;
-    p.key = k;
-    p.value = v;
+    p.query = query;
+    p.key = key;
+    p.value = value;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
@@ -610,7 +651,7 @@ Status QkvToContext(
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
-                              : parameters.scale;
+                                               : parameters.scale;
   float alpha = use_raw_attention_mask ? one : scale;
 
   cublasSetStream(cublas, stream);

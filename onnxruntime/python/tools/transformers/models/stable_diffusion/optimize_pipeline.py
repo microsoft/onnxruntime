@@ -6,19 +6,14 @@
 # This script converts stable diffusion onnx models from float to half (mixed) precision for GPU inference.
 #
 # Before running this script, you need convert checkpoint to float32 onnx models like the following
-#    git clone https://github.com/huggingface/diffusers
-#    cd diffusers
-#    pip install -e .
-#    huggingface-cli login
-#    python scripts/convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5 --output_path ../stable-diffusion-v1-5-fp32
-# Or use diffusers packages:
 #    export ONNX_ROOT=./sd_onnx
-#    pip install diffusers==0.11.1 transformers==4.21.2
+#    pip install -r requirements.txt
 #    huggingface-cli login
-#    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.11.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
+#    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.12.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
 #    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/stable-diffusion-v1-5-fp32
 #    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path stabilityai/stable-diffusion-2-1 --output_path $ONNX_ROOT/stable-diffusion-v2-1-fp32
-#
+# Note that this script might not be compatible with older or newer version of diffusers/transformers. It is because fusion script need change accordingly when onnx graph is changed.
+
 # Then you can use this script to convert them to float16 like the following:
 #    python optimize_pipeline.py -i $ONNX_ROOT/stable-diffusion-v1-5-fp32 -o $ONNX_ROOT/stable-diffusion-v1-5-fp16 --float16
 #    python optimize_pipeline.py -i $ONNX_ROOT/stable-diffusion-v2-1-fp32 -o $ONNX_ROOT/stable-diffusion-v2-1-fp16 --float16
@@ -43,6 +38,8 @@ from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
+DEBUG = True
+
 
 def optimize_stable_diffusion_onnx_pipeline(
     source_dir: Path, target_dir: Path, overwrite: bool, use_external_data_format: bool, float16: bool
@@ -60,7 +57,7 @@ def optimize_stable_diffusion_onnx_pipeline(
         RuntimeError: input onnx model does not exist
         RuntimeError: output onnx model path existed
     """
-    dirs_with_onnx = ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
+    dirs_with_onnx = ["unet"] if DEBUG else ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
     for name in dirs_with_onnx:
         onnx_model_path = source_dir / name / "model.onnx"
 
@@ -121,7 +118,20 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
         RuntimeError: source path does not exist
         RuntimeError: output path exists but overwrite is false.
     """
-    extra_dirs = ["scheduler", "tokenizer", "feature_extractor"]
+    extra_dirs = (
+        [
+            "vae_encoder",
+            "vae_decoder",
+            "text_encoder",
+            "safety_checker",
+            "scheduler",
+            "tokenizer",
+            "feature_extractor",
+        ]
+        if DEBUG
+        else ["scheduler", "tokenizer", "feature_extractor"]
+    )
+
     for name in extra_dirs:
         source_path = source_dir / name
 
