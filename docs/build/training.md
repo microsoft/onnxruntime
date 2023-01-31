@@ -82,7 +82,7 @@ These dependency versions should reflect what is in the [Dockerfiles](https://gi
 
 The default AMD GPU build requires ROCm software toolkit installed on the system:
 
-* [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/How_to_Install_ROCm.html#_How_to_Install) 5.2.3
+* [ROCm](https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.4/page/How_to_Install_ROCm.html#_How_to_Install) 5.4
 * [OpenMPI](https://www.open-mpi.org/) 4.0.4
   * See [install_openmpi.sh](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/linux/docker/scripts/install_openmpi.sh)
 
@@ -94,9 +94,9 @@ The default AMD GPU build requires ROCm software toolkit installed on the system
 2. Create the ONNX Runtime wheel
 
    * Change to the ONNX Runtime repo base folder: `cd onnxruntime`
-   * Run `./build.sh --config RelWithDebInfo --enable_training --build_wheel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
+   * Run `./build.sh --config Release --enable_training --build_wheel --parallel --use_rocm --rocm_home /opt/rocm --nccl_home /opt/rocm --mpi_home <location for openmpi>`
 
-    This produces the .whl file in `./build/Linux/RelWithDebInfo/dist` for ONNX Runtime Training.
+    This produces the .whl file in `./build/Linux/Release/dist` for ONNX Runtime Training.
 
 ## DNNL and MKLML
 
