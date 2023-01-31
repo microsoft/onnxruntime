@@ -39,12 +39,13 @@ jobs:
       path: $(Pipeline.Workspace)/docker
       restoreKeys: |
         $(TODAY) | "$(Build.SourceBranch)"
-      cacheHitVar: IMAGE_CACHE_RESTORED
+      cacheHitVar: CACHE_RESTORED
 
   - script: |
       docker load -i $(Pipeline.Workspace)/docker/cache.tar
       docker image ls
     displayName: Docker restore
+    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
 
   - template: templates/get-docker-image-steps.yml
     parameters:
