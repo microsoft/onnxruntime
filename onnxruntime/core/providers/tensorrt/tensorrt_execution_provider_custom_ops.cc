@@ -7,7 +7,6 @@
 #include "tensorrt_execution_provider.h"
 #include <NvInferRuntime.h>
 #include <NvInferPlugin.h>
-#include <iostream>
 #include <unordered_set>
 
 namespace onnxruntime {
@@ -31,12 +30,12 @@ void IterateTensorRTPluginFields(const nvinfer1::PluginFieldCollection* plugin_f
  *
  * There are several TRT plugins registered as onnx schema op through contrib op with ONNX domain, for example, 
  * EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT.
- * In order not to break the old models using those TRT plugins and maintain backward compatibility, we need to keep
- * those old/legacy TRT plugins with ONNX domain. Moving forward, all newly added TRT plugins should be registered with
+ * In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
+ * we need to keep those old/legacy TRT plugins with ONNX domain. Moving forward, all newly added TRT plugins should be registered with
  * "trt.plugins" domain.
  *
- * Note: current TRT plugin doesn't have APIs to get number of inputs/outputs of the plugin.
- * So, TensorRTCustomOp uses variadic type for inputs/outputs of the plugin/custom op.
+ * Note: Current TRT plugin doesn't have APIs to get number of inputs/outputs of the plugin.
+ * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
 common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) {
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
