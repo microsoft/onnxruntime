@@ -220,7 +220,13 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
 
-  *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+  if (wrapping_allocator->Info()->device.MemType() == OrtDevice::MemType::DML_EXTERNAL) {
+    *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+  } else {
+    ORT_THROW_HR_IF(E_INVALIDARG, wrapping_allocator->Info()->device.MemType() != OrtDevice::MemType::DEFAULT);
+    *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation));
+  }
+
   (*d3d_resource)->AddRef();
 
 #else

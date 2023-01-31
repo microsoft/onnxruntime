@@ -982,6 +982,12 @@ namespace Dml
         return std::make_unique<Dml::ExecutionProvider>(dmlDevice, commandQueue, enableMetacommands);
     }
 
+    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer)
+    {
+        Dml::DmlGpuAllocator* pAllocationInfo = static_cast<Dml::DmlGpuAllocator*>(allocator);
+        return pAllocationInfo->GetAllocationInfo(taggedPointer)->GetUavResource();
+    }
+
     void FlushContext(onnxruntime::IExecutionProvider* provider)
     {
         ExecutionProvider* dmlexecutionprovider = static_cast<Dml::ExecutionProvider*>(provider);
