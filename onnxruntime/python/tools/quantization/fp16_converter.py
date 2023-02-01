@@ -1,5 +1,5 @@
+import argparse
 import itertools
-import sys
 
 import onnx
 import packaging.version as pv
@@ -24,12 +24,10 @@ def convert_float_to_float16(
     keep_io_types=False,
     disable_shape_infer=False,
     op_allow_list=None,
-    node_block_list=None,
 ):
     """
     Convert tensor float type in the ONNX ModelProto input to tensor float16.
 
-    :param node_block_list:
     :param op_allow_list:
     :param keep_io_types:
     :param max_finite_val:
@@ -67,13 +65,10 @@ def convert_float_to_float16(
     if not isinstance(model, onnx_proto.ModelProto):
         raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
 
-    # create blocklists
+    # create op_allow_list
     if op_allow_list is None:
         op_allow_list = ALLOWED_OPS_LIST
-    if node_block_list is None:
-        node_block_list = []
     op_allow_list = set(op_allow_list)
-    node_block_list = set(node_block_list)
     # create a queue for BFS
     queue = []
     value_info_list = []
@@ -141,7 +136,7 @@ def convert_float_to_float16(
                             n.output[i] = name_mapping[n.output[i]]
                     # don't add the attr into next_level for the node in node_keep_data_type_list
                     # so it will not be converted to float16
-                    if n.op_type not in op_allow_list or n.name in node_block_list:
+                    if n.op_type not in op_allow_list:
                         node_list.append(n)
                     else:
                         if n.op_type == "Cast":
@@ -222,13 +217,17 @@ def convert_float_to_float16(
 
 class FP16Converter:
     def __init__(self):
+        self.allowed_list = None
         self.model = None
 
-    def convert(self):
+    def convert(self, keep_io_types=True):
         if self.model is None:
             return False
-        self.model = convert_float_to_float16(self.model, keep_io_types=True)
+        self.model = convert_float_to_float16(self.model, keep_io_types=keep_io_types, op_allow_list=self.allowed_list)
         return True
+
+    def set_allowed_list(self, allowed_list: list):
+        self.allowed_list = allowed_list
 
     def import_model_from_path(self, model_path):
         self.model = onnx.load(model_path)
@@ -244,17 +243,49 @@ class FP16Converter:
         return self.model
 
 
+def __parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Graph fp16 conversion tool for ONNX Runtime."
+        "It convert ONNX graph from fp32 to fp16 using --allowed_list."
+    )
+    parser.add_argument("--input", required=True, type=str, help="input onnx model path")
+
+    parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
+    parser.add_argument(
+        "--allowed_list",
+        required=False,
+        default=[],
+        nargs="+",
+        help="Allowed list which contains all supported ops that can be converted into fp16.",
+    )
+    parser.set_defaults(allowed_list=ALLOWED_OPS_LIST)
+    parser.add_argument(
+        "--use_external_data_format",
+        required=False,
+        action="store_true",
+        default=False,
+        help="use external data format to store large model (>2GB)",
+    )
+    parser.set_defaults(use_external_data_format=False)
+    parser.add_argument(
+        "--keep_io_types",
+        type=bool,
+        required=False,
+        help="keep input and output types as float32",
+    )
+    parser.set_defaults(keep_io_types=True)
+
+    args = parser.parse_args()
+    return args
+
+
 def main():
-    args = sys.argv[1:]
-    if len(args) < 2:
-        print("Usage: python fp16_converter.py <in_model_path> <out_model_path>")
-        return
-    int_model_path = args[0]
-    out_model_path = args[1]
+    args = __parse_arguments()
     convertor = FP16Converter()
-    convertor.import_model_from_path(int_model_path)
-    convertor.convert()
-    convertor.export_model_to_path(out_model_path, False)
+    convertor.import_model_from_path(args.input)
+    convertor.set_allowed_list(args.allowed_list)
+    convertor.convert(args.keep_io_types)
+    convertor.export_model_to_path(args.output, args.use_external_data_format)
 
 
 if __name__ == "__main__":
