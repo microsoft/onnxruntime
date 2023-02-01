@@ -578,6 +578,11 @@ if (onnxruntime_USE_DNNL)
     target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ORTTRAINING_ROOT})
   endif()
 
+  # Needed for threadpool handling
+  if(onnxruntime_BUILD_JAVA)
+    add_compile_definitions(DNNL_JAVA)
+  endif()
+
   if(APPLE)
     set_property(TARGET onnxruntime_providers_dnnl APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/dnnl/exported_symbols.lst")
     set_target_properties(onnxruntime_providers_dnnl PROPERTIES

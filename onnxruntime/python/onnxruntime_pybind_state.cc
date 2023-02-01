@@ -607,7 +607,32 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    return onnxruntime::DnnlProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena)->CreateProvider();
+    // Generate dnnl_options
+    OrtDnnlProviderOptions dnnl_options;
+// For Eigen and OpenMP
+#if defined(DNNL_OPENMP)
+    int num_threads = 0;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "num_of_threads") {
+          num_threads = std::stoi(option.second);
+          if (num_threads < 0) {
+            ORT_THROW(
+                "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
+                " set number of threads or use '0' for default\n");
+            // If the user doesnt define num_threads, auto detect threads later
+          }
+        } else {
+          ORT_THROW("Invalid OneDNN EP option: ", option.first);
+        }
+      }
+    }
+    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
+#endif  // !defined(DNNL_ORT_THREAD)
+    dnnl_options.use_arena = session_options.enable_cpu_mem_arena;
+
+    return onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
