@@ -55,6 +55,33 @@ Status ComputeQLinearGlobalAvgPool(
   return Status::OK();
 }
 
+// we would either put the template function in header file add such declaration in the below
+template Status ComputeQLinearGlobalAvgPool<int8_t>(
+    const int8_t* x,
+    float x_scale,
+    int8_t x_zero_point,
+    int8_t* y,
+    float y_scale,
+    int8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
+template Status ComputeQLinearGlobalAvgPool<uint8_t>(
+    const uint8_t* x,
+    float x_scale,
+    uint8_t x_zero_point,
+    uint8_t* y,
+    float y_scale,
+    uint8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
 Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
   const auto tensor_x_zero_point = context->Input<Tensor>(2);
