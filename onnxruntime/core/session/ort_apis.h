@@ -442,5 +442,6 @@ ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOp
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
 
-}  // namespace OrtApis
+ORT_API(bool, IsTrainingApiAvailable);
 
+}  // namespace OrtApis

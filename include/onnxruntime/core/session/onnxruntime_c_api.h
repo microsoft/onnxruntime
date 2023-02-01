@@ -30,7 +30,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 14
+#define ORT_API_VERSION 15
 
 #ifdef __cplusplus
 extern "C" {
@@ -3946,6 +3946,12 @@ struct OrtApi {
    * \since Version 1.14.
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
+
+  /** \brief Utility to check if the training apis can be queried.
+   *
+   * \since Version 1.15.
+   */
+  bool(ORT_API_CALL* IsTrainingApiAvailable)();
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
