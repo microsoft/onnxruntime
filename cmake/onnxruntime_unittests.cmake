@@ -1470,6 +1470,11 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY)
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
+
+  if(NOT WIN32)
+    list(APPEND onnxruntime_logging_apis_test_LIBS nsync_cpp ${CMAKE_DL_LIBS})
+  endif()
+
   AddTest(DYN
           TARGET onnxruntime_logging_apis_test
           SOURCES ${onnxruntime_logging_apis_test_SRC}
