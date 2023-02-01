@@ -5,9 +5,9 @@ import onnx
 import packaging.version as pv
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
-from onnxconverter_common import convert_tensor_float_to_float16
 
 from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxruntime.transformers.float16 import convert_tensor_float_to_float16
 
 ALLOWED_OPS_LIST = ["Conv", "MatMul"]
 
@@ -26,7 +26,7 @@ def convert_float_to_float16(
     op_allow_list=None,
 ):
     """
-    Convert tensor float type in the ONNX ModelProto input to tensor float16.
+    Convert tensor float type in the ONNX ModelProto input to tensor
 
     :param op_allow_list:
     :param keep_io_types:
