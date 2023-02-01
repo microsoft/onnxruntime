@@ -2339,15 +2339,6 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #endif
 }
 
-ORT_API(bool, OrtApis::IsTrainingApiAvailable) {
-#ifdef ENABLE_TRAINING_APIS
-  return true;
-#else
-
-  return false;
-#endif
-}
-
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString,

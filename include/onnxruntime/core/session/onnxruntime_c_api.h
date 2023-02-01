@@ -3546,7 +3546,7 @@ struct OrtApi {
    *
    * \param[in] version Must be ::ORT_API_VERSION
    * \return The ::OrtTrainingApi for the version requested.
-   *         nullptr will be returned and no error message will be printedif the training api is not supported with
+   *         nullptr will be returned and no error message will be printed if the training api is not supported with
    *         this build.
    *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
    *         example when using a runtime older than the version created with this header file.
