@@ -1689,6 +1689,10 @@ class SymbolicShapeInference:
             try:
                 return bool(-y <= -x)
             except TypeError:
+                pass
+            try:
+                return bool(y - x >= 0)
+            except TypeError:
                 # the last attempt; this may raise TypeError
                 return all(bool(d >= 0) for d in flatten_min(y - x))
 
