@@ -7,7 +7,6 @@
 #include <atomic>
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/config_options.h"
-#include "core/session/onnxruntime_run_options_config_keys.h"
 
 /**
  * Configuration information for a Run call.

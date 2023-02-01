@@ -1997,7 +1997,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 
     // info all execution providers InferenceSession:Run ended
     for (auto* xp : exec_providers_to_stop) {
-      bool synchronize_execution_providers = !run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigDisableSynchronization).has_value();
+      bool synchronize_execution_providers = std::stoi(run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigSynchronizeExecutionProviders, "1"));
       auto status = xp->OnRunEnd(synchronize_execution_providers);
       ORT_CHECK_AND_SET_RETVAL(status);
     }

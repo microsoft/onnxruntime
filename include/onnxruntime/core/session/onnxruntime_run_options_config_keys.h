@@ -26,7 +26,7 @@
 // By default, the value for this key is empty (i.e.) no memory arenas are shrunk
 static const char* const kOrtRunOptionsConfigEnableMemoryArenaShrinkage = "memory.enable_memory_arena_shrinkage";
 
-// when any CUDA work is issued (CUDA + TensorRT EP) the InferenceSession::run method will synchronize
-// after submitting the work - this option enables to return right after submitting all the work
-// This requires the user to handle synchronization points to wait for a finished inference if needed
-static const char* const kOrtRunOptionsConfigDisableSynchronization = "cuda.disable_sync_execution";
+// Set to '0' to not synchronize execution providers with CPU at the end of session run.
+// Per default it will be set to '1'
+// Taking CUDA EP as an example, it will trigger cudaStreamSynchronize on the compute stream.
+static const char* const kOrtRunOptionsConfigSynchronizeExecutionProviders = "synchronize_execution_providers";
