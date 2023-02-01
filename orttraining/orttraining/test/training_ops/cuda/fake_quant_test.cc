@@ -165,8 +165,8 @@ TEST_P(FakeQuantGradKernelComparisonParameterizedTest, FakeQuantGradKernels) {
   test.AddOutput<float>("dX", tensor_dim, dX_data);
 
   // Compare the outputs from the two kernels
-  const double per_sample_tolerance = 2e-4;
-  const double relative_per_sample_tolerance = 2e-4;
+  constexpr double per_sample_tolerance = 2e-4;
+  constexpr double relative_per_sample_tolerance = 2e-4;
   test.CompareWithCPU(kCudaExecutionProvider, per_sample_tolerance, relative_per_sample_tolerance);
 }
 
