@@ -151,13 +151,13 @@ template Status LaunchRelPosAttnBiasKernel<half>(cudaStream_t stream,
 
 template <typename T>
 __global__ void GatedRelativePositionBiasKernelSmallD(
-    T* output,
-    const T* rel_pos,  // (batch_size, num_heads, seq_len, seq_len)
+    T* output,         // (batch_size, num_heads, seq_len, seq_len)
+    const T* rel_pos,  // (1, num_heads, seq_len, seq_len)
     const T* qw,       // (batch_size, num_heads, seq_len, D)
     const T* bias,     // (D)
     const T* eco_a,    // (1, num_heads, 1, 1)
     const int D) {
-  __shared__ T gate[1];
+  __shared__ float gate[1];
 
   const int seq_len = gridDim.x;
   const int num_heads = gridDim.y;
@@ -169,33 +169,33 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
   output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len;
   qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * D;
 
-  T val = T{0.0};
+  float val = 0.0f;
   if (threadIdx.x < D) {
-    val = qw[threadIdx.x] + (bias ? T{0.0} : bias[threadIdx.x]);
+    val = (float)qw[threadIdx.x] + (bias ? (float)bias[threadIdx.x] : 0.0f);
   }
 
-  T u = (threadIdx.x < D / 2) ? val : T{0.0};
+  float u = (threadIdx.x < D / 2) ? val : 0.0f;
 #pragma unroll
   for (int offset = 16; offset > 0; offset /= 2) {
     u += __shfl_down_sync(0xffffffff, u, offset);
   }
 
-  T r = (threadIdx.x >= D / 2) ? val : T{0.0};
+  float r = (threadIdx.x >= D / 2) ? val : 0.0f;
 #pragma unroll
   for (int offset = 16; offset > 0; offset /= 2) {
     r += __shfl_down_sync(0xffffffff, r, offset);
   }
 
-  u = (T)(1.0f / expf((float)-u));
-  r = (T)(1.0f / expf((float)-r));
+  u = 1.0f / (1.0f + expf(-u));
+  r = 1.0f / (1.0f + expf(-r));
 
   if (threadIdx.x == 0) {
-    gate[0] = u * (r * eco_a[n] - T{1.0}) + T{2.0};
+    gate[0] = u * (r * (float)eco_a[n] - 1.0f) + 2.0f;
   }
   __syncthreads();
 
   for (int idx = threadIdx.x; idx < seq_len; idx += blockDim.x) {
-    output[idx] = rel_pos[idx] * gate[0];
+    output[idx] = (T)(gate[0]  * (float)rel_pos[idx]);
   }
 }
 
@@ -216,10 +216,20 @@ Status LaunchGatedRelativePositionBiasKernel(
 
   int tpb = std::max(32, std::max(D, seq_len));
   tpb = std::min(tpb, device_prop.maxThreadsPerBlock);
+
+  // round up tpb to power of 2
+  --tpb;
+  tpb |= (tpb >> 1);
+  tpb |= (tpb >> 2);
+  tpb |= (tpb >> 4);
+  tpb |= (tpb >> 8);
+  tpb |= (tpb >> 16);
+  tpb++;
+
   dim3 block(tpb);
   dim3 grid(seq_len, num_heads, batch_size);
 
-  GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(T), stream>>>(
+  GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
       output, rel_pos, qw, bias, eco_a, D);
 
   return CUDA_CALL(cudaGetLastError());

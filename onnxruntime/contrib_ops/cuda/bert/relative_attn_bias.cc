@@ -169,11 +169,11 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       D, BNS, head_size, &one,
-      reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()), (int)D,
-      reinterpret_cast<const CudaT*>(workspace.get()), (int)BNS,
+      reinterpret_cast<const CudaT*>(weight_tensor.template Data<T>()), (int)D,
+      reinterpret_cast<const CudaT*>(workspace.get()), (int)head_size,
       &zero, gemm_output, D, device_prop));
 
-  return LaunchGatedRelativePositionBiasKernel<CudaT>(
+  auto status = LaunchGatedRelativePositionBiasKernel<CudaT>(
       device_prop, Stream(context),
       reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()),
@@ -181,6 +181,8 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
       reinterpret_cast<const CudaT*>(bias_tensor.template Data<T>()),
       reinterpret_cast<const CudaT*>(eco_a_tensor.template Data<T>()),
       batch_size, num_heads_, seq_len, D);
+
+  return status;
 }
 
 }  // namespace cuda
