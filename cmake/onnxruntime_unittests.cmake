@@ -1465,7 +1465,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
 endif()
 
-if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY)
+if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_MINIMAL_BUILD)
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
