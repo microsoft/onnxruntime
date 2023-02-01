@@ -109,6 +109,7 @@ def bert_model_description(config):
 
 
 def create_pretraining_dataset(input_file, max_pred_length, args):
+
     train_data = pretraining_dataset(input_file=input_file, max_pred_length=max_pred_length)
     train_sampler = RandomSampler(train_data)
     train_dataloader = DataLoader(
@@ -161,6 +162,7 @@ import argparse
 
 
 def parse_arguments():
+
     parser = argparse.ArgumentParser()
 
     # batch size test config parameters
@@ -346,6 +348,7 @@ class PretrainArguments:
 
 
 def setup_training(args):
+
     assert torch.cuda.is_available()
 
     if args.local_rank == -1:

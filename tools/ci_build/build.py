@@ -1471,6 +1471,7 @@ def setup_tensorrt_vars(args):
 
 
 def setup_migraphx_vars(args):
+
     migraphx_home = None
 
     if args.use_migraphx:

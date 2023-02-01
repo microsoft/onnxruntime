@@ -379,6 +379,7 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
     runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
     minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
     if runtime_pytorch_version < minimum_runtime_pytorch_version:
+
         if fallback_enabled:
             if matching_policy:
                 policy = "FALLBACK_BAD_INITIALIZATION"
@@ -442,6 +443,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
             f" It requires PyTorch CPP extensions to be missing"
         )
     else:
+
         if fallback_enabled:
             if matching_policy:
                 policy = "FALLBACK_BAD_INITIALIZATION"

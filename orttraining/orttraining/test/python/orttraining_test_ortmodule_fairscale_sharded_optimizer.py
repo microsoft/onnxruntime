@@ -41,6 +41,7 @@ class NeuralNet(torch.nn.Module):
 
 
 def get_dataloader(args, rank, batch_size):
+
     # Data loading code
     train_dataset = torchvision.datasets.MNIST(
         root=args.data_dir, train=True, transform=transforms.ToTensor(), download=True
@@ -176,6 +177,7 @@ def test(args, model, device, loss_fn, test_loader):
 
 
 def train(rank: int, args, world_size: int, epochs: int):
+
     # DDP init example
     dist_init(rank, world_size)
     torch.backends.cudnn.deterministic = True
@@ -240,6 +242,7 @@ def train(rank: int, args, world_size: int, epochs: int):
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(
         description="Benchmark the optimizer state sharding, on a typical computer vision workload"
     )

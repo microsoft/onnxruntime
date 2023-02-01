@@ -233,6 +233,7 @@ def get_latency_result(runtimes, batch_size):
 
 
 def get_ort_session_inputs_and_outputs(name, session, ort_input):
+
     sess_inputs = {}
     sess_outputs = None
 
@@ -427,6 +428,7 @@ def inference_ort(
 
 
 def inference_ort_and_get_prediction(name, session, ort_inputs):
+
     ort_outputs = []
     for ort_input in ort_inputs:
         sess_inputs, sess_outputs = get_ort_session_inputs_and_outputs(name, session, ort_input)
@@ -546,6 +548,7 @@ def generate_onnx_model_random_input(test_times, ref_input):
     inputs = []
 
     for i in range(test_times):
+
         input_data = []
         for tensor in ref_input:
             shape = tensor.shape
@@ -740,6 +743,7 @@ def update_metrics_map_ori(model_to_metrics, name, ep_to_operator):
 #
 ###################################################################################################
 def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
+
     if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
         return
 
@@ -762,6 +766,7 @@ def update_fail_model_map(model_to_fail_ep, model_name, ep, e_type, e):
 
 
 def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_type, e):
+
     if model_name in model_to_fail_ep and ep in model_to_fail_ep[model_name]:
         return
 
@@ -780,6 +785,7 @@ def update_fail_model_map_ori(model_to_fail_ep, fail_results, model_name, ep, e_
 
 
 def skip_ep(model_name, ep, model_to_fail_ep):
+
     if model_name not in model_to_fail_ep:
         return False
 
@@ -963,6 +969,7 @@ def find_test_data_directory(path):
 
 
 def parse_models_info_from_directory(path, models):
+
     test_data_dir = find_test_data_directory(path)
 
     if test_data_dir:
@@ -989,6 +996,7 @@ def parse_models_info_from_directory(path, models):
 
 
 def parse_models_info_from_file(root_dir, path, models):
+
     # default working directory
     root_working_directory = root_dir + "perf/"
 
@@ -996,6 +1004,7 @@ def parse_models_info_from_file(root_dir, path, models):
         data = json.load(f)
 
         for row in data:
+
             if "root_working_directory" in row:
                 root_working_directory = row["root_working_directory"]
                 continue
@@ -1176,6 +1185,7 @@ def output_details(results, csv_filename):
 
 
 def output_fail(model_to_fail_ep, csv_filename):
+
     with open(csv_filename, mode="w", newline="") as csv_file:
         column_names = ["model", "ep", "error type", "error message"]
 
@@ -1210,6 +1220,7 @@ def add_status_dict(status_dict, model_name, ep, status):
 
 
 def build_status(status_dict, results, is_fail):
+
     if is_fail:
         for model, model_info in results.items():
             for ep, ep_info in model_info.items():
@@ -1229,6 +1240,7 @@ def build_status(status_dict, results, is_fail):
 
 
 def output_status(results, csv_filename):
+
     need_write_header = True
     if os.path.exists(csv_filename):
         need_write_header = False
@@ -1521,6 +1533,7 @@ def output_metrics(model_to_metrics, csv_filename):
 
         results = []
         for model, ep_info in model_to_metrics.items():
+
             result = {}
             result_fp16 = {}
             result["model_name"] = model
@@ -1650,6 +1663,7 @@ def test_models_eps(args, models):
         ep_results = {"latency": {}, "metrics": {}, "session": {}}
 
         for exec_provider in ep_list:
+
             # Skip model + EP combinations that have already failed in a previous run.
             if skip_ep(name, exec_provider, model_to_fail_ep):
                 continue
@@ -1738,6 +1752,7 @@ def run_model_on_ep(
 
     # use float16.py for cuda fp16 only
     if cuda_fp16 == exec_provider:
+
         # handle model
         if "model_path_fp16" in model_info:
             model_path = os.path.normpath(os.path.join(model_work_dir, model_info["model_path_fp16"]))
@@ -1927,6 +1942,7 @@ def benchmark_model_on_ep(
             return
 
     if result:
+
         ep_results["latency"][exec_provider] = {}
         ep_results["latency"][exec_provider]["average_latency_ms"] = result["average_latency_ms"]
         ep_results["latency"][exec_provider]["latency_90_percentile"] = result["latency_90_percentile"]

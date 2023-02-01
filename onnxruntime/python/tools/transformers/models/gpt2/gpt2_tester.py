@@ -130,6 +130,7 @@ class Gpt2Tester:
         top_k=20,
         top_k_required_order=False,
     ):
+
         self.batch_size = input_ids.shape[0]
         self.input_length = input_ids.shape[1]
         self.n_layer = num_layer
@@ -461,10 +462,7 @@ class Gpt2Tester:
                     )
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
-                    (
-                        onnx_io_output,
-                        avg_latency_ms,
-                    ) = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                    (onnx_io_output, avg_latency_ms,) = Gpt2Helper.onnxruntime_inference_with_binded_io(
                         session,
                         onnx_io_runner.get_inputs(),
                         output_buffers,

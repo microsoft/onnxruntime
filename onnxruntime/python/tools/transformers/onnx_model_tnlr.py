@@ -40,6 +40,7 @@ class FusionTnlrAttention(FusionAttention):
         output: str,
         add_qk_str: str,
     ) -> Union[NodeProto, None]:
+
         assert num_heads > 0
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")

@@ -159,6 +159,7 @@ class FusionBartEncoderAttention(FusionAttention):
             return
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_v.input[0] == root_input:
+
             mask_nodes = []
             mask_index = None
             attention_last_node = reshape_qkv_2

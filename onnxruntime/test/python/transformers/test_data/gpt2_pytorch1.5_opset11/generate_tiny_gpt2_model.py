@@ -446,6 +446,7 @@ def generate_test_data(
     test_cases=1,
     output_optimized_model=False,
 ):
+
     for test_case in range(test_cases):
         sequence_length = 3
         input_1 = np.random.randint(dictionary_size, size=(batch_size, 1), dtype=np.int64)

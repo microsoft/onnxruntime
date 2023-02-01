@@ -51,6 +51,7 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
 
     # For each batch of training data...
     for step, batch in enumerate(train_dataloader):
+
         if step == args.train_steps:
             break
 
@@ -157,6 +158,7 @@ def test(model, validation_dataloader, device, args):
         # Telling the model not to compute or store gradients, saving memory and
         # speeding up validation
         with torch.no_grad():
+
             # Forward pass, calculate logit predictions.
             # This will return the logits rather than the loss because we have
             # not provided labels.

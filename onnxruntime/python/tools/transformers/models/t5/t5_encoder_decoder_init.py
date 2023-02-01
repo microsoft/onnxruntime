@@ -255,7 +255,7 @@ class T5EncoderDecoderInitHelper:
 
         test_cases = [(4, 11), (1, 2), (3, 1), (8, 5)]
         test_cases_max_diff = []
-        for batch_size, encode_sequence_length in test_cases[:max_cases]:
+        for (batch_size, encode_sequence_length) in test_cases[:max_cases]:
             inputs = T5EncoderDecoderInitInputs.create_dummy(
                 model.config,
                 batch_size,

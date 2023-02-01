@@ -93,6 +93,7 @@ class T5Decoder(torch.nn.Module):
         self.config = config
 
     def forward(self, decoder_input_ids, encoder_attention_mask, encoder_hidden_states, *past):
+
         past_key_values = PastKeyValuesHelper.group_by_layer(past, self.config.num_layers)
 
         decoder_outputs = self.decoder(

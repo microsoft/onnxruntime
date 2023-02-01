@@ -74,6 +74,7 @@ class TestBeamSearchGpt(unittest.TestCase):
         self.assertTrue(init_decoder_found)
 
     def run_beam_search(self, extra_arguments: str, sentences=None, append_arguments=True, is_greedy=False):
+
         if append_arguments:
             arguments = " ".join(self.default_arguments + [extra_arguments]).split()
         else:

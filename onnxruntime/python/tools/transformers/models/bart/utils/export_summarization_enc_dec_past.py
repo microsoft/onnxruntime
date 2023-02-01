@@ -249,6 +249,7 @@ def export_decoder(args):
     config = decoder_config_update(config)
 
     with torch.no_grad():
+
         model, input_data = export_helper.initialize_model(config, tokenizer, args)
         start_time = time.time()
 

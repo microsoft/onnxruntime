@@ -102,7 +102,6 @@ insert_table_script = "INSERT INTO onnxruntime.perf_test_training_ort_module_dat
     %(RunConfig)s,\
     %(Time)s)"
 
-
 # Obtain connection string information from the portal
 def connect_to_perf_dashboard_db(mysql_server_name, power_bi_user_name, password, database):
     config = {

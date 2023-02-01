@@ -164,6 +164,7 @@ def get_latest_onnx_op_versions(root_dir):
 
 
 def find_potential_issues(root_dir, op_to_opset):
+
     optimizer_dir = os.path.join(root_dir, "onnxruntime/core/optimizer")
 
     files = glob.glob(optimizer_dir + "/**/*.cc", recursive=True)

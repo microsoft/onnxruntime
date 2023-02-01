@@ -107,6 +107,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         names_to_evaluate = []
         output_names = [output.name for output in self.model.graph.output]
         for name in extra_outputs:
+
             if self.get_initializer(name) is not None:  # already a constant
                 continue
             names_to_evaluate.append(name)

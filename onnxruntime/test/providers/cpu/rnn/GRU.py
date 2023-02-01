@@ -70,6 +70,7 @@ class GRU_Helper:
             self.two = OneDirectionGRU(np.flip(X, 0), Wbw, Rbw, Bbw, H_0bw, LBR)
 
     def run(self):
+
         if self.direction == "bidirectional":
             f_output = self.one.execute()
             r_output = self.two.execute()
@@ -100,6 +101,7 @@ class GRU_Helper:
 
 class OneDirectionGRU:
     def __init__(self, X, W, R, B, initial_h, LBR):
+
         self.X = X
         # remove num_directions axis for W, R, B, H_0
         self.W = np.squeeze(W, axis=0)
@@ -168,6 +170,7 @@ class OneDirectionGRU:
 class ONNXRuntimeTestContext:
     @staticmethod
     def OneDirectionWeights():
+
         hidden_size = 2
 
         W = np.array(
@@ -196,18 +199,7 @@ class ONNXRuntimeTestContext:
             ]
         ).astype(np.float32)
 
-        W_B = np.array(
-            [
-                [
-                    0.381619,
-                    0.0323954,
-                    -0.258721,
-                    0.45056,
-                    -0.250755,
-                    0.0967895,
-                ]
-            ]
-        ).astype(  # Wbz  # Wbr
+        W_B = np.array([[0.381619, 0.0323954, -0.258721, 0.45056, -0.250755, 0.0967895,]]).astype(  # Wbz  # Wbr
             np.float32
         )  # Wbh
         R_B = np.zeros((1, 3 * hidden_size)).astype(np.float32)
@@ -217,6 +209,7 @@ class ONNXRuntimeTestContext:
 
     @staticmethod
     def BidirectionalWeights():
+
         W1, R1, B1 = ONNXRuntimeTestContext.OneDirectionWeights()
 
         hidden_size = R1.shape[-1]
@@ -233,6 +226,7 @@ class ONNXRuntimeTestContext:
 class GRU_ONNXRuntimeUnitTests:
     @staticmethod
     def ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows():
+
         print(GRU_ONNXRuntimeUnitTests.ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows.__name__)
 
         seq_length = 2
@@ -252,6 +246,7 @@ class GRU_ONNXRuntimeUnitTests:
 
     @staticmethod
     def ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows():
+
         print(GRU_ONNXRuntimeUnitTests.ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows.__name__)
 
         seq_length = 2
@@ -271,6 +266,7 @@ class GRU_ONNXRuntimeUnitTests:
 
     @staticmethod
     def BidirectionalDefaultActivationsSimpleWeightsNoBias(linear_before_reset=0):
+
         print(
             GRU_ONNXRuntimeUnitTests.BidirectionalDefaultActivationsSimpleWeightsNoBias.__name__
             + ".linear_before_reset="
@@ -306,6 +302,7 @@ class GRU_ONNXRuntimeUnitTests:
 
     @staticmethod
     def DefaultActivationsSimpleWeightsWithBias(rows=2, direction="forward", linear_before_reset=0):
+
         print(
             GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias.__name__
             + " batch_parallel="
@@ -382,24 +379,29 @@ class GRU_ONNXRuntimeUnitTests:
 
     @staticmethod
     def ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset():
+
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(linear_before_reset=1)
 
     @staticmethod
     def ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset():
+
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(direction="reverse", linear_before_reset=1)
 
     @staticmethod
     def ForwardDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset():
+
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(rows=1, linear_before_reset=1)
 
     @staticmethod
     def ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset():
+
         GRU_ONNXRuntimeUnitTests.DefaultActivationsSimpleWeightsWithBias(
             rows=1, direction="reverse", linear_before_reset=1
         )
 
     @staticmethod
     def Legacy_TestGRUOpForwardBasic():
+
         print(GRU_ONNXRuntimeUnitTests.Legacy_TestGRUOpForwardBasic.__name__)
 
         input = np.array([[[-0.455351, -0.276391]], [[-0.185934, -0.269585]]]).astype(np.float32)
@@ -422,6 +424,7 @@ class GRU_ONNXRuntimeUnitTests:
 
     @staticmethod
     def Legacy_TestGRUOpBidirectionalBasic():
+
         print(GRU_ONNXRuntimeUnitTests.Legacy_TestGRUOpBidirectionalBasic.__name__)
 
         input = np.array([[[-0.455351, -0.276391]], [[-0.185934, -0.269585]]]).astype(np.float32)

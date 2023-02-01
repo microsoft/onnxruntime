@@ -49,6 +49,7 @@ class ONNXQuantizer:
         op_types_to_quantize,
         extra_options=None,
     ):
+
         if not model_has_infer_metadata(model):
             model = save_and_reload_model(model)
         self.value_infos = {vi.name: vi for vi in model.graph.value_info}
@@ -807,11 +808,7 @@ class ONNXQuantizer:
             initializer = find_by_name(node_input, self.model.initializer())
             if initializer is not None:
                 if self.per_channel and op_level_per_channel:
-                    (
-                        q_weight_name,
-                        zp_name,
-                        scale_name,
-                    ) = self.quantize_weight_per_channel(
+                    (q_weight_name, zp_name, scale_name,) = self.quantize_weight_per_channel(
                         initializer.name,
                         self.weight_qType if initializer_use_weight_qType else self.activation_qType,
                         axis,

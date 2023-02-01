@@ -461,6 +461,7 @@ def export_onnx_model_from_pt(
     model_fusion_statistics,
     fusion_options,
 ):
+
     config, model = load_pt_model(model_name, model_class, cache_dir, config_modifier)
     # config, model = load_pt_model_from_tf(model_name)
     model.cpu()

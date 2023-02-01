@@ -116,6 +116,7 @@ class MultipleChoiceDataset(Dataset):
         # and the others will use the cache.
         lock_path = cached_features_file + ".lock"
         with FileLock(lock_path):
+
             if os.path.exists(cached_features_file) and not overwrite_cache:
                 logger.info(f"Loading features from cached file {cached_features_file}")
                 self.features = torch.load(cached_features_file)
@@ -217,7 +218,7 @@ def convert_examples_to_features(
     label_map = {label: i for i, label in enumerate(label_list)}
 
     features = []
-    for ex_index, example in tqdm.tqdm(enumerate(examples), desc="convert examples to features"):
+    for (ex_index, example) in tqdm.tqdm(enumerate(examples), desc="convert examples to features"):
         if ex_index % 10000 == 0:
             logger.info("Writing example %d of %d" % (ex_index, len(examples)))
         choices_inputs = []

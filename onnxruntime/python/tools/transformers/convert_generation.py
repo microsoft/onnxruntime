@@ -1165,6 +1165,7 @@ def generate_gpt2_init_decoder(
 
     # Try without the Casts before and after the MatMuls
     if logits_matmul_to_residual_add_path is None:
+
         # Normalization Node is : LayerNormalization
         logits_matmul_to_residual_add_path = gpt2_init_decoder_model.match_parent_path(
             logits_matmul_node,

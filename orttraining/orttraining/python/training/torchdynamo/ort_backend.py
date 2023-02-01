@@ -101,14 +101,12 @@ def _get_onnx_supported_table() -> Set[str]:
     return onnx_supported_ops
 
 
-def _get_support_dictionaries_and_decomposition_tables() -> (
-    Tuple[
-        Dict[torch._ops.OpOverload, Any],
-        Dict[str, Any],
-        Dict[torch._ops.OpOverload, Callable],
-        Dict[torch._ops.OpOverload, Callable],
-    ]
-):
+def _get_support_dictionaries_and_decomposition_tables() -> Tuple[
+    Dict[torch._ops.OpOverload, Any],
+    Dict[str, Any],
+    Dict[torch._ops.OpOverload, Callable],
+    Dict[torch._ops.OpOverload, Callable],
+]:
     # The keys of this dictionary are OpOverload's which can be
     # exported by ONNX exporter. Type of key is torch._ops.OpOverload.
     # For example, if torch.ops.aten.add.default is a key in support_dict,
@@ -265,6 +263,7 @@ def _move_placeholder_to_front(graph_module: torch.fx.GraphModule) -> None:
 def _replace_to_copy_with_to(fx_module: torch.fx.GraphModule) -> None:
     # aten._to_copy doesn't have exporter so we replace it with aten.to.
     for node in fx_module.graph.nodes:
+
         if (
             isinstance(node.target, torch._ops.OpOverload)
             and node.target.overloadpacket == torch.ops.aten._to_copy  # type: ignore

@@ -67,6 +67,7 @@ class TestIOBinding(unittest.TestCase):
         self.assertTrue(np.array_equal(self.create_expected_output(), ort_output))
 
     def test_bind_input_types(self):
+
         opset = onnx_opset_version()
         devices = [
             (
@@ -98,6 +99,7 @@ class TestIOBinding(unittest.TestCase):
                 np.bool_,
             ]:
                 with self.subTest(dtype=dtype, device=str(device)):
+
                     x = np.arange(8).reshape((-1, 2)).astype(dtype)
                     proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
 

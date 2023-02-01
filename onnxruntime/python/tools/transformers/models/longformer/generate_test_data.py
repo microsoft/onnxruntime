@@ -264,6 +264,7 @@ def create_longformer_test_data(
     global_mask_name,
     num_global_tokens,
 ):
+
     input_ids, input_mask, global_mask = get_longformer_inputs(model, input_ids_name, input_mask_name, global_mask_name)
     all_inputs = generate_test_data(
         batch_size,

@@ -149,6 +149,7 @@ def parse_arguments():
 
 # Create a dummy input for ONNX export.
 def get_dummy_inputs(config, export_padding, device):
+
     # When sequence length is multiple of windows size, there is no padding logic in ONNX graph
     sequence_length = config.attention_window[0] + 1 if export_padding else config.attention_window[0]
 

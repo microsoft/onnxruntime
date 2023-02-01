@@ -59,6 +59,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_pretraining_dataset(input_file, max_pred_length, shared_list, args):
+
     train_data = pretraining_dataset(input_file=input_file, max_pred_length=max_pred_length)
     train_sampler = RandomSampler(train_data)
     train_dataloader = DataLoader(
@@ -89,6 +90,7 @@ class pretraining_dataset(Dataset):
         return len(self.inputs[0])
 
     def __getitem__(self, index):
+
         [input_ids, input_mask, segment_ids, masked_lm_positions, masked_lm_ids, next_sentence_labels] = [
             torch.from_numpy(input[index].astype(np.int64))
             if indice < 5
@@ -108,6 +110,7 @@ class pretraining_dataset(Dataset):
 
 
 def parse_arguments():
+
     parser = argparse.ArgumentParser()
 
     ## Required parameters
@@ -220,6 +223,7 @@ def parse_arguments():
 
 
 def setup_training(args):
+
     assert torch.cuda.is_available()
 
     if args.local_rank == -1:
@@ -264,6 +268,7 @@ def setup_training(args):
 
 
 def prepare_model_and_optimizer(args, device):
+
     # Prepare model
     config = BertConfig.from_json_file(args.config_file)
 
@@ -309,6 +314,7 @@ def prepare_model_and_optimizer(args, device):
         optimizer_grouped_parameters, lr=args.learning_rate, warmup=args.warmup_proportion, t_total=args.max_steps
     )
     if args.fp16:
+
         if args.loss_scale == 0:
             # optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
             model, optimizer = amp.initialize(
@@ -361,6 +367,7 @@ def prepare_model_and_optimizer(args, device):
 
 
 def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
+
     if args.allreduce_post_accumulation:
         # manually allreduce gradients after all accumulation steps
         # check for Inf/NaN
@@ -418,6 +425,7 @@ def take_optimizer_step(args, optimizer, model, overflow_buf, global_step):
 
 
 def main():
+
     args = parse_arguments()
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -503,6 +511,7 @@ def main():
                 overflow_buf = torch.cuda.IntTensor([0])
 
             for f_id in range(f_start_id + 1, len(files)):
+
                 # torch.cuda.synchronize()
                 # f_start = time.time()
                 if torch.distributed.is_initialized() and torch.distributed.get_world_size() > num_files:

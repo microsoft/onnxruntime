@@ -32,6 +32,7 @@ def print_args(args):
 
 
 def user_command():
+
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument("--max_length", type=int, default=20, help="default to 20")
     parent_parser.add_argument("--min_length", type=int, default=0, help="default to 0")
@@ -65,6 +66,7 @@ def user_command():
 
 
 if __name__ == "__main__":
+
     args = user_command()
     if args.opset_version < 14:
         raise ValueError(f"The minimum supported opset version is 14! The given one was {args.opset_version}.")

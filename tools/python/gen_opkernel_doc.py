@@ -61,6 +61,7 @@ def expand_providers(provider_filter: [str]):
 
 
 def main(output_path: pathlib.Path, provider_filter: [str]):
+
     providers = expand_providers(provider_filter)
 
     with io.open(output_path, "w", newline="", encoding="utf-8") as fout:

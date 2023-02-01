@@ -39,6 +39,7 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
+
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
         for filename in Path(test_model_dir).rglob("*.onnx"):

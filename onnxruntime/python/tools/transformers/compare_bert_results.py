@@ -90,6 +90,7 @@ def run_test(
     segment_ids_name,
     input_mask_name,
 ):
+
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(
         optimized_model, input_ids_name, segment_ids_name, input_mask_name

@@ -27,7 +27,6 @@ input_model_name = sys.argv[1]
 output_model_name = input_model_name[:-5] + "_opset12.onnx"
 model = onnx.load(input_model_name)
 
-
 # for a given node input, look thru the graph nodes and find the node
 # whose output is matching the input
 def find_input_node(model, arg):
