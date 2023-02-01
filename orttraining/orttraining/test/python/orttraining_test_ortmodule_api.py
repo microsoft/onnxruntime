@@ -1418,6 +1418,13 @@ def test_gradient_correctness_chunk(dim, chunks):
         def forward(self, input):
             return input.chunk(chunks, dim=self.dim)
 
+    # Stub (opset with parameters through attributes) to avoid non-constant tensor inputs to Split node,
+    #  see https://github.com/microsoft/onnxruntime/pull/14311#issuecomment-1400239111 for details.
+    if Version(torch.__version__) < Version("1.13.0"):
+        from onnxruntime.training import ortmodule
+
+        ortmodule.ONNX_OPSET_VERSION = 12
+
     device = "cuda"
     pt_model = NeuralNetChunk(dim).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=(chunks > 1), onnx_prefix="chunk_model"))
