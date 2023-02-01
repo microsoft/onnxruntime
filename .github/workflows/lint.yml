@@ -52,6 +52,7 @@ jobs:
           level: warning
           filter_mode: added
           lib: true
+          pyright_version: 1.1.291
       - name: pylint
         uses: dciborow/action-pylint@0.0.7
         with:

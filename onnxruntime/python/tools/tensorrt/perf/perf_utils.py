@@ -119,7 +119,6 @@ def pretty_print(pp, json_object):
 
 
 def parse_single_file(f):
-
     try:
         data = json.load(f)
     except Exception as e:

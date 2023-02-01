@@ -517,7 +517,7 @@ def main():
     with open(summary_file, "w+", newline="") as tsv_file:
         tsv_writer = csv.writer(tsv_file, delimiter="\t", lineterminator="\n")
         headers = None
-        for (key, perf_result) in sorted_results:
+        for key, perf_result in sorted_results:
             params = key.split(",")
             if headers is None:
                 headers = [

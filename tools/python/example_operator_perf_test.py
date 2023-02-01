@@ -70,7 +70,6 @@ def create_test_input(n, num_items, k):
 # Example code that tests various combinations of input sizes.
 #
 def run_perf_tests(model_path, num_threads=1):
-
     so = rt.SessionOptions()
     so.intra_op_num_threads = num_threads
     sess = rt.InferenceSession(model_path, sess_options=so)
@@ -128,7 +127,6 @@ def run_perf_tests(model_path, num_threads=1):
 # so that the model can be easily run directly or from a debugger.
 #
 def create_example_test_directory():
-
     # fill in the inputs that we want to use specific values for
     input_data = {}
     input_data["K"] = np.asarray([64]).astype(np.int64)

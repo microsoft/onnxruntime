@@ -83,7 +83,6 @@ def _convert(
     target_platform: str,
     session_options_config_entries: typing.Dict[str, str],
 ) -> typing.List[pathlib.Path]:
-
     model_dir = model_path_or_dir if model_path_or_dir.is_dir() else model_path_or_dir.parent
     output_dir = output_dir or model_dir
 
@@ -118,7 +117,6 @@ def _convert(
 
     for model in models:
         try:
-
             relative_model_path = model.relative_to(model_dir)
 
             (output_dir / relative_model_path).parent.mkdir(parents=True, exist_ok=True)

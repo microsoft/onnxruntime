@@ -54,7 +54,6 @@ class TestWhereModel(unittest.TestCase):
         save(model, model_path)
 
     def quantize_where_test(self, activation_type, weight_type, extra_options={}):
-
         model_fp32_path = "where_fp32.onnx"
         input_shape = [2, 2]
         self.construct_model(model_fp32_path, input_shape)

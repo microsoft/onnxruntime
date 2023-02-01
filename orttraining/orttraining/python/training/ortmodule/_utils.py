@@ -239,7 +239,6 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 or not inspect.ismethod(torch_module_attributes[attribute_name])
                 or attribute.__func__ != torch_module_attributes[attribute_name].__func__
             ):
-
                 # forward is expected to be defined by the user.
                 if attribute_name == "forward":
                     continue
@@ -294,7 +293,6 @@ def get_state_after_deletion_of_non_ortmodule_methods(ortmodule, user_module):
                 and inspect.ismethod(ortmodule_attributes[attribute_name])
                 and attribute.__func__ == ortmodule_attributes[attribute_name].__func__
             ):
-
                 # forward is expected to be defined by the user.
                 if attribute_name == "forward":
                     continue

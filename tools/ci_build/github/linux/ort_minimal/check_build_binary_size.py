@@ -11,7 +11,6 @@ import readelf_utils
 
 
 def _check_binary_size(path, readelf, threshold, os_str, arch, build_config):
-
     print("Checking binary size of {} using {}".format(path, readelf))
     ondisk_size = os.path.getsize(path)
 

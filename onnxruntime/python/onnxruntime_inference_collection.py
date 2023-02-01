@@ -105,7 +105,6 @@ class Session:
     """
 
     def __init__(self):
-
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
         self._enable_fallback = True

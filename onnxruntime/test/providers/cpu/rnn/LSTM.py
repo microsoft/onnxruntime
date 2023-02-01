@@ -32,7 +32,6 @@ def print_results(Y, Y_h, Y_c):
 
 class LSTM_Helper:
     def __init__(self, **params):  # type: (*Any) -> None
-
         required_inputs = ["X", "W", "R"]
         for i in required_inputs:
             assert i in params, "Missing Required Input: {0}".format(i)
@@ -110,7 +109,6 @@ class LSTM_Helper:
             )
 
     def run(self):
-
         if self.direction == "bidirectional":
             f_output, f_Y_h, f_Y_c = self.one.execute()
             r_output, r_Y_h, r_Y_c = self.two.execute()
@@ -171,7 +169,6 @@ class OneDirectionLSTM:
         input_forget=False,
         clip=9999.0,
     ):
-
         self.X = X
         # remove num_directions axis for W, R, B, P, H_0, C_0
         self.W = np.squeeze(W, axis=0)
@@ -196,7 +193,6 @@ class OneDirectionLSTM:
         self.clip = clip
 
     def execute(self):  # type: () -> Tuple[np.ndarray, np.ndarray]
-
         [p_i, p_o, p_f] = np.split(self.P, 3)
         h_list = []
 
@@ -253,7 +249,6 @@ class OneDirectionLSTM:
 class LSTM:  # Base):
     @staticmethod
     def SimpleWeightsNoBiasTwoRows(direction):  # type: () -> None
-
         print(LSTM.SimpleWeightsNoBiasTwoRows.__name__ + " direction=" + direction)
 
         seq_length = 2
@@ -285,7 +280,6 @@ class LSTM:  # Base):
 
     @staticmethod
     def LargeBatchWithClip(clip):
-
         print(LSTM.LargeBatchWithClip.__name__ + " clip=" + str(clip))
 
         seq_length = 2
@@ -343,7 +337,6 @@ class LSTM:  # Base):
 
     @staticmethod
     def export_initial_bias():  # type: () -> None
-
         print(LSTM.export_initial_bias.__name__)
 
         input = np.array([[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]).astype(np.float32)
@@ -408,13 +401,11 @@ class LSTM:  # Base):
 
 
 class ONNXRuntimeTestContext:
-
     hidden_size = 2
     input_size = 2
 
     @staticmethod
     def OneDirectionWeights():
-
         num_directions = 1
         hidden_size = ONNXRuntimeTestContext.hidden_size
         input_size = ONNXRuntimeTestContext.input_size
@@ -506,7 +497,6 @@ class ONNXRuntimeTestContext:
 
     @staticmethod
     def BidirectionalWeights():
-
         hidden_size = ONNXRuntimeTestContext.hidden_size
         input_size = ONNXRuntimeTestContext.input_size
 
@@ -609,7 +599,6 @@ class ONNXRuntimeUnitTests:
 
     @staticmethod
     def ONNXRuntime_TestLSTMActivation():
-
         print(ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMActivation.__name__)
 
         input = ONNXRuntimeTestContext.DefaultInput()
@@ -628,7 +617,6 @@ class ONNXRuntimeUnitTests:
 
     @staticmethod
     def ONNXRuntime_TestLSTMBatchReallocation():
-
         print(ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMBatchReallocation.__name__)
         seq_length = 2
         batch_size = 1
@@ -686,7 +674,6 @@ class ONNXRuntimeUnitTests:
 
     @staticmethod
     def ONNXRuntime_TestLSTMOutputWrite():
-
         print(ONNXRuntimeUnitTests.ONNXRuntime_TestLSTMOutputWrite.__name__)
         seq_length = 2
         batch_size = 1

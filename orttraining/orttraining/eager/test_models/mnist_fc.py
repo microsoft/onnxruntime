@@ -31,7 +31,6 @@ batch = torch.rand((batch_size, input_size))
 device = torch_ort.device()
 
 with torch.no_grad():
-
     model = NeuralNet(input_size, hidden_size, num_classes)
     pred = model(batch)
     print("inference result is: ")

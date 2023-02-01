@@ -112,7 +112,12 @@ class FusionEmbedLayerNoMask(Fusion):
                 logger.debug("No Attention like subgraph in children of LayerNormalization")
                 return False
         else:
-            if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
+            if children_types != [
+                "Add",
+                "MatMul",
+                "MatMul",
+                "MatMul",
+            ] and children_types != [
                 "MatMul",
                 "MatMul",
                 "MatMul",

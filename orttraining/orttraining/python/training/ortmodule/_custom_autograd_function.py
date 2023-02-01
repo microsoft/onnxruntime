@@ -30,9 +30,9 @@ class Enabler(object):
 
 custom_autograd_function_enabler = Enabler()
 
+
 # Legacy API to enable the custom autograd, keep its name with default value for compatibility.
 def enable_custom_autograd_support(to_enable=True):
-
     import atexit
 
     from torch.onnx import register_custom_op_symbolic, unregister_custom_op_symbolic

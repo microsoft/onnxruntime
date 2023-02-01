@@ -69,7 +69,6 @@ class _FallbackManager(object):
     """
 
     def __init__(self, pytorch_module: torch.nn.Module, policy: _FallbackPolicy, retry: bool):
-
         self._original_module = pytorch_module
 
         # Read policy from environment variable for testing purposes
@@ -133,7 +132,6 @@ class _FallbackManager(object):
                     and type(exception) in self._policy_exception_map[policy.value]
                 )
             ):
-
                 if log_level <= _logger.LogLevel.INFO:
                     warnings.warn(f"Fallback for policy {policy.name} is pending.", UserWarning)
 

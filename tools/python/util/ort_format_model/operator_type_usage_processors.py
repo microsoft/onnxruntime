@@ -589,7 +589,6 @@ class OperatorTypeUsageManager:
             op_processor.from_config_entry(config_entry)
 
     def debug_dump(self):
-
         print("C++ code that will be emitted:")
         [print(cpp_line) for cpp_line in self.get_cpp_entries()]
 

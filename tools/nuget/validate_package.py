@@ -89,7 +89,7 @@ def check_if_dlls_are_present(
     platforms = platforms_supported.strip().split(",")
     if package_type == "tarball":
         file_list_in_package = list()
-        for (dirpath, dirnames, filenames) in os.walk(package_path):
+        for dirpath, dirnames, filenames in os.walk(package_path):
             file_list_in_package += [os.path.join(dirpath, file) for file in filenames]
     else:
         file_list_in_package = zip_file.namelist()

@@ -72,7 +72,6 @@ class FusedAdam(torch.optim.Optimizer):
         weight_decay=0.0,
         set_grad_none=True,
     ):
-
         # The FusedAdam implementation is mathematically equivalent to
         # transformers AdamW. The input arguments also have the same defaults.
 

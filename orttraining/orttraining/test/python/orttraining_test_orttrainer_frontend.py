@@ -265,7 +265,6 @@ def testDynamicLossScaler():
     # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
     loss_scale = float(1 << 16)
     for cycles in range(1, 10):
-
         # 1999 updates without overflow produces 1999 stable steps
         for i in range(1, 2000):
             new_loss_scale = default_scaler.update(train_step_info)
@@ -1606,7 +1605,6 @@ def testLossScalerLegacyAndExperimentalFullCycle():
 
     # Performing 9*2000 updates to cover all branches of LossScaler.update(train_step_info.all_finite=True)
     for cycles in range(1, 10):
-
         # 1999 updates without overflow produces 1999 stable steps
         for i in range(1, 2000):
             new_loss_scale = new_ls.update(train_step_info)

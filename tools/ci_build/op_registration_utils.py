@@ -230,7 +230,6 @@ def process_kernel_registration_file(
 
     offset = 0
     while offset < len(lines):
-
         line = lines[offset]
         stripped = line.strip()
 

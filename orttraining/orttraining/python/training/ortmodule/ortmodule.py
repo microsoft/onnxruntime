@@ -35,7 +35,6 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
-
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -283,13 +282,11 @@ class ORTModule(torch.nn.Module):
             return super(ORTModule, self).__getattr__(name)
 
     def __setattr__(self, name: str, value) -> None:
-
         if name in self.__dict__:
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
         elif "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
-
             assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
 
             # If the name is an attribute of user model, or is a new attribute, update there.

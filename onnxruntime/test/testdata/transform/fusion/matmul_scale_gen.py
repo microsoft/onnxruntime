@@ -191,7 +191,6 @@ gen_int32("matmul_scale_int32.onnx")
 
 
 def gen_scale_input(model_path):
-
     nodes = [
         helper.make_node("Mul", ["input_0", "scale"], ["scaled_input_0"], "scale input_0"),
         helper.make_node(

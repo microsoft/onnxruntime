@@ -97,7 +97,6 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Script to validate operator kernel registrations.")
 
     parser.add_argument(

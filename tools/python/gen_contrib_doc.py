@@ -313,7 +313,6 @@ def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
 
 
 def main(output_path: str, domain_filter: [str]):
-
     with io.open(output_path, "w", newline="", encoding="utf-8") as fout:
         fout.write("## Contrib Operator Schemas\n")
         fout.write(

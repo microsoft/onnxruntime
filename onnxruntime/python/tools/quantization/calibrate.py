@@ -633,7 +633,6 @@ class HistogramCollector(CalibrationDataCollector):
                 )
 
     def merge_histogram(self, old_histogram, data_arr, new_min, new_max, new_threshold):
-
         (old_hist, old_hist_edges, old_min, old_max, old_threshold) = old_histogram
 
         if new_threshold <= old_threshold:
@@ -849,7 +848,6 @@ def create_calibrator(
     use_external_data_format=False,
     extra_options={},
 ):
-
     calibrator = None
     if calibrate_method == CalibrationMethod.MinMax:
         # default settings for min-max algorithm
