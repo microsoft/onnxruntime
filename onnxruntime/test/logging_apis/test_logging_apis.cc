@@ -22,7 +22,6 @@
 #undef ORT_API_MANUAL_INIT
 
 #include "core/common/logging/logging.h"
-#include "core/framework/error_code_helper.h"
 #include "test/common/logging/helpers.h"
 
 /**
@@ -77,6 +76,12 @@ class RealCAPITestsFixture : public ::testing::Test {
   }
 };
 
+// Mock version of OrtStatus that is used when mocking C APIs.
+struct MockOrtStatus {
+  OrtErrorCode code;
+  const char* msg;
+};
+
 // Test fixture that does not initialize the global Ort API object. Used by tests
 // that mock the C API.
 class MockCAPITestsFixture : public ::testing::Test {
@@ -92,12 +97,10 @@ class MockCAPITestsFixture : public ::testing::Test {
   }
 
  public:
-  static const char* failure_msg_;
-  static OrtErrorCode failure_code_;
+  static MockOrtStatus mock_status_;  // Used by mocked C APIs that need to return a status.
 };
 
-const char* MockCAPITestsFixture::failure_msg_ = "Mock failure";
-OrtErrorCode MockCAPITestsFixture::failure_code_ = OrtErrorCode::ORT_FAIL;
+MockOrtStatus MockCAPITestsFixture::mock_status_{OrtErrorCode::ORT_FAIL, "Mock failure"};
 
 TEST_F(RealCAPITestsFixture, CCppApiLoggerGetLoggingSeverityLevel) {
   // Tests the output of the C and C++ Logger_GetLoggingSeverityLevel APIs.
@@ -287,26 +290,22 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
   // Create a mock OrtApi.
   OrtApi mock_ort_api{};
 
-  // Hardcode OrtApi::GetErrorCode to return ORT_FAIL.
-  mock_ort_api.GetErrorCode = [](const OrtStatus* /* status */) noexcept -> OrtErrorCode {
-    return MockCAPITestsFixture::failure_code_;
+  // Set OrtApi::GetErrorCode to get MockOrtStatus::code.
+  mock_ort_api.GetErrorCode = [](const OrtStatus* status) noexcept -> OrtErrorCode {
+    const auto* actual_status = reinterpret_cast<const MockOrtStatus*>(status);
+    return actual_status->code;
   };
 
-  // Hardcode OrtApi::GetErrorMessage to return "Mock failure".
-  mock_ort_api.GetErrorMessage = [](const OrtStatus* /* status */) noexcept -> const char* {
-    return MockCAPITestsFixture::failure_msg_;
+  // Set OrtApi::GetErrorCode to get MockOrtStatus::msg.
+  mock_ort_api.GetErrorMessage = [](const OrtStatus* status) noexcept -> const char* {
+    const auto* actual_status = reinterpret_cast<const MockOrtStatus*>(status);
+    return actual_status->msg;
   };
 
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26409)
-#endif
-  // OrtApi::ReleaseStatus should still free OrtStatus as done in core/framework/error_code.cc
-  mock_ort_api.ReleaseStatus = [](OrtStatus* status) noexcept {
-    delete[] reinterpret_cast<uint8_t*>(status);
+  // OrtApi::ReleaseStatus is a no-op in this mocking environment.
+  mock_ort_api.ReleaseStatus = [](OrtStatus* /* status */) noexcept -> void {
+    // Do nothing. We're always using a reinterpreted pointer to MockCAPITestsFixture::mock_status_.
   };
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(default : 26409)
-#endif
 
   // OrtApi::Logger_GetLoggingSeverityLevel needs to return the logger's severity.
   mock_ort_api.Logger_GetLoggingSeverityLevel = [](const OrtLogger* logger,
@@ -321,11 +320,7 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
   mock_ort_api.Logger_LogMessage = [](const OrtLogger* /* logger */, OrtLoggingLevel /* log_severity_level */,
                                       const char* /* message */, const ORTCHAR_T* /* file_path */,
                                       int /* line_number */, const char* /* func_name */) noexcept -> OrtStatus* {
-    const onnxruntime::common::Status status(
-      onnxruntime::common::StatusCategory::ONNXRUNTIME,
-      static_cast<onnxruntime::common::StatusCode>(MockCAPITestsFixture::failure_code_),
-      MockCAPITestsFixture::failure_msg_);
-    return onnxruntime::ToOrtStatus(status);
+    return reinterpret_cast<OrtStatus*>(&MockCAPITestsFixture::mock_status_);
   };
 
   // Set the mock OrtApi object for use in the C++ API.
@@ -345,7 +340,8 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
     ORT_CXX_LOG(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Should call mock C API, which fails");
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr(MockCAPITestsFixture::failure_msg_));
+    ASSERT_EQ(excpt.GetOrtErrorCode(), MockCAPITestsFixture::mock_status_.code);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr(MockCAPITestsFixture::mock_status_.msg));
   }
 
   // Same as above, but with ORT_CXX_LOGF.
@@ -353,7 +349,8 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
     ORT_CXX_LOGF(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Should call mock C API, which fails");
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr(MockCAPITestsFixture::failure_msg_));
+    ASSERT_EQ(excpt.GetOrtErrorCode(), MockCAPITestsFixture::mock_status_.code);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr(MockCAPITestsFixture::mock_status_.msg));
   }
 }
 

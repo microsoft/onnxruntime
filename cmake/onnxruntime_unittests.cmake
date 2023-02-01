@@ -1469,7 +1469,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY)
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
-  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_framework onnxruntime_test_utils)
+  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
   AddTest(DYN
           TARGET onnxruntime_logging_apis_test
           SOURCES ${onnxruntime_logging_apis_test_SRC}

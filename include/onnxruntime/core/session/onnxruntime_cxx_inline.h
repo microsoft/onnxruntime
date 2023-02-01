@@ -1459,7 +1459,7 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
   }
 
   OrtStatus* status = nullptr;
-  const size_t buffer_size = static_cast<size_t>(msg_len + 1);
+  const size_t buffer_size = static_cast<size_t>(msg_len) + 1U;
 
   constexpr size_t kStackBufferSize = 1024;
 
