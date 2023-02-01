@@ -275,6 +275,7 @@ ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
+ORT_RUNTIME_CLASS(DnnlProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
@@ -3886,6 +3887,75 @@ struct OrtApi {
                   _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
 
   /// @}
+
+  /** \brief Append dnnl provider to session options
+   *
+   * If oneDNN is not available, this function will return failure.
+   *
+   * \param[in] options
+   * \param[in] cann_options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Dnnl,
+                  _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
+
+   /** \brief Create an OrtDnnlProviderOptions
+   *
+   * \param[out] out Newly created ::OrtDnnlProviderOptions. Must be released with OrtApi::ReleaseDnnlProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
+
+  /** \brief Set options in a oneDNN Execution Provider.
+   *
+   * Key should be in null terminated string format of the member of ::OrtDnnlProviderOptions
+   * and value should be its related range.
+   *
+   * For example, key="use_arena" and value="1"
+   *
+   * \param[in] dnnl_options
+   * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+   * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+   * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+   * Get serialized oneDNN provider options string.
+   *
+   * For example, "use_arena=1;......"
+   *
+   * \param dnnl_options - OrtDnnlProviderOptions instance
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.14.
+   */
+  ORT_API2_STATUS(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtDnnlProviderOptions
+   *
+   * \since Version 1.14.
+   */
+  void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
+
+  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -4045,6 +4115,16 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the oneDNN provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_oneDNN above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with
+ * oneDNN support and the oneDNN provider shared library exists
+ *
+ * \param use_arena zero: false. non-zero: true.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
 
 #ifdef __cplusplus
 }

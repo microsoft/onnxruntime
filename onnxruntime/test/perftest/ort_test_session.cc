@@ -6,6 +6,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -39,9 +40,54 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options,
-                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+    // Generate provider options
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = 1;
+    dnnl_options.threadpool_args = nullptr;
+
+#if !defined(DNNL_ORT_THREAD)
+#if defined(_MSC_VER)
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif  // defined(_MSC_VER)
+    int num_threads = 0;
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW(
+            "[ERROR] [OneDNN] Use a '|' to separate the key and value for the "
+            "run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_threads;
+        if (num_threads < 0) {
+          ORT_THROW(
+              "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
+              " set number of threads or use '0' for default\n");
+          // If the user doesnt define num_threads, auto detect threads later
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [OneDNN] wrong key type entered. "
+            "Choose from the following runtime key options that are available for OneDNN. ['num_of_threads']\n");
+      }
+    }
+    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
+#endif  // !defined(DNNL_ORT_THREAD)
+    dnnl_options.use_arena = performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0;
+
+    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
@@ -515,7 +561,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
   if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
     fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
-    session_options.AddConfigEntry("session.intra_op_thread_affinities", performance_test_config.run_config.intra_op_thread_affinities.c_str());
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
+  }
+
+  if (performance_test_config.run_config.disable_spinning) {
+    fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+  }
+
+  if (performance_test_config.run_config.disable_spinning_between_run) {
+    fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
 
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {

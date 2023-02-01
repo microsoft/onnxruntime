@@ -5,15 +5,22 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/providers/shared_library/provider_api.h"
+#include "core/providers/dnnl/dnnl_execution_provider.h"
+
+#include <fstream>
+#include <iomanip>
 #include <unordered_set>
-#include "dnnl_execution_provider.h"
-#include "dnnl_fwd.h"
-#include "dnnl_node_capability.h"
+#if defined(DNNL_OPENMP)
+#include <omp.h>
+#endif  // defined(DNNL_OPENMP)
+
+#include "core/platform/ort_mutex.h"
+#include "core/providers/shared_library/provider_api.h"
+
+#include "core/providers/dnnl/dnnl_fwd.h"
+#include "core/providers/dnnl/dnnl_node_capability.h"
 #include "core/providers/dnnl/subgraph/dnnl_subgraph_transformer.h"
 
-#include <iomanip>
-#include <fstream>
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 
@@ -22,8 +29,9 @@ namespace onnxruntime {
 constexpr const char* DNNL = "Dnnl";
 constexpr const char* DNNL_CPU = "DnnlCpu";
 
-DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true} {
+DnnlExecutionProvider::DnnlExecutionProvider(const DnnlExecutionProviderInfo& info)
+    : IExecutionProvider{onnxruntime::kDnnlExecutionProvider, true},
+      info_(info) {
 
   InitProviderOrtApi();
 
@@ -31,14 +39,14 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
       {[](int) {
         return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL, OrtAllocatorType::OrtDeviceAllocator));
       }},
-      0, info.create_arena);
+      0, info.use_arena);
 
   AllocatorCreationInfo cpu_memory_info(
       {[](int) {
         return onnxruntime::CreateCPUAllocator(OrtMemoryInfo(DNNL_CPU, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), 0,
                                                              OrtMemTypeCPUOutput));
       }},
-      0, info.create_arena);
+      0, info.use_arena);
 
   InsertAllocator(CreateAllocator(default_memory_info));
   InsertAllocator(CreateAllocator(cpu_memory_info));
@@ -58,12 +66,41 @@ DNNLExecutionProvider::DNNLExecutionProvider(const DNNLExecutionProviderInfo& in
   if (!fusion_env.empty()) {
     enable_fusion_ = (std::stoi(fusion_env) == 0 ? false : true);
   }
+
+  // Set the number of threads specified by the user
+  // If provided arguments set them as the number of threads, else call
+  // calc which usually = numcores
+  auto num_threads = static_cast<int*>(info.threadpool_args);
+#if defined(DNNL_OPENMP)
+  // On Java we have limitations to the number of threads so let OpenMP decide
+#if !defined(DNNL_JAVA)
+  // If the user provided a value select between 3 cases
+  // if num_threads < 0 OpenMP decides the number of threads
+  if (num_threads != nullptr) {
+    // The user provided a valid number of threads
+    if (*num_threads > 0) {
+      omp_set_num_threads(*num_threads);
+    } else if (*num_threads == 0) {
+      // If 0 then the user selected the default num_threads = num_physical_cores
+      omp_set_num_threads(DnnlCalcNumThreads());
+    }
+    // If no value was provided and the env var is not set, we define the number of threads to prevent oversubscription
+  } else if (onnxruntime::GetEnvironmentVar("OMP_NUM_THREADS").empty()) {
+    omp_set_num_threads(DnnlCalcNumThreads());
+  }
+#else
+  ORT_UNUSED_PARAMETER(num_threads);
+#endif  // !defined(DNNL_JAVA)
+  // Log the number of threads used
+  LOGS_DEFAULT(INFO) << "Allocated " << omp_get_max_threads() << " OpenMP threads for oneDNN ep\n";
+#endif  // defined(DNNL_OPENMP)
+
 }  // namespace onnxruntime
 
-DNNLExecutionProvider::~DNNLExecutionProvider() {
+DnnlExecutionProvider::~DnnlExecutionProvider() {
 }
 
-std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
+std::vector<std::vector<NodeIndex>> DnnlExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer) const {
   std::vector<std::vector<size_t>> supported_node_vecs;
   std::vector<size_t> supported_node_vec;
 
@@ -126,7 +163,7 @@ std::vector<std::vector<NodeIndex>> DNNLExecutionProvider::GetSupportedNodes(con
   return supported_node_vecs;
 }
 
-std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapability(
+std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapability(
     const GraphViewer& graph_viewer,
     const IKernelLookup& /*kernel_lookup*/) const {
   //follow from coreml ep's Getcapability
@@ -150,7 +187,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
     num_of_supported_nodes += group.size();
 
     if (debug_log_) {
-      LOGS_DEFAULT(ERROR) << "DNNLExecutionProvider::GetCapability, current supported node group size: "
+      LOGS_DEFAULT(ERROR) << "DnnlExecutionProvider::GetCapability, current supported node group size: "
                           << group.size();
     }
 
@@ -232,7 +269,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
 
   if (debug_log_) {
     float percent_dnnl = 100.0f * (static_cast<float>(num_of_supported_nodes) / static_cast<float>(graph_viewer.NumberOfNodes()));
-    LOGS_DEFAULT(ERROR) << "DNNLExecutionProvider::GetCapability,"
+    LOGS_DEFAULT(ERROR) << "DnnlExecutionProvider::GetCapability,"
                         << " number of partitions supported by DNNL: " << result.size()
                         << " number of nodes in the graph: " << graph_viewer.NumberOfNodes()
                         << " number of nodes supported by DNNL: " << num_of_supported_nodes
@@ -253,7 +290,7 @@ std::vector<std::unique_ptr<ComputeCapability>> DNNLExecutionProvider::GetCapabi
   return result;
 }
 
-Status DNNLExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+Status DnnlExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                       std::vector<NodeComputeInfo>& node_compute_funcs) {
   //follow from coreml ep's Compile
   for (auto& fused_node_graph : fused_nodes_and_graphs) {

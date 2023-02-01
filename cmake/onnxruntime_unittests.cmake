@@ -764,7 +764,7 @@ if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
   # However, this is test code. We are less concerned.
-  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451" "/wd4244")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
@@ -1343,6 +1343,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_common
       onnxruntime_flatbuffers
     )
+
+    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+      list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_language_interop onnxruntime_pyop)
+    endif()
+
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
       ${onnxruntime_EXTERNAL_LIBRARIES}
