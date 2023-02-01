@@ -456,7 +456,6 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
         ]
 
         graph_def = onnx.helper.make_graph(nodes, "SliceOfMin", [graph_input], [graph_output], initializer=initializers)
-        onnx.save(onnx.helper.make_model(graph_def), "slice_of_min.onnx")
         model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
         output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
         self.assertEqual(len(output_dims), 1)
