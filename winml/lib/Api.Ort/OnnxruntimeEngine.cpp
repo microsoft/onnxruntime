@@ -165,7 +165,7 @@ static auto GetStrings(const OrtApi* ort_api, const OrtValue* ort_value,
   return std::make_shared<std::pair<decltype(strings), decltype(buffer)>>(std::move(strings), std::move(buffer));
 }
 
-HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
+HRESULT OnnxruntimeValue::GetResource(uint64_t size_in_bytes, _winml::Resource& out, uint64_t& offset) {
   auto ort_api = engine_->GetEngineFactory()->UseOrtApi();
 
   void* mutable_data = nullptr;
@@ -188,7 +188,7 @@ HRESULT OnnxruntimeValue::GetResource(_winml::Resource& out) {
     auto allocator = UniqueOrtAllocator(ort_allocator, ort_api->ReleaseAllocator);
 
     winrt::com_ptr<ID3D12Resource> resource;
-    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceFromAllocation(allocator.get(), mutable_data, resource.put()),
+    RETURN_HR_IF_NOT_OK_MSG(ort_dml_api->GetD3D12ResourceRegionFromAllocation(allocator.get(), mutable_data, size_in_bytes, resource.put(), &offset),
                             ort_api);
     out = _winml::Resource(resource.get(), [](void*) { /*do nothing, as this pointer is actually a com pointer! */ });
   } else {
@@ -1296,10 +1296,11 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(IInspectable* map, winml::TensorKind
   std::vector<int64_t> keys_shape;
   keys_value->GetTensorShape(keys_shape);
 
+  uint64_t offset = 0;
   _winml::Resource keys_data;
-  RETURN_IF_FAILED(keys_value->GetResource(keys_data));
+  RETURN_IF_FAILED(keys_value->GetResource(0, keys_data, offset));
   _winml::Resource values_data;
-  RETURN_IF_FAILED(values_value->GetResource(values_data));
+  RETURN_IF_FAILED(values_value->GetResource(0, values_data, offset));
 
   auto num_elements = static_cast<size_t>(ShapeSize(keys_shape.data(), keys_shape.size()));
   GetAbiMapFiller(key_kind, value_kind)(map, num_elements, keys_data.get(), values_data.get());

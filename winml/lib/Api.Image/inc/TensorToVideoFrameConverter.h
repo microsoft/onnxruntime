@@ -15,6 +15,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
   // Function takes in a tensor DX12 Resource all compute ops should be completed
   // converts it to a VideoFrame backed by either a SoftwareBitmap or D3DSurface
   void DX12TensorToVideoFrame(
+      _In_ uint64_t inputTensorOffset,
       _In_ UINT32 batch_index,
       _In_ winml::LearningModelSession& session,
       _In_ ID3D12Resource* input_tensor,
@@ -47,6 +48,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
   Microsoft::WRL::ComPtr<ID3D11Texture2D> ShareD3D12Texture(ID3D12Resource* pResource, ID3D11Device* pDevice);
 
   void ConvertGPUTensorToSoftwareBitmap(
+      _In_ uint64_t inputTensorOffset,
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_tensor,
       _In_ _winml::D3DDeviceCache& device_cache,
@@ -54,6 +56,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
       _Inout_ wgi::SoftwareBitmap& software_bitmap);
 
   void ConvertGPUTensorToDX12Texture(
+      _In_ uint64_t inputTensorOffset,
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_resource,
       _In_ _winml::D3DDeviceCache& device_cache,
@@ -61,6 +64,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
       _Inout_ ID3D12Resource* output_resource);
 
   void ConvertDX12TensorToUnsupportedVideoFrameFormat(
+      _In_ uint64_t input_tensor_offset,
       _In_ UINT32 batch_index,
       _In_ ID3D12Resource* input_tensor,
       _In_ _winml::D3DDeviceCache& device_cache,
@@ -68,6 +72,7 @@ class TensorToVideoFrameConverter : public ImageConverter {
       _Inout_ wm::VideoFrame& unsupported_video_frame);
 
   static D3D12_SHADER_RESOURCE_VIEW_DESC TensorToVideoFrameConverter::CreateSRVDescriptor(
+      uint64_t offset,
       const UINT32 batch_index,
       const D3D12_RESOURCE_DESC& resource_description,
       const ImageTensorDescription& description);

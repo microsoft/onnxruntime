@@ -19,7 +19,7 @@ IValue : IUnknown {
   (bool* out) PURE;
 
   STDMETHOD(GetResource)
-  (_winml::Resource & resource) PURE;
+  (uint64_t size_in_bytes, _winml::Resource & resource, uint64_t& offset) PURE;
 
   STDMETHOD(IsTensor)
   (bool* out) PURE;

@@ -89,7 +89,7 @@ ORT_API_STATUS_IMPL(winmla::OrtSessionOptionsAppendExecutionProviderEx_DML, _In_
   // lifetime and can be large, so shouldn't be rounded.
   // So we create the provider with rounding disabled, and expect the caller to enable it after.
   onnxruntime::DmlConfigureProviderFactoryDefaultRoundingMode(factory, AllocatorRoundingMode::Disabled);
-  
+
   onnxruntime::DmlConfigureProviderFactoryMetacommandsEnabled(factory, metacommands_enabled);
 #endif  // USE_DML
   return nullptr;

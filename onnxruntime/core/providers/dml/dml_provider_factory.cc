@@ -220,17 +220,49 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
   }
 
+  // This should never happen since external users of the ORT API should only be able to create DML_EXTERNAL memory
+  if (wrapping_allocator->Info()->device.MemType() != OrtDevice::MemType::DML_EXTERNAL) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "The resource has been allocated with ");
+  }
+
+  *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+  (*d3d_resource)->AddRef();
+
+#else
+  *d3d_resource = nullptr;
+#endif  // USE_DML
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(GetD3D12ResourceRegionFromAllocation,
+    _In_ OrtAllocator* ort_allocator,
+    _In_ void* allocation,
+    _In_ uint64_t size_in_bytes,
+    _Out_ ID3D12Resource** d3d_resource,
+    _Out_ uint64_t* offset) {
+  API_IMPL_BEGIN
+#ifdef USE_DML
+  auto wrapping_allocator = static_cast<onnxruntime::OrtAllocatorImplWrappingIAllocator*>(ort_allocator);
+  auto allocator = wrapping_allocator->GetWrappedIAllocator();
+  if (!allocator) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "No requested allocator available");
+  }
+
   if (wrapping_allocator->Info()->device.MemType() == OrtDevice::MemType::DML_EXTERNAL) {
     *d3d_resource = static_cast<Dml::AllocationInfo*>(allocation)->GetUavResource();
+    *offset = 0;
   } else {
     ORT_THROW_HR_IF(E_INVALIDARG, wrapping_allocator->Info()->device.MemType() != OrtDevice::MemType::DEFAULT);
-    *d3d_resource = Dml::GetD3D12ResourceFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation));
+    auto bufferRegion = Dml::GetD3D12ResourceRegionFromAllocation(allocator.get(), Dml::TaggedPointer::Unpack(allocation), size_in_bytes);
+    *d3d_resource = bufferRegion.ResourceInUavState();
   }
 
   (*d3d_resource)->AddRef();
 
 #else
   *d3d_resource = nullptr;
+  *offset = 0;
 #endif  // USE_DML
   return nullptr;
   API_IMPL_END
@@ -241,7 +273,8 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
   &CreateGPUAllocationFromD3DResource,
   &FreeGPUAllocation,
-  &GetD3D12ResourceFromAllocation
+  &GetD3D12ResourceFromAllocation,
+  &GetD3D12ResourceRegionFromAllocation,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {

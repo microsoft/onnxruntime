@@ -188,6 +188,7 @@ ComPtr<ID3D12Resource> VideoFrameToTensorConverter::ShareD3D11Texture(ID3D11Text
 }
 
 void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
+    _In_ uint64_t outputTensorOffset,
     _In_ const UINT32 batchIdx,
     _In_ winml::LearningModelSession& session,
     _In_ const wm::IVideoFrame& inputVideoFrame,
@@ -206,7 +207,7 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
   wgdx::Direct3D11::IDirect3DSurface spDirect3DSurface = inputVideoFrame.Direct3DSurface();
 
   if (inputVideoFrame.SoftwareBitmap()) {
-    ConvertSoftwareBitmapToGPUTensor(batchIdx, inputVideoFrame, *pDeviceCache, inputBounds, tensorDesc, pOutputTensor);
+    ConvertSoftwareBitmapToGPUTensor(batchIdx, inputVideoFrame, *pDeviceCache, inputBounds, tensorDesc, outputTensorOffset, pOutputTensor);
   } else if (spDirect3DSurface) {
     ComPtr<ID3D11Texture2D> spVideoFrameTexture;
     wgi::BitmapBounds scaledBounds = inputBounds;
@@ -278,7 +279,7 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
 
     // We cropped the texture, shared it and converted it to a known color format, so it's time to tensorize
     // TODO: merge all videoframes to a single DX12Texture Resource before call ConvertDX12TextureToGPUTensor.
-    ConvertDX12TextureToGPUTensor(batchIdx, input_D3D12_resource_.Get(), *pDeviceCache, tensorDesc, pOutputTensor);
+    ConvertDX12TextureToGPUTensor(outputTensorOffset, batchIdx, input_D3D12_resource_.Get(), *pDeviceCache, tensorDesc, pOutputTensor);
   } else {
     // Invalid video frame
     WINML_THROW_IF_FAILED(E_INVALIDARG);
@@ -286,6 +287,7 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
 }
 
 void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
+    _In_ uint64_t output_resource_offset,
     _In_ UINT32 batchIdx,
     _In_ ID3D12Resource* pInputResource,
     _In_ _winml::D3DDeviceCache& device_cache,
@@ -339,7 +341,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     UINT64 ullTensorSize = 0;
     WINML_THROW_IF_FAILED(ULongLongMult(ullNumElementsTensor, uiTensorElementSize, &ullTensorSize));
 
-    if (outputDesc.Width < ullTensorSize ||
+    if (outputDesc.Width < output_resource_offset + ullTensorSize ||
         outputDesc.Height != 1 ||
         outputDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
         !(outputDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)) {
@@ -381,7 +383,7 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     CD3DX12_CPU_DESCRIPTOR_HANDLE srvHandle(descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), SrvBufferIdx, srvUavDescriptorSize);
     spDx12Device->CreateShaderResourceView(pInputResource, &srvDesc, srvHandle);
 
-    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = CreateUAVDescription(batchIdx, outputDesc, tensorDesc);
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = CreateUAVDescription(output_resource_offset, batchIdx, tensorDesc);
     CD3DX12_CPU_DESCRIPTOR_HANDLE uavHandle(descriptor_heap_->GetCPUDescriptorHandleForHeapStart(), UavBufferIdx, srvUavDescriptorSize);
     spDx12Device->CreateUnorderedAccessView(pOutputResource, nullptr, &uavDesc, uavHandle);
   }
@@ -458,6 +460,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
     _In_ _winml::D3DDeviceCache& device_cache,
     _In_ const wgi::BitmapBounds& inputBounds,
     _In_ const ImageTensorDescription& tensorDesc,
+    _In_ uint64_t outputResourceOffset,
     _Inout_ ID3D12Resource* pOutputResource) {
   assert(pOutputResource != nullptr);
   assert(videoFrame.SoftwareBitmap() != nullptr);
@@ -495,8 +498,6 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
 
   assert(convertedSoftwareBitmap != nullptr);
 
-  D3D12_RESOURCE_DESC outputDesc = pOutputResource->GetDesc();
-
   uint32_t tensorElementSize = tensorDesc.dataType == kImageTensorDataTypeFloat32 ? 4 : 2;
   uint32_t bufferSize = static_cast<uint32_t>(tensorDesc.sizes[1] * tensorDesc.sizes[2] * tensorDesc.sizes[3] * tensorElementSize);
 
@@ -526,7 +527,7 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pOutputResource, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
   command_list_->ResourceBarrier(1, &barrier);
 
-  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), 0, bufferSize);
+  command_list_->CopyBufferRegion(pOutputResource, bufferSize * batchIdx, upload_heap_.Get(), outputResourceOffset, bufferSize);
 
   WINML_THROW_IF_FAILED(command_list_->Close());
   ID3D12CommandList* ppCommandLists[] = {command_list_.Get()};
@@ -578,8 +579,8 @@ void VideoFrameToTensorConverter::ConvertBuffersToBatchedGPUTensor(
 }
 
 D3D12_UNORDERED_ACCESS_VIEW_DESC VideoFrameToTensorConverter::CreateUAVDescription(
+    uint64_t offset,
     const UINT32 batchIdx,
-    const D3D12_RESOURCE_DESC& resourceDesc,
     const _winml::ImageTensorDescription& desc) {
   UINT uiTensorElementSize =
       desc.dataType == kImageTensorDataTypeFloat32 ? sizeof(UINT) : sizeof(uint16_t);
@@ -587,7 +588,7 @@ D3D12_UNORDERED_ACCESS_VIEW_DESC VideoFrameToTensorConverter::CreateUAVDescripti
   D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
   uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
   UINT singleImageSize = static_cast<UINT>(desc.sizes[1] * desc.sizes[2] * desc.sizes[3]);
-  uavDesc.Buffer.FirstElement = batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
+  uavDesc.Buffer.FirstElement = offset + batchIdx * desc.sizes[1] * desc.sizes[2] * desc.sizes[3];
   uavDesc.Buffer.NumElements = singleImageSize;
   uavDesc.Buffer.CounterOffsetInBytes = 0;
   uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;

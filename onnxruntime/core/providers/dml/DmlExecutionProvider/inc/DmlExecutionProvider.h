@@ -7,6 +7,7 @@ interface IMLOperatorRegistry;
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "IWinmlExecutionProvider.h"
+#include "core/providers/dml/DmlExecutionProvider/src/DmlBufferRegion.h"
 
 namespace onnxruntime
 {
@@ -30,7 +31,7 @@ namespace Dml
         ID3D12CommandQueue* commandQueue,
         bool enableMetacommands = true);
 
-    ID3D12Resource* GetD3D12ResourceFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer);
+    D3D12BufferRegion GetD3D12ResourceRegionFromAllocation(onnxruntime::IAllocator* allocator, const TaggedPointer& taggedPointer, uint64_t size_in_bytes);
     void FlushContext(onnxruntime::IExecutionProvider* provider);
     void SetDefaultRoundingMode(onnxruntime::IExecutionProvider* provider, AllocatorRoundingMode roundingMode);
     void ReleaseCompletedReferences(onnxruntime::IExecutionProvider* provider);

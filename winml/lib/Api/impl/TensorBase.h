@@ -148,7 +148,7 @@ struct TensorBase : TBase {
 
     // If there is no matching gpu resource, then fallback to a cpu resource
     if (CpuTensor() != nullptr) {
-      auto num_backing_buffers = CpuTensor()->num_buffers(); 
+      auto num_backing_buffers = CpuTensor()->num_buffers();
       if (num_backing_buffers == 1) {
         // If we have a single backing cpu buffer, there is no need to create GPU resources.
         // The engine will use the buffer provided, and perform the needed copies into the GPU context as needed.
@@ -360,11 +360,13 @@ struct TensorBase : TBase {
         resources_,
         "The tensor has been closed and its resources have been detached during evaluation!");
 
-    _winml::Resource updated_resource;
-    RETURN_IF_FAILED(value->GetResource(updated_resource));
-
     // get the shape
     RETURN_IF_FAILED_MSG(value->GetTensorShape(shape_), "Failed to get the tensor shape from resource!");
+    auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
+
+    _winml::Resource updated_resource;
+    uint64_t offset = 0;
+    RETURN_IF_FAILED(value->GetResource(buffer_size_in_bytes, updated_resource, offset));
 
     bool is_cpu;
     bool isCpuOutput = SUCCEEDED(value->IsCpu(&is_cpu)) && is_cpu;
@@ -406,8 +408,6 @@ struct TensorBase : TBase {
                              "Failed to prepare buffer for copy back from device resource.");
         RETURN_IF_FAILED(engine->CopyValueAcrossDevices(value, dest.get()));
       } else {
-        auto buffer_size_in_bytes = static_cast<size_t>(ShapeSize(shape_)) * sizeof(T);
-
         _winml::ConverterResourceDescription descriptor = {};
         descriptor.pixel_format = static_cast<DWORD>(wgdx::DirectXPixelFormat::Unknown);
         descriptor.luid = device->GetD3DDevice()->GetAdapterLuid();  // Converted image on GPU
@@ -526,7 +526,7 @@ struct TensorBase : TBase {
   }
   WINML_CATCH_ALL
 
-  
+
   // ITensor<T>::CreateFromBatchedBuffersInternal
   static typename TBase::class_type CreateFromBatchedBuffersInternal(
       std::vector<int64_t> shape,
