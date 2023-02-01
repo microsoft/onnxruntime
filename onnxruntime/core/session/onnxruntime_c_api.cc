@@ -2331,6 +2331,7 @@ ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 
   fprintf(stderr, "The given version [%u] is not supported. Training api only supports version 13 to %u.\n",
           version, ORT_API_VERSION);
+  return nullptr;
 #else
 
   ORT_UNUSED_PARAMETER(version);
