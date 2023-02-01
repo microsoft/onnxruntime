@@ -664,7 +664,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GatedRelativePositionBias_ver1_doc = R"DOC(
-  query_layer = query_layer.reshape(batch_size, seq_len, num_heads, head_size).transpose(0, 2, 1, 3)
+  query_layer = (query_layer + bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(0, 2, 1, 3)
   batch_size, num_heads, seq_len, head_size = query_layer.size()
   gate_u, gate_r = torch.sigmoid(
       self.gate_ur_linear(query_layer).view(batch_size, num_head, seq_len, 2, D/2).sum(-1, keepdim=False)

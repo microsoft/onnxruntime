@@ -3,7 +3,15 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "relative_attn_bias.h"
+#include "core/common/safeint.h"
 #include "relative_attn_bias_impl.h"
+#include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "contrib_ops/cuda/bert/add_bias_transpose.h"
+
+using namespace onnxruntime::cuda;
+using namespace ::onnxruntime::common;
+using namespace ONNX_NAMESPACE;
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -78,18 +86,17 @@ Status RelPosAttnBias<T>::ComputeInternal(OpKernelContext* context) const {
                                            device_prop.maxThreadsPerBlock);
 }
 
-
 template <typename T>
 GatedRelativePositionBias<T>::GatedRelativePositionBias(const OpKernelInfo& info) : CudaKernel(info) {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
-  num_heads_ = static_cast<int>(num_heads);
+  num_heads_ = SafeInt<int>(num_heads);
 }
 
 template <typename T>
 Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor& query_tensor = *context->Input<Tensor>(0);
-  const Tensor& query_bias_tensor = context->Input<Tensor>(1);
+  const Tensor& query_bias_tensor = *context->Input<Tensor>(1);
   const Tensor& rel_pos_tensor = *context->Input<Tensor>(2);
   const Tensor& weight_tensor = *context->Input<Tensor>(3);
   const Tensor& bias_tensor = *context->Input<Tensor>(4);
@@ -99,9 +106,9 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   ORT_ENFORCE(query_dims.size() == 3);
   ORT_ENFORCE(query_dims[2] > 0);
   ORT_ENFORCE(query_dims[2] % num_heads_ == 0);
-  int64_t batch_size = query_dims[0];
-  int64_t seq_len = query_dims[1];
-  int64_t head_size = query_dims[2] / num_heads_;
+  const auto batch_size = SafeInt<int>(query_dims[0]);
+  const auto seq_len = SafeInt<int>(query_dims[1]);
+  const auto head_size = SafeInt<int>(query_dims[2] / num_heads_);
 
   ORT_ENFORCE(query_bias_tensor.Shape().NumDimensions() == 1);
   ORT_ENFORCE(query_bias_tensor.Shape()[0] == query_dims[2]);
@@ -121,7 +128,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   ORT_ENFORCE(bias_tensor.Shape().NumDimensions() == 1);
   ORT_ENFORCE(bias_tensor.Shape()[0] == weight_dims[1]);
 
-  const int D = static_cast<int>(weight_dims[1]);
+  const auto D = SafeInt<int>(weight_dims[1]);
 
   const auto& eco_a_dims = eco_a_tensor.Shape().GetDims();
   ORT_ENFORCE(eco_a_dims.size() == 4);
@@ -136,9 +143,9 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   cublasHandle_t cublas = GetCublasHandle(context);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
-  const int64_t BNS = (int64_t)batch_size * num_heads_ * seq_len;
-  const int64_t elements_in_query = BNS * head_size;
-  const int64_t elements_after_gemm = BNS * D;
+  const auto BNS = batch_size * num_heads_ * seq_len;
+  const size_t elements_in_query = (size_t)BNS * (size_t)head_size;
+  const size_t elements_after_gemm = (size_t)BNS *(size_t)D;
   size_t workspace_size = sizeof(T) * (elements_in_query + elements_after_gemm);
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
@@ -147,11 +154,11 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   constexpr int total_maxtrix = 1;
   constexpr int num_matrix_to_transpose = 1;
   LaunchAddBiasTranspose(Stream(context), num_matrix_to_transpose, format, device_prop.maxThreadsPerBlock,
-                          batch_size, seq_len, num_heads_, head_size,
-                          reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()),
-                          reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()),
-                          reinterpret_cast<const CudaT*>(workspace.get()), nullptr,
-                          head_size, total_maxtrix);
+                         batch_size, seq_len, num_heads_, head_size,
+                         reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()),
+                         reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()),
+                         reinterpret_cast<CudaT*>(workspace.get()),
+                         false, head_size, reinterpret_cast<CudaT*>(nullptr), total_maxtrix);
 
   CudaT* gemm_output = reinterpret_cast<CudaT*>(workspace.get()) + elements_in_query;
 
@@ -161,19 +168,19 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
   // ([b*n*s, h] * [h, D]), CUDA assumes col-major
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
-      D, (int)BNS, head_size, &one,
+      D, BNS, head_size, &one,
       reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()), (int)D,
       reinterpret_cast<const CudaT*>(workspace.get()), (int)BNS,
       &zero, gemm_output, D, device_prop));
 
   return LaunchGatedRelativePositionBiasKernel<CudaT>(
-    device_prop, Stream(context),
-    reinterpret_cast<CudaT*>(output->template MutableData<T>()),
-    reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()),
-    reinterpret_cast<const CudaT*>(gemm_output),
-    reinterpret_cast<const CudaT*>(bias_tensor.template Data<T>()),
-    reinterpret_cast<const CudaT*>(eco_a.template Data<T>()),
-    batch_size, num_heads_, seq_len, D);
+      device_prop, Stream(context),
+      reinterpret_cast<CudaT*>(output->template MutableData<T>()),
+      reinterpret_cast<const CudaT*>(rel_pos_tensor.template Data<T>()),
+      reinterpret_cast<const CudaT*>(gemm_output),
+      reinterpret_cast<const CudaT*>(bias_tensor.template Data<T>()),
+      reinterpret_cast<const CudaT*>(eco_a_tensor.template Data<T>()),
+      batch_size, num_heads_, seq_len, D);
 }
 
 }  // namespace cuda
