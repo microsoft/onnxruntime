@@ -1,5 +1,4 @@
 import unittest
-from pathlib import Path
 
 import numpy as np
 import onnx
@@ -126,23 +125,23 @@ class TestONNXModel(unittest.TestCase):
 
         converter = FP16Converter()
         converter.set_model(model)
-        converter.export_model_to_path(Path(model_fp32_path))
+        converter.export_model_to_path(model_fp32_path)
         op_count = get_op_count_from_model(op, model)
         fp32_nodes = {"Cast": 0, op: op_count}
         check_op_type_count(self, model_fp32_path, **fp32_nodes)
-        converter.convert_op(op)
-        converter.export_model_to_path(Path(model_fp16_path))
+        converter.convert()
+        converter.export_model_to_path(model_fp16_path)
 
         fp16_model = converter.get_model()
         fp16_op_count = get_op_count_from_model(op, fp16_model)
         if op == "Conv":
-            fp16_nodes = {"Cast": 4, op: fp16_op_count}
+            fp16_nodes = {"Cast": 7, op: fp16_op_count}
             test_input = {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)}
         elif op == "MatMul":
             if with_init:
-                fp16_nodes = {"Cast": 2, op: fp16_op_count}
+                fp16_nodes = {"Cast": 4, op: fp16_op_count}
             else:
-                fp16_nodes = {"Cast": 3, op: fp16_op_count}
+                fp16_nodes = {"Cast": 4, op: fp16_op_count}
             test_input = {"input": np.random.rand(4, 2).astype(np.float32)}
 
         check_op_type_count(self, model_fp16_path, **fp16_nodes)
