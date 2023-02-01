@@ -149,6 +149,110 @@ template Status LaunchRelPosAttnBiasKernel<half>(cudaStream_t stream,
                                                  const bool is_bidirectional,
                                                  const int max_threads_per_block);
 
+template<typename T>
+__global__ void GatedRelativePositionBiasKernelSmallD(
+    T* output,
+    const T* rel_pos,   // (batch_size, num_heads, seq_len, seq_len)
+    const T* qw,        // (batch_size, num_heads, seq_len, D)
+    const T* bias,      // (D)
+    const T* eco_a,     // (1, num_heads, 1, 1)
+    const int D
+){
+  __shared__ T gate[1];
+
+  const int seq_len = gridDim.x;
+  const int num_heads = gridDim.y;
+  const int batch_size = gridDim.z;
+  const int s = blockIdx.x;
+  const int n = blockIdx.y;
+  const int b = blockIdx.z;
+
+  rel_pos += ((int64_t)n * seq_len + s) * seq_len;
+  output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len;
+  qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * D;
+
+  T val = T{0.0};
+  if (threadIdx.x < D ) {
+    val = qw[threadIdx.x] + bias ? T{0.0} : bias[threadIdx.x];
+  }
+
+  T u = (threadIdx.x < D / 2) ? val : T{0.0};
+  #pragma unroll
+  for (int offset = 16; offset > 0; offset /= 2) {
+    u += __shfl_down_sync(0xffffffff, u, offset);
+  }
+
+  T r = (threadIdx.x >= D / 2) ? val : T{0.0};
+  #pragma unroll
+  for (int offset = 16; offset > 0; offset /= 2) {
+    r += __shfl_down_sync(0xffffffff, r, offset);
+  }
+
+  if (threadIdx == 0) {
+    gate[0] = u * (r * eco_a[n] - T{1.0}) + T{2.0};
+  }
+  __syncthreads();
+
+  for (int idx = threadIdx.x; idx < seq_len; idx += blockDim.x) {
+    ouput[idx] = rel_pos[idx] * gate[0];
+  }
+}
+
+template <typename T>
+Status LaunchGatedRelativePositionBiasKernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    T* output,
+    const T* rel_pos,
+    const T* qw, // query * weight
+    const T* bias,
+    const T* eco_a,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int D
+) {
+  ORT_ENFORCE(D <= 32 && D > 0 && (D % 2 == 0));
+
+  int tpb = std::max(32, std::max(D, seq_len));
+  tpb = std::min(tpb, device_prop.maxThreadsPerBlock);
+  dim3 block(tpb);
+  dim3 grid(seq_len, num_heads, batch_size);
+
+  GatedRelativePositionBiasKernel<T><<<grid, block, sizeof(T), stream>>>(
+    output, rel_pos, qw, bias, eco_a, D
+  );
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchGatedRelativePositionBiasKernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    float* output,
+    const float* rel_pos,
+    const float* qw,
+    const float* bias,
+    const float* eco_a,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int D
+);
+
+template Status LaunchGatedRelativePositionBiasKernel(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    half* output,
+    const half* rel_pos,
+    const half* qw,
+    const half* bias,
+    const half* eco_a,
+    const int batch_size,
+    const int num_heads,
+    const int seq_len,
+    const int D
+);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
