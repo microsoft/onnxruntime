@@ -65,6 +65,10 @@ jobs:
   lint-python-format:
     # Separated black/isort from other Python linters because we want this job to
     # fail and not affect other linters
+    # According to https://black.readthedocs.io/en/stable/integrations/github_actions.html:
+    #     We recommend the use of the @stable tag, but per version tags also exist if you prefer that.
+    #     Note that the action’s version you select is independent of the version of Black the action will use.
+    #     The version of Black the action will use can be configured via version.
     name: Python format
     runs-on: ubuntu-latest
     steps:
@@ -72,9 +76,10 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: "3.10"
-      - uses: psf/black@22.3.0
+      - uses: psf/black@stable
         with:
           options: "--check --diff --color"
+          version: "22.12.0"
       - uses: isort/isort-action@master
 
   lint-cpp:
