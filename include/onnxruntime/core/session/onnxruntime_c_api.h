@@ -3896,7 +3896,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Dnnl,
                   _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
@@ -3907,7 +3907,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
 
@@ -3925,7 +3925,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
                   _In_reads_(num_keys) const char* const* provider_options_keys,
@@ -3944,13 +3944,13 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
   /** \brief Release an ::OrtDnnlProviderOptions
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
