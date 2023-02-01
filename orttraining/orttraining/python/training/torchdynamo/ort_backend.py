@@ -24,6 +24,7 @@ from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 from torch.fx.passes.tools_common import CALLABLE_NODE_OPS
 from torch.onnx._globals import GLOBALS as ONNX_GLOBALS
+from torch._subclasses.fake_tensor import FakeTensor
 
 import onnxruntime  # type: ignore
 from onnxruntime.capi import _pybind_state as ORTC
@@ -59,14 +60,7 @@ def _nvtx_range_pop():
         torch.cuda.nvtx.range_pop()
 
 
-def _get_ort_device_type(device_type: str, device_index: int):
-    if device_type == "cuda":
-        return ORTC.OrtDevice.cuda()  # type: ignore
-    if device_type == "cpu":
-        return ORTC.OrtDevice.cpu()  # type: ignore
-    if device_type == "ort":
-        return ORTC.get_ort_device(device_index).device_type()  # type: ignore
-    raise ValueError("Unsupported device type: " + device_type)
+
 
 
 logger = logging.getLogger(__name__)
@@ -348,24 +342,6 @@ def _infer_ep_from_device(device):
         return "CUDAExecutionProvider"
     return "CPUExecutionProvider"
 
-
-def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
-    assert all(value.device == values[0].device for value in values), "All values must be on the same device."
-
-    def _device_id_or_zero(device_id: int) -> int:
-        return device_id or 0
-
-    devices: Tuple[ORTC.OrtDevice, ...] = tuple(  # type: ignore
-        ORTC.OrtDevice(  # type: ignore
-            _get_ort_device_type(value.device.type, _device_id_or_zero(value.device.index)),
-            ORTC.OrtDevice.default_memory(),  # type: ignore
-            _device_id_or_zero(value.device.index),
-        )
-        for value in values
-    )
-    return devices
-
-
 def _run_onnx_session_with_ortvaluevector(
     sess: onnxruntime.InferenceSession,
     input_names: Tuple[str, ...],
@@ -374,24 +350,40 @@ def _run_onnx_session_with_ortvaluevector(
     output_names: Tuple[str, ...],
     outputs: Tuple[torch.Tensor, ...],
     output_devices: Tuple[ORTC.OrtDevice, ...],  # type: ignore
+    preallocate_output: bool
 ) -> Tuple[torch.Tensor, ...]:
     _nvtx_range_push("contiguous")
     inputs = tuple(a.contiguous() for a in inputs)
     _nvtx_range_pop()
 
-    _nvtx_range_push("push_back_batch")
-    ort_inputs = ORTC.OrtValueVector()  # type: ignore
-    ort_inputs.reserve(len(inputs))
-    ort_outputs = ORTC.OrtValueVector()  # type: ignore
-    dtypes = []
-    shapes = []
-    data_ptrs = []
 
-    for value in inputs:
-        dtypes.append(_NP_DTYPE[value.dtype])
-        shapes.append(value.size())
-        data_ptrs.append(value.data_ptr())
-    ort_inputs.push_back_batch(inputs, data_ptrs, dtypes, shapes, input_devices)
+    _nvtx_range_push("push_back_batch")
+    def get_ortvalues_from_torch_tensors(tensors: Tuple[torch.Tensor, ...], devices: Tuple[ORTC.OrtDevice, ...]) -> Tuple[torch.Tensor, ...]:
+        ortvalues = ORTC.OrtValueVector()  # type: ignore
+        ortvalues.reserve(len(tensors))
+        dtypes = []
+        shapes = []
+        data_ptrs = []
+
+        for tensor in tensors:
+            dtypes.append(_NP_DTYPE[tensor.dtype])
+            shapes.append(tensor.size())
+            data_ptrs.append(tensor.data_ptr())
+        ortvalues.push_back_batch(tensors, data_ptrs, dtypes, shapes, devices)
+        return ortvalues
+
+    def to_real_tensor(tensor: FakeTensor) -> torch.Tensor:
+        out = torch.empty(tensor.size(), dtype=tensor.dtype, device='ort')
+        if tensor.is_sparse:
+            out._coalesced_(tensor.is_coalesced())
+        return out
+
+    ort_inputs = get_ortvalues_from_torch_tensors(inputs, input_devices)
+    if preallocate_output:
+        pth_outputs = tuple(map(lambda t: to_real_tensor(t) if isinstance(t, FakeTensor) else t, outputs))
+        ort_outputs = get_ortvalues_from_torch_tensors(pth_outputs, output_devices)
+    else:
+        ort_outputs = ORTC.OrtValueVector()  # type: ignore
     _nvtx_range_pop()
 
     _nvtx_range_push("run_with_ortvaluevector")
@@ -400,10 +392,13 @@ def _run_onnx_session_with_ortvaluevector(
     sess.run_with_ortvaluevector(run_options, input_names, ort_inputs, output_names, ort_outputs, output_devices)
     _nvtx_range_pop()
 
-    _nvtx_range_push("after run_with_ortvaluevector")
-    pth_outputs = onnxruntime.training.ortmodule._utils._ortvalues_to_torch_tensor(ort_outputs)  # type: ignore
-    _nvtx_range_pop()
-    return pth_outputs
+    if preallocate_output:
+        return pth_outputs
+    else:
+        _nvtx_range_push("after run_with_ortvaluevector")
+        pth_outputs = onnxruntime.training.ortmodule._utils._ortvalues_to_torch_tensor(ort_outputs)  # type: ignore
+        _nvtx_range_pop()
+        return pth_outputs
 
 
 def _assert_allclose_with_detailed_error_message(
@@ -457,7 +452,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = ""):
+    def __init__(self, ep: str = "", device = None, preallocate_output = False):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -466,6 +461,36 @@ class OrtBackend:
 
         self.ep = ep
 
+        self.device = device
+
+        self.preallocate_output = preallocate_output
+
+
+    def _get_ort_device_type(self, device_type: str, device_index: int):
+        if device_type == "cuda":
+            return ORTC.OrtDevice.cuda()  # type: ignore
+        if device_type == "cpu":
+            return ORTC.OrtDevice.cpu()  # type: ignore
+        # fall back to OrtBackend configuration
+        if device_type == "ort" and self.device:
+            return self.device
+        raise ValueError("Unsupported device type: " + device_type)
+
+    def _get_onnx_devices(self, values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
+        assert all(value.device == values[0].device for value in values), "All values must be on the same device."
+
+        def _device_id_or_zero(device_id: int) -> int:
+            return device_id or 0
+
+        devices: Tuple[ORTC.OrtDevice, ...] = tuple(  # type: ignore
+            ORTC.OrtDevice(  # type: ignore
+                self._get_ort_device_type(value.device.type, _device_id_or_zero(value.device.index)),
+                ORTC.OrtDevice.default_memory(),  # type: ignore
+                _device_id_or_zero(value.device.index),
+            )
+            for value in values
+        )
+        return devices
     def _ort_acclerated_call(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
         if graph_module in self._ort_execution_info.sessions:
             # We have seen this graph before, so we can use cached objects including session.
@@ -514,14 +539,14 @@ class OrtBackend:
             # input and output names from the underlying model.
             input_names = tuple(input.name for input in onnx_model.graph.input)
             output_names = tuple(output.name for output in onnx_model.graph.output)
-            input_devices = _get_onnx_devices(args)
+            input_devices = self._get_onnx_devices(args)
             # Cache devices for inputs and outputs. They are used to invoke
             # ORT session. Output devices indicate where (e.g., GPU or CPU)
             # to store outputs
             if isinstance(prim_outputs, tuple):
-                output_devices = _get_onnx_devices(prim_outputs)
+                output_devices = self._get_onnx_devices(prim_outputs)
             else:
-                output_devices = _get_onnx_devices((prim_outputs,))
+                output_devices = self._get_onnx_devices((prim_outputs,))
             self._ort_execution_info.input_names[graph_module] = input_names
             self._ort_execution_info.output_names[graph_module] = output_names
             self._ort_execution_info.input_devices[graph_module] = input_devices
@@ -533,7 +558,7 @@ class OrtBackend:
             # ORT output is ok.
             _nvtx_range_push("run_onnx_session_with_ortvaluevector")
             onnx_outputs = _run_onnx_session_with_ortvaluevector(
-                onnx_session, input_names, args, input_devices, output_names, prim_outputs, output_devices
+                onnx_session, input_names, args, input_devices, output_names, prim_outputs, output_devices, self.preallocate_output
             )
             _nvtx_range_pop()
             if self._ort_execution_info.assert_allclose_to_baseline:
@@ -549,7 +574,7 @@ class OrtBackend:
             # ORT output's first element must be extracted and returned. Otherwise, type
             # mismatch may happen in downstream computation.
             onnx_outputs = _run_onnx_session_with_ortvaluevector(
-                onnx_session, input_names, args, input_devices, output_names, (prim_outputs,), output_devices
+                onnx_session, input_names, args, input_devices, output_names, (prim_outputs,), output_devices, self.preallocate_output
             )
             assert len(onnx_outputs) == 1
             if self._ort_execution_info.assert_allclose_to_baseline:
