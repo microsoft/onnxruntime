@@ -2325,15 +2325,17 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
-  if (OrtApis::IsTrainingApiAvailable()) {
-    return OrtTrainingApis::GetTrainingApi(version);
-  }
+#ifdef ENABLE_TRAINING_APIS
+  return OrtTrainingApis::GetTrainingApi(version);
+#else
 
+  ORT_UNUSED_PARAMETER(version);
   fprintf(stderr,
           "Training APIs are not supported with this build. Please build onnxruntime "
           "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
+#endif
 }
 
 ORT_API(bool, OrtApis::IsTrainingApiAvailable) {
