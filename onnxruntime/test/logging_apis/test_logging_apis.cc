@@ -237,7 +237,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {
 
   // Two variadic lvalue args
   line_num = __LINE__ + 1;
-  ORT_CXX_LOGF(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello %s %d", log_id, line_num);
+  ORT_CXX_LOGF(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello %s %d", log_id.c_str(), line_num);
 
   // No variadic args
   line_num = __LINE__ + 1;

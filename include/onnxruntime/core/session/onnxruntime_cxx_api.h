@@ -1583,6 +1583,13 @@ struct KernelContext {
     }                                                                                                     \
   } while (false)
 
+// Macro that marks a printf-like parameter as being a formatted string.
+#ifndef _WIN32
+#define ORT_PRINTF_FORMAT_ATTR(format_index) __attribute__((__format__(__printf__, format_index, 0)))
+#else
+#define ORT_PRINTF_FORMAT_ATTR(format_index)
+#endif
+
 /// <summary>
 /// This class represents an ONNX Runtime logger that can be used to log information with an
 /// associated severity level and source code location (file path, line number, function name).
@@ -1658,7 +1665,7 @@ struct Logger {
    */
   template <typename... Args>
   Status LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
-                             const char* func_name, const char* format, Args&&... args) const noexcept;
+                             const char* func_name, const char* format, Args&&... args) ORT_PRINTF_FORMAT_ATTR(6) const noexcept;
 
  private:
   const OrtLogger* logger_{};

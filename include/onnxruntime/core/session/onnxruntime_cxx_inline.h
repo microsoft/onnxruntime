@@ -1450,8 +1450,9 @@ inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCH
 }
 
 template <typename... Args>
-inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
-                                          const char* func_name, const char* format, Args&&... args) const noexcept {
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
+                                          int line_number, const char* func_name, const char* format,
+                                          Args&&... args) ORT_PRINTF_FORMAT_ATTR(6) const noexcept {
   int msg_len = snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
 
   if (msg_len < 0) {  // Formatting error
