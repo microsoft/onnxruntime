@@ -3,6 +3,9 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
+#include "test/common/cuda_op_test_utils.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -24,42 +27,67 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
                     const vector<vector<int64_t>>& input_shapes,
                     const std::initializer_list<float>& expected_output,
                     const vector<int64_t>& expected_output_shape,
-                    bool weight_is_initializer = false,
-                    OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
-                    const std::string& err_str = "") {
-  OpTester test("NhwcConv", 1, onnxruntime::kMSDomain);
-  test.AddAttribute("group", attributes.group);
-  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+                    bool use_float16,
+                    bool weight_is_initializer = false) {
+  int min_cuda_architecture = use_float16 ? 530 : 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  if (enable_cuda) {
+    OpTester test("NhwcConv", 1, onnxruntime::kMSDomain);
+    test.AddAttribute("group", attributes.group);
+    test.AddAttribute("kernel_shape", attributes.kernel_shape);
 
-  if (!attributes.dilations.empty()) {
-    test.AddAttribute("dilations", attributes.dilations);
+    if (!attributes.dilations.empty()) {
+      test.AddAttribute("dilations", attributes.dilations);
+    }
+
+    // Only one of pads / auto_pad can be present
+    if (!attributes.pads.empty()) {
+      test.AddAttribute("pads", attributes.pads);
+    } else {
+      test.AddAttribute("auto_pad", attributes.auto_pad);
+    }
+
+    if (!attributes.strides.empty()) {
+      test.AddAttribute("strides", attributes.strides);
+    }
+
+    ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
+    const char* szNames[] = {"X", "W", "B"};
+
+    if (use_float16) {
+      test.AddInput<MLFloat16>(szNames[0], input_shapes[0], ToFloat16(inputs[0]));
+      test.AddInput<MLFloat16>(szNames[1], input_shapes[1], ToFloat16(inputs[1]), weight_is_initializer);
+      if (inputs.size() == 3) {
+        test.AddInput<MLFloat16>(szNames[2], input_shapes[2], ToFloat16(inputs[2]));
+      }
+      test.AddOutput<MLFloat16>("Y", expected_output_shape, ToFloat16(expected_output));
+    } else {
+      test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
+      test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+      if (inputs.size() == 3) {
+        test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
+      }
+      test.AddOutput<float>("Y", expected_output_shape, expected_output);
+    }
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+}
 
-  // Only one of pads / auto_pad can be present
-  if (!attributes.pads.empty()) {
-    test.AddAttribute("pads", attributes.pads);
-  } else {
-    test.AddAttribute("auto_pad", attributes.auto_pad);
-  }
+void RunNhwcConv(const NhwcConvOpAndTestAttributes& attributes,
+                 const vector<vector<float>>& inputs,
+                 const vector<vector<int64_t>>& input_shapes,
+                 const std::initializer_list<float>& expected_output,
+                 const vector<int64_t>& expected_output_shape) {
+  bool use_float16 = true;
+  bool weight_is_initializer = true;
+  TestNhwcConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, use_float16, weight_is_initializer);
 
-  if (!attributes.strides.empty()) {
-    test.AddAttribute("strides", attributes.strides);
-  }
-
-  ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
-  const char* szNames[] = {"X", "W", "B"};
-  test.AddInput<float>(szNames[0], input_shapes[0], inputs[0]);
-  test.AddInput<float>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
-  if (inputs.size() == 3)
-    test.AddInput<float>(szNames[2], input_shapes[2], inputs[2]);
-
-  test.AddOutput<float>("Y", expected_output_shape, expected_output);
-
-  std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
-  // Disable TensorRT because weight as input is not supported
-  excluded_providers.insert(kTensorrtExecutionProvider);
-
-  test.Run(expect_result, err_str, excluded_providers);
+  use_float16 = false;
+  weight_is_initializer = false;
+  TestNhwcConvOp(attributes, inputs, input_shapes, expected_output, expected_output_shape, use_float16, weight_is_initializer);
 }
 
 }  // namespace
@@ -107,10 +135,7 @@ TEST(NhwcConvTest, Conv2D_2) {
       0.15021422505378723f, -0.0028631272725760937f, -0.19993697106838226f, -0.03527900204062462f,
       0.06516310572624207f, -0.015176207758486271f, 0.14682966470718384f, -0.02665453404188156f,
       -0.18779225647449493f};
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-
-  // NNAPI/CoreML EP requires weight to be an initializer
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+  RunNhwcConv(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(NhwcConvTest, Conv2D_Bias_1) {
@@ -133,10 +158,7 @@ TEST(NhwcConvTest, Conv2D_Bias_1) {
   vector<int64_t> B_shape = {2};
   auto expected_vals = {13.0f, 11.0f, 17.0f, 15.0f, 25.0f, 23.0f, 29.0f, 27.0f};
 
-  TestNhwcConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
-
-  // NNAPI/CoreML EP requires weight to be an initializer
-  TestNhwcConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+  RunNhwcConv(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
 }
 
 TEST(NhwcConvTest, Conv2D_AutoPad1) {
@@ -163,10 +185,7 @@ TEST(NhwcConvTest, Conv2D_AutoPad1) {
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         27.0f, 36.0f, 36.0f, 36.0f, 21.0f,
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-
-  // NNAPI/CoreML EP requires weight to be an initializer
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+  RunNhwcConv(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 TEST(NhwcConvTest, Conv2D_AutoPad2) {
@@ -197,10 +216,7 @@ TEST(NhwcConvTest, Conv2D_AutoPad2) {
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         12.0f, 24.0f, 12.0f, 24.0f, 12.0f,
                         5.0f, 10.0f, 5.0f, 10.0f, 5.0f};
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-
-  // NNAPI/CoreML EP requires weight to be an initializer
-  TestNhwcConvOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+  RunNhwcConv(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
 }
 
 }  // namespace test
