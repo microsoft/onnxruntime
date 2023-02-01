@@ -1,3 +1,2 @@
-# ignore all files except for the /scripts directory
+# ignore all files
 *
-!/scripts/*

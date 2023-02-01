@@ -35,17 +35,18 @@ def get_sdk_tool_paths(sdk_root: str):
                 path = os.path.realpath(path)
                 _log.debug("Found {} at {}".format(basename, path))
                 return path
-        raise FileNotFoundError("Failed to resolve path for {}".format(basename))
+        _log.warning("Failed to resolve path for {}".format(basename))
+        return None
 
     return SdkToolPaths(
         emulator=resolve_path([os.path.join(sdk_root, "emulator")], filename("emulator", "exe")),
         adb=resolve_path([os.path.join(sdk_root, "platform-tools")], filename("adb", "exe")),
         sdkmanager=resolve_path(
-            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
+            [os.path.join(sdk_root, "tools", "bin"), os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
             filename("sdkmanager", "bat"),
         ),
         avdmanager=resolve_path(
-            [os.path.join(sdk_root, "cmdline-tools", "latest", "bin")],
+            [os.path.join(sdk_root, "tools", "bin"), os.path.join(sdk_root, "cmdline-tools", "tools", "bin")],
             filename("avdmanager", "bat"),
         ),
     )

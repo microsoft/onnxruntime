@@ -2091,11 +2091,6 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 
   SessionOptions so;
-#ifdef ENABLE_TRAINING
-  // Disable weight prepacking
-  // Without this assert for alloc_stats.num_arena_extensions will fail.
-  so.config_options.configurations["session.disable_prepacking"] = "1";
-#endif
   InferenceSession session_object{so, GetEnvironment()};
   OrtCUDAProviderOptions provider_options{};
   provider_options.default_memory_arena_cfg = &arena_cfg;

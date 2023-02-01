@@ -3,7 +3,6 @@
 
 #include "core/providers/shared_library/provider_api.h"
 #include "shared_inc/rocm_call.h"
-#include <core/platform/env.h>
 
 #ifdef _WIN32
 #else  // POSIX
@@ -26,13 +25,13 @@ const char* RocmErrString(ERRTYPE) {
 
 template <>
 const char* RocmErrString<hipError_t>(hipError_t x) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
   return hipGetErrorString(x);
 }
 
 template <>
 const char* RocmErrString<rocblas_status>(rocblas_status e) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
 
   switch (e) {
     CASE_ENUM_TO_STR(rocblas_status_success);
@@ -55,19 +54,19 @@ const char* RocmErrString<rocblas_status>(rocblas_status e) {
 
 template <>
 const char* RocmErrString<hiprandStatus_t>(hiprandStatus_t) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
   return "(see hiprand.h & look for hiprandStatus_t or HIPRAND_STATUS_xxx)";
 }
 
 template <>
 const char* RocmErrString<miopenStatus_t>(miopenStatus_t e) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
   return miopenGetErrorString(e);
 }
 
 template <>
 const char* RocmErrString<hipfftResult>(hipfftResult e) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
   switch (e) {
     CASE_ENUM_TO_STR(HIPFFT_SUCCESS);
     CASE_ENUM_TO_STR(HIPFFT_ALLOC_FAILED);
@@ -83,30 +82,34 @@ const char* RocmErrString<hipfftResult>(hipfftResult e) {
 #ifdef ORT_USE_NCCL
 template <>
 const char* RocmErrString<ncclResult_t>(ncclResult_t e) {
-  ORT_IGNORE_RETURN_VALUE(hipDeviceSynchronize());  // void to silence nodiscard
+  (void)hipDeviceSynchronize(); // void to silence nodiscard
   return ncclGetErrorString(e);
 }
 #endif
 
 template <typename ERRTYPE, bool THRW>
 std::conditional_t<THRW, void, Status> RocmCall(
-    ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
+  ERRTYPE retCode, const char* exprString, const char* libName, ERRTYPE successCode, const char* msg) {
   if (retCode != successCode) {
     try {
 #ifdef _WIN32
-      std::string hostname_str = GetEnvironmentVar("COMPUTERNAME");
-      if (hostname_str.empty()) {
-        hostname_str = "?";
-      }
-      const char* hostname = hostname_str.c_str();
+      auto del = [](char* p) { free(p); };
+      std::unique_ptr<char, decltype(del)> hostname_ptr(nullptr, del);
+      size_t hostname_len = 0;
+      char* hostname = nullptr;
+      //TODO: avoid using const_cast
+      if (-1 == _dupenv_s(&hostname, &hostname_len, "COMPUTERNAME"))
+        hostname = const_cast<char*>("?");
+      else
+        hostname_ptr.reset(hostname);
 #else
       char hostname[HOST_NAME_MAX];
       if (gethostname(hostname, HOST_NAME_MAX) != 0)
         strcpy(hostname, "?");
 #endif
       int currentHipDevice;
-      ORT_IGNORE_RETURN_VALUE(hipGetDevice(&currentHipDevice));  // void to silence nodiscard
-      ORT_IGNORE_RETURN_VALUE(hipGetLastError());                // clear last ROCM error; void to silence nodiscard
+      (void)hipGetDevice(&currentHipDevice); // void to silence nodiscard
+      (void)hipGetLastError();  // clear last ROCM error; void to silence nodiscard
       static char str[1024];
       snprintf(str, 1024, "%s failure %d: %s ; GPU=%d ; hostname=%s ; expr=%s; %s",
                libName, (int)retCode, RocmErrString(retCode), currentHipDevice,

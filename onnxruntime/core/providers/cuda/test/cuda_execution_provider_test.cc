@@ -15,8 +15,7 @@
 namespace onnxruntime {
 namespace cuda {
 namespace test {
-// TODO: Since the "DeferredRelease" has been migrated to CudaStream class,
-// we should migrate this test from CudaEP unit test to CudaStream unit test.
+
 bool TestDeferredRelease() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
@@ -28,9 +27,7 @@ bool TestDeferredRelease() {
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  // let the CudaStream instance "own" the default stream, so we can avoid the
-  // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, false, nullptr, nullptr);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
@@ -75,9 +72,7 @@ bool TestDeferredReleaseWithoutArena() {
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  // let the CudaStream instance "own" the default stream, so we can avoid the
-  // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
+  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, false, nullptr, nullptr);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;

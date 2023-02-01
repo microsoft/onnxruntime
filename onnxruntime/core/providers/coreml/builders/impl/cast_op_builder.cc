@@ -17,8 +17,8 @@ class CastOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 #endif
   // Operator support related
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,

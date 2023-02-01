@@ -50,9 +50,12 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
                                           const Tensor* past_tensor,
                                           void* parameters) const {
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
+  auto& weights_shape = weights->Shape();
+  ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), &weights_shape, bias->Shape(),
                                                  mask_index, past_tensor,
                                                  nullptr,  // extra_add_qk
+                                                 nullptr,  // key
+                                                 nullptr,  // value
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
@@ -129,7 +132,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
 
   cublasHandle_t cublas = GetCublasHandle(context);
-  constexpr size_t element_size = sizeof(T);
+  const size_t element_size = sizeof(T);
 
   // Use GEMM for fully connection.
   int m = batch_size * sequence_length;
@@ -174,7 +177,6 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(1, present_shape);
 
   void* fused_runner = nullptr;  // TODO(tianleiwu): use fused kernel to speed up
-  bool use_memory_efficient_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    batch_size,
                                                    parameters.num_heads,
@@ -183,14 +185,13 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
                                                    sequence_length,
                                                    parameters.kv_sequence_length,
                                                    parameters.total_sequence_length,
-                                                   fused_runner,
-                                                   use_memory_efficient_attention);
+                                                   fused_runner);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
-  data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
+  data.gemm_buffer = reinterpret_cast<const CudaT*>(gemm_buffer.get());
   data.bias = nullptr;  // bias has been added
   data.query = nullptr;
   data.key = nullptr;
@@ -202,11 +203,14 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
-  data.fused_runner = fused_runner;
-  data.fused_cross_attention_kernel = nullptr;
-  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
-  return QkvToContext<CudaT>(GetDeviceProp(), cublas, Stream(context), parameters, data);
+  return QkvToContext<CudaT>(
+      GetDeviceProp(),
+      cublas,
+      Stream(context),
+      parameters,
+      data,
+      fused_runner);
 }
 
 }  // namespace cuda

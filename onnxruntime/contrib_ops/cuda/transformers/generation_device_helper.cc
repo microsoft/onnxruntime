@@ -16,7 +16,6 @@
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
-#include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
 #include "core/providers/cuda/nvtx_profile.h"
 #include "core/providers/cuda/nvtx_profile_context.h"
 #include "sampling_cuda_helper.h"
@@ -370,8 +369,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
       parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
-      vocab_size,
-      vocab_size,
+      parameters->vocab_size,
+      parameters->vocab_size,
       (parameters->min_length > 0 && current_sequence_length < parameters->min_length) ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
@@ -509,7 +508,7 @@ template <typename T>
 Status GreedySearchProcessLogits(
     const OrtValue& logits,                                 // logits output of subgraph
     transformers::IGreedySearchState<T>* greedy_state,      // state
-    transformers::ISamplingState<T>* sampling_state,        // buffers
+    transformers::ISamplingState<T>* sampling_state,    // buffers
     transformers::ISequences* sequences,                    // sequences
     AllocatorPtr& allocator,                                // default allocator
     onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -526,7 +525,6 @@ Status GreedySearchProcessLogits(
 #endif
 
   ORT_UNUSED_PARAMETER(logits_processors);
-  ORT_UNUSED_PARAMETER(thread_pool);
 #ifndef DEBUG_GENERATION
   ORT_UNUSED_PARAMETER(dumper);
 #endif
@@ -558,10 +556,7 @@ Status GreedySearchProcessLogits(
   // In greedy search, next_token_scores is next_token_logits.
   gsl::span<T>& next_token_scores = greedy_state->next_token_scores;
 
-  // TODO(hasesh/wy): Support re-using logits buffer for the sampling case.
-  // Currently, we cannot re-use the logits because the sampling logic expects
-  // `next_token_scores` to be populated.
-  auto is_reuse_logits_buffer = !do_sampling && (input_length == 1);
+  auto is_reuse_logits_buffer = (input_length == 1);
 
   // Copy over the logits data into the staging buffer, only if
   // we do not plan to re-use the logits buffer directly
@@ -586,7 +581,7 @@ Status GreedySearchProcessLogits(
 #ifdef DEBUG_GENERATION
   dumper->Print("logits", logits);
   if (is_reuse_logits_buffer) {
-    // TODO: Handle padded logits in the logits buffer before printing its contents
+    //TODO: Handle padded logits in the logits buffer before printing its contents
     ORT_THROW("Dumping contents of logits buffer is not implemented yet");
   } else {
     dumper->Print("next_token_scores", next_token_scores.data(), batch_size, vocab_size);
@@ -610,7 +605,7 @@ Status GreedySearchProcessLogits(
   gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
   if (step == 1 && parameters->presence_mask.data() != nullptr) {
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(presence_mask.data(), parameters->presence_mask.data(),
-                                         sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
+                         sizeof(int) * batch_size * vocab_size, cudaMemcpyDeviceToDevice, cuda_stream));
   }
 
   // TODO(hasesh): Can we avoid the const_cast by changing the interface of
@@ -627,11 +622,10 @@ Status GreedySearchProcessLogits(
       parameters->temperature,
       parameters->batch_size,
       parameters->num_beams,
-      vocab_size,
-      is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
+      parameters->vocab_size,
+      is_reuse_logits_buffer ? padded_vocab_size : parameters->vocab_size,
       (parameters->min_length > 0 && current_sequence_length < parameters->sequence_length + parameters->min_length)
-          ? parameters->eos_token_id
-          : -1,
+      ? parameters->eos_token_id : -1,
       reinterpret_cast<int32_t*>(sequences_buffer.get()),
       parameters->max_length,
       current_sequence_length,
@@ -641,7 +635,7 @@ Status GreedySearchProcessLogits(
 
 #ifdef DEBUG_GENERATION
   if (is_reuse_logits_buffer) {
-    // TODO: Handle padded logits in the logits buffer before printing its contents
+    //TODO: Handle padded logits in the logits buffer before printing its contents
     ORT_THROW("Dumping contents of logits buffer is not implemented yet");
   } else {
     dumper->Print("next_token_scores after logits process", next_token_scores.data(), batch_size, vocab_size);
@@ -664,26 +658,43 @@ Status GreedySearchProcessLogits(
     return Status::OK();
   }
 
-  const CudaT* top_one_input = is_reuse_logits_buffer ? logits_data
-                                                      : reinterpret_cast<const CudaT*>(next_token_scores.data());
-  cuda::GreedySearchTopOne(
-      top_one_input,
-      batch_size,
-      is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
-      reinterpret_cast<CudaT*>(greedy_state->temp_topk_scores_buffer.data()),
-      greedy_state->temp_topk_tokens_buffer.data(),
-      reinterpret_cast<CudaT*>(greedy_state->topk_scores_buffer.data()),
-      greedy_state->topk_tokens_buffer.data(),
-      cuda_stream);
+  // next_tokens = torch.argmax(scores, dim=-1)
+  int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size),
+                                      is_reuse_logits_buffer ? padded_vocab_size : vocab_size};
+  TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
+  auto element_type = DataTypeImpl::GetType<T>();
+  OrtValue next_token_scores_value;
+
+  // TODO(hasesh): Same TODO as above about avoiding the const_cast here
+  Tensor::InitOrtValue(element_type,
+                       next_token_scores_shape,
+                       is_reuse_logits_buffer
+                           ? const_cast<void*>(reinterpret_cast<const void*>(logits_data))
+                           : reinterpret_cast<void*>(next_token_scores.data()),
+                       allocator->Info(),
+                       next_token_scores_value);
+  const Tensor& input = next_token_scores_value.Get<Tensor>();
+
+  constexpr int axis = 1;
+  constexpr unsigned top_k = static_cast<unsigned>(1);
+  constexpr bool largest = true;
+  constexpr bool sorted = false;
+
+  auto topk_scores = Tensor::CreateDefault();
+  auto topk_indices = Tensor::CreateDefault();
+  ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, stream, thread_pool,
+                           *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+    dumper->Print("topk_scores", *(topk_scores.get()));
+    dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
-                                       greedy_state->topk_tokens_buffer.data(),
-                                       greedy_state->next_tokens.size_bytes(),
+  const int64_t* next_token_indices = topk_indices->Data<int64_t>();
+
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+                                       next_token_indices,
+                                       greedy_state->next_tokens_cpu.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
   CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));

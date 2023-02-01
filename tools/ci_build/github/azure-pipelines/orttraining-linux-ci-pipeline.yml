@@ -8,7 +8,7 @@ resources:
 
 jobs:
 - job: Linux_Build
-  timeoutInMinutes: 150
+  timeoutInMinutes: 120
   variables:
     skipComponentGovernanceDetection: true
   workspace:

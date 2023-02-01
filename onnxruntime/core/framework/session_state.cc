@@ -21,7 +21,7 @@
 using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
-#ifdef ORT_ENABLE_STREAM
+#ifdef ENABLE_STREAM
 static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
   return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
@@ -63,29 +63,31 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
 
 SessionState::SessionState(Graph& graph,
                            const ExecutionProviders& execution_providers,
+                           bool enable_mem_pattern,
                            concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
-                           const SessionOptions& sess_options,
+                           bool use_deterministic_compute,
+                           bool enable_mem_reuse,
                            PrepackedWeightsContainer* prepacked_weights_container)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
       profiler_(profiler),
+      enable_mem_pattern_(enable_mem_pattern),
       thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
-      sess_options_(sess_options),
-      prepacked_weights_container_(prepacked_weights_container)
-#ifdef ORT_ENABLE_STREAM
-      ,
-      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>())
+      use_deterministic_compute_(use_deterministic_compute),
+      enable_mem_reuse_(enable_mem_reuse),
+#ifdef ENABLE_STREAM
+      prepacked_weights_container_(prepacked_weights_container),
+      stream_handles_registry_(std::make_unique<StreamCommandHandleRegistryImpl>()) {
+#else
+      prepacked_weights_container_(prepacked_weights_container) {
 #endif
-{
-  enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
-                        sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   SetupAllocators();
 }
 
@@ -831,7 +833,7 @@ Status SessionState::UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> ten
 
 bool SessionState::GetEnableMemoryPattern() const { return enable_mem_pattern_; }
 
-bool SessionState::GetEnableMemoryReuse() const { return sess_options_.enable_mem_reuse; }
+bool SessionState::GetEnableMemoryReuse() const { return enable_mem_reuse_; }
 
 common::Status SessionState::AddInputNameToNodeInfoMapping(const std::string& input_name, const NodeInfo& node_info) {
   // Graph partitioning should ensure an input is only consumed from one device. Copy nodes should have been inserted
@@ -1015,9 +1017,9 @@ Status SessionState::CreateSubgraphSessionState() {
       ORT_ENFORCE(subgraph, "Main Graph instance should have populated all subgraphs when being resolved.");
 
       auto subgraph_session_state =
-          std::make_unique<SessionState>(*subgraph, execution_providers_,
+          std::make_unique<SessionState>(*subgraph, execution_providers_, enable_mem_pattern_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_);
+                                         logger_, profiler_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1144,6 +1146,7 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
+                                          const SessionOptions& session_options,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1156,7 +1159,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
 
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
-  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
+  return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, session_options,
                                   remove_initializers, constant_initializers_use_count);
 }
 
@@ -1336,12 +1339,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // TODO: we avoid instantiate it in subgraph session state
 
   // register stream handles from EP instances
-#ifdef ORT_ENABLE_STREAM
+#ifdef ENABLE_STREAM
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
     ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
   }
-#endif
+#endif 
 
   SubgraphsKernelCreateInfoMaps subgraphs_kernel_create_info_maps;
   AccumulateAllNestedSubgraphsInfo(*this, "", 0, subgraphs_kernel_create_info_maps);
@@ -1349,32 +1352,18 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
-
-#ifdef _WIN32
-
-  PathString partition_config_file =
-      ToWideString(session_options.config_options.GetConfigOrDefault(
-          kNodePartitionConfigFile, ""));
-
-#else
-
-  PathString partition_config_file =
-      session_options.config_options.GetConfigOrDefault(
-          kNodePartitionConfigFile, "");
-
-#endif
-
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
-                                              execution_providers_, kernel_create_info_map_,
-                                              subgraphs_kernel_create_info_maps,
-                                              outer_scope_node_arg_to_location_map,
-                                              ort_value_name_idx_map_, context,
-#ifdef ORT_ENABLE_STREAM
-                                              GetStreamHandleRegistryInstance(),
+                                                    execution_providers_, kernel_create_info_map_,
+                                                    subgraphs_kernel_create_info_maps,
+                                                    outer_scope_node_arg_to_location_map,
+                                                    ort_value_name_idx_map_, context,
+#ifdef ENABLE_STREAM
+                                                    GetStreamHandleRegistryInstance(),
 #endif
-                                              partition_config_file,
-                                              Logger(),
-                                              p_seq_exec_plan_);
+                                                    session_options.config_options.GetConfigOrDefault(
+                                                        kNodePartitionConfigFile, ""),
+                                                    Logger(),
+                                                    p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
 // Record the allocation plan
@@ -1387,13 +1376,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SetMemoryProfiler(mem_profiler.release());
 #endif
 
-  // Note: For Training Prepacking should be always disabled.
-  // For inference it is enabled by default, but users can choose to disable it via session options.
-  const bool disable_prepacking =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
-  // Further more, in training scenarios NCCL kernels require initializers to be allocated
+  // Further more, NCCL kernels require initializers to be allocated
   // contiguously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
@@ -1401,16 +1386,17 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // sharing a single buffer makes it hard to release individual ones, leading
   // to memory waste.
   //
-  // TODO!! disabling memory pattern tracer increases fragmentation, leading to
+  // TODO!! disabling memory pattern tracer increases fragementation, leading to
   //  out of memory error in some training tests. Need to create kernel first,
-  //  and let the kernel tells us whether the initializer needs to be traced.
+  //  and let the kernel tells us whether the initalizer needs to be traced.
   //
-  std::unique_ptr<ITensorAllocator> tensor_allocator = nullptr;
-  if (disable_prepacking) {
-    tensor_allocator = ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_);
-  } else {
-    tensor_allocator = ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_);
-  }
+#if defined(ENABLE_TRAINING)
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
+      ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
+#else
+  std::unique_ptr<ITensorAllocator> tensor_allocator(
+      ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_));
+#endif
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
@@ -1425,23 +1411,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
         GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::Initializer, "", 0);
   };
 
-#endif
-
-#ifdef ORT_ENABLE_STREAM
-  // set the has_device_stream_enabled_ep_ flag
-  has_device_stream_enabled_ep_ = false;
-  if (p_seq_exec_plan_.has_value()) {
-    auto& execution_plan = (*p_seq_exec_plan_).execution_plan;
-    for (size_t i = 0; i < execution_plan.size(); ++i) {
-      auto& logic_stream = execution_plan[i];
-      if (logic_stream->steps_.size() > 0) {
-        auto create_stream_fn = GetStreamHandleRegistryInstance().GetCreateStreamFn(logic_stream->device_.Type());
-        if (create_stream_fn) {
-          has_device_stream_enabled_ep_ = true;
-        }
-      }
-    }
-  }
 #endif
 
   ORT_RETURN_IF_ERROR(
@@ -1473,10 +1442,15 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-  if (!disable_prepacking) {
+#ifndef ENABLE_TRAINING
+  const auto disable_prepacking =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
+
+  if (disable_prepacking != "1") {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
+#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));
@@ -1534,7 +1508,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   return Status::OK();
 }
 
-#ifdef ORT_ENABLE_STREAM
+#ifdef ENABLE_STREAM
 static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
                                DeviceStreamCollection& device_stream_map,
                                IStreamCommandHandleRegistry& stream_handle_registry) {
@@ -1555,31 +1529,21 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 }
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
-  if (has_device_stream_enabled_ep_) {
-    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-    if (!device_stream_pool_.empty()) {
-      auto device_stream = std::move(device_stream_pool_.back());
-      device_stream_pool_.pop_back();
-      return device_stream;
-    } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
-      BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
-      return device_stream;
-    }
+  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+  if (!device_stream_pool_.empty()) {
+    auto device_stream = std::move(device_stream_pool_.back());
+    device_stream_pool_.pop_back();
+    return device_stream;
   } else {
-    // no reusing of device stream is needed, just return nullptr, the caller will handle it
-    return nullptr;
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *this);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
   }
 }
 
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
-  // if no need to reuse the device stream, don't perform the recycle
-  if (has_device_stream_enabled_ep_) {
-    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
-    device_stream_pool_.push_back(std::move(device_stream_collection));
-  } else {
-    device_stream_collection.reset(nullptr);
-  }
+  std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+  device_stream_pool_.push_back(std::move(device_stream_collection));
 }
 #endif
 

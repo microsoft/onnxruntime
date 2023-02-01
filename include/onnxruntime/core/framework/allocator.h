@@ -52,7 +52,7 @@ namespace synchronize {
 class Notification;
 }
 using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
-void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
+void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
@@ -94,7 +94,7 @@ class IAllocator {
    * \param out Total size required after any alignment is applied
    * \return true, successful. false, overflow
    */
-  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept;
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   /**
    * https://cwe.mitre.org/data/definitions/190.html
@@ -107,7 +107,7 @@ class IAllocator {
    *          implemented in the .cc file so that the SafeInt dependency is internal.
    */
   template <size_t alignment>
-  [[nodiscard]] static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept;
+  static bool CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t* out) noexcept ORT_MUST_USE_RESULT;
 
   /**
    * allocate memory for an array which has nmemb items of data, each size bytes long
@@ -162,7 +162,7 @@ class IAllocator {
     }
 
     // allocate
-    T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    T* p = static_cast<T*>(AllocateBufferWithOptions(allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
     return IAllocatorUniquePtr<T>{
         p,
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};

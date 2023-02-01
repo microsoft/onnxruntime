@@ -147,9 +147,6 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
-if (onnxruntime_USE_AZURE)
-  set(PROVIDERS_AZURE onnxruntime_providers_azure)
-endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -471,9 +468,7 @@ if (onnxruntime_USE_CUDA)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
   if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
-    if (onnxruntime_ENABLE_TRAINING)
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
-    endif()
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_add_include_to_target(onnxruntime_providers_cuda Python::Module)
     endif()
@@ -484,12 +479,6 @@ if (onnxruntime_USE_CUDA)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()
-
-  if (onnxruntime_USE_FLASH_ATTENTION)
-    include(cutlass)
-    target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
-  endif()
-
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
@@ -1137,7 +1126,6 @@ if (onnxruntime_USE_DML)
 
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_common)
-  target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_framework)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
@@ -1444,20 +1432,8 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
-  if (onnxruntime_USE_COMPOSABLE_KERNEL)
-    include(composable_kernel)
-    target_link_libraries(onnxruntime_providers_rocm PRIVATE
-      onnxruntime_composable_kernel_includes
-      # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
-      # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
-      # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
-      device_gemm_instance
-      device_gemm_add_fastgelu_instance
-      device_gemm_fastgelu_instance
-      device_batched_gemm_instance
-    )
-    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
-  endif()
+  include(composable_kernel)
+  target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
@@ -1608,27 +1584,6 @@ if (onnxruntime_USE_CANN)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
-endif()
-
-if (onnxruntime_USE_AZURE)
-
-  file(GLOB_RECURSE onnxruntime_providers_azure_src CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.cc"
-  )
-  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_azure_src})
-  onnxruntime_add_static_library(onnxruntime_providers_azure ${onnxruntime_providers_azure_src})
-  add_dependencies(onnxruntime_providers_azure ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  onnxruntime_add_include_to_target(onnxruntime_providers_azure onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11)
-  target_link_libraries(onnxruntime_providers_azure PRIVATE onnx onnxruntime_common onnxruntime_framework)
-  set_target_properties(onnxruntime_providers_azure PROPERTIES FOLDER "ONNXRuntime")
-  set_target_properties(onnxruntime_providers_azure PROPERTIES LINKER_LANGUAGE CXX)
-
-  install(TARGETS onnxruntime_providers_azure
-          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
-          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
-          FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

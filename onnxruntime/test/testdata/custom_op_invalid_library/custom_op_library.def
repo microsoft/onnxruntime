@@ -1,4 +1,0 @@
-LIBRARY "custom_op_invalid_library.dll"
-EXPORTS
- RegisterCustomOps @1
-

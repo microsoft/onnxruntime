@@ -15,7 +15,6 @@ jobs:
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
           --build_dir $(Build.BinariesDirectory)/iOS \
-          --build_shared \
           --use_coreml \
           --use_xnnpack \
           --ios \

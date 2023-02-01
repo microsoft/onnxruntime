@@ -17,10 +17,6 @@ parameters:
 - name: prepend_path
   type: string
 
-- name: device
-  type: string
-  default: '-d CPU'
-
 jobs:
 - job: Linux_py_Wheels_${{ parameters.arch }}
   timeoutInMinutes: 240
@@ -51,7 +47,7 @@ jobs:
       inputs:
         targetType: filePath
         filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }} -x "${{ parameters.device }}"
+        arguments: -i onnxruntimecpubuilpython${{ parameters.arch }}
 
     - task: PublishBuildArtifacts@1
       displayName: 'Publish Artifact: ONNXRuntime python wheel'

@@ -1347,8 +1347,7 @@ TEST(LSTMTest, ONNXRuntime_TestLSTMZeroSeqInMiddle) {
                   &sequence_length, use_bias, use_peepholes, 0.0f, false, false);
 }
 
-#ifndef ENABLE_TRAINING
-// Prepacking is disabled in full training build so no need to test the feature in a training build.
+#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
 TEST(LSTMTest, SharedPrepackedWeights) {
   int64_t seq_length = 2;
   int batch_size = 2;

@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 #pragma once
 
 #include "core/optimizer/compute_optimizer/passthrough_actors.h"

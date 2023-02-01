@@ -22,7 +22,6 @@ def numpy_type(torch_type):
         torch.float32: numpy.float32,
         torch.float16: numpy.float16,
         torch.int32: numpy.int32,
-        torch.int64: numpy.int64,
     }
     return type_map[torch_type]
 

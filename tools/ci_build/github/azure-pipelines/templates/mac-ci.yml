@@ -17,11 +17,6 @@ parameters:
   displayName: Build for all CPU ARCHs
   type: boolean
 
-- name: WithCache
-  displayName: Build with Cache
-  type: boolean
-  default: false
-
 jobs:
 - job: MacOS_C_API_Packaging_CPU_x64
   workspace:
@@ -30,7 +25,6 @@ jobs:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool:
     vmImage: 'macOS-11'
   timeoutInMinutes:  300
@@ -54,16 +48,14 @@ jobs:
         brew install ccache
         echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
       displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-      condition: eq(${{ parameters.WITHCACHE }}, true)
 
     - task: Cache@2
       inputs:
-        key:  ' "$(TODAY)" | ccache | protocol | "$(Build.SourceVersion)" '
+        key: 'ccache | "$(Agent.OS)" | protocol | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
-          "$(TODAY)" | ccache | protocol
+          ccache | "$(Agent.OS)" | protocol
       displayName: ccache protocol
-      condition: eq(${{ parameters.WITHCACHE }}, true)
 
     - script: |
         set -e -x
@@ -81,16 +73,14 @@ jobs:
         ccache -s
         ccache -z
       displayName: Show Cache stats and Clear protolbuf stats.
-      condition: eq(${{ parameters.WITHCACHE }}, true)
 
     - task: Cache@2
       inputs:
-        key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
+        key: 'ccache | "$(Agent.OS)" | onnxruntime | "$(Build.SourceVersion)" '
         path: $(CCACHE_DIR)
         restoreKeys: |
-          "$(TODAY)" | ccache | onnxruntime
+          ccache | "$(Agent.OS)" | onnxruntime
       displayName: ccache MacOS Build
-      condition: eq(${{ parameters.WITHCACHE }}, true)
 
     - ${{ if eq(parameters.BuildForAllArchs, true) }}:
       - template: mac-packaging.yml
@@ -119,7 +109,6 @@ jobs:
         ccache -s
         ccache -z
       displayName: Show Cache stats
-      condition: eq(${{ parameters.WITHCACHE }}, true)
 
     - task: PublishPipelineArtifact@1
       inputs:

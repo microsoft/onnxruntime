@@ -27,12 +27,11 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner,
-    bool use_memory_efficient_attention = false);
+    void* fused_runner);
 
 template <typename T>
 struct AttentionData {
-  T* gemm_buffer;
+  const T* gemm_buffer;
   const T* bias;
 
   const T* query;
@@ -46,20 +45,17 @@ struct AttentionData {
   T* workspace;
   T* output;
   T* present;
-
-  void* fused_runner;
-  const void* fused_cross_attention_kernel;
-
-  bool use_memory_efficient_attention;
 };
 
 template <typename T>
 Status QkvToContext(
-    const cudaDeviceProp& device_prop,
+    const cudaDeviceProp& prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
-    AttentionData<T>& data);
+    AttentionData<T>& data,
+    void* fused_runner,
+    int past_present_share_buffer = 0);
 
 Status LaunchDecoderAttentionKernel(
     const cudaDeviceProp& prop,       // Device Properties
@@ -75,7 +71,6 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not
     const bool has_key_padding_mask,  // Whether use key_padding_mask or not
-    const float mask_filter_value,    // Mask filter value
     const void* gemm_query_buffer,    // Query buffer
     const void* gemm_kv_buffer,       // Key and value buffer
     const bool* key_padding_mask,     // Key padding mask

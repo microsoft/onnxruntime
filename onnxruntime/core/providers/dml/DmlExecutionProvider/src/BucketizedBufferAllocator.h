@@ -5,12 +5,10 @@
 
 #include "core/framework/allocator.h"
 #include "ExecutionContext.h"
-#include "DmlResourceWrapper.h"
 
 namespace Dml
 {
-    class DmlSubAllocator;
-
+    
     class CPUAllocator : public onnxruntime::IAllocator
     {
     public:
@@ -30,42 +28,42 @@ namespace Dml
             BucketizedBufferAllocator* owner,
             size_t id,
             uint64_t pooledResourceId,
-            DmlResourceWrapper* resourceWrapper,
+            ID3D12Resource* resource,
             size_t requestedSize)
             : m_owner(owner)
             , m_allocationId(id)
             , m_pooledResourceId(pooledResourceId)
-            , m_resourceWrapper(resourceWrapper)
+            , m_resource(resource)
             , m_requestedSize(requestedSize)
         {}
 
         ~AllocationInfo();
 
         BucketizedBufferAllocator* GetOwner() const
-        {
+        { 
             return m_owner;
         }
 
         ID3D12Resource* GetResource() const
-        {
-            return m_resourceWrapper->GetD3D12Resource();
+        { 
+            return m_resource.Get();
         }
 
-        ComPtr<DmlResourceWrapper> DetachResourceWrapper() const
-        {
-            return std::move(m_resourceWrapper);
+        ComPtr<ID3D12Resource> DetachResource() const
+        { 
+            return std::move(m_resource);
         }
 
         size_t GetRequestedSize() const
-        {
+        { 
             return m_requestedSize;
         }
 
         size_t GetId() const
         {
             return m_allocationId;
-        }
-
+        } 
+        
         uint64_t GetPooledResourceId() const
         {
             return m_pooledResourceId;
@@ -75,7 +73,7 @@ namespace Dml
         BucketizedBufferAllocator* m_owner;
         size_t m_allocationId; // For debugging purposes
         uint64_t m_pooledResourceId = 0;
-        ComPtr<DmlResourceWrapper> m_resourceWrapper;
+        ComPtr<ID3D12Resource> m_resource;
 
         // The size requested during Alloc(), which may be smaller than the physical resource size
         size_t m_requestedSize;
@@ -93,13 +91,12 @@ namespace Dml
         // Constructs a BucketizedBufferAllocator which allocates D3D12 committed resources with the specified heap properties,
         // resource flags, and initial resource state.
         BucketizedBufferAllocator(
-            ID3D12Device* device,
+            ID3D12Device* device,            
             std::shared_ptr<ExecutionContext> context,
             const D3D12_HEAP_PROPERTIES& heapProps,
             D3D12_HEAP_FLAGS heapFlags,
             D3D12_RESOURCE_FLAGS resourceFlags,
-            D3D12_RESOURCE_STATES initialState,
-            std::unique_ptr<DmlSubAllocator>&& subAllocator);
+            D3D12_RESOURCE_STATES initialState);
 
         // Returns the information associated with an opaque allocation handle returned by IAllocator::Alloc.
         const AllocationInfo* DecodeDataHandle(const void* opaqueHandle);
@@ -119,7 +116,7 @@ namespace Dml
         // as large as the previous bucket.
         struct Resource
         {
-            ComPtr<DmlResourceWrapper> resource;
+            ComPtr<ID3D12Resource> resource;
             uint64_t resourceId;
         };
 
@@ -151,7 +148,6 @@ namespace Dml
         uint64_t m_currentResourceId = 0;
         AllocatorRoundingMode m_defaultRoundingMode = AllocatorRoundingMode::Enabled;
         std::shared_ptr<ExecutionContext> m_context;
-        std::unique_ptr<DmlSubAllocator> m_subAllocator;
 
     #if _DEBUG
         // Useful for debugging; keeps track of all allocations that haven't been freed yet

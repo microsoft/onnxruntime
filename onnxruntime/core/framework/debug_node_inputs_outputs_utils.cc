@@ -478,26 +478,23 @@ void DumpNodeInputs(
 
       if (type) {
         if (type->IsTensorType()) {
-          if (const auto* tensor = context.Input<Tensor>(i); tensor != nullptr) {
-            const auto& shape = tensor->Shape();
+          const auto& tensor = *context.Input<Tensor>(i);
+          const auto& shape = tensor.Shape();
 
-            const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
-            PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
+          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
-              tensor_metadata.name = input_defs[i]->Name();
-              tensor_metadata.step = dump_context.iteration;
-              tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
-            }
-          } else {
-            std::cout << " is empty optional tensor.\n";
+          if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+            tensor_metadata.name = input_defs[i]->Name();
+            tensor_metadata.step = dump_context.iteration;
+            tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
+            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // this could happen with an empty Optional input
+        // should never happen...
         std::cout << " was missing data type\n";
       }
     } else {
@@ -549,26 +546,23 @@ void DumpNodeOutputs(
       const auto* type = context.OutputType(i);
       if (type) {
         if (type->IsTensorType()) {
-          if (const auto* tensor = context.Output<Tensor>(i); tensor != nullptr) {
-            const auto& shape = tensor->Shape();
+          const auto& tensor = *context.Output<Tensor>(i);
+          const auto& shape = tensor.Shape();
 
-            const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
-            PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
+          const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
+          PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
-              tensor_metadata.name = output_defs[i]->Name();
-              tensor_metadata.step = dump_context.iteration;
-              tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
-            }
-          } else {
-            std::cout << " is empty optional tensor.\n";
+          if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
+            tensor_metadata.name = output_defs[i]->Name();
+            tensor_metadata.step = dump_context.iteration;
+            tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
+            DumpTensor(dump_options, tensor, tensor_metadata, session_state);
           }
         } else {
           std::cout << " is non-tensor type.\n";
         }
       } else {
-        // should never happen in a successful run
+        // should never happen...
         std::cout << "missing data type\n";
       }
     } else {

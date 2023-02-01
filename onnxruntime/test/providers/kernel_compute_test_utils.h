@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_STRIDED_TENSORS
+#ifdef ENABLE_TRAINING
 
 #pragma once
 

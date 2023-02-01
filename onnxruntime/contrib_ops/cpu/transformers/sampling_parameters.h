@@ -12,8 +12,6 @@ namespace transformers {
 
 struct SamplingParameters : public GreedySearchParameters {
   void ParseFromAttributes(const OpKernelInfo& info);
-
-  void ParseFromInputs(OpKernelContext* context);
 };
 
 }  // namespace transformers

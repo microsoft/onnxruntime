@@ -130,13 +130,13 @@ class OpKernelContext {
    Return an allocator on device 0, with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  [[nodiscard]] virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const;
+  virtual Status GetTempSpaceAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
    Return the allocator associated with the CPU EP with memtype of OrtMemTypeDefault.
    @remarks Use SafeInt when calculating the size of memory to allocate using AllocatorPtr->Alloc.
    */
-  [[nodiscard]] Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const;
+  Status GetTempSpaceCPUAllocator(AllocatorPtr* output) const ORT_MUST_USE_RESULT;
 
   /**
   Return the device id that current kernel runs on.

@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# pylint: disable=W0622
 
 """Test export of PyTorch operators using ONNX Runtime contrib ops."""
 
 import copy
+import distutils.version
 import io
 import unittest
 
@@ -18,9 +18,7 @@ from onnxruntime.tools import pytorch_export_contrib_ops
 
 
 def _torch_version_lower_than(version: str):
-    from packaging.version import Version as LooseVersion  # pylint: disable=C0415
-
-    return LooseVersion(torch.__version__) < LooseVersion(version)
+    return distutils.version.LooseVersion(torch.__version__) < distutils.version.LooseVersion(version)
 
 
 def ort_test_with_input(ort_sess, input, output, rtol, atol):

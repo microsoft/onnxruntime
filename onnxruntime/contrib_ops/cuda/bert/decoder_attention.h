@@ -19,7 +19,6 @@ class DecoderAttention final : public CudaKernel {
 
  private:
   int num_heads_;
-  float mask_filter_value_;
 };
 
 }  // namespace cuda

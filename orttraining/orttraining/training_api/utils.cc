@@ -8,7 +8,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/tensorprotoutils.h"
 
-#include "orttraining/training_api/utils.h"
+#include "orttraining/training_api/include/utils.h"
 
 namespace onnxruntime {
 namespace training {

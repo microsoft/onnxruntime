@@ -33,40 +33,6 @@ gsl::span<T> AllocateBuffer(AllocatorPtr allocator,
   return span;
 }
 
-template <typename ElementType>
-inline void AllocateTempBufferForGetGreedySearchTopOne(
-    int32_t batch_size,
-    AllocatorPtr allocator,
-    BufferUniquePtr& buffer,
-    gsl::span<ElementType>& stage_1_scores,  // shape (batch_size, parts_of_vocab)
-    gsl::span<int32_t>& stage_1_tokens,      // shape (batch_size, parts_of_vocab)
-    gsl::span<ElementType>& output_scores,   // shape (batch_size)
-    gsl::span<int32_t>& output_tokens        // shape (batch_size)
-) {
-  constexpr size_t kMaxPartsPerVocab = 128;
-  const size_t stage_1_element_size = kMaxPartsPerVocab * batch_size;
-  const size_t output_element_size = batch_size;
-
-  // Note: use float to allocate buffer for temporary value buffer to avoid unalignment
-  void* topk_data = allocator->Alloc((stage_1_element_size + output_element_size) * (sizeof(float) + sizeof(int32_t)));
-  BufferUniquePtr temp_buffer(topk_data, BufferDeleter(allocator));
-  buffer = std::move(temp_buffer);
-
-  ElementType* stage_1_scores_data = reinterpret_cast<ElementType*>(topk_data);
-  stage_1_scores = gsl::make_span<ElementType>(stage_1_scores_data, stage_1_element_size);
-
-  int32_t* stage_1_token_data = reinterpret_cast<int32_t*>(
-      reinterpret_cast<float*>(stage_1_scores_data) + stage_1_element_size);
-  stage_1_tokens = gsl::make_span<int32_t>(stage_1_token_data, stage_1_element_size);
-
-  ElementType* output_score_data = reinterpret_cast<ElementType*>(stage_1_token_data + stage_1_element_size);
-  output_scores = gsl::make_span<ElementType>(output_score_data, output_element_size);
-
-  int32_t* output_token_data = reinterpret_cast<int32_t*>(
-      reinterpret_cast<float*>(output_score_data) + output_element_size);
-  output_tokens = gsl::make_span<int32_t>(output_token_data, output_element_size);
-}
-
 class GenerateBase {
  public:
   GenerateBase(OpKernelContextInternal& context,
@@ -101,19 +67,19 @@ class GenerateBase {
 
   Status CheckScalarInput(const std::string& name, int index, bool required) const {
     auto* scalar_tensor = context_.Input<Tensor>(index);
-    if (scalar_tensor) {
-      if (!scalar_tensor->Shape().IsScalar()) {
+      if (scalar_tensor) {
+        if (!scalar_tensor->Shape().IsScalar()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME,
+                                 FAIL,
+                                 "Node input ", name, " should be a scalar. Got shape of ",
+                                 scalar_tensor->Shape());
+        }
+      } else if (required) {
         return ORT_MAKE_STATUS(ONNXRUNTIME,
                                FAIL,
-                               "Node input ", name, " should be a scalar. Got shape of ",
-                               scalar_tensor->Shape());
+                               "Node input ", name, " is required");
       }
-    } else if (required) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME,
-                             FAIL,
-                             "Node input ", name, " is required");
-    }
-    return Status::OK();
+      return Status::OK();
   }
 
   template <typename ParametersT>
@@ -208,6 +174,7 @@ class GenerateBase {
 
     return Status::OK();
   }
+
 
  protected:
   bool IsCuda() const { return ort_stream_ != nullptr; }

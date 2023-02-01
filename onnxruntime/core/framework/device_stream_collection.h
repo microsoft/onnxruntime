@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifdef ORT_ENABLE_STREAM
 #pragma once
 #include "core/framework/stream_handles.h"
 #include "gsl/gsl"
@@ -47,4 +46,3 @@ class DeviceStreamCollection {
   std::unique_ptr<DeviceStreamCollectionImpl> impl_;
 };
 }  // namespace onnxruntime
-#endif

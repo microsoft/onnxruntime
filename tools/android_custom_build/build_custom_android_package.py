@@ -4,20 +4,12 @@
 
 import argparse
 import pathlib
-import shlex
 import shutil
 import subprocess
-import sys
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
 DEFAULT_OPS_CONFIG_RELATIVE_PATH = "tools/ci_build/github/android/mobile_package.required_operators.config"
 DEFAULT_BUILD_SETTINGS_RELATIVE_PATH = "tools/ci_build/github/android/default_mobile_aar_build_settings.json"
-
-
-def run(cmd_arg_list, **kwargs):
-    print(f"Running command:\n  {shlex.join(cmd_arg_list)}")
-    kwargs.update({"check": True})
-    return subprocess.run(cmd_arg_list, **kwargs)
 
 
 def parse_args():
@@ -76,13 +68,6 @@ def parse_args():
     )
 
     parser.add_argument(
-        "--docker_container_name",
-        help="The name of the Docker container that is run (given to the --name option of `docker run`). "
-        "If unspecified, the container will be automatically removed. "
-        "Keeping the container may be useful for debugging.",
-    )
-
-    parser.add_argument(
         "--docker_path",
         default=shutil.which("docker"),
         help="The path to docker. If unspecified, docker should be in PATH.",
@@ -99,13 +84,13 @@ def parse_args():
 def main():
     args = parse_args()
 
-    docker_build_image_args = []
+    docker_build_args = []
     if args.onnxruntime_branch_or_tag:
-        docker_build_image_args += ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"]
+        docker_build_args += ["--build-arg", f"ONNXRUNTIME_BRANCH_OR_TAG={args.onnxruntime_branch_or_tag}"]
     if args.onnxruntime_repo_url:
-        docker_build_image_args += ["--build-arg", f"ONNXRUNTIME_REPO={args.onnxruntime_repo_url}"]
+        docker_build_args += ["--build-arg", f"ONNXRUNTIME_REPO={args.onnxruntime_repo_url}"]
 
-    docker_build_image_cmd = (
+    docker_build_cmd = (
         [
             args.docker_path,
             "build",
@@ -114,11 +99,11 @@ def main():
             "--file",
             str(SCRIPT_DIR / "Dockerfile"),
         ]
-        + docker_build_image_args
+        + docker_build_args
         + [str(SCRIPT_DIR)]
     )
 
-    run(docker_build_image_cmd)
+    subprocess.run(docker_build_cmd, check=True)
 
     working_dir = args.working_dir
     working_dir.mkdir(parents=True, exist_ok=True)
@@ -147,29 +132,23 @@ def main():
         else f"/workspace/onnxruntime/{DEFAULT_BUILD_SETTINGS_RELATIVE_PATH}"
     )
 
-    # enable use of Ctrl-C to stop when running interactively
-    docker_run_interactive_args = ["-it"] if sys.stdin.isatty() else []
+    docker_run_cmd = [
+        args.docker_path,
+        "run",
+        "--rm",
+        "-it",
+        f"--volume={str(working_dir)}:/workspace/shared",
+        args.docker_image_tag,
+        "/usr/bin/env",
+        "python3",
+        "/workspace/onnxruntime/tools/ci_build/github/android/build_aar_package.py",
+        "--build_dir=/workspace/shared/output",
+        f"--config={args.config}",
+        f"--include_ops_by_config={container_ops_config_file}",
+        container_build_settings_file,
+    ]
 
-    docker_container_build_cmd = (
-        [
-            args.docker_path,
-            "run",
-        ]
-        + docker_run_interactive_args
-        + [
-            f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
-            f"--volume={working_dir}:/workspace/shared",
-            args.docker_image_tag,
-            "/bin/bash",
-            "/workspace/scripts/build.sh",
-            args.config,
-            container_ops_config_file,
-            container_build_settings_file,
-            "/workspace/shared/output",
-        ]
-    )
-
-    run(docker_container_build_cmd)
+    subprocess.run(docker_run_cmd, check=True)
 
     print("Finished building Android package at '{}'.".format(output_dir / "aar_out"))
 

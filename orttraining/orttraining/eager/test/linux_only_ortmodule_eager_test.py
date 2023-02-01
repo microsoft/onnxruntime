@@ -39,7 +39,6 @@ class NoOpNet(torch.nn.Module):
 
 
 class OrtModuleEagerTest(unittest.TestCase):
-    @unittest.skip("Test fails with newest pytorch version.")
     def test_half_type(self):
         model = NoOpNet()
         device = torch.device("ort")
@@ -49,7 +48,6 @@ class OrtModuleEagerTest(unittest.TestCase):
         y = model(input.to(device))
         assert y.dtype == torch.float16
 
-    @unittest.skip("Test fails with newest pytorch version.")
     def test_ortmodule_inference(self):
         input_size = 784
         hidden_size = 500
@@ -65,7 +63,6 @@ class OrtModuleEagerTest(unittest.TestCase):
             y = model(data.to(device))
         print("Done")
 
-    @unittest.skip("Test fails with newest pytorch version.")
     def test_ort_module_and_eager_mode(self):
         input_size = 784
         hidden_size = 500

@@ -337,16 +337,12 @@ def _create_onnx_model(onnx_proto):
     return onnx.ModelProto.FromString(onnx_proto)
 
 
-def _create_onnx_session(onnx_proto, ep: str):
+def _create_onnx_session(onnx_proto, device):
     # TODO(wechi): Add more EPs per PyTorch device types.
     # TODO(wechi): enable external allocators.
-    return onnxruntime.InferenceSession(onnx_proto, providers=[ep])
-
-
-def _infer_ep_from_device(device):
     if device.type == "cuda":
-        return "CUDAExecutionProvider"
-    return "CPUExecutionProvider"
+        return onnxruntime.InferenceSession(onnx_proto, providers=["CUDAExecutionProvider"])
+    return onnxruntime.InferenceSession(onnx_proto, providers=["CPUExecutionProvider"])
 
 
 def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
@@ -457,14 +453,12 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = ""):
+    def __init__(self):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
         # TODO: this is a naive implementation of cache without proper guard, this will only work for identical inputs
         self._ort_execution_info = OrtExecutionInfo()
-
-        self.ep = ep
 
     def _ort_acclerated_call(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
         if graph_module in self._ort_execution_info.sessions:
@@ -499,13 +493,10 @@ class OrtBackend:
                 _decorate_script_module(script_module, args, (prim_outputs,))
             # Generate ONNX ModelProto from torch._C.Graph.
             onnx_proto = _create_onnx_proto(script_module)
-
             # Initialize a ORT session to execute this ONNX model.
             # TorchDynamo assumes all inputs/outputs are on the same device,
             # so we add execution provider only based on the first input's device.
-            ep = self.ep if self.ep else _infer_ep_from_device(args[0].device)
-
-            onnx_session = _create_onnx_session(onnx_proto, ep)
+            onnx_session = _create_onnx_session(onnx_proto, args[0].device)
             # Cache ORT session. It's reused for the same "graph_module".
             self._ort_execution_info.sessions[graph_module] = onnx_session
             # Generate ONNX model and extract its input and output names.

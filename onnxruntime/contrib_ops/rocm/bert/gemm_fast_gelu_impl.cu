@@ -1,95 +1,79 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define _GEMM_FASTGELU_H_KEEP_SIGNATURE_DEFINES
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_impl.h"
 
-#include <type_traits>
-#include <utility>
+#include <hip/hip_fp16.h>
 
-#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable.cuh"
-#include "core/providers/rocm/shared_inc/fpgeneric.h"
+#include "contrib_ops/rocm/bert/gemm_fast_gelu_tunable_op.h"
+#include "core/providers/rocm/tunable/gemm_common.h"
+
+using onnxruntime::rocm::tunable::blas::BlasOp;
 
 namespace onnxruntime {
 namespace contrib {
 namespace rocm {
-namespace blas {
 
-namespace row_major {
-
-template <typename T, typename ScalarT>
-inline GEMMFASTGELU(T, ScalarT) {
+// See it as row-major
+template <typename T>
+Status LaunchGemmFastGeluKernel(bool tuning,
+                                hipStream_t stream,
+                                rocblas_handle handle,
+                                bool transa,
+                                bool transb,
+                                int64_t m,
+                                int64_t n,
+                                int64_t k,
+                                const T alpha,
+                                const T* a,
+                                int64_t lda,
+                                const T* b,
+                                int64_t ldb,
+                                const T* bias,
+                                const T beta,
+                                T* c,
+                                int64_t ldc) {
   GemmFastGeluParams<T> params;
+  params.tuning = tuning;
   params.stream = stream;
   params.handle = handle;
+  params.opa = transa ? BlasOp::Trans : BlasOp::NonTrans;
+  params.opb = transb ? BlasOp::Trans : BlasOp::NonTrans;
 
-  params.opa = opa;
-  params.opb = opb;
   params.m = m;
   params.n = n;
   params.k = k;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.alpha = ToHipType<T>::FromFloat(std::forward<T>(alpha));
-  } else {
-    params.alpha = alpha;
-  }
+  params.alpha = alpha;
   params.a = a;
   params.lda = lda;
   params.b = b;
   params.ldb = ldb;
   params.bias = bias;
-  if constexpr (!std::is_same_v<T, ScalarT> && std::is_same_v<ScalarT, float>) {
-    params.beta = ToHipType<T>::FromFloat(std::forward<T>(beta));
-  } else {
-    params.beta = beta;
-  }
+  params.beta = beta;
   params.c = c;
   params.ldc = ldc;
 
-  if (tunable) {
-    params.tuning = true;
-    if (opa == BlasOp::N && opb == BlasOp::N) {
-      static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Row> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
-      return gemm_fast_gelu(&params);
-    } else if (opa == BlasOp::T && opb == BlasOp::N) {
-      static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Row> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
-      return gemm_fast_gelu(&params);
-    } else if (opa == BlasOp::N && opb == BlasOp::T) {
-      static internal::GemmFastGeluTunableOp<T, internal::Row, internal::Col> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
-      return gemm_fast_gelu(&params);
-    } else /*if (opa == BlasOp::T && opb == BlasOp::T)*/ {
-      static internal::GemmFastGeluTunableOp<T, internal::Col, internal::Col> gemm_fast_gelu{};
-      gemm_fast_gelu.EnableTuning();
-      return gemm_fast_gelu(&params);
-    }
+  if (tuning) {
+    static GemmFastGeluTunableOp<T> op;
+    op.EnableTuning();
+    return op(&params);
   }
 
-  return internal::GemmFastGeluUnfused(&params);
+  return GemmFastGeluUnfused(&params);
 }
 
-#define CALL_GEMMFASTGELU(T, ScalarT)                   \
-  GemmFastGelu<T, ScalarT>(tunable, stream, handle,     \
-                           opa, opb,                    \
-                           m, n, k,                     \
-                           alpha, a, lda, b, ldb, bias, \
-                           beta, c, ldc)
+#define SPECIALIZED_IMPL(T)                                                                     \
+  template Status LaunchGemmFastGeluKernel<T>(bool tuning,                                      \
+                                              hipStream_t stream, rocblas_handle handle,        \
+                                              bool transa, bool transb,                         \
+                                              int64_t m, int64_t n, int64_t k, const T alpha,   \
+                                              const T* a, int64_t lda, const T* b, int64_t ldb, \
+                                              const T* bias, const T beta, T* c, int64_t ldc);
 
-// clang-format off
-GEMMFASTGELU(float,    float   ) { return CALL_GEMMFASTGELU(float,    float   ); }
-GEMMFASTGELU(half,     half    ) { return CALL_GEMMFASTGELU(half,     half    ); }
-GEMMFASTGELU(BFloat16, BFloat16) { return CALL_GEMMFASTGELU(BFloat16, BFloat16); }
-GEMMFASTGELU(half,     float   ) { return CALL_GEMMFASTGELU(half,     float   ); }
-GEMMFASTGELU(BFloat16, float   ) { return CALL_GEMMFASTGELU(BFloat16, float   ); }
-// clang-format on
+SPECIALIZED_IMPL(float)
+SPECIALIZED_IMPL(half)
+SPECIALIZED_IMPL(BFloat16)
 
-#undef CALL_GEMMFASTGELU
-
-}  // namespace row_major
-
-}  // namespace blas
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -14,8 +14,7 @@ namespace contrib {
 
 class SplitTraining final : public OpKernel, public SplitBase {
  public:
-  // ONNX Split from opset 13. no support for uneven splits that was added in opset 18.
-  SplitTraining(const OpKernelInfo& info) : OpKernel(info), SplitBase(info, 13) {}
+  SplitTraining(const OpKernelInfo& info) : OpKernel(info), SplitBase(info) {}
   Status Compute(OpKernelContext* context) const override;
 
  private:

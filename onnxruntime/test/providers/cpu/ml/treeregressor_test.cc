@@ -274,7 +274,6 @@ TEST(MLOpTest, TreeRegressorMultiTargetBatchTreeC2) {
   std::vector<float> base_values{0.f, 0.f};
   GenTreeAndRunTest(1, X, base_values, results, "AVERAGE", false, 200, 130);  // section C2
   GenTreeAndRunTest(3, X, base_values, results, "AVERAGE", false, 200, 130);  // section C2
-  GenTreeAndRunTest(3, X, base_values, results, "AVERAGE", false, 400, 130);  // section C2
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetBatchTreeD2) {
@@ -313,7 +312,6 @@ TEST(MLOpTest, TreeRegressorMultiTargetMin) {
   GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", false);
   GenTreeAndRunTest<float>(1, X, base_values, results, "MIN", true);
   GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", true);
-  GenTreeAndRunTest<float>(3, X, base_values, results, "MIN", false, 109 * 8);
 }
 
 TEST(MLOpTest, TreeRegressorMultiTargetMax) {
@@ -552,7 +550,6 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum) {
   GenTreeAndRunTest1(3, "SUM", false);
   GenTreeAndRunTest1(1, "SUM", true);
   GenTreeAndRunTest1(3, "SUM", true);
-  GenTreeAndRunTest1(3, "SUM", false, 1023);
 }
 
 TEST(MLOpTest, TreeRegressorSingleTargetSum_as_tensor) {

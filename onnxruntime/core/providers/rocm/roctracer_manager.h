@@ -40,7 +40,6 @@ class RoctracerManager : public GPUTracerManager<RoctracerManager> {
   void ProcessActivityBuffers(const std::vector<ProfilerActivityBuffer>& buffers,
                               const TimePoint& start_time);
   void FlushActivities();
-  uint64_t GetGPUTimestampInNanoseconds();
 
  private:
   RoctracerManager() = default;

@@ -211,7 +211,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_AZURE}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -238,21 +237,8 @@ add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_depende
 
 if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
-  # if MSVC, pybind11 undefines _DEBUG in pybind11/detail/common.h, which causes the pragma in pyconfig.h
-  # from the python installation to require the release version of the lib
-  # e.g. from a python 3.10 install:
-  #                       if defined(_DEBUG)
-  #                               pragma comment(lib,"python310_d.lib")
-  #                       elif defined(Py_LIMITED_API)
-  #                               pragma comment(lib,"python3.lib")
-  #                       else
-  #                               pragma comment(lib,"python310.lib")
-  #                       endif /* _DEBUG */
-  #
-  # See https://github.com/pybind/pybind11/issues/3403 for more background info.
-  #
-  # Explicitly use the release version of the python library to make the project file consistent with this.
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
+  # if MSVC, pybind11 looks for release version of python lib (pybind11/detail/common.h undefs _DEBUG)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE Python::Module)
 elseif (APPLE)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -undefined dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
@@ -415,7 +401,7 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
     file(GLOB onnxruntime_python_onnxblock_srcs CONFIGURE_DEPENDS
     "${ORTTRAINING_SOURCE_DIR}/python/training/onnxblock/*"
     )
@@ -750,7 +736,7 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
   )
-  if (onnxruntime_ENABLE_TRAINING_APIS)
+  if (onnxruntime_ENABLE_TRAINING_ON_DEVICE)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/onnxblock

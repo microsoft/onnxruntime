@@ -61,15 +61,8 @@ TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-
-  SessionOptions sess_options;
-  sess_options.enable_mem_pattern = true;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
-
-  SessionState s(graph, execution_providers, tp.get(), nullptr, dtm,
-                 DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState s(graph, execution_providers, true, tp.get(), nullptr, dtm,
+                 DefaultLoggingManager().DefaultLogger(), profiler);
 
   std::vector<onnxruntime::NodeArg*> inputs;
   std::vector<onnxruntime::NodeArg*> outputs;
@@ -145,15 +138,8 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   DataTransferManager dtm;
   profiling::Profiler profiler;
-
-  SessionOptions sess_options;
-  sess_options.enable_mem_pattern = param.enable_mem_pattern;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
-
-  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm,
-                             DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+  SessionState session_state(graph, execution_providers, param.enable_mem_pattern, tp.get(), nullptr, dtm,
+                             DefaultLoggingManager().DefaultLogger(), profiler);
 
   GraphPartitioner partitioner(krm, execution_providers);
   status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
@@ -217,23 +203,20 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     DataTransferManager dtm;
     profiling::Profiler profiler;
 
-    SessionOptions sess_options;
-    sess_options.enable_mem_pattern = false;
-    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    sess_options.use_deterministic_compute = false;
-    sess_options.enable_mem_reuse = true;
-    // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
-    ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1"));
-
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    SessionState session_state(graph, execution_providers, false, nullptr, nullptr, dtm,
+                               DefaultLoggingManager().DefaultLogger(), profiler);
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     status = partitioner.Partition(graph, session_state.GetMutableFuncMgr(),
                                    layout_transformer::TransformLayoutForEP);
     ASSERT_TRUE(status.IsOK()) << status;
-    ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
+
+    // Finalize the session state
+    SessionOptions so;
+    // disable allocating initialized tensor memory from the arena(by default it will be allocated by the arena)
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "1"));
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
     OrtMemoryInfo mem_info(CPU, OrtArenaAllocator);
@@ -270,14 +253,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     DataTransferManager dtm;
     profiling::Profiler profiler;
 
-    SessionOptions sess_options;
-    sess_options.enable_mem_pattern = false;
-    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-    sess_options.use_deterministic_compute = false;
-    sess_options.enable_mem_reuse = true;
-
-    SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm,
-                               DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    SessionState session_state(graph, execution_providers, false, nullptr, nullptr, dtm,
+                               DefaultLoggingManager().DefaultLogger(), profiler);
 
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
@@ -286,7 +263,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     ASSERT_TRUE(status.IsOK()) << status;
 
     // Finalize the session state
-    ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm));
+    SessionOptions so;
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(oss.str(), krm, so));
 
     // Fetch the CPU arena-allocator from the session state
     OrtMemoryInfo mem_info(CPU, OrtArenaAllocator);
@@ -309,7 +287,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
-#ifndef ENABLE_TRAINING_CORE
+#ifndef ENABLE_TRAINING
 class PrePackingTestOpKernel : public OpKernel {
  public:
   PrePackingTestOpKernel(const OpKernelInfo& info) : OpKernel(info) {}
@@ -520,21 +498,14 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
     CreateSimpleGraph(model.MainGraph());
   }
 
-  SessionOptions sess_options;
-  sess_options.enable_mem_pattern = true;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
-  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
-
   SessionState session_state(model.MainGraph(),
                              execution_providers,
+                             true, /*enable_mem_pattern*/
                              tp.get(),
                              nullptr, /*inter_op_thread_pool*/
                              dtm,
                              DefaultLoggingManager().DefaultLogger(),
-                             profiler,
-                             sess_options);
+                             profiler);
 
   KernelRegistryManager kernel_registry_manager;
   Status status = kernel_registry_manager.RegisterKernels(execution_providers);
@@ -547,8 +518,12 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   kernel_registry_manager.RegisterKernelRegistry(kernel_registry);
 
   PlaceAllNodesToCPUEP(model.MainGraph());
+
+  SessionOptions sess_options;
+  sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = test_param.test_prepacking ? "0" : "1";
   ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                      kernel_registry_manager));
+                                                      kernel_registry_manager,
+                                                      sess_options));
 
   const auto& const_initialized_tensors = session_state.GetConstantInitializedTensors();
   // check prepacking
@@ -592,10 +567,6 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
 // Pre-packing enabled + no shared initializers = no pre-packed weights caching
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   SessionOptions sess_options;
-  sess_options.enable_mem_pattern = true;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
   // Enable pre-packing
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
@@ -608,15 +579,16 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
-                               profiler,
-                               sess_options);
+                               profiler);
 
   ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
@@ -634,15 +606,16 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
-                               profiler,
-                               sess_options);
+                               profiler);
 
   ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
@@ -655,10 +628,6 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
 // Pre-packing enabled + shared initializers + no pre-packed weights container = no pre-packed weights caching
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   SessionOptions sess_options;
-  sess_options.enable_mem_pattern = true;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
   // Enable pre-packing
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
@@ -680,15 +649,16 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
-                               profiler,
-                               sess_options);
+                               profiler);
 
   ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
@@ -706,15 +676,16 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
-                               profiler,
-                               sess_options);
+                               profiler);
 
   ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
@@ -727,10 +698,6 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
 // Pre-packing enabled + shared initializers + pre-packed weights container = pre-packed weights caching enabled
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   SessionOptions sess_options;
-  sess_options.enable_mem_pattern = true;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = true;
   // Enable pre-packing
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
 
@@ -755,16 +722,18 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   PlaceAllNodesToCPUEP(model_1.MainGraph());
   SessionState session_state_1(model_1.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
-                               sess_options,
+                               false, true,
                                &prepacked_weights_container);
 
   ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
   // Assert that a pre-pack call was made
@@ -786,16 +755,18 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test3) {
   PlaceAllNodesToCPUEP(model_2.MainGraph());
   SessionState session_state_2(model_2.MainGraph(),
                                execution_providers,
+                               true, /*enable_mem_pattern*/
                                tp.get(),
                                nullptr, /*inter_op_thread_pool*/
                                dtm,
                                DefaultLoggingManager().DefaultLogger(),
                                profiler,
-                               sess_options,
+                               false, true,
                                &prepacked_weights_container);
 
   ASSERT_STATUS_OK(session_state_2.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        sess_options));
 
   // Assert that a pre-pack call was made
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));

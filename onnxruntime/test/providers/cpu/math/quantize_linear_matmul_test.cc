@@ -493,7 +493,6 @@ struct PrePackTestOp {
 };
 
 #ifndef ENABLE_TRAINING
-// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QuantizeLinearMatmulOpTest, QLinearMatMulPrePack) {
   auto registry = std::make_shared<CustomRegistry>();
   std::vector<ONNX_NAMESPACE::OpSchema> schemas{PrePackTestOp::OpSchema()};

@@ -702,28 +702,6 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Registers custom ops for use with {@link OrtSession}s using this SessionOptions by calling
-     * the specified native function name. The custom ops library must either be linked against, or
-     * have previously been loaded by the user.
-     *
-     * <p>The registration function must have the signature:
-     *
-     * <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
-     *
-     * <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
-     * information on custom ops. See
-     * https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
-     * for an example of a custom op library registration function.
-     *
-     * @param registrationFuncName The name of the registration function to call.
-     * @throws OrtException If there was an error finding or calling the registration function.
-     */
-    public void registerCustomOpsUsingFunction(String registrationFuncName) throws OrtException {
-      checkClosed();
-      registerCustomOpsUsingFunction(OnnxRuntime.ortApiHandle, nativeHandle, registrationFuncName);
-    }
-
-    /**
      * Sets the value of a symbolic dimension. Fixed dimension computations may have more
      * optimizations applied to them.
      *
@@ -1001,11 +979,8 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
-     * supported. current supported options: {} The maximum number of provider options is set to 128
-     * (see addExecutionProvider's comment). This number is controlled by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
-     * not enough, please increase it or implementing an incremental way to add more options.
+     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
+     * supported. current supported options: {}
      *
      * @param providerOptions options pass to XNNPACK EP for initialization.
      * @throws OrtException If there was an error in native code.
@@ -1063,9 +1038,6 @@ public class OrtSession implements AutoCloseable {
 
     private native long registerCustomOpLibrary(long apiHandle, long nativeHandle, String path)
         throws OrtException;
-
-    private native void registerCustomOpsUsingFunction(
-        long apiHandle, long nativeHandle, String registrationFuncName) throws OrtException;
 
     private native void closeCustomLibraries(long[] nativeHandle);
 
@@ -1135,10 +1107,6 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    /*
-     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
-     */
     private native void addExecutionProvider(
         long apiHandle,
         long nativeHandle,

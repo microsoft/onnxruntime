@@ -15,13 +15,12 @@ docker run --rm \
     --volume $BUILD_BINARIESDIRECTORY:/build \
     --volume /data/models:/build/models:ro \
     --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-    -u root \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_arm64_python_package.sh $BUILD_EXTR_PAR
 
-sudo rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
+rm -rf $BUILD_BINARIESDIRECTORY/Release/onnxruntime $BUILD_BINARIESDIRECTORY/Release/pybind11 \
     $BUILD_BINARIESDIRECTORY/Release/models $BUILD_BINARIESDIRECTORY/Release/_deps \
     $BUILD_BINARIESDIRECTORY/Release/CMakeFiles
 cd $BUILD_BINARIESDIRECTORY/Release

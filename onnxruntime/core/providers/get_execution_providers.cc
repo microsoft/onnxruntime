@@ -145,14 +145,6 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
-        {
-            kAzureExecutionProvider,
-#ifdef USE_AZURE
-            true,
-#else
-            false,
-#endif
-        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
 }  // namespace

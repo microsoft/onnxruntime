@@ -1,7 +1,7 @@
 import io
 import os
 import warnings
-from packaging.version import Version as LooseVersion
+from distutils.version import LooseVersion
 
 import numpy as np
 import onnx

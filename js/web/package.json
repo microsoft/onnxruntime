@@ -9,7 +9,7 @@
   },
   "author": "fs-eire",
   "module": "./lib/index.js",
-  "version": "1.15.0",
+  "version": "1.14.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",
@@ -49,7 +49,7 @@
     "base64-js": "^1.5.1",
     "chai": "^4.3.4",
     "dir-compare": "^3.3.0",
-    "electron": "^18.3.7",
+    "electron": "^15.5.5",
     "fs-extra": "^9.1.0",
     "globby": "^11.0.3",
     "jszip": "^3.7.1",

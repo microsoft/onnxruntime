@@ -34,13 +34,6 @@ stages:
       inputs:
         versionSpec: $(pythonVersion)
 
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
-
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
@@ -60,6 +53,15 @@ stages:
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
+
+    # Start switching to jdk 11 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
 
     - script: |
         python3 tools/ci_build/build.py \
@@ -119,13 +121,6 @@ stages:
       inputs:
         versionSpec: $(pythonVersion)
 
-    - task: JavaToolInstaller@0
-      displayName: Use jdk 11
-      inputs:
-        versionSpec: '11'
-        jdkArchitectureOption: 'x64'
-        jdkSourceOption: 'PreInstalled'
-
     - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
       displayName: Install coreutils and ninja
 
@@ -145,6 +140,14 @@ stages:
     - script: |
         env | grep ANDROID
       displayName: View Android ENVs
+
+    # Start switching to jdk 11 after the Android Emulator is started since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 11
+      inputs:
+        versionSpec: '11'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
 
     - script: |
         python3 tools/ci_build/build.py \
@@ -226,13 +229,6 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - task: JavaToolInstaller@0
-        displayName: Use jdk 11
-        inputs:
-          versionSpec: '11'
-          jdkArchitectureOption: 'x64'
-          jdkSourceOption: 'PreInstalled'
-
       - template: "templates/use-android-ndk.yml"
 
       - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
@@ -245,6 +241,15 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
+
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -299,13 +304,6 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - task: JavaToolInstaller@0
-        displayName: Use jdk 11
-        inputs:
-          versionSpec: '11'
-          jdkArchitectureOption: 'x64'
-          jdkSourceOption: 'PreInstalled'
-
       - template: "templates/use-android-ndk.yml"
 
       - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
@@ -318,6 +316,15 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
+
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
 
       - script: |
           python3 tools/ci_build/build.py \
@@ -382,13 +389,6 @@ stages:
         inputs:
           versionSpec: $(pythonVersion)
 
-      - task: JavaToolInstaller@0
-        displayName: Use jdk 11
-        inputs:
-          versionSpec: '11'
-          jdkArchitectureOption: 'x64'
-          jdkSourceOption: 'PreInstalled'
-
       - template: "templates/use-android-ndk.yml"
 
       - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
@@ -413,6 +413,15 @@ stages:
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
+
+      # Start switching to jdk 11 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 11
+        inputs:
+          versionSpec: '11'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
 
       - script: |
           python3 tools/ci_build/build.py \

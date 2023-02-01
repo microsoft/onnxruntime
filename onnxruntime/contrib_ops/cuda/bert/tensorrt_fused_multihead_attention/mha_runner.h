@@ -1,11 +1,12 @@
 /*
- * Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 1993-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,12 +24,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kMinSequenceLengthFlashAttention = 385;
-
-// Multi-Head Attention runner
+// Multi Head Attention runner
 class MHARunner {
  public:
-  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask, const float scale)
+  MHARunner(const int32_t numHeads, const int32_t headSize, const int wordSize)
       : mS(0),
         mB(0),
         mOmatSize(0),
@@ -40,17 +39,14 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
-                      : scale),
-        mHasCausalMask(causal_mask) {
+        mRsqrtHeadSize(1.F / sqrtf(static_cast<float>(headSize))) {
   }
 
   virtual ~MHARunner() = default;
 
-  virtual void setup(const int S, const int B) {
+  virtual void setup(const int32_t S, const int32_t B) {
     ORT_ENFORCE(S > 0);
     ORT_ENFORCE(B > 0);
-
     mB = B;
     mS = S;
 
@@ -63,60 +59,52 @@ class MHARunner {
     mNumMats = B * mNumHeads;
   }
 
-  virtual void run(const void* input, const void* cu_seqlens, void* output, cudaStream_t stream) = 0;
+  virtual void run(const void* qkvPtr, const void* maskPtr, const void* seqLens,
+                   void* output, void* workspace, cudaStream_t stream) = 0;
 
   virtual size_t getWorkspaceSize() const = 0;
 
-  virtual bool isValid(int s) const = 0;
+  virtual bool isValid(int32_t s) const = 0;
 
   virtual int getSFromMaxSeqLen(const int max_seq_len) const = 0;
 
  protected:
-  int mS;
-  int mB;
-  int mOmatSize;
-  int mNumMats;
-  int mNumHeads;
-  int mHeadSize;
-  int mWordSize;
-  int mLdQKV;
-  int mStrideQKV;
-  int mLdOut;
-  int mStrideOut;
+  int32_t mS;
+  int32_t mB;
+  int32_t mOmatSize;
+  int32_t mNumMats;
+  int32_t mNumHeads;
+  int32_t mHeadSize;
+  int32_t mWordSize;
+  int32_t mLdQKV;
+  int32_t mStrideQKV;
+  int32_t mLdOut;
+  int32_t mStrideOut;
 
-  float mScale;
-  bool mHasCausalMask;
+  float mRsqrtHeadSize;
 };
 
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
-  FusedMHARunnerFP16v2(const int numHeads,
-                       const int headSize,
-                       const int sm,
-                       bool causal_mask,
-                       bool enable_flash_attention,
-                       const float scale);
+  FusedMHARunnerFP16v2(const int32_t numHeads, const int32_t headSize, const int32_t sm);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
-  virtual void setup(const int S, const int B) override;
+  void setup(const int32_t S, const int32_t B) override;
 
-  static bool is_supported(int sm, int head_size, int sequence_length, bool enable_flash_attention, bool causal);
-
-  void run(const void* input, const void* cu_seqlens, void* output, cudaStream_t stream) override;
+  void run(const void* qkvPtr, const void* maskPtr, const void* seqLens,
+           void* output, void* workspace, cudaStream_t stream) override;
 
   size_t getWorkspaceSize() const override;
 
-  bool isValid(int s) const override;
+  bool isValid(int32_t s) const override;
 
-  int getSFromMaxSeqLen(const int max_seq_len) const override;
+  virtual int getSFromMaxSeqLen(const int max_seq_len) const override;
 
  private:
-  int mSm;
-  bool mEnableFlashAttention;
+  int32_t mSm;
   class mhaImpl;
   std::unique_ptr<mhaImpl> pimpl;
 };
-
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
