@@ -2121,7 +2121,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int /* providers_length */) {
   API_IMPL_BEGIN
   // take possession of the memory and deallocate it
-  std::unique_ptr<char*[]>(ptr);
+  std::unique_ptr<char*[]> g(ptr);
   API_IMPL_END
   return nullptr;
 }
