@@ -637,6 +637,7 @@ struct AttentionKernel {
       // multiply by scaling factor
       accum =
           cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0f / cutlass::fast_sqrt(float(p.head_dim)), accum);
+          //cutlass::multiplies<typename MM0::Mma::FragmentC>()(1.0f, accum);
 
       // apply attention bias if applicable
       if (p.attn_bias_ptr != nullptr) {
@@ -712,7 +713,7 @@ struct AttentionKernel {
                                 warp_id(),
                                 p.num_keys - iter_key_start,
                                 iteratorC_tile_offset,
-                                1.0f / cutlass::fast_sqrt(float(p.head_dim)));
+                                1.0f);
                           }));
                     }));
 
