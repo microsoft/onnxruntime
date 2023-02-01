@@ -664,8 +664,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* GatedRelativePositionBias_ver1_doc = R"DOC(
-  query_layer = (query_layer + bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(0, 2, 1, 3)
-  batch_size, num_heads, seq_len, head_size = query_layer.size()
+  query_layer = (query_layer + query_bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(1, 2)
   gate_u, gate_r = torch.sigmoid(
       self.gate_ur_linear(query_layer).view(batch_size, num_head, seq_len, 2, D/2).sum(-1, keepdim=False)
   ).chunk(2, dim=-1)
@@ -688,12 +687,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
           auto& query_layer_shape = getInputShape(ctx, 0);
           TensorShapeProto output_shape;
           *output_shape.add_dim() = query_layer_shape.dim(0);
+          output_shape.add_dim()->set_dim_value(num_heads);
           *output_shape.add_dim() = query_layer_shape.dim(1);
-          *output_shape.add_dim() = query_layer_shape.dim(2);
-          *output_shape.add_dim() = query_layer_shape.dim(2);
+          *output_shape.add_dim() = query_layer_shape.dim(1);
           updateOutputShape(ctx, 0, output_shape);
         }));
 

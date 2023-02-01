@@ -186,6 +186,9 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
     r += __shfl_down_sync(0xffffffff, r, offset);
   }
 
+  u = (T)(1.0f / expf((float)-u));
+  r = (T)(1.0f / expf((float)-r));
+
   if (threadIdx.x == 0) {
     gate[0] = u * (r * eco_a[n] - T{1.0}) + T{2.0};
   }
