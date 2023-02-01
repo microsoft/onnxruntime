@@ -1653,17 +1653,18 @@ class SymbolicShapeInference:
         # If the number of `min(...)` subexpressions is not exactly one, this function just returns `[expr]`.
         def flatten_min(expr):
             assert isinstance(expr, sympy.Add), f"Expected a sum of two arguments, got {expr}"
-            min_positions = [
-                idx
-                for idx in range(len(expr.args))
-                if isinstance(expr.args[idx], sympy.Min)
-            ]
+            min_positions = [idx for idx in range(len(expr.args)) if isinstance(expr.args[idx], sympy.Min)]
             if len(min_positions) == 1:
                 min_pos = min_positions[0]
+
                 def replace_min_with_arg(arg_idx):
                     replaced = list(expr.args)
-                    assert isinstance(replaced[min_pos], sympy.Min), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
-                    assert len(replaced[min_pos].args) == 2, f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
+                    assert isinstance(
+                        replaced[min_pos], sympy.Min
+                    ), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
+                    assert (
+                        len(replaced[min_pos].args) == 2
+                    ), f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
                     replaced[min_pos] = replaced[min_pos].args[arg_idx]
                     return sympy.Add(*replaced)
 

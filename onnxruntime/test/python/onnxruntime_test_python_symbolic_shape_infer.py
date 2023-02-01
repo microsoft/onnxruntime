@@ -39,7 +39,6 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
-
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
         for filename in Path(test_model_dir).rglob("*.onnx"):
@@ -450,7 +449,9 @@ class TestSymbolicShapeInferenceForSlice(unittest.TestCase):
             # Slice the const tensor: `slice_out = const_tensor[starts:ends]`.
             onnx.helper.make_node("Slice", ["const_tensor", "starts", "ends", "zeros", "ones"], ["slice_out"]),
             # Crop the const tensor slice using the shape of the input tensor: `slice_out_cropped = slice_out[0:input_tensor_shape]`.
-            onnx.helper.make_node("Slice", ["slice_out", "zeros", "input_tensor_shape", "zeros", "ones"], ["slice_out_cropped"]),
+            onnx.helper.make_node(
+                "Slice", ["slice_out", "zeros", "input_tensor_shape", "zeros", "ones"], ["slice_out_cropped"]
+            ),
             # Add the const tensor slice to the input tensor: `output = input + slice_out_cropped`.
             onnx.helper.make_node("Add", ["slice_out_cropped", "input"], ["output"]),
         ]
