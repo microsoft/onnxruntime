@@ -1333,7 +1333,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,

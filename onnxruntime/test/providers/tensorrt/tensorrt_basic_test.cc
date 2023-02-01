@@ -11,6 +11,8 @@
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
 #include <string>
 #include <thread>
+#include <filesystem>
+namespace fs = std::filesystem;
 
 using namespace std;
 using namespace ONNX_NAMESPACE;
@@ -249,6 +251,259 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
       th.join();
 }
 
+    bool IsTensorRTCacheExisted(std::string path, std::string file_extension) {
+      for (const auto & entry : fs::directory_iterator(path)) {
+        if (fs::path(file_extension) == fs::path(entry).extension()) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    void RemoveTensorRTCache(std::string path, std::string file_extension) {
+      for (const auto & entry : fs::directory_iterator(path)) {
+        if (fs::path(file_extension) == fs::path(entry).extension()) {
+          fs::remove(entry);
+        }
+      }
+    }
+
+    void CreateBaseModel(std::string model_name, std::string graph_name, bool is_dynamic_input_shape, std::vector<int> dims) {
+      onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
+      auto& graph = model.MainGraph();
+      std::vector<onnxruntime::NodeArg*> inputs;
+      std::vector<onnxruntime::NodeArg*> outputs;
+
+      // FLOAT tensor
+      ONNX_NAMESPACE::TypeProto float_tensor;
+      float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+      for (auto dim: dims) {
+        float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
+      }
+
+      if (is_dynamic_input_shape) {
+        float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("sym1");
+        float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_param("sym2");
+      }
+
+      auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
+      auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
+      inputs.push_back(&input_arg_1);
+      inputs.push_back(&input_arg_2);
+      auto& output_arg = graph.GetOrCreateNodeArg("node_1_out_1", &float_tensor);
+      outputs.push_back(&output_arg);
+      graph.AddNode("node_1", "Add", "node 1.", inputs, outputs);
+
+      auto& input_arg_3 = graph.GetOrCreateNodeArg("Z", &float_tensor);
+      inputs.clear();
+      inputs.push_back(&output_arg);
+      inputs.push_back(&input_arg_3);
+      auto& output_arg_2 = graph.GetOrCreateNodeArg("M", &float_tensor);
+      outputs.clear();
+      outputs.push_back(&output_arg_2);
+      graph.AddNode("node_2", "Add", "node 2.", inputs, outputs);
+
+      auto status = graph.Resolve();
+      ASSERT_TRUE(status.IsOK());
+      status = onnxruntime::Model::Save(model, model_name);
+    }
+
+    TEST_P(TensorrtExecutionProviderCacheTest, Run) {
+    // GetParam() returns the parameter of following format:
+    // ##cache type##_##input shape type##_##other information if needed##
+    std::string param = GetParam();
+    std::string input_type = "static";
+    std::string engine_info = "enginecache_disable"; // for timigh cache case only
+    size_t pos = param.find("_");
+    ASSERT_NE(pos, std::string::npos);
+    std::string cache_type = ToUTF8String(param.substr(0, pos));
+    if (cache_type.compare("timing") == 0) {
+    std::string suffix = param.substr(pos + 1);
+    size_t suffix_pos = suffix.find("_");
+    input_type = ToUTF8String(suffix.substr(0, suffix_pos));
+    engine_info = suffix.substr(suffix_pos + 1);
+} else {
+    input_type = param.substr(pos + 1);
+}
+
+std::string model_name = "trt_execution_provider_" + cache_type + "caching_test_" + input_type + ".onnx";
+std::vector<int> dims; // static dims
+if (input_type.compare("dynamic") == 0) {
+dims.push_back(1);
+CreateBaseModel(model_name, cache_type + "cachingtest", true, dims); // dynamic input shape
+// dims is (1, sym1, sym2)
+}
+else {
+dims.push_back(1);
+dims.push_back(3);
+dims.push_back(2);
+CreateBaseModel(model_name, cache_type + "cachingtest", false, dims); // non-dynamic input shape
+// dims is (1, 3, 2)
+}
+
+SessionOptions so;
+so.session_logid = "TensorrtExecutionProvider" + cache_type + "cacheTest";
+RunOptions run_options;
+run_options.run_tag = so.session_logid;
+InferenceSession session_object{so, GetEnvironment()};
+auto allocator_manager = session_object.GetAllocatorManager();
+auto cuda_provider = DefaultCudaExecutionProvider();
+cuda_provider->RegisterAllocator(allocator_manager);
+auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+std::vector<int64_t> dims_mul_x = {1, 3, 2};
+std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+OrtValue ml_value_x;
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+OrtValue ml_value_y;
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+OrtValue ml_value_z;
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+NameMLValMap feeds;
+feeds.insert(std::make_pair("X", ml_value_x));
+feeds.insert(std::make_pair("Y", ml_value_y));
+feeds.insert(std::make_pair("Z", ml_value_z));
+
+// prepare outputs
+std::vector<std::string> output_names;
+output_names.push_back("M");
+std::vector<OrtValue> fetches;
+
+// prepare expected inputs and outputs
+std::vector<int64_t> expected_dims_mul_m = {1, 3, 2};
+std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
+
+OrtTensorRTProviderOptionsV2 params{
+        0,
+        0,
+        nullptr,
+        1000,
+        1,
+        1 << 30,
+        0,
+        0,
+        nullptr,
+        0,
+        0,
+        0,
+        0,
+        0,
+        nullptr,
+        0,
+        nullptr,
+        0,
+        0};
+
+if (cache_type.compare("timing") == 0) {
+
+// create ort session
+params.trt_timing_cache_enable = 1;
+if (engine_info.compare("enginecache_enable") == 0)
+params.trt_engine_cache_enable = 1;
+std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+auto status = session_object.Load(model_name);
+ASSERT_TRUE(status.IsOK());
+status = session_object.Initialize();
+ASSERT_TRUE(status.IsOK());
+
+// run inference
+// timing cache should be created under the situation of non-dynamic/dynamic shape input and engine cache enabled/disabled
+status = session_object.Run(run_options, feeds, output_names, &fetches);
+ASSERT_TRUE(status.IsOK());
+VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+ASSERT_TRUE(IsTensorRTCacheExisted("./", ".timing"));
+RemoveTensorRTCache("./", ".timing");
+
+// run inference
+// timing cache shoud not be used or created since input shape is not changed and engine won't be re-built
+status = session_object.Run(run_options, feeds, output_names, &fetches);
+ASSERT_TRUE(status.IsOK());
+VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+ASSERT_TRUE(!IsTensorRTCacheExisted("./", ".timing"));
+
+// create another ort session to test
+InferenceSession session_object_2{so, GetEnvironment()};
+execution_provider = TensorrtExecutionProviderWithOptions(&params);
+EXPECT_TRUE(session_object_2.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+status = session_object_2.Load(model_name);
+ASSERT_TRUE(status.IsOK());
+status = session_object_2.Initialize();
+ASSERT_TRUE(status.IsOK());
+
+if (engine_info.compare("enginecache_enable") == 0) {
+// engine cache is enabled
+
+// run inference
+// timing cache shoud not be created since engine cache is existed and will be used
+status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+ASSERT_TRUE(status.IsOK());
+VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+ASSERT_TRUE(!IsTensorRTCacheExisted("./", ".timing"));
+} else {
+// engine cache is not enabled
+
+// run inference
+// timing cache shoud be created
+status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+ASSERT_TRUE(status.IsOK());
+VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+ASSERT_TRUE(IsTensorRTCacheExisted("./", ".timing"));
+RemoveTensorRTCache("./", ".timing");
+}
+
+if (input_type.compare("dynamic") == 0) {
+// dynamic input shape
+
+// inference run with input shape {1, 1, 6}
+// timing cache will be created
+// TRT engine and profile will be updated
+dims_mul_x = {1, 1, 6};
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_y);
+CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_z);
+feeds.clear();
+feeds.insert(std::make_pair("X", ml_value_x));
+feeds.insert(std::make_pair("Y", ml_value_y));
+feeds.insert(std::make_pair("Z", ml_value_z));
+
+status = session_object_2.Run(run_options, feeds, output_names, &fetches);
+ASSERT_TRUE(status.IsOK());
+VerifyOutputs(fetches, expected_dims_mul_m, expected_values_mul_m);
+ASSERT_TRUE(IsTensorRTCacheExisted("./", ".timing"));
+}
+
+// clean up caches for another session
+RemoveTensorRTCache("./", ".timing");
+RemoveTensorRTCache("./", ".profile");
+RemoveTensorRTCache("./", ".engine");
+
+} else if (cache_type.compare("engine") == 0) {
+// #TODO
+} else if (cache_type.compare("profile") == 0) {
+// #TODO
+}
+}
+
+// The TensorrtExecutionProviderCacheTest aims to test the functionality of all the engine/profile/timing caches of ORT TRT.
+// It uses value-parameterized test and the parameter in the test is a composite parameter which has following format:
+// ##cache type##_##input shape type##_##additional provider options if needed##
+// - cache type       (could be engine cache, profile cache or timing cache)
+// - input shape type (could be dynamic input shape or static input shape).
+//
+//
+// We have following test parameters:
+// - timing_dynamic_enginecache_enable: timing cache enabled, dynamic input shape and engine cache enable
+// - timing_dynamic_enginecache_disable: timing cache enabled, dynamic input shape and engine cache disable
+// - timing_static_enginecache_enable: timing cache enabled, static input shape and engine cache enable
+// - timing_static_enginecache_disable: timing cache enabled, static input shape and engine cache disable
+INSTANTIATE_TEST_SUITE_P(TensorrtExecutionProviderCacheTests, TensorrtExecutionProviderCacheTest, testing::Values("timing_dynamic_enginecache_enable",
+                                                                                                                  "timing_dynamic_enginecache_disable",
+                                                                                                                  "timing_static_enginecache_enable",
+                                                                                                                  "timing_static_enginecache_disable"),
+[](const ::testing::TestParamInfo<TensorrtExecutionProviderCacheTest::ParamType>& info) {return info.param;});
+
+
 TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
   std::vector<std::thread> threads;
   std::string model_name = "trt_execution_provider_multithreading_test.onnx";
@@ -345,7 +600,7 @@ TEST(TensorrtExecutionProviderTest, TRTSubgraphIdGeneratorUsingModelHashing) {
 
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
-    std::cout << "->" << node->Name(); 
+    std::cout << "->" << node->Name();
 
     // Check if id increment each time TRTGenerateModelId is called
     int subgraph_id = TRTGenerateModelId(graph, model_hash);

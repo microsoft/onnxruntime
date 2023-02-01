@@ -30,6 +30,7 @@ static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LI
 static const std::string kForceSequentialEngineBuild= "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 static const std::string kContextMemorySharingEnable= "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
 static const std::string kLayerNormFP32Fallback= "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kTimingCacheEnable = "ORT_TENSORRT_TIMING_CACHE_ENABLE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -114,6 +115,7 @@ struct TensorrtFuncState {
   bool engine_decryption_enable;
   int (*engine_decryption)(const char*, char*, size_t*);
   int (*engine_encryption)(const char*, char*, size_t);
+  bool timing_cache_enable;
 };
 
 // Logical device representation.
@@ -176,6 +178,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_decryption_enable_ = false;
   int (*engine_decryption_)(const char*, char*, size_t*);
   int (*engine_encryption_)(const char*, char*, size_t);
+  bool timing_cache_enable_ = false;
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   std::unordered_map<std::string, tensorrt_ptr::unique_pointer<nvonnxparser::IParser>> parsers_;
