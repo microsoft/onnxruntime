@@ -32,7 +32,8 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
-      - name: Clean C API directory
+          clean: false
+      - name: Move API docs into target area
         run: |
           rm -rf docs/api/c
           mv build/doxygen/html docs/api/c
