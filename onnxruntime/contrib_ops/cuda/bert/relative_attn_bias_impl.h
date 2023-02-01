@@ -28,13 +28,14 @@ Status LaunchGatedRelativePositionBiasKernel(
     cudaStream_t stream,
     T* output,
     const T* rel_pos,
-    const T* gemm_output,  // from query * weight
+    const T* qw,  // from query * weight
     const T* bias,
     const T* eco_a,
     const int batch_size,
     const int num_heads,
     const int seq_len,
-    const int D);
+    const int D,
+    const int ldqw);
 
 }  // namespace cuda
 }  // namespace contrib

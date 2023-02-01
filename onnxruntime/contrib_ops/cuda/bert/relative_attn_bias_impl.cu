@@ -156,7 +156,8 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
     const T* qw,       // (batch_size, num_heads, seq_len, D)
     const T* bias,     // (D)
     const T* eco_a,    // (1, num_heads, 1, 1)
-    const int D) {
+    const int D,
+    const int ldqw) {
   __shared__ float gate[1];
 
   const int seq_len = gridDim.x;
@@ -167,7 +168,7 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
 
   rel_pos += ((int64_t)n * seq_len + s) * seq_len;
   output += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * seq_len;
-  qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * D;
+  qw += ((int64_t)b * num_heads * seq_len + (int64_t)n * seq_len + s) * ldqw;
 
   float val = 0.0f;
   if (threadIdx.x < D) {
@@ -186,10 +187,9 @@ __global__ void GatedRelativePositionBiasKernelSmallD(
     r += __shfl_down_sync(0xffffffff, r, offset);
   }
 
-  u = 1.0f / (1.0f + expf(-u));
-  r = 1.0f / (1.0f + expf(-r));
-
   if (threadIdx.x == 0) {
+    u = 1.0f / (1.0f + expf(-u));
+    r = 1.0f / (1.0f + expf(-r));
     gate[0] = u * (r * (float)eco_a[n] - 1.0f) + 2.0f;
   }
   __syncthreads();
@@ -211,8 +211,10 @@ Status LaunchGatedRelativePositionBiasKernel(
     const int batch_size,
     const int num_heads,
     const int seq_len,
-    const int D) {
+    const int D,
+    const int ldqw) {
   ORT_ENFORCE(D <= 32 && D > 0 && (D % 2 == 0));
+  ORT_ENFORCE(ldqw == seq_len || ldqw == D);
 
   int tpb = std::max(32, std::max(D, seq_len));
   tpb = std::min(tpb, device_prop.maxThreadsPerBlock);
@@ -230,7 +232,7 @@ Status LaunchGatedRelativePositionBiasKernel(
   dim3 grid(seq_len, num_heads, batch_size);
 
   GatedRelativePositionBiasKernelSmallD<<<grid, block, sizeof(float), stream>>>(
-      output, rel_pos, qw, bias, eco_a, D);
+      output, rel_pos, qw, bias, eco_a, D, ldqw);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -246,7 +248,8 @@ template Status LaunchGatedRelativePositionBiasKernel(
     const int batch_size,
     const int num_heads,
     const int seq_len,
-    const int D);
+    const int D,
+    const int ldqw);
 
 template Status LaunchGatedRelativePositionBiasKernel(
     const cudaDeviceProp& device_prop,
@@ -259,7 +262,8 @@ template Status LaunchGatedRelativePositionBiasKernel(
     const int batch_size,
     const int num_heads,
     const int seq_len,
-    const int D);
+    const int D,
+    const int ldqw);
 
 }  // namespace cuda
 }  // namespace contrib
