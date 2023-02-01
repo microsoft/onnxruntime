@@ -1390,7 +1390,7 @@ class SymbolicShapeInference:
             new_shape = input_shape[:2]
             output_size = self._try_get_value(node, 1)
             if output_size is not None:
-                new_shape += [dim_size.item() for dim_size in output_size]
+                new_shape += [dim_size.item() if type(dim_size) == np.int64 else dim_size for dim_size in output_size]
             else:
                 rank = len(input_shape)
                 new_shape += [str(self._new_symbolic_dim_from_output(node, 0, i)) for i in range(2, rank)]
