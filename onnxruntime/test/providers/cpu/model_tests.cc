@@ -699,7 +699,12 @@ TEST_P(ModelTest, Run) {
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
+        OrtDnnlProviderOptions* ep_option;
+        ASSERT_ORT_STATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
+        std::unique_ptr<OrtDnnlProviderOptions, decltype(&OrtApis::ReleaseDnnlProviderOptions)>
+            rel_dnnl_options(ep_option, &OrtApis::ReleaseDnnlProviderOptions);
+        ep_option->use_arena = 0;
+        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
       }
 #endif
       else if (provider_name == "tensorrt") {

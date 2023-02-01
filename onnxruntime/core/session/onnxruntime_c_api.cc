@@ -60,6 +60,14 @@ ProviderInfo_CANN* TryGetProviderInfo_CANN();
 }
 #endif
 
+#ifdef USE_DNNL
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/dnnl/dnnl_execution_provider_info.h"
+namespace onnxruntime {
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
+}
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
@@ -2663,7 +2671,11 @@ static constexpr OrtApi ort_api_1_to_14 = {
     // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
-
+    &OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
+    &OrtApis::CreateDnnlProviderOptions,
+    &OrtApis::UpdateDnnlProviderOptions,
+    &OrtApis::GetDnnlProviderOptionsAsString,
+    &OrtApis::ReleaseDnnlProviderOptions,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
