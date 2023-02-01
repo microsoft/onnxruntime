@@ -1039,22 +1039,22 @@ var validCombos = {
     "linux,Python,X86,VitisAI":
         "Follow build instructions from <a href='https://aka.ms/build-ort-vitisai' target='_blank'>here</a>",
     
-    "linux,Python,X86,MIGraphX":
+    "linux,Python,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,C-API,X86,MIGraphX":
+    "linux,C-API,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,C++,X86,MIGraphX":
+    "linux,C++,X64,MIGraphX":
         "Follow build instructions from <a href='https://aka.ms/build-ort-migraphx' target='_blank'>here</a>",
     
-    "linux,Python,X86,ROCm":
+    "linux,Python,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
     
-    "linux,C-API,X86,ROCm":
+    "linux,C-API,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
     
-    "linux,C++,X86,ROCm":
+    "linux,C++,X64,ROCm":
         "Follow build instructions from <a href='https://aka.ms/build-ort-rocm' target='_blank'>here</a>",
 
     "linux,Python,ARM64,ACL":
