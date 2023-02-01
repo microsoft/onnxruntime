@@ -29,10 +29,6 @@ jobs:
           mkdir -p build/doxygen
           cd docs/c_cxx
           ../../doxygen-1.9.5/bin/doxygen
-      - uses: actions/upload-artifact@v3
-        with:
-          name: capidocs
-          path: build/doxygen/html
       - uses: actions/checkout@v2
         with:
           ref: gh-pages
