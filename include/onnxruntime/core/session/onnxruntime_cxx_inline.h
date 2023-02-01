@@ -1449,9 +1449,9 @@ inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCH
   return Status{status};
 }
 
-// Disable warning about the format string not being a literal (-Wformat-nonliteral) for gcc and clang.
-// The alternative is to use actual variadic paramaters (...) and apply __attribute__(format(printf...)).
-// This format attribute, however, does not work with variadic templates.
+// Disable warnings about the format string not being a literal (-Wformat-nonliteral and -Wformat-security)
+// for gcc and clang. The alternative is to use actual C-style variadic parameters and apply
+// __attribute__(format(printf...)), which does not work with variadic templates.
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-nonliteral"
@@ -1488,7 +1488,7 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
 
   return Status{status};
 }
-// Re-enable -Wformat-nonliteral
+// Re-enable -Wformat-nonliteral and -Wformat-security
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
 #elif defined(__clang__)

@@ -25,11 +25,10 @@
 #include "test/common/logging/helpers.h"
 
 /**
- * Creates a mock sink that expects a configurable number logging calls. Validates the inputs and outputs
+ * Creates a mock sink that expects a configurable number of logging calls. Validates the inputs and outputs
  * of each call.
  *
  * \param log_id The ID of the logger being tested.
- * \param severity The logger's severity level.
  * \param num_calls The number of expected logging calls.
  * \param file The filepath from which all logs are made. Typically __FILE__.
  * \param func The name of the function from which all logs are made. Typically __FUNCTION__.
@@ -38,7 +37,6 @@
  * \return A unique_ptr containing the mock sink.
  */
 static std::unique_ptr<onnxruntime::logging::ISink> SetupMockSinkCalls(const std::string& log_id,
-                                                                       onnxruntime::logging::Severity severity,
                                                                        int num_calls, const char* file,
                                                                        const char* func, const int& line) {
   using namespace onnxruntime;
@@ -141,7 +139,7 @@ TEST_F(RealCAPITestsFixture, CApiLoggerLogMessage) {
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
   // Setup a mock sink that expects 2 log calls.
-  auto mock_sink = SetupMockSinkCalls(log_id, min_severity, 2, __FILE__, __FUNCTION__, line_num);
+  auto mock_sink = SetupMockSinkCalls(log_id, 2, __FILE__, __FUNCTION__, line_num);
 
   onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
                                                onnxruntime::logging::LoggingManager::InstanceType::Temporal};
@@ -178,7 +176,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOG) {
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
   // Setup a mock sink that expects 2 log calls.
-  auto mock_sink = SetupMockSinkCalls(log_id, min_severity, 2, __FILE__, __FUNCTION__, line_num);
+  auto mock_sink = SetupMockSinkCalls(log_id, 2, __FILE__, __FUNCTION__, line_num);
 
   onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
                                                onnxruntime::logging::LoggingManager::InstanceType::Temporal};
@@ -215,7 +213,7 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
   // Setup a mock sink that expects 4 log calls.
-  auto mock_sink = SetupMockSinkCalls(log_id, min_severity, 4, __FILE__, __FUNCTION__, line_num);
+  auto mock_sink = SetupMockSinkCalls(log_id, 4, __FILE__, __FUNCTION__, line_num);
 
   onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
                                                onnxruntime::logging::LoggingManager::InstanceType::Temporal};
