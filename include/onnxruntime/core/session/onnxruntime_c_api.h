@@ -25,7 +25,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <stdbool.h>
 
 /** \brief The API version defined in this header
  *
@@ -3545,6 +3544,13 @@ struct OrtApi {
 
   /* \brief: Get the training C Api
    *
+   * \param[in] version Must be ::ORT_API_VERSION
+   * \return The ::OrtTrainingApi for the version requested.
+   *         nullptr will be returned and no error message will be printedif the training api is not supported with
+   *         this build.
+   *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
+   *         example when using a runtime older than the version created with this header file.
+   *
    * \since Version 1.13
    */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
@@ -3947,12 +3953,6 @@ struct OrtApi {
    * \since Version 1.14.
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
-
-  /** \brief Utility to check if the training apis can be queried.
-   *
-   * \since Version 1.15.
-   */
-  bool(ORT_API_CALL* IsTrainingApiAvailable)();
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
