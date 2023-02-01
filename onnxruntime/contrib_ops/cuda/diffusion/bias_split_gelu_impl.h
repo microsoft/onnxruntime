@@ -4,9 +4,7 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include <cstdint>
 #include <cuda.h>
-#include <cuda_fp16.h>
 
 namespace onnxruntime {
 namespace contrib {
