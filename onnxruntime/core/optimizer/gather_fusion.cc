@@ -92,7 +92,7 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       if (indices_n_dims == -1) {
         indices_n_dims = dims;
       } else if (indices_n_dims != dims) {
-        // Not the same number of dimensions for all indices.
+        // Not the same number of dimensions (0 or 1) for all scalar indices.
         can_fuse = false;
         break;
       }
@@ -134,24 +134,27 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     }
 
     InlinedVector<NodeArg*> split_outputs;
-    for (size_t i = 0; i < output_count; ++i) {
-      split_outputs.emplace_back(
-          &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("split" + std::to_string(i)), &split_output_type));
+    bool add_squeeze_node = indices_n_dims == 0;
+    if (add_squeeze_node) {
+      for (size_t i = 0; i < output_count; ++i) {
+        split_outputs.emplace_back(
+            &graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("split" + std::to_string(i)), &split_output_type));
+      }
     }
 
     Node& split_node = graph.AddNode(graph.GenerateNodeName("Split"), "Split", "Split for Fused Gather nodes",
-                                     {node.MutableOutputDefs()[0]}, indices_n_dims == 0 ? split_outputs: gather_outputs);
+                                     {node.MutableOutputDefs()[0]}, add_squeeze_node ? split_outputs : gather_outputs);
     split_node.AddAttribute("axis", split_axis);
     split_node.SetExecutionProviderType(node.GetExecutionProviderType());
 
-    // Squeeze before and after OpSet-13 have different schemas.
+    // Squeeze-11, Squeee-13, Split-13, Split-18 have different schemas.
     int onnx_opset_version = -1;
     if (graph.DomainToVersionMap().find(kOnnxDomain) != graph.DomainToVersionMap().end()) {
       onnx_opset_version = graph.DomainToVersionMap().at(kOnnxDomain);
     }
 
     if (onnx_opset_version < 13) {
-      if (indices_n_dims == 0) {
+      if (add_squeeze_node) {
         for (size_t i = 0; i < output_count; ++i) {
           Node& squeeze_node = graph.AddNode(graph.GenerateNodeName("Squeeze" + std::to_string(i)), "Squeeze",
                                             "Squeeze for Fused Gather nodes", {split_outputs[i]}, {gather_outputs[i]});
@@ -161,10 +164,10 @@ Status GatherToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       }
     } else {
       if (onnx_opset_version >= 18) {
-        split_node.AddAttribute("num_outputs", static_cast<int64_t>(split_outputs.size()));
+        split_node.AddAttribute("num_outputs", static_cast<int64_t>(output_count));
       }
 
-      if (indices_n_dims == 0) {
+      if (add_squeeze_node) {
         ONNX_NAMESPACE::TensorProto axes_initializer_proto;
         axes_initializer_proto.set_name(graph.GenerateNodeName("SqueezeAxesInitializer"));
         axes_initializer_proto.add_dims(static_cast<int64_t>(1));
