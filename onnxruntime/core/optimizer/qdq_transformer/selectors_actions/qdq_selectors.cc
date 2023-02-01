@@ -52,7 +52,7 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
   }
 
   auto does_node_produce_graph_output = [&graph_viewer](const Node* node_ptr) {
-    return node_ptr == nullptr || graph_viewer.NodeProducesGraphOutput(*node_ptr);
+    return graph_viewer.NodeProducesGraphOutput(*node_ptr);
   };
 
   if (std::any_of(dq_nodes.begin(), dq_nodes.end(), does_node_produce_graph_output)) {
