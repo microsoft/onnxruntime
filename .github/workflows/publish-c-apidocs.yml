@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  publish:
     name: Generate C/C++ API docs
     runs-on: ubuntu-latest
     steps:
