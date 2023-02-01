@@ -2100,7 +2100,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
   }
 
   // We allocate and construct the buffer in char* to hold all the string pointers
-  // followed by the actual string data. We allocate in terms of char* to force the alignment to sizeof(char*).
+  // followed by the actual string data. We allocate in terms of char* to make it convinient and avoid casts.
   const size_t ptrs_num = (sizeof(char*) * available_count + output_len + (sizeof(char*) - 1)) / sizeof(char*);
   auto total_buffer = std::make_unique<char*[]>(ptrs_num);
   ProviderBuffer provider_buffer(total_buffer.get(), available_count);
@@ -2109,8 +2109,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
     provider_buffer.Append(available_providers[p_index], p_index);
   }
 
-  *out_ptr = total_buffer.release();
   *providers_length = narrow<int>(available_count);
+  *out_ptr = total_buffer.release();
   API_IMPL_END
   return nullptr;
 }
@@ -2120,7 +2120,8 @@ ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
                     _In_ int /* providers_length */) {
   API_IMPL_BEGIN
-  delete[] ptr;
+  // take possession of the memory and deallocate it
+  std::unique_ptr<char*[]>(ptr);
   API_IMPL_END
   return nullptr;
 }
