@@ -4339,7 +4339,7 @@ TEST_F(GraphTransformationTests, BitmaskDropoutFusionTest) {
 
 /*
 This test build a graph like:
-	     input0  input1
+             input0  input1
                   \ /
                   Add
  -----------------|
@@ -4359,7 +4359,7 @@ This test build a graph like:
 
 After fusion, the graph become:
              input0  input1
-	          \ /
+                  \ /
                   Add     (Constant Initializer)
                    \       /
                     Reshape
@@ -4436,15 +4436,16 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
         builder.AddNode("Unsqueeze", {gather_out_1}, {unsqueeze_out_1}).AddAttribute("axes", std::vector<int64_t>{0});
       }
       builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
-                      {concattraining1_out, concattraining1_length}, "com.microsoft").AddAttribute("axis", static_cast<int64_t>(0));
+                      {concattraining1_out, concattraining1_length}, "com.microsoft")
+          .AddAttribute("axis", static_cast<int64_t>(0));
       builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
     if (opset_version == 15 && shape_test_for_opset15) {
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                                pre_graph_checker, pre_graph_checker));
-    } else{
+                                            pre_graph_checker, pre_graph_checker));
+    } else {
       ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                             pre_graph_checker, post_graph_checker));
     }
@@ -6240,6 +6241,68 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case_float, opset_version, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker));
+  }
+}
+
+/*
+Test graph include multiple equivalent subgraphs as below.
+           graph input [2] (float)                Constant (1.0float)                Constant (1.0uint8)
+                  \_______________  ________________/        |                             |
+                                  \/                         |                             |
+                                 Add                         |                             |
+                                  |                          |                             |
+                            graph output [2](float)   graph output [](float)       graph output [](int8)
+
+Be noted: expected result graph should main all graph outputs, and both float and unin8 constant values are not shared.
+*/
+TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "scalar_const_not_share.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Add"] == 1);
+    // Be noted, constant nodes are converted to initialized already.
+    ASSERT_TRUE(graph.GetAllInitializedTensors().size() == 2U);
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ConstantSharing>();
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  {
+    const InitializedTensorSet& initialized_tensor_set = graph.GetAllInitializedTensors();
+    ASSERT_TRUE(initialized_tensor_set.size() == 2U);
+    const NodeArg* add_initializer = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType().compare("Add") == 0) {
+        add_initializer = node.InputDefs()[1];
+        ASSERT_TRUE(add_initializer->Shape()->dim_size() == 0);
+        ASSERT_TRUE(add_initializer->Name().compare("y_scale") == 0);
+      }
+    }
+    ASSERT_TRUE(add_initializer != nullptr);
+    for (const auto& entry : initialized_tensor_set) {
+      if (entry.first.compare(add_initializer->Name()) == 0) {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_TRUE(int64_const.size() == 1);
+        float float_const_value = *(int64_const.data<float>());
+        ASSERT_TRUE(float_const_value == 1);
+      } else {
+        const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
+        onnxruntime::Initializer uint8_const{*tensor_proto, graph.ModelPath()};
+        ASSERT_TRUE(uint8_const.size() == 1);
+        uint8_t uint8_const_value = *(uint8_const.data<uint8_t>());
+        ASSERT_TRUE(uint8_const_value == static_cast<uint8_t>(1));
+      }
+    }
+
+    auto op_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_count.size() == 1U);
+    ASSERT_TRUE(op_count["Add"] == 1);
   }
 }
 
