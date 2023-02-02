@@ -676,6 +676,7 @@ Return Value:
 
     const size_t GroupCount = Parameters->GroupCount;
     const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+    const float Beta = Parameters->Beta;
 
     size_t BatchGroupStart;
     size_t BatchGroupRemaining;
@@ -709,9 +710,9 @@ Return Value:
         // Invoke the non-threaded GEMM directly with the input tensor.
         //
 
-        MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount,
-            OutputSize, K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, 0.0f,
-            output, OutputSize);
+        MlasSgemmOperation(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
+                           K, 1.0f, filter, K, input, Parameters->u.GemmDirect.ldb, Beta, output,
+                           OutputSize);
 
         //
         // Apply the activation with optional bias.

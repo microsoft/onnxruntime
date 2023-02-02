@@ -149,11 +149,11 @@ This operator constructs a sparse tensor from three tensors that provide a COO
   static KernelDefBuilder KernelDef() {
     KernelDefBuilder def;
     def.SetName(SparseFromCOO::OpName())
-        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>())
 #if !defined(DISABLE_SPARSE_TENSORS)
-        .TypeConstraint("T", DataTypeImpl::GetSparseTensorType<int64_t>());
+        .TypeConstraint("T", DataTypeImpl::GetSparseTensorType<int64_t>())
 #endif
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<int64_t>());
     return def;
   }
 };

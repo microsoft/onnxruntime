@@ -16,7 +16,7 @@ import onnxruntime
 # -- Project information -----------------------------------------------------
 
 project = "ONNX Runtime"
-copyright = "2018-2021, Microsoft"
+copyright = "2018-2023, Microsoft"
 author = "Microsoft"
 version = onnxruntime.__version__
 release = version

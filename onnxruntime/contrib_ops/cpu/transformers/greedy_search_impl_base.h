@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <random>
 #include <vector>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/generate_impl_base.h"
@@ -10,6 +11,63 @@ namespace onnxruntime {
 namespace contrib {
 
 namespace transformers {
+
+template <typename T>
+struct SamplingState : public ISamplingState<T> {
+  void Init(AllocatorPtr allocator,
+            AllocatorPtr cpu_allocator,
+            int batch_size,
+            int vocab_size,
+            int max_iter,
+            int seed,
+            bool is_cuda) {
+    int total_count = batch_size * vocab_size;
+
+    this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+
+    this->generator = std::default_random_engine{gsl::narrow_cast<uint32_t>(seed)};
+
+    if (is_cuda) {
+      this->d_index_in = AllocateBuffer<int>(allocator, d_index_in_buffer_, SafeInt<size_t>(total_count));
+      this->d_index_out = AllocateBuffer<int>(allocator, d_index_out_buffer_, SafeInt<size_t>(total_count));
+      this->d_offset = AllocateBuffer<int>(allocator, d_offset_buffer_, SafeInt<size_t>(batch_size + 1));
+      this->d_sorted_score = AllocateBuffer<T>(allocator, d_sorted_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, SafeInt<size_t>(total_count));
+      this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size));
+      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size * max_iter));
+      this->d_indices = AllocateBuffer<int32_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size));
+      this->temp_storage_bytes = 0;
+      // TODO: Do not allocate this buffer if there's no presence_mask
+      this->d_presence_mask = AllocateBuffer<int>(allocator, d_presence_mask_buffer_, SafeInt<size_t>(total_count));
+
+      std::uniform_real_distribution<float> distribution(0.0, 1.0);
+      static_cast<void>(distribution(this->generator));
+      for (size_t i = 0; i < this->h_sampled_all.size(); ++i) {
+        this->h_sampled_all[i] = distribution(this->generator);
+      }
+    } else {
+      // TODO: Some buffer can be reused for CPU
+      this->sorted_scores = AllocateBuffer<T>(cpu_allocator, sorted_scores_buffer_, SafeInt<size_t>(total_count));
+      this->cumulative_probs = AllocateBuffer<T>(cpu_allocator, cumulative_probs_buffer_, SafeInt<size_t>(total_count));
+    }
+  }
+
+ private:
+  BufferUniquePtr d_index_in_buffer_;
+  BufferUniquePtr d_index_out_buffer_;
+  BufferUniquePtr d_offset_buffer_;
+  BufferUniquePtr d_sorted_score_buffer_;
+  BufferUniquePtr d_sorted_softmaxed_score_buffer_;
+  BufferUniquePtr d_softmaxed_score_buffer_;
+  BufferUniquePtr h_softmaxed_score_buffer_;
+  BufferUniquePtr d_sampled_buffer_;
+  BufferUniquePtr h_sampled_all_buffer_;
+  BufferUniquePtr d_indices_buffer_;
+  BufferUniquePtr d_presence_mask_buffer_;
+  BufferUniquePtr sorted_scores_buffer_;
+  BufferUniquePtr cumulative_probs_buffer_;
+};
 
 template <typename T>
 struct GreedySearchState : public IGreedySearchState<T> {
@@ -21,7 +79,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
-            bool /*is_cuda*/) {
+            bool is_cuda) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
                                                     sequences_space_buffer_,
@@ -33,15 +91,23 @@ struct GreedySearchState : public IGreedySearchState<T> {
     this->eos_meet = AllocateBuffer<bool>(cpu_allocator, eos_meet_buffer_, batch_size);
     memset(this->eos_meet.data(), 0, this->eos_meet.size_bytes());
 
-    this->next_tokens_cpu = AllocateBuffer<int64_t>(cpu_allocator,
-                                                    next_tokens_cpu_buffer_,
-                                                    SafeInt<size_t>(batch_size));
     this->next_tokens = AllocateBuffer<int32_t>(cpu_allocator, next_tokens_buffer_, SafeInt<size_t>(batch_size));
 
     // below buffers are on cpu or cuda
     size_t next_token_size = SafeInt<size_t>(batch_size) * vocab_size;
     this->next_token_scores = AllocateBuffer<T>(allocator, next_token_scores_buffer_, next_token_size);
     this->next_positions = AllocateBuffer<int32_t>(allocator, next_positions_buffer_, batch_size);
+
+    if (is_cuda) {
+      AllocateTempBufferForGetGreedySearchTopOne<T>(
+          batch_size,
+          allocator,
+          this->temp_topk_buffer_,
+          this->temp_topk_scores_buffer,
+          this->temp_topk_tokens_buffer,
+          this->topk_scores_buffer,
+          this->topk_tokens_buffer);
+    }
   }
 
   void SetSequence(gsl::span<const int32_t> input_ids_in_cpu,
@@ -51,8 +117,8 @@ struct GreedySearchState : public IGreedySearchState<T> {
     gsl::span<int32_t> sequences_0 = this->sequences_space;
     for (size_t i = 0; i < batch_beam_size; i++) {
       for (int j = 0; j < sequence_length; j++) {
-        sequences_0[SafeInt<gsl::index>(i) * max_length + j] = \
-        static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
+        sequences_0[SafeInt<gsl::index>(i) * max_length + j] =
+            static_cast<int32_t>(input_ids_in_cpu[SafeInt<gsl::index>(i) * sequence_length + j]);
       }
     }
   }
@@ -62,31 +128,31 @@ struct GreedySearchState : public IGreedySearchState<T> {
   BufferUniquePtr sequence_lengths_buffer_;
   BufferUniquePtr next_token_scores_buffer_;
   BufferUniquePtr next_tokens_buffer_;
-  BufferUniquePtr next_tokens_cpu_buffer_;
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr eos_meet_buffer_;
+  BufferUniquePtr temp_topk_buffer_;
 };
 
 // Base class of gready search implementation that is common for both GPT-2 and Bart/T5.
-template <typename T>
+template <typename T, typename ParametersT>
 class GreedySearchBase : public GenerateBase {
  public:
   GreedySearchBase(OpKernelContextInternal& context,
                    const SessionState& decoder_session_state,
                    concurrency::ThreadPool* thread_pool,
-                   void* cuda_stream,
+                   Stream* ort_stream,
                    IConsoleDumper* cuda_dumper,
-                   GreedySearchParameters& params,
+                   ParametersT& params,
                    const GenerationDeviceHelper::TopkFunc& topk_func,
                    const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
                    const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func)
-    : GenerateBase(context,
-                   decoder_session_state,
-                   thread_pool,
-                   cuda_stream,
-                   cuda_dumper,
-                   topk_func,
-                   device_copy_func),
+      : GenerateBase(context,
+                     decoder_session_state,
+                     thread_pool,
+                     ort_stream,
+                     cuda_dumper,
+                     topk_func,
+                     device_copy_func),
         parameters_(&params),
         process_logits_func_(process_logits_func) {
     parameters_->ParseFromInputs(&context);
@@ -105,37 +171,40 @@ class GreedySearchBase : public GenerateBase {
   Status GenerateNextToken(const OrtValue& logits,
                            gsl::span<int32_t>& next_tokens,
                            GreedySearchState<T>& greedy_state,
+                           ISamplingState<T>& sampling_state,
                            int counter,
                            int eos_token_id);
 
   // Calculate scores from logits, then apply filtering and select next token for each beam.
   Status ProcessLogits(const OrtValue& logits,  // logits output of subgraph
                        GreedySearchState<T>& greedy_state,
+                       ISamplingState<T>& sampling_state,
                        AllocatorPtr& allocator,
                        int counter);
 
-  GreedySearchParameters* parameters_;
+  ParametersT* parameters_;
 
   // Device specific functions
   GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T> process_logits_func_;
 };
 
-template <typename T>
-Status GreedySearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::CheckInputs(const OpKernelContextInternal& context) {
   // Input shapes:
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),   // input_ids
-                                            context.Input<Tensor>(4),   // vocab_mask
-                                            context.Input<Tensor>(5),   // prefix_vocab_mask
-                                            nullptr));                  // attention_mask
+                                            context.Input<Tensor>(0),    // input_ids
+                                            context.Input<Tensor>(4),    // vocab_mask
+                                            context.Input<Tensor>(5),    // prefix_vocab_mask
+                                            context.Input<Tensor>(6),    // attention_mask
+                                            context.Input<Tensor>(7)));  // presence_mask
 
   return Status::OK();
 }
 
-template <typename T>
-Status GreedySearchBase<T>::Initialize() {
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::Initialize() {
   ORT_RETURN_IF_ERROR(this->context_.GetTempSpaceAllocator(&this->temp_space_allocator_));
 
   ORT_RETURN_IF_ERROR(CheckScalarInput("max_length", 1, true));
@@ -155,32 +224,31 @@ Status GreedySearchBase<T>::Initialize() {
   return Status::OK();
 }
 
-template <typename T>
-Status GreedySearchBase<T>::ProcessLogits(
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::ProcessLogits(
     const OrtValue& logits,
     GreedySearchState<T>& greedy_state,
+    ISamplingState<T>& sampling_state,
     AllocatorPtr& allocator,
     int counter) {
-  return process_logits_func_(logits, &greedy_state, &(greedy_state.sequences), allocator,
-                              this->thread_pool_, &this->logits_processors_,
-                              parameters_, counter, this->cuda_stream_, this->GetConsoleDumper());
+  bool use_sampling = std::is_same<ParametersT, SamplingParameters>::value;
+  return process_logits_func_(logits, &greedy_state, &sampling_state, &(greedy_state.sequences), allocator,
+                              this->thread_pool_, &this->logits_processors_, parameters_,
+                              use_sampling, counter, this->ort_stream_, this->GetConsoleDumper());
 }
 
-template <typename T>
-Status GreedySearchBase<T>::GenerateNextToken(
+template <typename T, typename ParametersT>
+Status GreedySearchBase<T, ParametersT>::GenerateNextToken(
     const OrtValue& logits,
     gsl::span<int32_t>& next_tokens,
     GreedySearchState<T>& greedy_state,
+    ISamplingState<T>& sampling_state,
     int counter,
     int eos_token_id) {
   // Process logits to get next token scores
-  ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, this->temp_space_allocator_, counter));
+  ORT_RETURN_IF_ERROR(ProcessLogits(logits, greedy_state, sampling_state, this->temp_space_allocator_, counter));
 
   next_tokens = greedy_state.next_tokens;
-  for (size_t i = 0; i < next_tokens.size(); i++) {
-    next_tokens[i] = gsl::narrow_cast<int32_t>(greedy_state.next_tokens_cpu[i]);
-  }
-
   gsl::span<bool>& eos_meet = greedy_state.eos_meet;
   for (size_t batch_id = 0; batch_id < next_tokens.size(); ++batch_id) {
     if (next_tokens[batch_id] == eos_token_id || eos_meet[batch_id] == true) {

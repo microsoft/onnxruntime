@@ -73,8 +73,10 @@ struct HasIsSupportedMethod<
 template <typename ParamsT>
 class Op {
  public:
-  template <typename T>
-  explicit Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}
+  template <typename T, typename = std::enable_if_t<
+                            !std::is_same_v<Op<ParamsT>, std::remove_cv_t<std::remove_reference_t<T>>>,
+                            void>>
+  Op(T&& c) : callable_{std::make_unique<CallableImpl<T>>(std::forward<T>(c))} {}  // NOLINT(google-explicit-constructor)
   Op(Op&&) = default;
   Status operator()(const ParamsT* param) { return (*callable_)(param); }
   Status IsSupported(const ParamsT* param) { return (*callable_).IsSupported(param); }
@@ -176,6 +178,10 @@ class TunableOp {
     default_id_ = id;
   }
 
+  void RegisterOp(Op<ParamsT>&& op) {
+    this->ops_.emplace_back(std::move(op));
+  }
+
   void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
     nested_tunable_ops_.insert(op_ptr);
     if (tuning_) {
@@ -185,7 +191,7 @@ class TunableOp {
     }
 
     // Add an op for this tunable op as well.
-    ops_.emplace_back([op_ptr](const ParamsT* params) {
+    RegisterOp([op_ptr](const ParamsT* params) {
       return op_ptr->operator()(params);
     });
   }
@@ -268,14 +274,15 @@ class TunableOp {
     return id;
   }
 
-  std::vector<Op<ParamsT>> ops_;
-
  private:
   // mapping from Signature to best impl
   std::unordered_map<std::string, int> kernel_map_;
   // the default impl to use when tuning is disabled
   int default_id_{0};
   bool tuning_{false};
+
+  std::vector<Op<ParamsT>> ops_;
+
   // Registered tunable sub-ops for nested tuning
   std::unordered_set<TunableOp<ParamsT, TimerT>*> nested_tunable_ops_;
 };

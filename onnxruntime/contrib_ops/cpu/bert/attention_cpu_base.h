@@ -15,8 +15,8 @@ namespace contrib {
 
 class AttentionCPUBase : public AttentionBase {
  protected:
-  AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size, bool require_weights)
-  : AttentionBase(info, require_same_hidden_size, require_weights) {}
+  AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size)
+  : AttentionBase(info, require_same_hidden_size) {}
 
   template <typename T>
   Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH
@@ -123,14 +123,14 @@ class AttentionCPUBase : public AttentionBase {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
-                    has_unidirectional, batch_size, sequence_length, past_sequence_length);
+                    has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       } else {  // no any mask
         size_t bytes = static_cast<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
         memset(attention_probs, 0, bytes);
       }
 
       const int loop_len = batch_size * num_heads_;
-      const float alpha = 1.0f / sqrt(static_cast<float>(head_size));
+      const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
       // The cost of Gemm
       const double cost = static_cast<double>(head_size) * sequence_length * total_sequence_length;
