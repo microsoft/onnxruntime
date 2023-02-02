@@ -55,7 +55,9 @@ Status ComputeQLinearGlobalAvgPool(
   return Status::OK();
 }
 
-// we would either put the template function in header file or add such declaration in the below to do explicit instantiation.
+//GCC's Bug: GCC wouldn't generate corresponding symbols versus function instances below 
+//when built with "-fno-exceptions" under "--disable_exceptions flag in build.py", but this two symbols are used by qlinear_pool.cc.
+//The other compiler wouldn't hit it and works fine. So we are doing explicit instantiation here for every compilers happy.
 template Status ComputeQLinearGlobalAvgPool<int8_t>(
     const int8_t* x,
     float x_scale,
