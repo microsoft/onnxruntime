@@ -56,9 +56,10 @@ Status ComputeQLinearGlobalAvgPool(
 }
 
 //GCC's unexplained behavior: GCC wouldn't generate corresponding symbols versus function instances below 
-//with " g++ -fno-exceptions xxxxx" when "--disable-exceptions" and "--minimal-build" are combined on linux for building ORT, 
+// when "--disable-exceptions" and "--minimal-build" are combined on linux for building ORT, 
 // but this two symbols are used by qlinear_pool.cc.
-//The other compilers wouldn't hit it and works fine. So we are doing explicit instantiation here for every compilers happy.
+//The other compilers wouldn't hit it and works fine and we also didn't see it in the other platforms, such as Andriod. 
+//So we are doing explicit instantiation here for every compilers/platforms happy.
 template Status ComputeQLinearGlobalAvgPool<int8_t>(
     const int8_t* x,
     float x_scale,
