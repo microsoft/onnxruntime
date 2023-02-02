@@ -1354,12 +1354,6 @@ if (onnxruntime_USE_ROCM)
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     hipify("onnxruntime/contrib_ops" contrib_ops_excluded_files onnxruntime_rocm_generated_contrib_ops_cc_srcs onnxruntime_rocm_generated_contrib_ops_cu_srcs)
 
-    if (NOT onnxruntime_ENABLE_ATEN)
-      list(REMOVE_ITEM onnxruntime_rocm_generated_contrib_ops_cc_srcs
-        "${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime/contrib_ops/rocm/aten_ops/aten_op.cc"
-      )
-    endif()
-
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_rocm_src ${onnxruntime_rocm_contrib_ops_cc_srcs} ${onnxruntime_rocm_contrib_ops_cu_srcs})
