@@ -1,13 +1,14 @@
 import argparse
 import itertools
 
+import numpy as np
 import onnx
 import packaging.version as pv
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
-
 from onnxruntime.quantization.onnx_model import ONNXModel
-from onnxruntime.transformers.float16 import convert_tensor_float_to_float16
+
+# from onnxruntime.transformers.float16 import convert_tensor_float_to_float16
 
 ALLOWED_OPS_LIST = ["Conv", "MatMul"]
 
@@ -17,13 +18,78 @@ def make_value_info_from_tensor(tensor):
     return helper.make_tensor_value_info(tensor.name, tensor.data_type, shape)
 
 
+def _npfloat16_to_int(np_list):
+    """
+    Convert numpy float16 to python int.
+
+    :param np_list: numpy float16 list
+    :return int_list: python int list
+    """
+    return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_list]
+
+
+def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65504.0):
+    """
+    Convert float32 numpy array to float16 without changing sign or finiteness.
+    Positive values less than min_positive_val are mapped to min_positive_val.
+    Positive finite values greater than max_finite_val are mapped to max_finite_val.
+    Similar for negative values. NaN, 0, inf, and -inf are unchanged.
+    """
+
+    def between(a, b, c):
+        return np.logical_and(a < b, b < c)
+
+    np_array = np.where(between(0, np_array, min_positive_val), min_positive_val, np_array)
+    np_array = np.where(between(-min_positive_val, np_array, 0), -min_positive_val, np_array)
+    np_array = np.where(between(max_finite_val, np_array, float("inf")), max_finite_val, np_array)
+    np_array = np.where(between(float("-inf"), np_array, -max_finite_val), -max_finite_val, np_array)
+    return np.float16(np_array)
+
+
+def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
+    """Convert tensor float to float16.
+
+    Args:
+        tensor (TensorProto): the tensor to convert.
+        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+
+    Raises:
+        ValueError: input type is not TensorProto.
+
+    Returns:
+        TensorProto: the converted tensor.
+    """
+
+    if not isinstance(tensor, onnx_proto.TensorProto):
+        raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+
+    if tensor.data_type == onnx_proto.TensorProto.FLOAT:
+        tensor.data_type = onnx_proto.TensorProto.FLOAT16
+        # convert float_data (float type) to float16 and write to int32_data
+        if tensor.float_data:
+            float16_data = convert_np_to_float16(np.array(tensor.float_data), min_positive_val, max_finite_val)
+            int_list = _npfloat16_to_int(float16_data)
+            tensor.int32_data[:] = int_list
+            tensor.float_data[:] = []
+        # convert raw_data (bytes type)
+        if tensor.raw_data:
+            # convert n.raw_data to float
+            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
+            # convert float to float16
+            float16_list = convert_np_to_float16(float32_list, min_positive_val, max_finite_val)
+            # convert float16 to bytes and write back to raw_data
+            tensor.raw_data = float16_list.tobytes()
+    return tensor
+
+
 def convert_float_to_float16(
-    model,
-    min_positive_val=1e-7,
-    max_finite_val=1e4,
-    keep_io_types=False,
-    disable_shape_infer=False,
-    op_allow_list=None,
+        model,
+        min_positive_val=1e-7,
+        max_finite_val=1e4,
+        keep_io_types=False,
+        disable_shape_infer=False,
+        op_allow_list=None,
 ):
     """
     Convert tensor float type in the ONNX ModelProto input to tensor
