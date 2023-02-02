@@ -34,11 +34,10 @@ from pathlib import Path
 import coloredlogs
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+from fusion_options import FusionOptions
 from optimizer import optimize_model  # noqa: E402
 
 logger = logging.getLogger(__name__)
-
-DEBUG = True
 
 
 def optimize_stable_diffusion_onnx_pipeline(
@@ -57,7 +56,7 @@ def optimize_stable_diffusion_onnx_pipeline(
         RuntimeError: input onnx model does not exist
         RuntimeError: output onnx model path existed
     """
-    dirs_with_onnx = ["unet"] if DEBUG else ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
+    dirs_with_onnx = ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
     for name in dirs_with_onnx:
         onnx_model_path = source_dir / name / "model.onnx"
 
@@ -73,24 +72,25 @@ def optimize_stable_diffusion_onnx_pipeline(
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"optimize {onnx_model_path}...")
+
+        fusion_options = FusionOptions("unet")
+        # packed kv requires compute capacity >= 7.5 (like T4, A100, RTX 2060~4090. See https://developer.nvidia.com/cuda-gpus)
+        # Suggest to disable it if you are using older GPU like V100, RTX 1060/1070/1080, or using float32 model.
+        fusion_options.enable_packed_kv = float16
+
         m = optimize_model(
             str(onnx_model_path),
             model_type="unet",
             num_heads=num_heads,
             hidden_size=hidden_size,
             opt_level=0,
-            optimization_options=None,
+            optimization_options=fusion_options,
             use_gpu=False,
         )
 
         if float16:
-            # VAE-decoder in fp16 reduced quality thus we exclude it here
-            # TODO: enable mixed precision conversion for VAE-decoder.
-            if name != "vae_decoder":
-                logger.info(f"convert to float16 ...")
-                m.convert_float_to_float16(op_block_list=["RandomNormalLike", "Resize", "GroupNorm"])
-            else:
-                logger.info("skip convert vae_decoder to fp16.")
+            logger.info("convert %s to float16 ...", name)
+            m.convert_float_to_float16(op_block_list=["RandomNormalLike", "Resize", "GroupNorm"])
 
         optimized_model_path = target_dir / name / "model.onnx"
         output_dir = optimized_model_path.parent
@@ -103,7 +103,7 @@ def optimize_stable_diffusion_onnx_pipeline(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data_format)
-        logger.info(f"{onnx_model_path} => {optimized_model_path}")
+        logger.info("%s => %s", onnx_model_path, optimized_model_path)
 
 
 def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
@@ -118,19 +118,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
         RuntimeError: source path does not exist
         RuntimeError: output path exists but overwrite is false.
     """
-    extra_dirs = (
-        [
-            "vae_encoder",
-            "vae_decoder",
-            "text_encoder",
-            "safety_checker",
-            "scheduler",
-            "tokenizer",
-            "feature_extractor",
-        ]
-        if DEBUG
-        else ["scheduler", "tokenizer", "feature_extractor"]
-    )
+    extra_dirs = ["scheduler", "tokenizer", "feature_extractor"]
 
     for name in extra_dirs:
         source_path = source_dir / name
@@ -148,7 +136,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
             shutil.rmtree(target_path)
 
         shutil.copytree(source_path, target_path)
-        logger.info(f"{source_path} => {target_path}")
+        logger.info("%s => %s", source_path, target_path)
 
     extra_files = ["model_index.json"]
     for name in extra_files:
@@ -162,7 +150,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
                 raise RuntimeError(f"output path existed: {target_path}")
             os.remove(target_path)
         shutil.copyfile(source_path, target_path)
-        logger.info(f"{source_path} => {target_path}")
+        logger.info("%s => %s", source_path, target_path)
 
 
 def parse_arguments():

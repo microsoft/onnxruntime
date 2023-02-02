@@ -52,7 +52,7 @@ cudnnStatus_t GetWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnC
 
 size_t GetMaxWorkspaceSize(cudnnHandle_t handle, const CudnnConvState<cudnnConvolutionFwdAlgoPerf_t>& s,
                            const cudnnConvolutionFwdAlgo_t* algo, int n_algo) {
-  // TODO: get maximum available size from memory areana
+  // TODO: get maximum available size from memory arena
   size_t free, total;
   CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
   // Assuming 10% of fragmentation
@@ -99,6 +99,13 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
   s_.w_data = reinterpret_cast<const CudaT*>(W->Data<T>());
+
+  // Make sure input and weight are 4D for NHWC since we set 4D descriptor for NHWC.
+  constexpr bool channels_last = NHWC;
+  if (channels_last && (x_shape.NumDimensions() != 4 || w_shape.NumDimensions() != 4)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Number of dimensions of X and W should be 4 for channels_last format (NHWC)");
+  }
+
   // set B
   if (context->InputCount() >= 3) {
     const Tensor* B = context->Input<Tensor>(2);
@@ -125,7 +132,6 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       s_.cached_benchmark_results.clear();
     }
 
-    constexpr bool channels_last = NHWC;
     ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X->Shape(), W->Shape(), channels_last, channels_last));
 
     TensorShapeVector kernel_shape;

@@ -163,14 +163,11 @@ struct IGenerationParameters {
   bool custom_sampling = false;
 };
 
-#ifndef NDEBUG
 // #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
-#endif
-
 #ifdef DEBUG_GENERATION
 #define DUMP_TENSOR_LEVEL 2
 #else
-#define DUMP_TENSOR_LEVEL 0  // change it to 0 if want to disable dumping for code not in generation.
+#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
 #endif
 
 #if DUMP_TENSOR_LEVEL > 0
