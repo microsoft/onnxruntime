@@ -195,7 +195,9 @@ def parse_arguments():
     parser.add_argument("--disable_nccl", action="store_false", help="Disable NCCL, by default NCCL is disabled.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
-    parser.add_argument("--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="By default MPI is disabled.")
+    parser.add_argument(
+        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Disabled by default."
+    )
 
     # enable ONNX tests
     parser.add_argument(
