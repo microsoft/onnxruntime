@@ -217,9 +217,6 @@ MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
     size_t ldc
     ) const
 {
-    //
-    // TODO!! use templates to add activations in this impl
-    //
     float* Output = Output_;
     const auto* CRow = reinterpret_cast<const _mlas_fp16_*>(C);
     CRow += StartM * ldc + StartN;
@@ -227,7 +224,7 @@ MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
 
     while (CountM-- > 0) {
         CvtHalf2Float(Output, CRow, CountN);
-
+        MlasActivation(&Activation_, Output, nullptr, 1, CountN, ldc);
         CRow += ldc;
         Output += RowStride_;
     }

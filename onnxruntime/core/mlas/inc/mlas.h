@@ -1411,16 +1411,14 @@ public:
 };
 
 /**
- * @brief Convert half gemm result matrix to single precision float matrix
+ * @brief Half precision activation functions
 */
-class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+class MLAS_HALF_GEMM_ACTIVATION_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
 public:
-    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
-        float* Output,    /**< address of the output matrix, row major */
-        size_t RowStride  /**< row stride of the output matrix */
-    ) :
-            Output_(Output),
-            RowStride_(RowStride)
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR(
+        const MLAS_ACTIVATION& Activation
+        ) :
+            Activation_(Activation)
     {}
 
     void
@@ -1434,8 +1432,37 @@ public:
         ) const override;
 
 private:
+    const MLAS_ACTIVATION& Activation_;
+};
+
+/**
+ * @brief Convert half gemm result matrix to single precision float matrix
+*/
+class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
+        const MLAS_ACTIVATION& Activation,
+        float* Output,    /**< address of the output matrix, row major */
+        size_t RowStride  /**< row stride of the output matrix */
+    ) : Activation_(Activation),
+        Output_(Output),
+        RowStride_(RowStride)
+    {}
+
+    void
+    Process(
+        MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
+
+private:
+    const MLAS_ACTIVATION& Activation_;
     float* Output_;
-    size_t RowStride_;
+    const size_t RowStride_;
 };
 
 
