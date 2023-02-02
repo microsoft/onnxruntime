@@ -57,3 +57,9 @@ onnxruntime/python/version_info.py
 # clangd
 .cache/
 compile_commands.json
+# Swift Package Manager
+Packages/
+Package.pins
+Package.resolved
+.build/
+.swiftpm/

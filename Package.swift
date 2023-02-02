@@ -10,17 +10,17 @@ let package = Package(
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "onnxruntime",
-            targets: ["objectivec","onnxruntime"]),
+            targets: ["onnxruntime"]),
     ],
     dependencies: [
     ],
     targets: [
-        .target(
-            name: "objectivec",
-            dependencies: ["onnxruntime"],
-            path: "objectivec",
-            exclude: ["test/"],
-            sources: ["include/", "src/"]),
+//        .target(
+//            name: "objectivec",
+//            dependencies: ["onnxruntime"],
+//            path: "objectivec",
+//            exclude: ["test/*", "docs/*"]),
+                    
         
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
         .binaryTarget(name: "onnxruntime",
@@ -33,7 +33,7 @@ let package = Package(
     ]
 )
 /**
-  Source files for target onnxruntime-mobile-objc should be located under 'Sources/onnxruntime-mobile-objc', or a custom sources path can be set with the 'path' property in Package.swift
- product 'onnxruntime' is declared in the same package 'onnxruntime' and can't be used as a dependency for target 'onnxruntime-mobile-objc'.
+ x-xcode-log://CBA9A669-7EE8-4344-B512-1CD4F596D5C7 target 'objectivec' referenced in product 'onnxruntime' is empty
+
 
  */
