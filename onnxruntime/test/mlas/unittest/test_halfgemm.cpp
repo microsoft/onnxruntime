@@ -196,5 +196,11 @@ static size_t HalfGemmRegistShortExecute() {
 }
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
-  return is_short_execute ? HalfGemmRegistShortExecute() : HalfGemmRegistLongExecute();
+  if (!MlasFp16AccelerationSupported()) {
+    return false;
+  }
+  if (is_short_execute) {
+    return HalfGemmRegistShortExecute() > 0;
+  }
+  return HalfGemmRegistLongExecute() > 0;
 });

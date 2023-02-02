@@ -1379,6 +1379,9 @@ using MLAS_FP16 = onnxruntime::MLFloat16;
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
 
+bool MLASCALL
+MlasFp16AccelerationSupported();
+
 /**
  * @brief Interface for half gemm post processors.
  * 
@@ -1395,12 +1398,12 @@ public:
     virtual
     void
     Process(
-        const MLAS_FP16*, /**< the address of matrix to process */
-        size_t,           /**< the start row index of matrix */
-        size_t,           /**< the start col index of matrix */
-        size_t,           /**< the element count per row to process */
-        size_t,           /**< the element count per col to process */
-        size_t            /**< the leading dimension of matrix */
+        MLAS_FP16*, /**< the address of matrix to process */
+        size_t,     /**< the start row index of matrix */
+        size_t,     /**< the start col index of matrix */
+        size_t,     /**< the element count per row to process */
+        size_t,     /**< the element count per col to process */
+        size_t      /**< the leading dimension of matrix */
         ) const = 0;
 
     virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
@@ -1421,25 +1424,13 @@ public:
 
     void
     Process(
-        const MLAS_FP16* C,
+        MLAS_FP16* C,
         size_t StartM,
         size_t StartN,
         size_t CountM,
         size_t CountN,
         size_t ldc
         ) const override;
-
-private:
-    inline
-    void
-    ProcessImpl(
-        const MLAS_FP16* C,
-        size_t StartM,
-        size_t StartN,
-        size_t CountM,
-        size_t CountN,
-        size_t ldc
-        ) const;
 
 private:
     float* Output_;

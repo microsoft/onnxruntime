@@ -22,6 +22,19 @@ Abstract:
 
 #include <exception>
 
+bool MLASCALL
+MlasFp16AccelerationSupported()
+{
+#ifdef MLAS_NEON64_INTRINSICS
+    // TODO!! Only support for ARMv8.2
+    // TODO!! how to detect ARMv8.0 ???
+    return true;
+#else
+    return false;
+#endif
+}
+
+
 
 void
 MLASCALL
@@ -204,7 +217,7 @@ CvtHalf2Float(
 
 void
 MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
-    const MLAS_FP16* C,
+    MLAS_FP16* C,
     size_t StartM,
     size_t StartN,
     size_t CountM,
