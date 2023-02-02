@@ -208,10 +208,9 @@ CvtHalf2Float(
         vst1q_lane_f32(dest, res, 0);
     }
 #else
-    MLAS_UNREFERENCED_PARAMETER(dest);
-    MLAS_UNREFERENCED_PARAMETER(src);
-    MLAS_UNREFERENCED_PARAMETER(len);
-    throw std::invalid_argument("FP16 acceleration not supported in this platform!");
+    for (size_t i = 0; i < len; i++) {
+        *dest++ = MLAS_Half2Float(*src++);
+    }
 #endif  // MLAS_TARGET_ARM64
 }
 
