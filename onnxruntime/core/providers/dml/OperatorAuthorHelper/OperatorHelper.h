@@ -1573,7 +1573,6 @@ using ShapeInferenceHelper_Dropout = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Shrink = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Gelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_BiasGelu = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_QuickGelu = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_FastGelu = GetOutputShapeAsInputShapeHelper;
 
 using ShapeInferenceHelper_Identity7 = GetOutputShapeAsInputShapeHelper;

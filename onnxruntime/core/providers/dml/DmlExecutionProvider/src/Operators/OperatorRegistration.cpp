@@ -237,7 +237,6 @@ DML_OP_EXTERN_CREATION_FUNCTION(Where);
 DML_OP_EXTERN_CREATION_FUNCTION(Shrink);
 DML_OP_EXTERN_CREATION_FUNCTION(Gelu);
 DML_OP_EXTERN_CREATION_FUNCTION(BiasGelu);
-DML_OP_EXTERN_CREATION_FUNCTION(QuickGelu);
 DML_OP_EXTERN_CREATION_FUNCTION(FastGelu);
 DML_OP_EXTERN_CREATION_FUNCTION(OneHot);
 DML_OP_EXTERN_CREATION_FUNCTION(EyeLike);
@@ -762,7 +761,6 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  LayerNormalization,                 typeNameListLayerNormContrib,   supportedTypeListLayerNormalizationContrib, DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryLayerNormalization)},
     {REG_INFO_MS(   1,  SkipLayerNormalization,             typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  EmbedLayerNormalization,            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
-    {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  FastGelu,                           typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
 };
 

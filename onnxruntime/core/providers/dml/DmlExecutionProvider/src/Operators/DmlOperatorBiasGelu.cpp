@@ -41,5 +41,6 @@ public:
 };
 
 DML_OP_DEFINE_CREATION_FUNCTION(BiasGelu, DmlOperatorBiasGelu);
+DML_OP_DEFINE_CREATION_FUNCTION(FastGelu, DmlOperatorBiasGelu);
 
 } // namespace Dml
