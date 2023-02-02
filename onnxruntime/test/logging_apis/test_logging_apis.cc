@@ -212,8 +212,8 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {
   int line_num = 0;
   const onnxruntime::logging::Severity min_severity = onnxruntime::logging::Severity::kWARNING;
 
-  // Setup a mock sink that expects 4 log calls.
-  auto mock_sink = SetupMockSinkCalls(log_id, 4, __FILE__, __FUNCTION__, line_num);
+  // Setup a mock sink that expects 5 log calls.
+  auto mock_sink = SetupMockSinkCalls(log_id, 5, __FILE__, __FUNCTION__, line_num);
 
   onnxruntime::logging::LoggingManager manager{std::move(mock_sink), min_severity, false,
                                                onnxruntime::logging::LoggingManager::InstanceType::Temporal};
@@ -244,6 +244,11 @@ TEST_F(RealCAPITestsFixture, CppApiORTCXXLOGF) {
   // Two literal variadic args
   line_num = __LINE__ + 1;
   ORT_CXX_LOGF_NOEXCEPT(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Hello %s %f", "world", 1.2f);
+
+  // Test long message (exercise different control flow path that allocates heap memory).
+  std::string long_str(2048, 'a');
+  line_num = __LINE__ + 1;
+  ORT_CXX_LOGF(cpp_ort_logger, OrtLoggingLevel::ORT_LOGGING_LEVEL_ERROR, "Long string: %s", long_str.c_str());
 
   //
   // The following calls should be filtered out due to insufficient severity.

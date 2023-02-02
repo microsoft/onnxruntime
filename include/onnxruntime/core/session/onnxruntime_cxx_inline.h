@@ -1481,7 +1481,12 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
     snprintf(buffer, kStackBufferSize, format, std::forward<Args>(args)...);
     status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer, file_path, line_number, func_name);
   } else {
+    // std::make_unique is only supported starting at C++14.
+#if (__cplusplus >= 201402L) || (_MSC_VER >= 1900)
     auto buffer = std::make_unique<char[]>(buffer_size);
+#else
+    std::unique_ptr<char[]> buffer(new char[buffer_size]);
+#endif
     snprintf(buffer.get(), buffer_size, format, std::forward<Args>(args)...);
     status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
   }
