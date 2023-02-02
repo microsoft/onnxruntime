@@ -19,4 +19,4 @@ def build_model(x: onnxscript.FLOAT):
     return op.Add(x, y_scale), y_scale, y_zero_point
 
 model: onnx.ModelProto = build_model.to_model_proto()
-onnx.save(model, "scalar_const_not_share.py")
+onnx.save(model, "scalar_const_not_share.onnx")
