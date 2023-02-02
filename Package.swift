@@ -10,20 +10,20 @@ let package = Package(
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "onnxruntime",
-            targets: ["objectivec"]),
+            targets: ["onnxruntime"]),
     ],
     dependencies: [
     ],
     targets: [
-        .target(
-            name: "objectivec",
-            dependencies: [],
-            path: "objectivec"),
+//        .target(
+//            name: "objectivec",
+//            dependencies: [],
+//            path: "objectivec"),
         
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
-//        .binaryTarget(name: "onnxruntime",
-//                      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-mobile-c-1.13.1.zip",
-//                      checksum: "e7c9a70f422d25df506cd77cf0ca299003945a850ba7fea46375691166ef01cd"),
+        .binaryTarget(name: "onnxruntime",
+                      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-mobile-c-1.13.1.zip",
+                      checksum: "e7c9a70f422d25df506cd77cf0ca299003945a850ba7fea46375691166ef01cd"),
         
 //        .binaryTarget(name: "objectivec",
 //                      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-mobile-objc-1.13.1.zip",
