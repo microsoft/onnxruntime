@@ -8,6 +8,7 @@ export class EnvImpl implements Env {
   constructor() {
     this.wasm = {};
     this.webgl = {};
+    this.webgpu = {};
     this.logLevelInternal = 'warning';
   }
 
@@ -28,8 +29,8 @@ export class EnvImpl implements Env {
   debug?: boolean;
 
   wasm: Env.WebAssemblyFlags;
-
   webgl: Env.WebGLFlags;
+  webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 

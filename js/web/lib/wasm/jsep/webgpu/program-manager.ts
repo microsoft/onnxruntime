@@ -33,8 +33,14 @@ export class ProgramManager {
   run(buildArtifact: Artifact, inputs: GpuData[], outputs: GpuData[],
       dispatchGroup: {x: number; y?: number; z?: number}): void {
     const device = this.backend.device;
-
     const computePassEncoder = this.backend.getComputePassEncoder();
+
+    if (this.backend.profilingEnabled) {
+      // profiling write start timestamp
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 0);
+    }
 
     computePassEncoder.setPipeline(buildArtifact.computePipeline);
     const entries = [];
@@ -51,6 +57,50 @@ export class ProgramManager {
     computePassEncoder.dispatchWorkgroups(x, y, z);
 
     this.backend.pendingDispatchNumber++;
+
+    if (this.backend.profilingEnabled) {
+      // profiling write end timestamp
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (computePassEncoder as any).writeTimestamp(this.backend.profilingQuerySet, 1);
+      // eslint-disable-next-line no-bitwise
+      const queryData = this.backend.gpuDataManager.create(16, GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
+      // eslint-disable-next-line no-bitwise
+      const syncData = this.backend.gpuDataManager.create(16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
+
+      this.backend.endComputePass();
+      this.backend.getCommandEncoder().resolveQuerySet(this.backend.profilingQuerySet, 0, 2, queryData.buffer, 0);
+      this.backend.getCommandEncoder().copyBufferToBuffer(queryData.buffer, 0, syncData.buffer, 0, 16);
+      this.backend.flush();
+
+      const kernelId = this.backend.currentKernelId!;
+      const kernelName = this.backend.kernels.get(kernelId)![0];
+
+      syncData.buffer.mapAsync(GPUMapMode.READ).then(() => {
+        const mappedData = new BigUint64Array(syncData.buffer.getMappedRange());
+        const startTimeU64 = mappedData[0];
+        const endTimeU64 = mappedData[1];
+
+        syncData.buffer.unmap();
+
+        if (typeof this.backend.profilingTimeBase === 'undefined') {
+          this.backend.profilingTimeBase = startTimeU64;
+        }
+
+        const startTime = Number(startTimeU64 - this.backend.profilingTimeBase);
+        const endTime = Number(endTimeU64 - this.backend.profilingTimeBase);
+
+        if (!Number.isSafeInteger(startTime) || !Number.isSafeInteger(endTime)) {
+          throw new RangeError('incorrect timestamp range');
+        }
+
+        this.backend.gpuDataManager.release(queryData.id);
+        this.backend.gpuDataManager.release(syncData.id);
+
+        // eslint-disable-next-line no-console
+        console.log(`[profiling] kernel "${kernelId}|${kernelName}" execution time: ${endTime - startTime} ns`);
+      });
+    }
 
     if (this.backend.pendingDispatchNumber >= 16) {
       this.backend.flush();
