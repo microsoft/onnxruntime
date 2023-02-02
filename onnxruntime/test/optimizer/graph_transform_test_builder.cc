@@ -14,8 +14,6 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 
-#define kMaxSupportedOpset 18
-
 namespace onnxruntime {
 namespace test {
 
