@@ -30,6 +30,17 @@ union fp32_bits {
     float f;
 };
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+
+/*PreFast told us to convert them to constexpr but the compiler says we can't.*/
+#pragma warning(disable : 26497)
+
+/*Added whole bunch of casts, still can't get rid of these overflow warnings.*/
+#pragma warning(disable : 26450)
+#pragma warning(disable : 26451)
+#endif
+
 inline 
 _mlas_fp16_
 MLAS_Float2Half(float ff)
@@ -98,3 +109,7 @@ MLAS_Half2Float(_mlas_fp16_ val)
     o.u |= (val & 0x8000) << 16;  // sign bit
     return o.f;
 }
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
