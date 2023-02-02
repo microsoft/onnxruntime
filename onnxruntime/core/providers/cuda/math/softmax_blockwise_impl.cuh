@@ -85,9 +85,9 @@ struct SumExpFloat {
 // | data0 | data1 | data2 | ....          | dataM | ...                           | dataM*2 | ...                       |
 // -----------------------------------------------------------------------------------------------------------------------
 // |                                       |                                       |                                     |
-// -------------------warp-0----------------------------------warp-1----------------------------------warp-1--------------
+// -------------------warp-0----------------------------------warp-1----------------------------------warp-2--------------
 // TODO: ROCm doesn't support __syncwarp() now, we need another implementation to make sure read before write.
-// 3. Reduce all data to the first thread of warp-0.
+// 3. Thread-0 reduces all vaild data in warp-0 and writes the results into the location of data0, then return data0.
 
 template <template <typename> class Reduction, typename AccumT>
 __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
@@ -103,22 +103,13 @@ __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
   AccumT warpVal = defaultVal;
 
   // First warp will perform per-warp reductions for the remaining warps
-#if !defined(USE_ROCM)
-  uint32_t mask = (((uint64_t)1) << (blockDim.x / GPU_WARP_SIZE)) - 1;
-#endif
-
   if (threadIdx.x < GPU_WARP_SIZE) {
-    int lane = threadIdx.x % GPU_WARP_SIZE;
-    if (lane < blockDim.x / GPU_WARP_SIZE) {
-      #pragma unroll
-      for (int i = 0; i < GPU_WARP_SIZE; ++i) {
-        warpVal = r(warpVal, smem[lane * GPU_WARP_SIZE + i]);
-      }
-#if !defined(USE_ROCM)
-      __syncwarp(mask);
-#endif
-      smem[lane] = warpVal;
+    int warps_per_block = blockDim.x / GPU_WARP_SIZE;
+    #pragma unroll
+    for (int i = 0; i < warps_per_block; ++i) {
+      warpVal = r(warpVal, smem[i * GPU_WARP_SIZE + threadIdx.x]);
     }
+    smem[threadIdx.x] = warpVal;
   }
 
   __syncthreads();
@@ -127,7 +118,7 @@ __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
   AccumT blockVal = defaultVal;
 
   if (threadIdx.x == 0) {
-    for (int i = 0; i < blockDim.x / GPU_WARP_SIZE; ++i) {
+    for (int i = 0; i < GPU_WARP_SIZE; ++i) {
       blockVal = r(blockVal, smem[i]);
     }
     smem[0] = blockVal;
