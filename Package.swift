@@ -14,16 +14,9 @@ let package = Package(
     dependencies: [
     ],
     targets: [
-//        .target(
-//            name: "objectivec",
-//            dependencies: ["onnxruntime"],
-//            path: "objectivec",
-//            exclude: ["test/*", "docs/*"]),
-                    
-        
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
         .binaryTarget(name: "onnxruntime",
-                      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-mobile-c-1.13.1.zip",
-                      checksum: "e7c9a70f422d25df506cd77cf0ca299003945a850ba7fea46375691166ef01cd"),
+                      url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-c-1.13.1.zip",
+                      checksum: "f83c847421a6198d060af5e8535314cfe540a208552db7870b838ebc90cdaa3f"),
     ]
 )
