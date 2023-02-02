@@ -333,6 +333,7 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // get axes attributes
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
     std::vector<int64_t> axes_values;
+    // TODO: modify this codes when opset >= 18 (axes is an input).
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
     }
