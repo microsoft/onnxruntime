@@ -371,12 +371,6 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     node_ptr->AddAttributeProto(*attr_proto);
   }
 
-  //auto kernel_def_builder = KernelDefBuilder::Create();
-  //kernel_def_builder->SetName(op_name);
-  //kernel_def_builder->SetDomain(domain);
-  //kernel_def_builder->SinceVersion(version);
-  //auto kernel_def = kernel_def_builder->Build();
-
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
