@@ -26,6 +26,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
     p.cu_seqlens_q_ptr = params.cu_seqlens_q;
     p.cu_seqlens_k_ptr = params.cu_seqlens_k;
+    p.attn_bias_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.attn_bias));
 
     p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);

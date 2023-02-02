@@ -26,7 +26,7 @@ Status CheckInputs(const T* query,
   //   key              (K)       : (B, L, D)
   //   value            (V)       : (B, L, D_v)
   //   bias             (Q/K/V)   : (D + D + D_v)
-  //   key_padding_mask (K/V)     : (B, L) or (L)
+  //   key_padding_mask (K/V)     : (B, L) or (L) or (B + 1)
   //   relative_position_bias     : (B, 1, S, L) or (1, 1, S, L)
 
   const auto& query_dims = query->Shape().GetDims();
@@ -53,6 +53,8 @@ Status CheckInputs(const T* query,
     const auto& mask_dims = key_padding_mask->Shape().GetDims();
     if (mask_dims.size() == 1 && mask_dims[0] == key_dims[0]) {
       mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+    } else if (mask_dims.size() == 1 && mask_dims[0] == key_dims[0] + 1) {
+      mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_WITH_ZERO;
     } else if (mask_dims.size() == 2 && mask_dims[0] == key_dims[0] && mask_dims[1] == key_dims[1]) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
     }

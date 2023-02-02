@@ -140,13 +140,15 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
                           parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
 
+  bool is_mask_1d_seq_len_with_zero = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_WITH_ZERO;
+
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
-                                        nullptr == key_padding_mask &&  // TODO: support 1D mask
-                                        nullptr == relative_position_bias &&
+                                        is_mask_1d_seq_len_with_zero &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
+  //std::cout << "******use_memory_efficient_attention:" << use_memory_efficient_attention << std::endl;
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif

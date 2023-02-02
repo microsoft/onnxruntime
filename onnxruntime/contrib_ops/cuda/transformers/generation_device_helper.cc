@@ -677,8 +677,8 @@ Status GreedySearchProcessLogits(
       cuda_stream);
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+  //dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
+  //dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
 #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),

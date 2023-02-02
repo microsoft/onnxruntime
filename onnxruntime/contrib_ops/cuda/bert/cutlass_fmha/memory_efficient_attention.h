@@ -28,6 +28,7 @@ struct MemoryEfficientAttentionParams {
   const void* query;  // [B, S, N, H]
   const void* key;    // [B, L, N, H], where L is kv_sequence_length
   const void* value;  // [B, L, N, H_v]
+  const void* attn_bias;  // [N, S, S]
   void* output;       // [B, S, N, H_v]
   void* workspace;    // [B, S, N, H_v] when kNeedsOutputAccumulatorBuffer, nullptr otherwise
   cudaStream_t stream;

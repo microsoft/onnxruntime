@@ -9,6 +9,8 @@ namespace contrib {
 enum AttentionMaskType {
   MASK_NONE,            // No mask
   MASK_1D_KEY_SEQ_LEN,  // [batch_size], key sequence length
+  MASK_1D_KEY_SEQ_LEN_WITH_ZERO,
+                        // [batch_size + 1], key sequence length with zero in the front
   MASK_1D_END_START,    // [2 * batch_size] with end positions and start positions
   MASK_2D_DUMMY,        // dummy mask with shape [1, 1] or [batch_size, 1]. It has same effect as no mask.
   MASK_2D_KEY_PADDING,  // [batch_size, total_sequence_length]

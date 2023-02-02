@@ -48,7 +48,7 @@ using namespace cub;
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 #define CUDA_MEMORY_ALIGNMENT 256
 
-#define DUMP_ATTENTION_LEVEL 0
+#define DUMP_ATTENTION_LEVEL 2
 #if DUMP_ATTENTION_LEVEL > 1
 #define DUMP_ATTENTION_INIT() transformers::CudaTensorConsoleDumper dumper
 #define DUMP_ATTENTION(...) dumper.Print(__VA_ARGS__)
@@ -567,7 +567,8 @@ Status QkvToContext(
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-    assert(data.mask_index == nullptr);
+
+    // assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
     MemoryEfficientAttentionParams p;
@@ -582,9 +583,13 @@ Status QkvToContext(
     p.causal = parameters.is_unidirectional;
     p.cu_seqlens_q = nullptr;
     p.cu_seqlens_k = nullptr;
+    //p.cu_seqlens_q = const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    //p.cu_seqlens_k = const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
     p.query = q;
     p.key = k;
     p.value = v;
+    //p.attn_bias = nullptr;
+    p.attn_bias = data.relative_position_bias;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
