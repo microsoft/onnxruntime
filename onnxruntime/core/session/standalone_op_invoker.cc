@@ -406,13 +406,6 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'",
                     node_ptr->Domain(), "' op_type:", node_ptr->OpType());
 
-  // TODO: This doesn't look like it's required. Can add as fallback if kernel_create_info->kernel_def is empty.
-  // auto kernel_def_builder = KernelDefBuilder::Create();
-  // kernel_def_builder->SetName(op_name);
-  // kernel_def_builder->SetDomain(domain);
-  // kernel_def_builder->SinceVersion(version);
-  // auto kernel_def = kernel_def_builder->Build();
-
   static std::unordered_map<int, OrtValue> kEmptyValueMap;
   static OrtValueNameIdxMap kEmptyNameMap;
 
