@@ -1347,17 +1347,6 @@ if (onnxruntime_USE_ROCM)
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    if (NOT onnxruntime_ENABLE_ATEN)
-      list(REMOVE_ITEM onnxruntime_rocm_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/aten_ops/aten_op.cc"
-      )
-    endif()
-    if (NOT onnxruntime_USE_NCCL)
-      list(REMOVE_ITEM onnxruntime_rocm_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/collective/nccl_kernels.cc"
-      )
-    endif()
-
     hipify("onnxruntime/contrib_ops" contrib_ops_excluded_files onnxruntime_rocm_generated_contrib_ops_cc_srcs onnxruntime_rocm_generated_contrib_ops_cu_srcs)
 
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
