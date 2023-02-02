@@ -80,6 +80,7 @@ function buildConfig({ filename, format, target, mode, devtool, build_defs }) {
         "util": false,
       },
       fallback: {
+        "crypto": false,
         "fs": false,
         "path": false,
         "util": false,

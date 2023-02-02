@@ -224,25 +224,6 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
-# ENABLE_TRAINING includes all training functionality
-# The following 2 entry points
-# 1. ORTModule
-# 2. ORT Training APIs
-# It includes all the feature additions as well like
-# 1. Python OP
-# 2. Aten Fallback
-# 3. Strided Tensors
-# 4. All training ops including communication and  collectives ops
-# 5. ONNXBlock (Front end for training preparation when using training apis)
-# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
-# when using python env
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
-  set(onnxruntime_ENABLE_ATEN ON)
-endif()
-
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
 endif()
@@ -1041,6 +1022,7 @@ endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)
+  add_compile_definitions(DNNL_OPENMP)
 endif()
 
 # TVM EP

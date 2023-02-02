@@ -1001,8 +1001,11 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options here if a new option
-     * supported. current supported options: {}
+     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
+     * supported. current supported options: {} The maximum number of provider options is set to 128
+     * (see addExecutionProvider's comment). This number is controlled by
+     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
+     * not enough, please increase it or implementing an incremental way to add more options.
      *
      * @param providerOptions options pass to XNNPACK EP for initialization.
      * @throws OrtException If there was an error in native code.
@@ -1132,6 +1135,10 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
+    /*
+     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
+     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
+     */
     private native void addExecutionProvider(
         long apiHandle,
         long nativeHandle,

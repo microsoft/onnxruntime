@@ -972,6 +972,8 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+            if args.use_rocm:
+                cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -2372,6 +2374,11 @@ def main():
     # GDK builds don't support testing
     if args.use_gdk:
         args.test = False
+
+    # enable_training is a higher level flag that enables all training functionality.
+    if args.enable_training:
+        args.enable_training_apis = True
+        args.enable_training_ops = True
 
     configs = set(args.config)
 
