@@ -18,6 +18,9 @@
 namespace onnxruntime {
 namespace graph_utils {
 
+/** Checks if the operator's input is a Constant node. */
+bool InputIsConstant(const Node& node, int input_idx);
+
 /** Checks if the operator's type, version, and domain of the given node match the given values.
  * @remarks Use kOnnxDomain and not kOnnxDomainAlias for ONNX operators.
  */

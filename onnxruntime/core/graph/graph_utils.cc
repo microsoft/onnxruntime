@@ -219,6 +219,22 @@ bool MatchesOpSetDomain(const Node& node, std::string_view domain) {
   return node_domain == domain;
 }
 
+bool InputIsConstant(const Node& node, int input_idx) {
+  const Node::EdgeEnd* input_edge = GetInputEdge(node, input_idx);
+  if (!input_edge) {
+    // not input. treat as default constant
+    return true;
+  }
+
+  const Node& input_node = input_edge->GetNode();
+
+  if (input_node.OpType() == "Constant") {
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,

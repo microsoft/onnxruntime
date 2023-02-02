@@ -4453,75 +4453,85 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
 #endif
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/layer_norm.onnx", MODEL_FOLDER "fusion/layer_norm_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "LayerNormalization") {
-      // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
-      // LayerNormalization input "scale" and "bias" should have the same dimension.
-      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
-      EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
-      EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
-    } else {
-      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Add"] == 0);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
+    ASSERT_TRUE(op_to_count["Pow"] == 0);
+    ASSERT_TRUE(op_to_count["Sqrt"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        // LayerNormalization should have three inputs.
+        EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+        // LayerNormalization input "scale" and "bias" should have the same dimension.
+        const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+        const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
+        EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+        EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
+        EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
+      } else {
+        EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+      }
     }
   }
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/layer_norm_with_cast.onnx", MODEL_FOLDER "fusion/layer_norm_with_cast_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
 #ifdef ENABLE_TRAINING_CORE
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+    ASSERT_TRUE(op_to_count["Cast"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 #else
-  ASSERT_TRUE(op_to_count["Cast"] == 1);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
+    ASSERT_TRUE(op_to_count["Cast"] == 1);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 0);
 #endif
+  }
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_2) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast_2.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/layer_norm_with_cast_2.onnx", MODEL_FOLDER "fusion/layer_norm_with_cast_2_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+    ASSERT_TRUE(op_to_count["Cast"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+  }
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_3) {
@@ -4557,36 +4567,39 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_4) {
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_sub_dup.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/layer_norm_sub_dup.onnx", MODEL_FOLDER "fusion/layer_norm_sub_dup_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["Sub"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Add"] == 0);
+    ASSERT_TRUE(op_to_count["Sub"] == 0);
+    ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
+    ASSERT_TRUE(op_to_count["Pow"] == 0);
+    ASSERT_TRUE(op_to_count["Sqrt"] == 0);
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
 
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "LayerNormalization") {
-      // LayerNormalization should have three inputs.
-      EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
-      // LayerNormalization input "scale" and "bias" should have the same dimension.
-      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
-      EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
-      EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
-    } else {
-      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "LayerNormalization") {
+        // LayerNormalization should have three inputs.
+        EXPECT_EQ(node.InputDefs().size(), 3u) << "LayerNormalization number of inputs does not equal to 3. Got:" << node.InputDefs().size();
+        // LayerNormalization input "scale" and "bias" should have the same dimension.
+        const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+        const TensorShapeProto* bias_shape = node.InputDefs()[2]->Shape();
+        EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+        EXPECT_EQ(bias_shape->dim_size(), 1) << "LayerNormalization bias should be 1D. Got: " << bias_shape->dim_size();
+        EXPECT_EQ(scale_shape->dim(0).dim_value(), bias_shape->dim(0).dim_value());
+      } else {
+        EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+      }
     }
   }
 }
@@ -4656,32 +4669,35 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_t5.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/layer_norm_t5.onnx", MODEL_FOLDER "fusion/layer_norm_t5_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SimplifiedLayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Div"] == 0);
-  ASSERT_TRUE(op_to_count["Add"] == 0);
-  ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
-  ASSERT_TRUE(op_to_count["Pow"] == 0);
-  ASSERT_TRUE(op_to_count["Sqrt"] == 0);
-  ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ASSERT_TRUE(op_to_count["Div"] == 0);
+    ASSERT_TRUE(op_to_count["Add"] == 0);
+    ASSERT_TRUE(op_to_count["ReduceMean"] == 0);
+    ASSERT_TRUE(op_to_count["Pow"] == 0);
+    ASSERT_TRUE(op_to_count["Sqrt"] == 0);
+    ASSERT_TRUE(op_to_count["SimplifiedLayerNormalization"] == 1);
 
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() == "SimplifiedLayerNormalization") {
-      // LayerNormalization should have two inputs.
-      EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
-      // LayerNormalization input "scale" and "bias" should have the same dimension.
-      const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
-      EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
-    } else {
-      EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        // LayerNormalization should have two inputs.
+        EXPECT_EQ(node.InputDefs().size(), 2u) << "LayerNormalization number of inputs does not equal to 2. Got:" << node.InputDefs().size();
+        // LayerNormalization input "scale" and "bias" should have the same dimension.
+        const TensorShapeProto* scale_shape = node.InputDefs()[1]->Shape();
+        EXPECT_EQ(scale_shape->dim_size(), 1) << "LayerNormalization scale should be 1D. Got: " << scale_shape->dim_size();
+      } else {
+        EXPECT_TRUE(false) << "Unexpected node " << node.Name();
+      }
     }
   }
 }
@@ -4782,37 +4798,40 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusion_Input_Output_Check) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/skip_layer_norm_input_output_check.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  constexpr const ORTCHAR_T* model_uris[2] = {MODEL_FOLDER "fusion/skip_layer_norm_input_output_check.onnx", MODEL_FOLDER "fusion/skip_layer_norm_input_output_check_ver18.onnx"};
+  for (int count = 0; count < sizeof(model_uris) / sizeof(model_uris[0]); count++) {
+    const ORTCHAR_T* model_uri = model_uris[count];
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<SkipLayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  for (Node& node : graph.Nodes()) {
-    if (node.OpType() == "SkipLayerNormalization") {
-      // check inputs
-      std::vector<NodeArg*>& input_defs = node.MutableInputDefs();
-      EXPECT_EQ(input_defs.size(), 5u) << "SkipLayerNormalization number of inputs does not equal to 5. Got:" << node.InputDefs().size();
-      EXPECT_EQ(input_defs[0]->Name(), "input.1");
-      EXPECT_EQ(input_defs[1]->Name(), "6");
-      EXPECT_EQ(input_defs[2]->Name(), "1");
-      EXPECT_EQ(input_defs[3]->Name(), "2");
-      EXPECT_EQ(input_defs[4]->Name(), "4");
+    for (Node& node : graph.Nodes()) {
+      if (node.OpType() == "SkipLayerNormalization") {
+        // check inputs
+        std::vector<NodeArg*>& input_defs = node.MutableInputDefs();
+        EXPECT_EQ(input_defs.size(), 5u) << "SkipLayerNormalization number of inputs does not equal to 5. Got:" << node.InputDefs().size();
+        EXPECT_EQ(input_defs[0]->Name(), "input.1");
+        EXPECT_EQ(input_defs[1]->Name(), "6");
+        EXPECT_EQ(input_defs[2]->Name(), "1");
+        EXPECT_EQ(input_defs[3]->Name(), "2");
+        EXPECT_EQ(input_defs[4]->Name(), "4");
 
-      // check outputs
-      std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
+        // check outputs
+        std::vector<NodeArg*>& output_defs = node.MutableOutputDefs();
 #ifdef ENABLE_TRAINING_CORE
-      EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
+        EXPECT_EQ(node.OutputDefs().size(), 3u) << "SkipLayerNormalization number of outputs does not equal to 3. Got:" << node.OutputDefs().size();
 #else
-      EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
+        EXPECT_EQ(node.OutputDefs().size(), 1u) << "SkipLayerNormalization number of outputs does not equal to 1. Got:" << node.OutputDefs().size();
 #endif
-      EXPECT_EQ(output_defs[0]->Name(), "19");
-    } else {
-      EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
+        EXPECT_EQ(output_defs[0]->Name(), "19");
+      } else {
+        EXPECT_EQ(node.OpType(), "MatMul") << "Unexpected node: " << node.OpType() << "," << node.Name();
+      }
     }
   }
 }

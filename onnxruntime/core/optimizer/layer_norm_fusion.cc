@@ -99,13 +99,17 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node& reduce_mean_node = *p_reduce_mean;
     ORT_RETURN_IF_ERROR(Recurse(reduce_mean_node, modified, graph_level, logger));
 
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
-        !graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
+    if (!graph_utils::IsSupportedProvider(reduce_mean_node, GetCompatibleExecutionProviders()) ||
         (reduce_mean_node.GetOutputEdgesCount() != 1 && reduce_mean_node.GetOutputEdgesCount() != 2) ||
         graph.NodeProducesGraphOutput(reduce_mean_node) ||
         !IsSupportedDataType(reduce_mean_node)) {
-      continue;
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) &&
+          (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {18}) ||
+           !graph_utils::InputIsConstant(reduce_mean_node, 1))) {
+        continue;
+      }
     }
+
     nodes_to_remove.push_back(reduce_mean_node);
 
     // Loop through the children of current "ReduceMean" node. See if they match ["Sub"] or ["Sub", "Sub"]
@@ -263,12 +267,15 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       continue;
     }
     Node& reduce_mean2_node = *graph.GetNode(p_reduce_mean2->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13}) ||
-        reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
+    if (reduce_mean2_node.GetExecutionProviderType() != reduce_mean_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean2_node, 1) ||
         !IsSupportedDataType(reduce_mean2_node) ||
         reduce_mean2_node.GetInputEdgesCount() == 0) {
-      continue;
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {1, 11, 13}) &&
+          (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean2_node, "ReduceMean", {18}) ||
+           !graph_utils::InputIsConstant(reduce_mean2_node, 1))) {
+        continue;
+      }
     }
     nodes_to_remove.push_back(reduce_mean2_node);
 
@@ -485,11 +492,14 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) ||
-        reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
+    if (reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node) ||
         reduce_mean_node.GetInputEdgesCount() == 0) {
-      continue;
+      if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13}) &&
+          (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {18}) ||
+           !graph_utils::InputIsConstant(reduce_mean_node, 1))) {
+        continue;
+      }
     }
     nodes_to_remove.push_back(reduce_mean_node);
 
