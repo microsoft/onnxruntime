@@ -159,25 +159,6 @@ MlasHalfGemmConvertPackB(
 //  Post Processor Implementations
 //
 
-void
-MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
-    const MLAS_FP16* C,
-    size_t StartM,
-    size_t StartN,
-    size_t CountM,
-    size_t CountN,
-    size_t ldc
-    ) const
-{
-    ProcessImpl(
-        C,
-        StartM,
-        StartN,
-        CountM,
-        CountN,
-        ldc);
-}
-
 MLAS_FORCEINLINE
 void
 CvtHalf2Float(
@@ -214,20 +195,22 @@ CvtHalf2Float(
         vst1q_lane_f32(dest, res, 0);
     }
 #else
+    MLAS_UNREFERENCED_PARAMETER(dest);
+    MLAS_UNREFERENCED_PARAMETER(src);
+    MLAS_UNREFERENCED_PARAMETER(len);
     throw std::invalid_argument("FP16 acceleration not supported in this platform!");
 #endif  // MLAS_TARGET_ARM64
-
 }
 
-MLAS_FORCEINLINE
 void
-MLAS_HALF_GEMM_2FLOAT_PROCESSOR::ProcessImpl(
+MLAS_HALF_GEMM_2FLOAT_PROCESSOR::Process(
     const MLAS_FP16* C,
     size_t StartM,
     size_t StartN,
     size_t CountM,
     size_t CountN,
-    size_t ldc) const
+    size_t ldc
+    ) const
 {
     //
     // TODO!! use templates to add activations in this impl
