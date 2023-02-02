@@ -357,10 +357,18 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if TARGET_OS_SIMULATOR || TARGET_OS_IOS
+
 #undef TEST_MAIN
 #define TEST_MAIN main_no_link_  // there is a UI test app for iOS.
-#endif
-#endif
+
+// IOS tests require this function to be defined.
+// See onnxruntime/test/xctest/xcgtest.mm
+void ortenv_setup() {
+  // Do nothing. These logging tests do not require an env to be setup initially.
+}
+
+#endif  // TARGET_OS_SIMULATOR || TARGET_OS_IOS
+#endif  // defined(__APPLE__)
 
 int TEST_MAIN(int argc, char** argv) {
   int status = 0;
