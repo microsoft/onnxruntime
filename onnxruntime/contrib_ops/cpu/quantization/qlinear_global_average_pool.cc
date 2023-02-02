@@ -55,7 +55,7 @@ Status ComputeQLinearGlobalAvgPool(
   return Status::OK();
 }
 
-// we would either put the template function in header file add such declaration in the below
+// we would either put the template function in header file or add such declaration in the below to do explicit instantiation.
 template Status ComputeQLinearGlobalAvgPool<int8_t>(
     const int8_t* x,
     float x_scale,
