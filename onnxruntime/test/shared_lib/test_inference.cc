@@ -106,7 +106,10 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = 1;
+    dnnl_options.threadpool_args = nullptr;
+    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
     std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
@@ -2678,6 +2681,7 @@ TEST(CApiTest, GH_11717) {
 }
 #endif
 
+#ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   Ort::SessionOptions session_options{};
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
@@ -2704,3 +2708,4 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
   ASSERT_TRUE(output_dims == expected_output_dims);
 }
+#endif

@@ -209,6 +209,20 @@ jobs:
     displayName: cache stat
     condition: eq(${{ parameters.WITH_CACHE }}, true)
 
+  - powershell: |
+      Get-Volume D
+    displayName: check disk size
+
+  - task: DeleteFiles@1
+    displayName: 'Delete intermedia files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+      Contents: |
+        **/*.obj
+
+  - powershell: |
+      Get-Volume D
+    displayName: check disk size
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - task: PythonScript@0

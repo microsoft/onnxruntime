@@ -64,6 +64,8 @@ option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to prov
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 
+option(onnxruntime_USE_FLASH_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON)
+
 option(onnxruntime_BUILD_FOR_NATIVE_MACHINE "Enable this option for turning on optimization specific to this machine" OFF)
 option(onnxruntime_USE_AVX "Use AVX instructions" OFF)
 option(onnxruntime_USE_AVX2 "Use AVX2 instructions" OFF)
@@ -202,25 +204,6 @@ option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
-
-# ENABLE_TRAINING includes all training functionality
-# The following 2 entry points
-# 1. ORTModule
-# 2. ORT Training APIs
-# It includes all the feature additions as well like
-# 1. Python OP
-# 2. Aten Fallback
-# 3. Strided Tensors
-# 4. All training ops including communication and  collectives ops
-# 5. ONNXBlock (Front end for training preparation when using training apis)
-# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
-# when using python env
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
-  set(onnxruntime_ENABLE_ATEN ON)
-endif()
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -596,9 +579,30 @@ set(ORT_PROVIDER_FLAGS)
 set(ORT_PROVIDER_CMAKE_FLAGS)
 
 if (onnxruntime_USE_CUDA)
+  enable_language(CUDA)
+  message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
+
+  if (onnxruntime_DISABLE_CONTRIB_OPS)
+    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.6)
+    message( STATUS "Turn off flash attention since CUDA compiler version < 11.6")
+    set(onnxruntime_USE_FLASH_ATTENTION OFF)
+  endif()
+else()
+  set(onnxruntime_USE_FLASH_ATTENTION OFF)
+endif()
+
+if (onnxruntime_USE_CUDA)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
+
+    if (onnxruntime_USE_FLASH_ATTENTION)
+      message( STATUS "Enable flash attention for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
+    endif()
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
@@ -1018,6 +1022,7 @@ endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)
+  add_compile_definitions(DNNL_OPENMP)
 endif()
 
 # TVM EP
@@ -1234,8 +1239,6 @@ endif()
 
 if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
-  enable_language(CUDA)
-  message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDNN_HOME)
     file(TO_CMAKE_PATH ${onnxruntime_CUDNN_HOME} onnxruntime_CUDNN_HOME)

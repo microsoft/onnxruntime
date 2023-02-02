@@ -130,26 +130,21 @@ namespace Microsoft.ML.OnnxRuntime
             int numProviders;
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAvailableProviders(out availableProvidersHandle, out numProviders));
-
-            var availableProviders = new string[numProviders];
-
             try
             {
-                for(int i=0; i<numProviders; ++i)
+                var availableProviders = new string[numProviders];
+                for (int i=0; i<numProviders; ++i)
                 {
                     availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
                 }
+                return availableProviders;
             }
-
             finally
             {
-                // Looks a bit weird that we might throw in finally(...)
-                // But the native method OrtReleaseAvailableProviders actually doesn't return a failure status
+                // This should never throw. The original C API should have never returned status in the first place.
                 // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
             }
-
-            return availableProviders;
         }
 
 

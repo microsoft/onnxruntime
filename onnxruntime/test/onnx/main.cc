@@ -45,6 +45,8 @@ void usage() {
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
+      "\t-t: Specify custom relative tolerance values for output value comparison. default: 1e-5\n"
+      "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
@@ -60,9 +62,13 @@ void usage() {
       OrtGetApiBase()->GetVersionString());
 }
 
-static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
+  if (useCustom)
+  {
+    return TestTolerances(atol, rtol, absolute_overrides, relative_overrides);
+  }
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
@@ -142,6 +148,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_xnnpack = false;
+  bool override_tolerance = false;
+  double atol = 1e-5;
+  double rtol = 1e-5;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -154,7 +163,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:i:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -224,6 +233,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 't':
+          override_tolerance = true;
+          rtol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
+          break;
+        case 'a':
+          override_tolerance = true;
+          atol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
           break;
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
@@ -382,7 +399,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_dnnl) {
 #ifdef USE_DNNL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      // Generate dnnl_options to optimize dnnl performance
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = enable_cpu_mem_arena ? 1 : 0;
+      dnnl_options.threadpool_args = nullptr;
+#if defined(DNNL_ORT_THREAD)
+      dnnl_options.threadpool_args = static_cast<void*>(TestEnv::GetDefaultThreadPool(Env::Default()));
+#endif  // defined(DNNL_ORT_THREAD)
+      sf.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
       fprintf(stderr, "DNNL is not supported in this build");
       return -1;
@@ -589,7 +613,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino),
+              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
@@ -685,6 +709,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},

@@ -6,6 +6,7 @@
 #include <core/session/onnxruntime_cxx_api.h>
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
 #include <assert.h>
 #include "providers.h"
 #include "TestCase.h"
@@ -39,9 +40,54 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   const std::string& provider_name = performance_test_config.machine_config.provider_type_name;
   if (provider_name == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(
-        OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options,
-                                                      performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0));
+    // Generate provider options
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = 1;
+    dnnl_options.threadpool_args = nullptr;
+
+#if !defined(DNNL_ORT_THREAD)
+#if defined(_MSC_VER)
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif  // defined(_MSC_VER)
+    int num_threads = 0;
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW(
+            "[ERROR] [OneDNN] Use a '|' to separate the key and value for the "
+            "run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+
+      if (key == "num_of_threads") {
+        std::stringstream sstream(value);
+        sstream >> num_threads;
+        if (num_threads < 0) {
+          ORT_THROW(
+              "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
+              " set number of threads or use '0' for default\n");
+          // If the user doesnt define num_threads, auto detect threads later
+        }
+      } else {
+        ORT_THROW(
+            "[ERROR] [OneDNN] wrong key type entered. "
+            "Choose from the following runtime key options that are available for OneDNN. ['num_of_threads']\n");
+      }
+    }
+    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
+#endif  // !defined(DNNL_ORT_THREAD)
+    dnnl_options.use_arena = performance_test_config.run_config.enable_cpu_mem_arena ? 1 : 0;
+
+    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
     ORT_THROW("DNNL is not supported in this build\n");
 #endif
@@ -267,11 +313,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string device_id = "";            // [device_id]: Selects a particular hardware device for inference.
     size_t num_of_threads = 8;             // [num_of_threads]: Overrides the accelerator default value of number of
                                            //  threads with this value at runtime.
-    bool use_compiled_network = false;     // [use_compiled_network]: Can be enabled to directly import pre-compiled
-                                           // blobs if exists.
-    std::string blob_dump_path = "";       // [blob_dump_path]: Explicitly specify the path where you would like to
-                                           // dump and load the blobs for the use_compiled_network(save/load blob)
-                                           // feature. This overrides the default path.
+    std::string cache_dir = "";       // [cache_dir]: specify the path to
+                                           // dump and load the blobs for the model caching/kernel caching (GPU)
+                                           // feature. If blob files are already present, it will be directly loaded.
     bool enable_opencl_throttling = false;    // [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU
                                               // device (Reduces CPU Utilization when using GPU)
     bool enable_dynamic_shapes = false;    // [enable_dynamic_shapes]: Enables Dynamic Shapes feature for CPU device)
@@ -323,15 +367,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_vpu_fast_compile' should be a boolean i.e. true or false. Default value is false.\n");
         }
-      } else if (key == "use_compiled_network") {
-        if (value == "true" || value == "True") {
-          use_compiled_network = true;
-        } else if (value == "false" || value == "False") {
-          use_compiled_network = false;
-        } else {
-          ORT_THROW("[ERROR] [OpenVINO] The value for the key 'use_compiled_network' should be a boolean i.e. true or false. Default value is false.\n");
-        }
-      } else if (key == "enable_opencl_throttling") {
+      }  else if (key == "enable_opencl_throttling") {
         if (value == "true" || value == "True") {
           enable_opencl_throttling = true;
         } else if (value == "false" || value == "False") {
@@ -354,10 +390,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if ((int)num_of_threads <= 0) {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'num_of_threads' should be greater than 0\n");
         }
-      } else if (key == "blob_dump_path") {
-        blob_dump_path = value;
+      } else if (key == "cache_dir") {
+        cache_dir = value;
       } else {
-        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'use_compiled_network', 'blob_dump_path', 'enable_opencl_throttling|true'] \n");
+        ORT_THROW("[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO. ['device_type', 'device_id', 'enable_vpu_fast_compile', 'num_of_threads', 'cache_dir', 'enable_opencl_throttling|true'] \n");
       }
     }
     OrtOpenVINOProviderOptions options;
@@ -365,8 +401,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     options.device_id = device_id.c_str();                      // To set the device_id
     options.enable_vpu_fast_compile = enable_vpu_fast_compile;  // To enable_vpu_fast_compile, default is false
     options.num_of_threads = num_of_threads;                    // To set number of free InferRequests, default is 8
-    options.use_compiled_network = use_compiled_network;        // To use_compiled_network, default is false
-    options.blob_dump_path = blob_dump_path.c_str();            // sets the blob_dump_path, default is ""
+    options.cache_dir = cache_dir.c_str();                      // sets the cache_dir, default is ""
     options.enable_opencl_throttling = enable_opencl_throttling;    // Enables GPU Throttling (Reduces CPU Utilization)
     options.enable_dynamic_shapes = enable_dynamic_shapes;      // Enables Dynamic Shapes feature
     session_options.AppendExecutionProvider_OpenVINO(options);
@@ -526,7 +561,17 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
   if (!performance_test_config.run_config.intra_op_thread_affinities.empty()) {
     fprintf(stdout, "Setting intra op thread affinity as %s\n", performance_test_config.run_config.intra_op_thread_affinities.c_str());
-    session_options.AddConfigEntry("session.intra_op_thread_affinities", performance_test_config.run_config.intra_op_thread_affinities.c_str());
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, performance_test_config.run_config.intra_op_thread_affinities.c_str());
+  }
+
+  if (performance_test_config.run_config.disable_spinning) {
+    fprintf(stdout, "Disabling intra-op thread spinning entirely\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigAllowIntraOpSpinning, "0");
+  }
+
+  if (performance_test_config.run_config.disable_spinning_between_run) {
+    fprintf(stdout, "Disabling intra-op thread spinning between runs\n");
+    session_options.AddConfigEntry(kOrtSessionOptionsConfigForceSpinningStop, "1");
   }
 
   if (performance_test_config.run_config.execution_mode == ExecutionMode::ORT_PARALLEL && performance_test_config.run_config.inter_op_num_threads > 0) {
