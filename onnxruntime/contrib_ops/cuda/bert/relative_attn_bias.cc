@@ -158,7 +158,7 @@ Status GatedRelativePositionBias<T>::ComputeInternal(OpKernelContext* context) c
                          reinterpret_cast<const CudaT*>(query_tensor.template Data<T>()),
                          reinterpret_cast<const CudaT*>(query_bias_tensor.template Data<T>()),
                          reinterpret_cast<CudaT*>(workspace.get()),
-                         false, head_size, reinterpret_cast<CudaT*>(nullptr), total_maxtrix);
+                         false, head_size, reinterpret_cast<CudaT*>(static_cast<CudaT*>(nullptr)), total_maxtrix);
 
   // reuse output if possible
   CudaT* gemm_output = (seq_len < D) ? (reinterpret_cast<CudaT*>(workspace.get()) + elements_in_query)

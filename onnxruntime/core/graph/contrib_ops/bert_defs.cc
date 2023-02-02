@@ -687,15 +687,24 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
-          auto& query_layer_shape = getInputShape(ctx, 0);
-          TensorShapeProto output_shape;
-          *output_shape.add_dim() = query_layer_shape.dim(0);
-          output_shape.add_dim()->set_dim_value(num_heads);
-          *output_shape.add_dim() = query_layer_shape.dim(1);
-          *output_shape.add_dim() = query_layer_shape.dim(1);
-          updateOutputShape(ctx, 0, output_shape);
+          // int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
+          // auto& query_layer_shape = getInputShape(ctx, 0);
+          // TensorShapeProto output_shape;
+          // *output_shape.add_dim() = query_layer_shape.dim(0);
+          // output_shape.add_dim()->set_dim_value(num_heads);
+          // *output_shape.add_dim() = query_layer_shape.dim(1);
+          // *output_shape.add_dim() = query_layer_shape.dim(1);
+          // updateOutputShape(ctx, 0, output_shape);
         }));
+
+          // propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          // auto& bias_table_shape = getInputShape(ctx, 0);
+          // TensorShapeProto output_shape;
+          // output_shape.add_dim()->set_dim_value(1);
+          // *output_shape.add_dim() = bias_table_shape.dim(1);
+          // output_shape.add_dim();
+          // output_shape.add_dim();
+          // updateOutputShape(ctx, 0, output_shape);
 
 }  // namespace contrib
 }  // namespace onnxruntime

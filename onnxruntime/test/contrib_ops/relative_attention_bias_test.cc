@@ -231,7 +231,7 @@ static void RunGatedRelativePositionBiasTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_cpu = false;
+  // bool enable_cpu = false;
   if (enable_cuda) {
     OpTester tester("GatedRelativePositionBias", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
