@@ -14,6 +14,8 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#define kMaxSupportedOpset 18
+
 namespace onnxruntime {
 namespace test {
 
@@ -95,6 +97,20 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                         false);
     EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
   }
+
+  if (opset_version != kMaxSupportedOpset) {
+    // Run the test again the latest supported max opset.
+    TransformerTester(build_test_case,
+                      check_transformed_graph,
+                      baseline_level,
+                      target_level,
+                      kMaxSupportedOpset,
+                      per_sample_tolerance,
+                      relative_per_sample_tolerance,
+                      std::move(transformer),
+                      add_session_options,
+                      disabled_optimizers);
+  }
 }
 
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
@@ -117,6 +133,11 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.Register(std::move(transformer), level));
   ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
   ORT_RETURN_IF_ERROR(post_graph_checker(graph));
+
+  if (opset_version != kMaxSupportedOpset) {
+    return TestGraphTransformer(build_test_case, kMaxSupportedOpset, logger, std::move(transformer), level, steps,
+                                pre_graph_checker, post_graph_checker);
+  }
   return Status::OK();
 }
 
