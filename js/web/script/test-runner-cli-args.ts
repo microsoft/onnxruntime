@@ -74,6 +74,7 @@ Options:
  --webgl-matmul-max-batch-size Set the WebGL matmulMaxBatchSize
  --webgl-texture-cache-mode    Set the WebGL texture cache mode (initializerOnly/full)
  --webgl-texture-pack-mode     Set the WebGL texture pack mode (true/false)
+ --webgpu-profiling-mode       Set the WebGPU profiling mode (off/default)
 
 *** Browser Options ***
 
@@ -318,11 +319,20 @@ function parseWebglFlags(args: minimist.ParsedArgs): Env.WebGLFlags {
   return {contextId, matmulMaxBatchSize, textureCacheMode, pack};
 }
 
+function parseWebgpuFlags(args: minimist.ParsedArgs): Env.WebGpuFlags {
+  const profilingMode = args['webgpu-profiling-mode'];
+  if (profilingMode !== undefined && profilingMode !== 'off' && profilingMode !== 'default') {
+    throw new Error('Flag "webgpu-profiling-mode" is invalid');
+  }
+  return {profilingMode};
+}
+
 function parseGlobalEnvFlags(args: minimist.ParsedArgs): Env {
-  const wasmFlags = parseWasmFlags(args);
-  const webglFlags = parseWebglFlags(args);
+  const wasm = parseWasmFlags(args);
+  const webgl = parseWebglFlags(args);
+  const webgpu = parseWebgpuFlags(args);
   const cpuFlags = parseCpuFlags(args);
-  return {webgl: webglFlags, wasm: wasmFlags, cpuFlags};
+  return {webgl, wasm, webgpu, ...cpuFlags};
 }
 
 export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs {

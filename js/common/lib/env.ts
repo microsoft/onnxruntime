@@ -83,6 +83,10 @@ export declare namespace Env {
      */
     async?: boolean;
   }
+
+  export interface WebGpuFlags {
+    profilingMode?: 'off'|'default';
+  }
 }
 
 export interface Env {
@@ -108,6 +112,11 @@ export interface Env {
    * Represent a set of flags for WebGL
    */
   webgl: Env.WebGLFlags;
+
+  /**
+   * Represent a set of flags for WebGPU
+   */
+  webgpu: Env.WebGpuFlags;
 
   [name: string]: unknown;
 }

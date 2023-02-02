@@ -22,7 +22,7 @@ export interface GpuDataManager {
   /**
    * create new data on GPU.
    */
-  create(size: number): GpuData;
+  create(size: number, usage?: number): GpuData;
   /**
    * get GPU data by ID.
    */
@@ -143,7 +143,8 @@ class GpuDataManagerImpl implements GpuDataManager {
         sourceGpuDataCache.gpuData.buffer, 0, destinationGpuDataCache.gpuData.buffer, 0, size);
   }
 
-  create(size: number): GpuData {
+  // eslint-disable-next-line no-bitwise
+  create(size: number, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST): GpuData {
     // !!!
     // !!! IMPORTANT: TODO: whether we should keep the storage buffer every time, or always create new ones.
     // !!!                  This need to be figured out by performance test results.
@@ -152,9 +153,7 @@ class GpuDataManagerImpl implements GpuDataManager {
     const bufferSize = calcNormalizedBufferSize(size);
 
     // create gpu buffer
-    const gpuBuffer = this.backend.device.createBuffer(
-        // eslint-disable-next-line no-bitwise
-        {size: bufferSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST});
+    const gpuBuffer = this.backend.device.createBuffer({size: bufferSize, usage});
 
     const gpuData = {id: createNewGpuDataId(), type: GpuDataType.default, buffer: gpuBuffer};
     this.storageCache.set(gpuData.id, {gpuData, originalSize: size});
