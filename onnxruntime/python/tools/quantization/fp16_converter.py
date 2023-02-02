@@ -6,6 +6,7 @@ import onnx
 import packaging.version as pv
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
+
 from onnxruntime.quantization.onnx_model import ONNXModel
 
 # from onnxruntime.transformers.float16 import convert_tensor_float_to_float16
@@ -84,12 +85,12 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
 
 
 def convert_float_to_float16(
-        model,
-        min_positive_val=1e-7,
-        max_finite_val=1e4,
-        keep_io_types=False,
-        disable_shape_infer=False,
-        op_allow_list=None,
+    model,
+    min_positive_val=1e-7,
+    max_finite_val=1e4,
+    keep_io_types=False,
+    disable_shape_infer=False,
+    op_allow_list=None,
 ):
     """
     Convert tensor float type in the ONNX ModelProto input to tensor
