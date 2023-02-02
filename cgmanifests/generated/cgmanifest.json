@@ -329,6 +329,16 @@
       }
     },
     {
+        "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "a20c65f2cd549445fda907f7b83894c8eb7427d6",
+          "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
+        },
+        "comments": "protobuf"
+      }
+    },
+    {
       "component": {
         "type": "git",
         "git": {
@@ -455,7 +465,17 @@
           "commitHash": "75a84807a019bf4961faf713df9d748f0fc83b47",
           "repositoryUrl": "https://github.com/triton-inference-server/server.git"
         },
-        "comments": "triton"
+        "comments": "triton server"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "3712ec3f0426f7132d3759b84683d7d11e9ba683",
+          "repositoryUrl": "https://github.com/triton-inference-server/client.git"
+        },
+        "comments": "triton client"
       }
     },
     {
@@ -468,6 +488,6 @@
         },
         "comments": "posix pthread library"
       }
-    },
+    }
   ]
 }
