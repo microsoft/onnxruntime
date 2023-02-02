@@ -939,10 +939,9 @@ void Node::AddAttribute(std::string attr_name, int64_t value) {
                               OpType() == "ReduceLogSum" ||
                               OpType() == "ReduceLogSumExp" ||
                               OpType() == "ReduceProd" ||
-                              OpType() == "ReduceSum" ||
                               OpType() == "Squeeze" ||
                               OpType() == "Unsqueeze")) {
-    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second >= 18,
+    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second < 18,
                 "This is an invalid model. ", OpType(), " does not accept attribute axis after opset 18.");
   }
   AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value));
@@ -959,10 +958,9 @@ void Node::AddAttribute(std::string attr_name, int64_t value) {
                               OpType() == "ReduceLogSum" ||
                               OpType() == "ReduceLogSumExp" ||
                               OpType() == "ReduceProd" ||
-                              OpType() == "ReduceSum" ||
                               OpType() == "Squeeze" ||
                               OpType() == "Unsqueeze")) {
-    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second >= 18,
+    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second < 18,
                 "This is an invalid model. ", OpType(), " does not accept attribute axis after opset 18.");
   }
   AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);
