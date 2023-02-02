@@ -399,7 +399,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_dnnl) {
 #ifdef USE_DNNL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      // Generate dnnl_options to optimize dnnl performance
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = enable_cpu_mem_arena ? 1 : 0;
+      dnnl_options.threadpool_args = nullptr;
+#if defined(DNNL_ORT_THREAD)
+      dnnl_options.threadpool_args = static_cast<void*>(TestEnv::GetDefaultThreadPool(Env::Default()));
+#endif  // defined(DNNL_ORT_THREAD)
+      sf.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
       fprintf(stderr, "DNNL is not supported in this build");
       return -1;

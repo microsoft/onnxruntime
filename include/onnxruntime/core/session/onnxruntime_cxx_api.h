@@ -579,6 +579,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
+  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+  SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options); 
   /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});

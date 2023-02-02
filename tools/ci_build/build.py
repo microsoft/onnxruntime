@@ -2377,6 +2377,11 @@ def main():
     if args.use_gdk:
         args.test = False
 
+    # enable_training is a higher level flag that enables all training functionality.
+    if args.enable_training:
+        args.enable_training_apis = True
+        args.enable_training_ops = True
+
     configs = set(args.config)
 
     # setup paths and directories
