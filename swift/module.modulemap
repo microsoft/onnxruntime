@@ -1,4 +1,0 @@
-module SwiftBindings {
-  header "onnxruntime.h"
-  export *
-}
