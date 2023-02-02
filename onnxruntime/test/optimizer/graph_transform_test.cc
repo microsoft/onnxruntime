@@ -6245,7 +6245,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShareIntMaxOrFloatInfinityIniti
 }
 
 /*
-Test graph include multiple equivalent subgraphs as below.
+Test graph as below.
            graph input [2] (float)                Constant (1.0float)                Constant (1.0uint8)
                   \_______________  ________________/        |                             |
                                   \/                         |                             |
@@ -6253,7 +6253,8 @@ Test graph include multiple equivalent subgraphs as below.
                                   |                          |                             |
                             graph output [2](float)   graph output [](float)       graph output [](int8)
 
-Be noted: expected result graph should main all graph outputs, and both float and unin8 constant values are not shared.
+Be noted: expected result graph should maintain original graph outputs,
+   both float and unin8 constant values are not shared.
 */
 TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "scalar_const_not_share.onnx";
