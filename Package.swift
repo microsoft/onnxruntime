@@ -10,15 +10,17 @@ let package = Package(
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "onnxruntime",
-            targets: ["onnxruntime"]),
+            targets: ["objectivec","onnxruntime"]),
     ],
     dependencies: [
     ],
     targets: [
-//        .target(
-//            name: "objectivec",
-//            dependencies: [],
-//            path: "objectivec"),
+        .target(
+            name: "objectivec",
+            dependencies: ["onnxruntime"],
+            path: "objectivec",
+            exclude: ["test/"],
+            sources: ["include/", "src/"]),
         
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
         .binaryTarget(name: "onnxruntime",
