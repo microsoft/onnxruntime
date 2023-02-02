@@ -389,6 +389,57 @@ class FusionRelativePositionBiasBlock(Fusion):
         self.nodes_to_add.append(rpb_node)
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
 
+# Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+# Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
+# Input(1, "query_bias", "1-d tensor with shape (num_heads x head_size)", "T")
+# Input(2, "rel_pos", "tensor with shape (1, num_head, seq_len, seq_len)", "T")
+# Input(3, "weight", "gemm weight for the gated_ur_linear, shape (head_size, D), D is divisible by 2", "T")
+# Input(4, "bias", "bias for the gated_ur_linear, shape (D)", "T")
+# Input(5, "eco_a", "tensor of shape (1, num_heads, 1, 1)", "T")
+# Output(0, "output", "output tensor with shape (batch_size, num_heads, seq_len, seq_len)", "T")
+class FusionGRUGate(Fusion):
+    def __init__(self, model: OnnxModel, num_heads: int):
+        super().__init__(model, "GatedRelativePositionBias", "MultiHeadAttention")
+        self.num_heads = num_heads
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        stem_nodes = self.model.match_parent_path(
+            node,
+            ["Mul", "Add", "Mul", "Sub", "Mul", "Slice", "Sigmoid", "ReduceSum", "Reshape", "Add", "MatMul", "Transpose", "Reshape", "Add"],
+        )
+        if stem_nodes is None:
+            return
+
+        query_bias_add = stem_nodes[-1]
+        weight_matmul = stem_nodes[-4]
+        bias_add = stem_nodes[-5]
+        eco_mul = stem_nodes[4]
+        rpb_mul = stem_nodes[0]
+
+        self.nodes_to_remove.extend(stem_nodes)
+
+        inputs = [query_bias_add.input[1],
+                  query_bias_add.input[0],
+                  rpb_mul.input[1],
+                  weight_matmul.input[1],
+                  bias_add.input[0],
+                  eco_mul.input[1]]
+        outputs = [rpb_mul.output[0]]
+        gate_node = helper.make_node(
+            "GatedRelativePositionBias",
+            inputs=inputs,
+            outputs=outputs,
+            name=self.model.create_node_name("GatedRelativePositionBias", name_prefix="GRU"),
+        )
+        gate_node.domain = "com.microsoft"
+        gate_node.attribute.extend([helper.make_attribute("num_heads", self.num_heads)])
+
+        self.nodes_to_add.append(gate_node)
+        self.node_name_to_graph_name[gate_node.name] = self.this_graph_name
+
+        return
+
+
 
 class TulrOnnxModel(BertOnnxModel):
     def __init__(self, model, num_heads, hidden_size):
@@ -396,11 +447,13 @@ class TulrOnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionTulrAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.rpb_fusion = FusionRelativePositionBiasBlock(self, 32, True)
+        self.gru_fusion = FusionGRUGate(self, self.num_heads)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
 
     def postprocess(self):
         self.rpb_fusion.apply()
+        #self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
