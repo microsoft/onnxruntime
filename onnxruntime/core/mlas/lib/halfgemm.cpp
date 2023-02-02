@@ -205,8 +205,9 @@ CvtHalf2Float(
     float32x4_t res = vcvt_f32_f16(buf);
 
     if ((len & 2) != 0) {
-        vst1q_lane_f64(dest, res, 0);
-        res = vdupq_laneq_f64(res, 1);
+        auto wide = vreinterpretq_f64_f32(res);
+        vst1q_lane_f64((float64_t*)dest, wide, 0);
+        res = vreinterpretq_f32_f64(vdupq_laneq_f64(wide, 1));
         dest += 2;
     }
     if ((len & 1) != 0) {
@@ -337,7 +338,7 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
-    nullptr, 
+    nullptr,
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_DEFAULT>,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::PackedK,
     MLAS_HALF_GEMM_KERNEL_DEFAULT::KernelMaxM,

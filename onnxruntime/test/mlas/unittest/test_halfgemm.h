@@ -240,8 +240,9 @@ public:
     }
     ASSERT_EQ(std::memcmp(Atail, A + K * M * BatchSize, 16 * sizeof(AType)), 0) << "Matrix A buffer overwritten!";
     ASSERT_EQ(std::memcmp(Btail, B + N * K * BatchSize, 16 * sizeof(BType)), 0) << "Matrix B buffer overwritten!";
-    if (withBias)
+    if (withBias){
         ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(MLFp16)), 0) << "Bias buffer overwritten!";
+    }
   }
 
  private:
@@ -316,5 +317,3 @@ public:
 
 
 };
-
-

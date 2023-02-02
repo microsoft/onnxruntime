@@ -17,7 +17,7 @@ Abstract:
 #include "mlasi.h"
 #include "halfgemm.h"
 
-#include "arm64_neon.h"
+#include "arm_neon.h"
 
 //
 // Define the prototypes of the NEON routines written in assembly.
@@ -51,7 +51,7 @@ struct MLAS_HALF_GEMM_KERNEL_NEON {
     static constexpr size_t KernelMaxM = 6;  // max # rows the vectorized kernel can process
     static constexpr size_t PackedK = 1;
 
-    static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 16};
+    static constexpr MLAS_HALF_GEMM_STRIDES Strides{24, 128, 512};
 };
 
 
@@ -81,12 +81,13 @@ CvtFloat2Half(
     float16x4_t res = vcvt_f16_f32(buf);
 
     if ((len & 2) != 0) {
-        vst1_lane_f32(dest, res, 0);
-        res = vdup_lane_f32(res, 1);
+        auto wide = vreinterpret_f32_f16(res);
+        vst1_lane_f32((float32_t*)dest, wide, 0);
+        res = vreinterpret_f16_f32(vdup_lane_f32(wide, 1));
         dest += 2;
     }
     if ((len & 1) != 0) {
-        vst1_lane_f16(dest, res, 0);
+        vst1_lane_u16(dest, vreinterpret_u16_f16(res), 0);
     }
 }
 
@@ -141,7 +142,7 @@ MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_NEON>(
     size_t CountK
 )
 {
-    CvtFloat2Half2D(D, B, ldb, CountK, CountN); 
+    CvtFloat2Half2D(D, B, ldb, CountK, CountN);
 }
 
 
@@ -178,7 +179,7 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_NEON>(
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_NEON>,
-    nullptr, 
+    nullptr,
     MlasHalfGemmConvertPackB<MLAS_HALF_GEMM_KERNEL_NEON>,
     MLAS_HALF_GEMM_KERNEL_NEON::PackedK,
     MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,

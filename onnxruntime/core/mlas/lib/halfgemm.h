@@ -52,16 +52,16 @@ struct MLAS_HALF_GEMM_STRIDES {
 
 /**
  * @brief Packing function for fp16 B matrix
- * 
- * @tparam KernelType 
+ *
+ * @tparam KernelType
  * @param[out] D         Address of packing buffer
  * @param[in]  B         Address of source matrix B
- * @param[in]  ldb       Leading dimension of B 
- * @param[in]  CountN    # of column to pack 
+ * @param[in]  ldb       Leading dimension of B
+ * @param[in]  CountN    # of column to pack
  * @param[in]  CountK    # of rows to pack
 */
 template<typename KernelType>
-MLAS_FORCEINLINE 
+MLAS_FORCEINLINE
 void
 MlasHalfGemmCopyPackB(
     _mlas_fp16_* D,
@@ -81,12 +81,12 @@ MlasHalfGemmCopyPackB(
 
 /**
  * @brief Convert fp32 matrix A to fp16 and pack the data
- * 
- * @tparam KernelType 
+ *
+ * @tparam KernelType
  * @param[out] D        Address of the packing buffer
  * @param[in]  A        Address of fp32 matrix A
  * @param[in]  lda      leading dimension of A
- * @param[in]  CountM   # of rows to pack 
+ * @param[in]  CountM   # of rows to pack
  * @param[in]  CountK   # of columns to pack
 */
 template<typename KernelType>
@@ -121,13 +121,13 @@ MlasHalfGemmConvertPackB(
 
 /**
  * @brief Find the location of PackedB[StartK, StartN]
- * 
- * @tparam KernelType 
- * @param PackedB 
+ *
+ * @tparam KernelType
+ * @param PackedB
  * @param DimN       Total columns of the packing buffer
  * @param DimK       Total rows of the packing buffer
- * @param StartN 
- * @param StartK 
+ * @param StartN
+ * @param StartK
  * @return  Address of PackedB[StartK, StartN]
 */
 template <typename KernelType>
@@ -149,9 +149,9 @@ MlasHalfGemmPackedBOffset(
 /**
  * @brief leading dimension of the packed B buffer
  *        Related to how B is packed
- * @tparam KernelType 
- * @param DimN 
- * @param DimK 
+ * @tparam KernelType
+ * @param DimN
+ * @param DimK
  * @return leading dimension of the packed B buffer
 */
 template <typename KernelType>
@@ -223,7 +223,7 @@ MlasHalfGemmNoPackOperation(
     }
 
     const _mlas_fp16_* Bias = (nullptr == Data->Bias)
-        ? nullptr 
+        ? nullptr
         : reinterpret_cast<const _mlas_fp16_*>(Data->Bias) + RangeStartN;
     _mlas_fp16_* c = reinterpret_cast<_mlas_fp16_*>(Data->C)
         + RangeStartM * ldc + RangeStartN;
@@ -278,12 +278,12 @@ MlasHalfGemmOperation(
     const size_t ldb = Data->ldb;
     const size_t ldc = Data->ldc;
 
-    if (!Data->AIsfp32 && (ldb == 0 || !KernelType::PackNeeded && !Data->BIsfp32)) {
+    if (!Data->AIsfp32 && (ldb == 0 || (!KernelType::PackNeeded && !Data->BIsfp32))) {
         // !Data->AIsfp32 => A is fp16, no packing on the left hand side
         // ldb == 0 => B is already packed, no packing on the right hand side
         // !KernelType::PackNeeded && !Data->BIsfp32  => B is fp16 and the kernel
         //      does not require packing
-        // 
+        //
         // So no packing needed on either A or B, use a simpler driver instead
 
         MlasHalfGemmNoPackOperation<KernelType>(
