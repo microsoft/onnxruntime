@@ -11,9 +11,18 @@ set(OCOS_ENABLE_CTEST OFF CACHE INTERNAL "")
 set(OCOS_ENABLE_STATIC_LIB ON CACHE INTERNAL "")
 set(OCOS_ENABLE_SPM_TOKENIZER OFF CACHE INTERNAL "")
 
+# backup CMAKE_CXX_FLAGS in case we'll rewrite it for exceptions flag
+set(CMAKE_CXX_FLAGS_BAK "${CMAKE_CXX_FLAGS}")
+
 # disable exceptions
-if (onnxruntime_DISABLE_EXCEPTIONS)
-  set(OCOS_ENABLE_CPP_EXCEPTIONS OFF CACHE INTERNAL "")
+if(onnxruntime_DISABLE_EXCEPTIONS)
+  # ort-ext needs exceptions enabled for some of the 3rd party libraries.
+  # ort-ext will provide a try/catch layer around all entry points and convert any exceptions to status messages
+  # so no exceptions are passed up to ort
+  set(OCOS_ENABLE_CPP_EXCEPTIONS ON CACHE INTERNAL "")
+  string(REPLACE "-fno-exceptions" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  string(REPLACE "-fno-unwind-tables" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
+  string(REPLACE "-fno-asynchronous-unwind-tables" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 endif()
 
 # customize operators used
@@ -43,3 +52,8 @@ add_subdirectory(${onnxruntime_EXTENSIONS_PATH} ${CMAKE_BINARY_DIR}/_deps/extens
 # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
 target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} ${json_SOURCE_DIR}/include)
 target_include_directories(ortcustomops PUBLIC ${onnxruntime_EXTENSIONS_PATH}/includes)
+
+if(onnxruntime_DISABLE_EXCEPTIONS)
+  # if we rewrited CMAKE_CXX_FLAGS, we need to restore it
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_BAK}")
+endif()
