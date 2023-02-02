@@ -28,9 +28,6 @@ OpKernelInfo::OpKernelInfo(const onnxruntime::Node& node,
 OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
     : OpKernelInfo(other.node_, other.kernel_def_, *other.execution_provider_, other.constant_initialized_tensors_,
                    other.ort_value_name_idx_map_, other.data_transfer_mgr_) {
-#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  kernel_type_str_resolver_ = other.kernel_type_str_resolver_;
-#endif
 }
 
 const OrtMemoryInfo& OpKernelInfo::GetMemoryInfo(int device_id, OrtMemType mem_type) const {

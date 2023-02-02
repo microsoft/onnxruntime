@@ -47,21 +47,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
 
-  // if we have a minimal build with custom ops enabled the standalone op invoker may be used to call ORT kernels for
-  // ONNX operators. due to that we need a mechanism for the KernelRegistryManager to provide the
-  // IKernelTypeStrResolver so that the kernel can be looked up.
-#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  void SetKernelTypeStrResolver(const IKernelTypeStrResolver& kernel_type_str_resolver) noexcept {
-    kernel_type_str_resolver_ = &kernel_type_str_resolver;
-  }
-
-  const IKernelTypeStrResolver& GetKernelTypeStrResolver() const {
-    ORT_ENFORCE(kernel_type_str_resolver_ != nullptr,
-                "SetKernelTypeStrResolver must be called first by KernelRegistryManager.");
-    return *kernel_type_str_resolver_;
-  }
-#endif
-
  private:
   ORT_DISALLOW_MOVE(OpKernelInfo);
   ORT_DISALLOW_ASSIGNMENT(OpKernelInfo);
@@ -75,9 +60,6 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
   const OrtValueNameIdxMap& ort_value_name_idx_map_;
   const DataTransferManager& data_transfer_mgr_;
   ProtoHelperNodeContext proto_helper_context_;
-#if defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  const IKernelTypeStrResolver* kernel_type_str_resolver_{nullptr};
-#endif
 };
 
 }  // namespace onnxruntime

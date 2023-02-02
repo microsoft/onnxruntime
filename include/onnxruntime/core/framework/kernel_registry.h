@@ -26,17 +26,23 @@ class KernelRegistry {
 
   Status Register(KernelCreateInfo&& create_info);
 
-  // map of type constraint name to required type
-  using TypeConstraintMap = std::unordered_map<std::string, MLDataType>;
-
   // TODO(edgchen1) for TryFindKernel(), consider using `out` != nullptr as indicator of whether kernel was found and
   // Status as an indication of failure
 
-  // Check if an execution provider can create kernel for a node and return the kernel if so
+  // Check if an execution provider can create kernel for a node and return the kernel if so.
+  // Kernel matching uses the types from the node and the kernel_type_str_resolver.
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const IKernelTypeStrResolver& kernel_type_str_resolver,
-                       const KernelCreateInfo** out,
-                       std::optional<const TypeConstraintMap> type_constraints = std::nullopt) const;
+                       const KernelCreateInfo** out) const;
+
+  // map of type constraint name to required type
+  using TypeConstraintMap = std::unordered_map<std::string, MLDataType>;
+
+  // Check if an execution provider can create kernel for a node and return the kernel if so.
+  // Kernel matching uses the explicit type constraint to type list in type_constraints.
+  Status TryFindKernel(const Node& node, ProviderType exec_provider,
+                       const TypeConstraintMap& type_constraints,
+                       const KernelCreateInfo** out) const;
 
   static bool HasImplementationOf(const KernelRegistry& r, const Node& node,
                                   ProviderType exec_provider,
@@ -45,13 +51,6 @@ class KernelRegistry {
     Status st = r.TryFindKernel(node, exec_provider, kernel_type_str_resolver, &info);
     return st.IsOK();
   }
-
-#if !defined(ORT_MINIMAL_BUILD)
-  // Find KernelCreateInfo in instant mode
-  Status TryFindKernel(const std::string& op_name, const std::string& domain, const int& version,
-                       const TypeConstraintMap& type_constraints,
-                       ProviderType exec_provider, const KernelCreateInfo** out) const;
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   bool IsEmpty() const { return kernel_creator_fn_map_.empty(); }
 
@@ -63,6 +62,12 @@ class KernelRegistry {
 #endif
 
  private:
+  // TryFindKernel implementation. Either kernel_type_str_resolver or type_constraints is provided.
+  Status TryFindKernelImpl(const Node& node, ProviderType exec_provider,
+                           const IKernelTypeStrResolver* kernel_type_str_resolver,
+                           const TypeConstraintMap* type_constraints,
+                           const KernelCreateInfo** out) const;
+
   // Check whether the types of inputs/outputs of the given node match the extra
   // type-constraints of the given kernel. This serves two purposes: first, to
   // select the right kernel implementation based on the types of the arguments
@@ -71,18 +76,19 @@ class KernelRegistry {
   // implementation type (e.g., if we want to implement ONNX's float16 as a regular
   // float in onnxruntime). (The second, however, requires a globally uniform mapping.)
   //
-  // Type information is inferred from the node, but can optionally be provided via `type_constraint_values` which
-  // is a map of type constraint name to the exact type required by the kernel.
-  // Currently providing type_constraint_values is only necessary for nodes created inside a custom op that is
-  // using the standalone op invoker as we have no type/shape inferencing available there so the Node's args
-  // will not contain type info.
-  //
   // Note that this is not intended for type-checking the node against the ONNX
   // type specification of the corresponding op, which is done before this check.
-  static bool VerifyKernelDef(const Node& node,
-                              const KernelDef& kernel_def,
-                              const IKernelTypeStrResolver& kernel_type_str_resolver,
-                              std::optional<const TypeConstraintMap> type_constraint_values,
+  //
+  // In typical usage kernel_type_str_resolver is provided and type information from the node is used with
+  // kernel_type_str_resolver.
+  //
+  // There is also usage from a node dynamically created within a custom op via OrtApi CreateOp where an explicit
+  // type value for each type constraint is provided in type_constraints.
+  //
+  // Either kernel_type_str_resolver or type_constraints is provided and not both.
+  static bool VerifyKernelDef(const Node& node, const KernelDef& kernel_def,
+                              const IKernelTypeStrResolver* kernel_type_str_resolver,
+                              const TypeConstraintMap* type_constraint_values,
                               std::string& error_str);
 
   static std::string GetMapKey(std::string_view op_name, std::string_view domain, std::string_view provider) {

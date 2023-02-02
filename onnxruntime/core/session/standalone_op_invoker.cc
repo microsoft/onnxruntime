@@ -397,32 +397,14 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
     node_ptr->AddAttributeProto(*attr_proto);
   }
 
-#if !defined(ORT_MINIMAL_BUILD)
-  auto status = kernel_registry->TryFindKernel(op_name,
-                                               domain,
-                                               version,
-                                               type_constraint_map,
-                                               ep->Type(),
-                                               &kernel_create_info);
-#else
-  // minimal build with custom ops enabled.
-  // kernel lookup uses the constraint resolver information from the ORT format model and the type_constraint_map
-  // as the new Node will not have any type info for its NodeArgs.
-  // Use the provided version for initial lookup. We will set it to the exact value from the kernel def once found.
   node_ptr->SetSinceVersion(version);
-  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), kernel_info->GetKernelTypeStrResolver(),
-                                               &kernel_create_info, type_constraint_map);
-#endif
+
+  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), type_constraint_map, &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
 
   auto& kernel_def = kernel_create_info->kernel_def;
   ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'",
                     node_ptr->Domain(), "' op_type:", node_ptr->OpType());
-
-  // set SinceVersion to the exact value
-  int start = -1, end = -1;
-  kernel_create_info->kernel_def->SinceVersion(&start, &end);
-  node_ptr->SetSinceVersion(start);
 
   // TODO: This doesn't look like it's required. Can add as fallback if kernel_create_info->kernel_def is empty.
   // auto kernel_def_builder = KernelDefBuilder::Create();

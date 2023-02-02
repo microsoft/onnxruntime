@@ -25,10 +25,6 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
                            session_state.GetOrtValueNameIdxMap(),
                            session_state.GetDataTransferMgr());
 
-#if (ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  kernel_info.SetKernelTypeStrResolver(GetKernelTypeStrResolver());
-#endif
-
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }
 
