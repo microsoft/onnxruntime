@@ -42,7 +42,7 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
   return Status::OK();
 }
 
-Status CudnnTensor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int64_t n, int64_t c, int64_t h, int64_t w) {
+Status CudnnTensor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
   ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
   CUDNN_RETURN_IF_ERROR(cudnnSetTensor4dDescriptor(tensor_, format, dataType, n, c, h, w));
   return Status::OK();
@@ -119,7 +119,7 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
   return Status::OK();
 }
 
-Status CudnnFilterDescriptor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int64_t k, int64_t c, int64_t h, int64_t w) {
+Status CudnnFilterDescriptor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int k, int c, int h, int w) {
   if (!desc_)
     CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
 

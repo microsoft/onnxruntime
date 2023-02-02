@@ -19,7 +19,7 @@ class CudnnTensor final {
   Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
   // Set 4D tensor format (for NHWC)
-  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int64_t n, int64_t c, int64_t h, int64_t w);
+  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w);
 
   operator cudnnTensorDescriptor_t() const { return tensor_; }
 
@@ -61,7 +61,7 @@ class CudnnFilterDescriptor final {
   Status Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_typ);
 
   // Set 4D filter where k is output channels, c is input channels, h and w is rows and columns per filter.
-  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int64_t k, int64_t c, int64_t h, int64_t w);
+  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int k, int c, int h, int w);
 
   operator cudnnFilterDescriptor_t() const { return desc_; }
 

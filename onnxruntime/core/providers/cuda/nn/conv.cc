@@ -237,7 +237,12 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       if (!channels_last) {
         ORT_RETURN_IF_ERROR(s_.w_desc.Set(w_dims, CudnnTensor::GetDataType<CudaT>()));
       } else {
-        ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(), w_dims[0], w_dims[3], w_dims[1], w_dims[2]));
+        ORT_RETURN_IF_ERROR(s_.w_desc.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(w_dims[0]),
+                                          static_cast<int>(w_dims[3]),
+                                          static_cast<int>(w_dims[1]),
+                                          static_cast<int>(w_dims[2])));
       }
     }
 
@@ -247,11 +252,19 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     }
 
     if (channels_last) {
-      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                          x_dims_cudnn[0], x_dims_cudnn[3], x_dims_cudnn[1], x_dims_cudnn[2]));
+      ORT_RETURN_IF_ERROR(s_.x_tensor.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(x_dims_cudnn[0]),
+                                          static_cast<int>(x_dims_cudnn[3]),
+                                          static_cast<int>(x_dims_cudnn[1]),
+                                          static_cast<int>(x_dims_cudnn[2])));
 
-      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(CUDNN_TENSOR_NHWC, CudnnTensor::GetDataType<CudaT>(),
-                                          y_dims_cudnn[0], y_dims_cudnn[3], y_dims_cudnn[1], y_dims_cudnn[2]));
+      ORT_RETURN_IF_ERROR(s_.y_tensor.Set(CUDNN_TENSOR_NHWC,
+                                          CudnnTensor::GetDataType<CudaT>(),
+                                          static_cast<int>(y_dims_cudnn[0]),
+                                          static_cast<int>(y_dims_cudnn[3]),
+                                          static_cast<int>(y_dims_cudnn[1]),
+                                          static_cast<int>(y_dims_cudnn[2])));
     } else {
       ORT_RETURN_IF_ERROR(s_.x_tensor.Set(x_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
       ORT_RETURN_IF_ERROR(s_.y_tensor.Set(y_dims_cudnn, CudnnTensor::GetDataType<CudaT>()));
