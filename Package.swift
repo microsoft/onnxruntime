@@ -7,13 +7,17 @@ let package = Package(
     name: "onnxruntime",
     platforms: [.iOS(.v13)],
     products: [
-        .library(name: "onnxruntime", targets: ["SwiftOnnxRuntime", "onnxruntime"]),
+        .library(name: "onnxruntime", targets: ["bindings"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "SwiftOnnxRuntime",
-                dependencies: [.target(name: "onnxruntime")],
-                path: "swift"),
+        .target(name: "bindings",
+                dependencies: ["onnxruntimec"],
+                path: "swift/bindings"),
+        
+        .target(name: "onnxruntimec",
+                dependencies: ["onnxruntime"],
+                path: "swift/onnxruntimec"),
         
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
         .binaryTarget(name: "onnxruntime",
