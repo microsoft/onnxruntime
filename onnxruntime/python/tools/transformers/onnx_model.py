@@ -981,6 +981,10 @@ class OnnxModel:
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
+        # Note: After the model is saved to another directory with external data,
+        #       You need reload the onnx model if you want to read tensor from self.model object.
+        #       It is because the base directory is not updated for self.model object so attempt to read tensor data
+        #       might encounter error since external data cannot be located.
         OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")
 
