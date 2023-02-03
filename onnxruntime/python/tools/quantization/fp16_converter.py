@@ -19,7 +19,7 @@ def make_value_info_from_tensor(tensor):
     return helper.make_tensor_value_info(tensor.name, tensor.data_type, shape)
 
 
-def _npfloat16_to_int(np_list):
+def _npfloat16_to_int(np_list: list[np.float16()]):
     """
     Convert numpy float16 to python int.
 
