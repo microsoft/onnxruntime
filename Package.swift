@@ -7,11 +7,11 @@ let package = Package(
     name: "onnxruntime",
     platforms: [.iOS(.v13)],
     products: [
-        .library(name: "onnxruntime", targets: ["bindings"]),
+        .library(name: "onnxruntime", targets: ["ort"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "bindings",
+        .target(name: "ort",
                 dependencies: ["onnxruntimec"],
                 path: "swift/bindings"),
         
