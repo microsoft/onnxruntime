@@ -223,6 +223,13 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
+  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions_vec(versions);
+  return IsSupportedOptypeVersionAndDomain(node, op_type, versions_vec, domain);
+}
+
+bool IsSupportedOptypeVersionAndDomain(const Node& node, std::string_view op_type,
+                                       gsl::span<const ONNX_NAMESPACE::OperatorSetVersion> versions,
+                                       std::string_view domain) {
   return (node.OpType() == op_type &&
   // we don't have op schemas in the minimal build so there's no way to check the deprecated flag
 #if !defined(ORT_MINIMAL_BUILD)

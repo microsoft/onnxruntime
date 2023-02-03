@@ -29,6 +29,9 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
+#ifdef ENABLE_TRITONOP
+#include "orttraining/core/optimizer/triton_fusion.h"
+#endif
 
 #include <random>
 
@@ -1212,10 +1215,43 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionCorrectnessTest) 
 TEST_F(GraphTransformationTests, MegatronBARTSelfAttentionPartitionCorrectnessTest) {
   RunPartitionCorrectnessTest("testdata/transform/model_parallel/bart_self_attention_megatron_basic_test", *logger_, 2, {"input"}, {{6, 8, 4}});
 }
+
 // end of USE_CUDA
 #endif
 
 // end of DISABLE_CONTRIB_OPS
+#endif
+
+#ifdef ENABLE_TRITONOP
+TEST_F(GraphTransformationTests, TritonFusion) {
+  auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 17);
+  ASSERT_TRUE(op_to_count["Sub"] == 1);
+  ASSERT_TRUE(op_to_count["Mul"] == 7);
+  ASSERT_TRUE(op_to_count["Div"] == 3);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 2);
+  ASSERT_TRUE(op_to_count["Cast"] == 7);
+  ASSERT_TRUE(op_to_count["Softmax"] == 1);
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<TritonFusion>();
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Add"] == 10);
+  ASSERT_TRUE(op_to_count["Sub"] == 0);
+  ASSERT_TRUE(op_to_count["Mul"] == 2);
+  ASSERT_TRUE(op_to_count["Div"] == 0);
+  ASSERT_TRUE(op_to_count["Unsqueeze"] == 0);
+  ASSERT_TRUE(op_to_count["Cast"] == 6);
+  ASSERT_TRUE(op_to_count["Softmax"] == 0);
+  ASSERT_TRUE(op_to_count["com.microsoft.TritonOp"] == 6);
+}
 #endif
 
 }  // namespace test

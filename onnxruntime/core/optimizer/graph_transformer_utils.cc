@@ -76,6 +76,10 @@
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/memory_optimizer.h"
 #endif
+#ifdef ENABLE_TRITONOP
+#include "orttraining/core/optimizer/triton_fusion.h"
+#include "orttraining/training_ops/cpu/triton/triton_op_executor.h"
+#endif  // ENABLE_TRITONOP
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -295,21 +299,11 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
-#ifdef ENABLE_TRAINING
-      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
-      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
-#endif
 
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_cuda_dml_rocm_eps));
 
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_cuda_dml_rocm_eps));
-
-      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
-      transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
@@ -317,6 +311,25 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(cpu_cuda_rocm_eps));
       }
+
+#ifdef ENABLE_TRITONOP
+      if (onnxruntime::contrib::TritonOpExecutor::Instance().IsInitialized()) {
+        transformers.emplace_back(
+            std::make_unique<TritonFusion>(onnxruntime::contrib::TritonOpExecutor::Instance().GetConfigJson(),
+                                           InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider}));
+      }
+#endif  // ENABLE_TRITONOP
+
+      transformers.emplace_back( std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
+#ifdef ENABLE_TRAINING_CORE
+      transformers.emplace_back(std::make_unique<BitmaskDropoutReplacement>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<BiasSoftmaxDropoutFusion>(cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<SceLossGradBiasFusion>(cpu_cuda_rocm_eps));
+#endif
+
+      transformers.emplace_back(std::make_unique<MatMulScaleFusion>(cpu_cuda_dml_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatMulActivationFusion>(dml_ep));
 
 #ifdef MLAS_TARGET_AMD64_IX86
       if (avx2_precision_mode) {

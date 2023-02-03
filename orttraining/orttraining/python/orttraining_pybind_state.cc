@@ -34,6 +34,10 @@
 #include "orttraining/core/framework/torch/custom_function_register.h"
 #endif
 
+#ifdef ENABLE_TRITONOP
+#include "orttraining/training_ops/cpu/triton/triton_op_executor.h"
+#endif
+
 #ifdef ENABLE_TRAINING_APIS
 #include "orttraining/training_api/checkpoint.h"
 #include "orttraining/training_api/lr_scheduler.h"
@@ -546,6 +550,18 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
         return false;
 #endif
   });
+  m.def("is_tritonop_on", []() -> bool {
+#ifdef ENABLE_TRITONOP
+    return true;
+#else
+    return false;
+#endif
+  });
+#ifdef ENABLE_TRITONOP
+  m.def("register_triton_op_executor", [](py::object config_getter, py::object executor) -> void {
+    onnxruntime::contrib::TritonOpExecutor::Instance().Initialize(config_getter.ptr(), executor.ptr());
+  });
+#endif
 
   py::class_<TrainingConfigurationResult> config_result(m, "TrainingConfigurationResult", "pbdoc(Configuration result for training.)pbdoc");
   config_result.def(py::init())
