@@ -9,11 +9,14 @@ public class ORTValue {
     }
     
     public func typeInfo() throws -> ORTValueTypeInfo? {
+        return nil
     }
     
     public func tensorTypeAndShapeInfo() throws -> ORTTensorTypeAndShapeInfo? {
+        return nil
     }
     
     public func tensorData() throws -> Data? {
+        return nil
     }
 }

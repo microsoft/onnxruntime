@@ -13,14 +13,18 @@ public class ORTSession {
     }
     
     public func run(withInputs inputs: [String : ORTValue]?, outputNames: Set<String>?, runOptions: ORTRunOptions?) throws -> [String: ORTValue]? {
+        return nil
     }
     
     public func inputNames() throws -> [String]? {
+        return nil
     }
     
     public func overridableInitializerNames() throws -> [String]? {
+        return nil
     }
     
     public func outputNames() throws -> [String]? {
+        return nil
     }
 }

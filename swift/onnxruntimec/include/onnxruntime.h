@@ -9,9 +9,9 @@
 #endif  // defined(__clang__)
 
 #include "onnxruntime/onnxruntime_c_api.h"
-#include "onnxruntime/onnxruntime_cxx_api.h"
+//#include "onnxruntime/onnxruntime_cxx_api.h"
 #include "onnxruntime/cpu_provider_factory.h"
-#include "onnxruntime/onnxruntime_cxx_inline.h"
+//#include "onnxruntime/onnxruntime_cxx_inline.h"
 
 #if __has_include("onnxruntime/coreml_provider_factory.h")
 #define ORT_OBJC_API_COREML_EP_AVAILABLE 1
