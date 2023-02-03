@@ -3703,7 +3703,6 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                   _In_ const char* registration_func_name);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -3795,6 +3794,7 @@ struct OrtApi {
    * of an input during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
    * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -3809,6 +3809,7 @@ struct OrtApi {
    * of an output during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
    * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -3893,7 +3894,7 @@ struct OrtApi {
    * If oneDNN is not available, this function will return failure.
    *
    * \param[in] options
-   * \param[in] cann_options
+   * \param[in] dnnl_options
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
