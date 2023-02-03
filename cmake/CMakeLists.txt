@@ -205,6 +205,8 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 
+option(onnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS "Build all available cuda kernels, like TopK kernels for type uint8" OFF)
+
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
@@ -622,6 +624,12 @@ if (onnxruntime_USE_CUDA)
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
+    if (onnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS)
+      message( STATUS "Build all available kernels for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DBUILD_ALL_AVAILABLE_CUDA_KERNELS=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS=1)
+    endif()
+
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
@@ -1277,7 +1285,7 @@ if (onnxruntime_USE_CUDA)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
       # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+      #set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
 
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
