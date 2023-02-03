@@ -103,7 +103,7 @@ bool MatchKernelDefTypes(const Node& node,
 bool MatchKernelDefTypes(const std::unordered_map<std::string, std::vector<MLDataType>>& kernel_type_constraints,
                          const KernelRegistry::TypeConstraintMap& type_constraints) {
   bool match = true;
-  for (auto& constraint : type_constraints) {  // try match type constraints
+  for (auto& constraint : type_constraints) {
     auto iter = kernel_type_constraints.find(constraint.first);
     if (iter == kernel_type_constraints.end() ||
         find(iter->second.begin(), iter->second.end(), constraint.second) == iter->second.end()) {
@@ -131,7 +131,8 @@ bool KernelRegistry::VerifyKernelDef(const Node& node,
       // exact match. typical usage.
       kernel_start_version == node_version ||
       // allow match if the kernel def has an end version. if it does not, all we know is that the kernel supported
-      // the latest version when it was created, and not whether a new version of the operator was added since then.
+      // the start version when it was created, and not whether a new version of the operator was added since then
+	  // that the kernel doesn't support.
       (kernel_end_version != INT_MAX &&
        kernel_start_version <= node_version && kernel_end_version >= node_version);
 

@@ -195,8 +195,7 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
     type_ = nullptr;
   }
 }
-#endif  // #if !defined(ORT_MINIMAL_BUILD) ||
-        //     defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
@@ -860,7 +859,7 @@ void Node::Init(const std::string& name,
     }
   }
 }
-#endif
+#endif // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Node::Definitions& Node::MutableDefinitions() noexcept {
