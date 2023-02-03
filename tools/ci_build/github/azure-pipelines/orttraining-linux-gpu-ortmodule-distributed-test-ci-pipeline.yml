@@ -1,7 +1,7 @@
 trigger: none
 
 stages:
-- stage: ORTModule distributed test
+- stage: ORTModuleDistributedTest
   dependsOn: []
   jobs:
   - job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
@@ -57,7 +57,7 @@ stages:
 
     - template: templates/clean-agent-build-directory-step.yml
 
-- stage: Distributed Inference Test
+- stage: DistributedInferenceTest
   dependsOn: []
   jobs:
   - job: Onnxruntime_Linux_GPU_Inference_Distributed_Test
