@@ -1790,6 +1790,24 @@ class PlannerImpl {
     // 2. determing following things:
     //    a. which node need to generate notification
     //    b. which node need to trigger downstream
+#ifdef ENABLE_TRAINING
+    InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
+    const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
+    node_index_2_toposort_index.reserve(topo_sort.size());
+    size_t yieldOp_index_in_toposort = topo_sort.size();
+    for (size_t i = 0; i < topo_sort.size(); i++) {
+      const Node* node = graph_viewer_.GetNode(topo_sort[i]);
+      node_index_2_toposort_index[node->Index()] = i;
+      if (node->OpType() == "YieldOp") yieldOp_index_in_toposort = i;
+    }
+    ORT_ENFORCE(yieldOp_index_in_toposort < topo_sort.size(), "there must be a yield op in training execution graph");
+
+    auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
+      size_t producer_topoindex = node_index_2_toposort_index[producer];
+      size_t consumer_topoindex = node_index_2_toposort_index[consumer];
+      return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
+    };
+#endif
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
@@ -1799,7 +1817,11 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i && !graph_viewer_.AreNodesSplitByYield(node_index, it->Index())) {
+          if (node_stream_map_[it->Index()] != i
+#ifdef ENABLE_TRAINING
+             && !AreNodesSeparatedByYield(node_index, it->Index())
+#endif
+          ) {
             node_to_trigger_points[node_index] = num_trigger_points++;
             break;
           }
@@ -1871,8 +1893,11 @@ class PlannerImpl {
           }
           visited.insert(it->Index());
           //  check whether we need to add barrier
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end() &&
-              !graph_viewer_.AreNodesSplitByYield(it->Index(), node_index)) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
+#ifdef ENABLE_TRAINING
+              && !AreNodesSeparatedByYield(it->Index(), node_index)
+#endif
+          ) {
             // find the trigger_point_id
             auto trigger_point_it = node_to_trigger_points.find(it->Index());
             ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
