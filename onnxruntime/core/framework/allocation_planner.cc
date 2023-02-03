@@ -1800,7 +1800,6 @@ class PlannerImpl {
       node_index_2_toposort_index[node->Index()] = i;
       if (node->OpType() == "YieldOp") yieldOp_index_in_toposort = i;
     }
-    ORT_ENFORCE(yieldOp_index_in_toposort < topo_sort.size(), "there must be a yield op in training execution graph");
 
     auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
       size_t producer_topoindex = node_index_2_toposort_index[producer];
