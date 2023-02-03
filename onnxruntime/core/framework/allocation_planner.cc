@@ -1823,6 +1823,9 @@ class PlannerImpl {
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
+                  // TODO(leca): After we separate MemcpyToHost to an extra stream, by default there shouldn't be the case that 
+                  // producer and consumer are both in the same CUDA stream and producer has a CPU output consumed by consumer.
+                  // The only possible way is user explicitly creates this case in the customized partition JSON file (see PlannerTest.MultiStreamCudaEPNodeCPUOutput)
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(execution_plan[i]->device_.Type(), output_arg_device);
                   if ((node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU)
@@ -2246,7 +2249,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
-  InlinedVector<NodeIndex> index_of_MemcpyToHost;
+  InlinedVector<NodeIndex> index_of_MemcpyFromAndToHost;
   if (node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
 
     InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
@@ -2272,8 +2275,8 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       if (node_name_or_type.empty()) {
         node_name_or_type = op_type + std::to_string(op_type_counter[op_type]++);
       }
-      if (op_type == "MemcpyToHost") {
-        index_of_MemcpyToHost.push_back(node->Index());
+      if (op_type == "MemcpyToHost" || op_type == "MemcpyFromHost") {
+        index_of_MemcpyFromAndToHost.push_back(node->Index());
       } else {
         node_names_by_stream_[it->second].push_back(node_name_or_type);
       }
@@ -2303,8 +2306,8 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
     }
   }
-  if (index_of_MemcpyToHost.size() > 0) {
-    stream_nodes.push_back(index_of_MemcpyToHost);
+  if (index_of_MemcpyFromAndToHost.size() > 0) {
+    stream_nodes.push_back(index_of_MemcpyFromAndToHost);
   }
   return Status::OK();
 }
