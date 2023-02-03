@@ -688,13 +688,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
           int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
-          auto& query_layer_shape = getInputShape(ctx, 0);
-          TensorShapeProto output_shape;
-          *output_shape.add_dim() = query_layer_shape.dim(0);
-          output_shape.add_dim()->set_dim_value(num_heads);
-          *output_shape.add_dim() = query_layer_shape.dim(1);
-          *output_shape.add_dim() = query_layer_shape.dim(1);
-          updateOutputShape(ctx, 0, output_shape);
+          if (hasInputShape(ctx, 0)) {
+            auto& query_layer_shape = getInputShape(ctx, 0);
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = query_layer_shape.dim(0);
+            output_shape.add_dim()->set_dim_value(num_heads);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            updateOutputShape(ctx, 0, output_shape);
+          }
         }));
 
 }  // namespace contrib
