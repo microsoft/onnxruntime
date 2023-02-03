@@ -1,6 +1,3 @@
-import onnx
-
-
 def get_quant_params(model):
     """Returns quantization parameters for the given model.
 
