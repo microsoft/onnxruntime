@@ -78,7 +78,7 @@ git submodule update --init
 3. Run the Docker image
 
   ```
-  docker run -it onnxruntime-trt
+  docker run --gpus all -it onnxruntime-trt
   ```
 
 ## OpenVINO
