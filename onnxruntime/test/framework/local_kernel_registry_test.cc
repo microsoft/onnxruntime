@@ -10,21 +10,23 @@
 #include <thread>
 
 #include "core/common/logging/logging.h"
+#include "core/framework/customregistry.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/graph/schema_registry.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
+#include "test/util/include/asserts.h"
 #include "test_utils.h"
 #include "gtest/gtest.h"
-#include "core/graph/schema_registry.h"
-#include "core/framework/customregistry.h"
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 
@@ -64,6 +66,7 @@ class FooKernel : public OpKernel {
 
 ONNX_NAMESPACE::OpSchema GetFooSchema() {
   ONNX_NAMESPACE::OpSchema schema("Foo", "unknown", 0);
+  schema.SetDomain("test");
   schema.Input(0,
                "A",
                "First operand, should share the type with the second operand.",
@@ -79,17 +82,15 @@ ONNX_NAMESPACE::OpSchema GetFooSchema() {
       "T",
       OpSchema::numeric_types_for_math_reduction(),
       "Constrain input and output types to high-precision numeric tensors.");
-  schema.SinceVersion(7);
+  schema.SinceVersion(1);
   return schema;
 }
 
-//For test purpose, we register this Foo kernel to Mul op.
-//Once the custom schema is ready, should update this.
-KernelDefBuilder FooKernelDef(const char* schema_name) {
+KernelDefBuilder FooKernelDef() {
   KernelDefBuilder def;
-  def.SetName(schema_name)
-      .SetDomain(onnxruntime::kOnnxDomain)
-      .SinceVersion(7)
+  def.SetName("Foo")
+      .SetDomain("test")
+      .SinceVersion(1)
       .Provider(onnxruntime::kCpuExecutionProvider)
       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
   return def;
@@ -104,8 +105,8 @@ Status CreateFooKernel(FuncManager&, const OpKernelInfo& kernel_info, std::uniqu
 KernelDefBuilder OptionalKernelDef() {
   KernelDefBuilder def;
   def.SetName("OptionalOp")
-      .SetDomain(onnxruntime::kOnnxDomain)
-      .SinceVersion(6)
+      .SetDomain("test")
+      .SinceVersion(1)
       .Provider(onnxruntime::kCpuExecutionProvider)
       .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
   return def;
@@ -113,6 +114,7 @@ KernelDefBuilder OptionalKernelDef() {
 
 ONNX_NAMESPACE::OpSchema GetOptionalOpSchema() {
   ONNX_NAMESPACE::OpSchema schema("OptionalOp", "unknown", 0);
+  schema.SetDomain("test");
   schema.Input(0,
                "X",
                "First operand, should share the type with the second operand.",
@@ -129,7 +131,7 @@ ONNX_NAMESPACE::OpSchema GetOptionalOpSchema() {
       "T",
       OpSchema::numeric_types_for_math_reduction(),
       "Constrain input and output types to high-precision numeric tensors.");
-  schema.SinceVersion(6);
+  schema.SinceVersion(1);
   return schema;
 }
 
@@ -164,7 +166,7 @@ class OptionalOpKernel : public OpKernel {
       }
     }
 
-    //W is used or not
+    // W is used or not
     if (W) {
       auto* W_Data = W->Data<T>();
       for (size_t i = 0; i < size; i++) {
@@ -189,12 +191,10 @@ Status CreateOptionalOpKernel(FuncManager&, const OpKernelInfo& kernel_info, std
 
 static const std::string MUL_MODEL_URI = "testdata/mul_1.onnx";
 static const std::string FOO_MODEL_URI = "testdata/foo_1.onnx";
-static const std::string FOO_TRUNCATE_MODEL_URI = "testdata/foo_2.onnx";
-
+static const std::string FOO_CLIP_MODEL_URI = "testdata/foo_1_clip_11.onnx";
 static const std::string OPTIONAL_MODEL1_URI = "testdata/optional_1.onnx";
 
 void RunSession(InferenceSession& session_object,
-                RunOptions& run_options,
                 std::vector<int64_t>& dims_x,
                 std::vector<float>& values_x,
                 std::vector<int64_t>& dims_y,
@@ -211,9 +211,7 @@ void RunSession(InferenceSession& session_object,
   std::vector<OrtValue> fetches;
 
   // Now run
-  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
-  std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
-  EXPECT_TRUE(st.IsOK());
+  EXPECT_STATUS_OK(session_object.Run(RunOptions{}, feeds, output_names, &fetches));
   ASSERT_EQ(1u, fetches.size());
   auto& rtensor = fetches.front().Get<Tensor>();
   TensorShape expected_shape(dims_y);
@@ -222,25 +220,27 @@ void RunSession(InferenceSession& session_object,
   ASSERT_EQ(values_y, found);
 }
 
-TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
+// This tests that a custom op can override an ONNX operator implemented by ORT.
+TEST(CustomKernelTests, CustomKernelWithBuiltInSchema) {
   SessionOptions so;
+  so.session_logid = "CustomKernelWithBuiltInSchema";
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  // Register a custom kernel that matches the ONNX Mul but is implemented to do an Add so we can validate the
+  // custom kernel overrides the ORT Mul kernel
+  KernelDefBuilder def;
+  def.SetName("Mul")
+      .SetDomain(onnxruntime::kOnnxDomain)
+      .SinceVersion(7)
+      .Provider(onnxruntime::kCpuExecutionProvider)
+      .TypeConstraint("T", DataTypeImpl::GetTensorType<float>());
 
-  // Register a foo kernel which is doing Add, but bind to Mul.
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
+  EXPECT_STATUS_OK(registry->RegisterCustomKernel(def, CreateFooKernel));
 
   InferenceSession session_object{so, GetEnvironment()};
-  EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
-  auto def = FooKernelDef("Mul");
-
-  EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateFooKernel).IsOK());
-
-  EXPECT_TRUE(session_object.Load(MUL_MODEL_URI).IsOK());
-  EXPECT_TRUE(session_object.Initialize().IsOK());
-
-  RunOptions run_options;
-  run_options.run_tag = "one session/one tag";
+  EXPECT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
+  EXPECT_STATUS_OK(session_object.Load(MUL_MODEL_URI));
+  EXPECT_STATUS_OK(session_object.Initialize());
 
   // prepare inputs
   std::vector<int64_t> dims_x = {3, 2};
@@ -252,32 +252,27 @@ TEST(CustomKernelTests, CustomKernelWithBuildInSchema) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   // Now run
-  RunSession(session_object, run_options, dims_x, values_x, expected_dims_y, expected_values_y);
+  RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
 }
 
+// Test registering a custom kernel with custom schema
 TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
   SessionOptions so;
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
+  so.session_logid = "CustomKernelWithCustomSchema";
 
+  // register foo schema
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
+  std::vector<OpSchema> schemas = {GetFooSchema()};
+  auto def = FooKernelDef();
+
+  EXPECT_STATUS_OK(registry->RegisterOpSet(schemas, "test", 1, 1000));
+  EXPECT_STATUS_OK(registry->RegisterCustomKernel(def, CreateFooKernel));
 
   InferenceSession session_object{so, GetEnvironment()};
-  EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
-
-  //register foo schema
-  auto foo_schema = GetFooSchema();
-  std::vector<OpSchema> schemas = {foo_schema};
-  EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 5, 7).IsOK());
-  auto def = FooKernelDef("Foo");
-  //Register a foo kernel which is doing Add, but bind to Mul.
-  EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateFooKernel).IsOK());
-
-  EXPECT_TRUE(session_object.Load(FOO_MODEL_URI).IsOK());
-  EXPECT_TRUE(session_object.Initialize().IsOK());
-
-  RunOptions run_options;
-  run_options.run_tag = "one session/one tag";
+  EXPECT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
+  EXPECT_STATUS_OK(session_object.Load(FOO_MODEL_URI));
+  EXPECT_STATUS_OK(session_object.Initialize());
 
   // prepare inputs
   std::vector<int64_t> dims_x = {3, 2};
@@ -289,32 +284,25 @@ TEST(CustomKernelTests, CustomKernelWithCustomSchema) {
   std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   // Now run
-  RunSession(session_object, run_options, dims_x, values_x, expected_dims_y, expected_values_y);
+  RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
 }
 
 TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   SessionOptions so;
+  so.session_logid = "CustomKernelWithOptionalOutput";
 
-  so.session_logid = "InferenceSessionTests.NoTimeout";
-
-  //reigster optional schema
-  auto optional_schema = GetOptionalOpSchema();
-  std::vector<OpSchema> schemas = {optional_schema};
-
+  // register optional schema
   std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
-
-  EXPECT_TRUE(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 5, 7).IsOK());
+  std::vector<OpSchema> schemas = {GetOptionalOpSchema()};
   auto def = OptionalKernelDef();
-  //Register a foo kernel which is doing Add, but bind to Mul.
-  EXPECT_TRUE(registry->RegisterCustomKernel(def, CreateOptionalOpKernel).IsOK());
+
+  EXPECT_STATUS_OK(registry->RegisterOpSet(schemas, "test", 1, 1000));
+  EXPECT_STATUS_OK(registry->RegisterCustomKernel(def, CreateOptionalOpKernel));
 
   InferenceSession session_object{so, GetEnvironment()};
-  EXPECT_TRUE(session_object.RegisterCustomRegistry(registry).IsOK());
-  EXPECT_TRUE(session_object.Load(OPTIONAL_MODEL1_URI).IsOK());
-  EXPECT_TRUE(session_object.Initialize().IsOK());
-
-  RunOptions run_options;
-  run_options.run_tag = "one session/one tag";
+  EXPECT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
+  EXPECT_STATUS_OK(session_object.Load(OPTIONAL_MODEL1_URI));
+  EXPECT_STATUS_OK(session_object.Initialize());
 
   // prepare inputs
   std::vector<int64_t> dims_x = {3, 2};
@@ -326,7 +314,39 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   std::vector<float> expected_values_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
 
   // Now run
-  RunSession(session_object, run_options, dims_x, values_x, expected_dims_y, expected_values_y);
+  RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
+}
+
+// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory
+//
+// When there was a custom registry that matched the ONNX domain but not the current op, the earliest version from that
+// was being used in the fallthrough search of the ONNX schemas. This results in invalid matching.
+// e.g.
+//   Model with ONNX opset of 12.
+//   Custom op using ONNX domain with version range of 1..1000 (which is what the custom op registration code
+//   available via the ORT API uses by default) and custom op (called 'Foo' in our test).
+//
+// If the model has another ONNX op (Clip in our test), GetSchemaAndHistory was using the custom registry first,
+// 'version' gets set to 1 and the ONNX schema lookup matches that opset and not the model's opset. This leads to an
+// invalid schema being selected.
+TEST(CustomKernelTests, CustomOnnxKernelSchemaLookup) {
+  SessionOptions so;
+  so.session_logid = "CustomOnnxKernelSchemaLookup";
+
+  auto schema = GetFooSchema();
+  auto def = FooKernelDef();
+  schema.SetDomain(onnxruntime::kOnnxDomain);
+  def.SetDomain(onnxruntime::kOnnxDomain);
+
+  std::vector<OpSchema> schemas = {schema};
+  std::shared_ptr<CustomRegistry> registry = std::make_shared<CustomRegistry>();
+  EXPECT_STATUS_OK(registry->RegisterOpSet(schemas, onnxruntime::kOnnxDomain, 1, 1000));
+  EXPECT_STATUS_OK(registry->RegisterCustomKernel(def, CreateFooKernel));
+
+  InferenceSession session_object{so, GetEnvironment()};
+  EXPECT_STATUS_OK(session_object.RegisterCustomRegistry(registry));
+  EXPECT_STATUS_OK(session_object.Load(FOO_CLIP_MODEL_URI));
+  EXPECT_STATUS_OK(session_object.Initialize());
 }
 }  // namespace test
 }  // namespace onnxruntime
