@@ -95,6 +95,10 @@ set(contrib_ops_excluded_files
   "fused_conv.cc"
 )
 
+if (NOT onnxruntime_ENABLE_ATEN)
+  list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
+endif()
+
 set(provider_excluded_files
   "atomic/common.cuh"
   "controlflow/if.cc"
