@@ -83,7 +83,7 @@ void RocmStream::EnqueDeferredCPUBuffer(void* cpu_buffer) {
 
 struct CpuBuffersInfo {  // TODO: should be moved to base class
   AllocatorPtr allocator;
-  void** buffers;
+  std::unique_ptr<void*[]> buffers;
   // CPU buffer buffers[i].
   // Number of buffer points in "buffers".
   size_t n_buffers;
@@ -95,7 +95,6 @@ static void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status
   for (size_t i = 0; i < info->n_buffers; ++i) {
     info->allocator->Free(info->buffers[i]);
   }
-  delete[] info->buffers;
 }
 
 Status RocmStream::CleanUpOnRunEnd() {
@@ -106,7 +105,7 @@ Status RocmStream::CleanUpOnRunEnd() {
   if (release_cpu_buffer_on_rocm_stream_ && cpu_allocator_->Info().alloc_type == OrtArenaAllocator) {
     std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
     cpu_buffers_info->allocator = cpu_allocator_;
-    cpu_buffers_info->buffers = new void*[deferred_cpu_buffers_.size()];
+    cpu_buffers_info->buffers = std::make_unique<void*[]>(deferred_cpu_buffers_.size());
     for (size_t i = 0; i < deferred_cpu_buffers_.size(); ++i) {
       cpu_buffers_info->buffers[i] = deferred_cpu_buffers_.at(i);
     }
