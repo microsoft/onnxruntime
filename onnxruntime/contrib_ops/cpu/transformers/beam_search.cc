@@ -103,6 +103,9 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       decoder_feeds_fetches_manager_ = gpt_subgraph_->GetFeedsFetchesManager();
     } else if (attribute_name == "init_decoder") {
       ORT_ENFORCE(init_run_gpt_subgraph_ == nullptr, "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      // TODO (hasesh): If 'init_decoder' is present, then we update 'parameters_' again based on its subgraph (it would have been
+      // updated once for the 'decoder' attribute). In future, find a way to update 'parameters' only once based on only one subgraph
+      // attribute.
       auto res = gpt_details::CreateGptSubgraphAndUpdateParameters(node, session_state, attribute_name,
                                                                    subgraph_session_state, parameters_);
 
@@ -242,7 +245,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
         init_beam_state_fp16_func_,
         device_copy_func_,
         device_copy_int32_func_,
-        create_encoder_inputs_func_,
+        create_encoder_inputs_func_ ? create_encoder_inputs_func_ : GenerationCpuDeviceHelper::CreateEncoderInputs,
         update_decoder_feeds_fp16_func_,
         expand_buffer_int32_func_,
         expand_buffer_float_func_,

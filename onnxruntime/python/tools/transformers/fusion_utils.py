@@ -28,8 +28,8 @@ class FusionUtils:
         logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
-    def cast_input_to_int32(self, input_name: str):
-        cast_output = input_name + "_int32"
+    def cast_input(self, input_name: str, target_type="int32"):
+        cast_output = input_name + "_" + target_type
 
         # Avoid consequent Cast nodes.
         inputs = [input_name]
@@ -40,10 +40,23 @@ class FusionUtils:
                 inputs = [parent_node.input[0]]
 
         cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
-        cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
+
+        if target_type == "int32":
+            to_type = int(TensorProto.INT32)
+        elif target_type == "float32":
+            to_type = int(TensorProto.FLOAT)
+        elif target_type == "float16":
+            to_type = int(TensorProto.FLOAT16)
+        else:
+            raise ValueError("Invalid target_type: {target_type}")
+
+        cast_node.attribute.extend([helper.make_attribute("to", to_type)])
         self.model.add_node(cast_node)
 
         return cast_output, cast_node
+
+    def cast_input_to_int32(self, input_name: str):
+        return self.cast_input(input_name, "int32")
 
     def remove_cast_int32(self, input_name: str):
         input_name_to_nodes = self.model.input_name_to_nodes()

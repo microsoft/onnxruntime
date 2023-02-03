@@ -952,6 +952,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T1")
         .Input(1, "weight",
                "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",

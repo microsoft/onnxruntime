@@ -40,27 +40,13 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
 
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 #define CUDA_MEMORY_ALIGNMENT 256
-
-#define DUMP_ATTENTION_LEVEL 0
-#if DUMP_ATTENTION_LEVEL > 1
-#define DUMP_ATTENTION_INIT() transformers::CudaTensorConsoleDumper dumper
-#define DUMP_ATTENTION(...) dumper.Print(__VA_ARGS__)
-#define DUMP_ATTENTION_D(...) dumper.Print(__VA_ARGS__)
-#elif DUMP_ATTENTION_LEVEL > 0
-#define DUMP_ATTENTION_INIT() transformers::CudaTensorConsoleDumper dumper
-#define DUMP_ATTENTION(...) dumper.Print(__VA_ARGS__)
-#define DUMP_ATTENTION_D(...)
-#else
-#define DUMP_ATTENTION_INIT()
-#define DUMP_ATTENTION(...)
-#define DUMP_ATTENTION_D(...)
-#endif
 
 namespace onnxruntime {
 namespace contrib {
@@ -101,10 +87,24 @@ size_t GetAttentionWorkspaceSize(
     size_t sequence_length,
     size_t kv_sequence_length,
     size_t total_sequence_length,
-    void* fused_runner) {
+    void* fused_runner,
+    bool use_memory_efficient_attention) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_bytes = element_size * batch_size * num_heads *
                            ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
+
+#if USE_FLASH_ATTENTION
+  if (use_memory_efficient_attention) {
+    size_t fmha_buffer_bytes = 0;
+    if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
+      fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
+    }
+
+    return qkv_bytes + fmha_buffer_bytes;
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
+#endif
 
   if (fused_runner != nullptr) {
     size_t sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);
@@ -259,13 +259,16 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   const int v_head_size = parameters.v_head_size;
   const bool past_present_share_buffer = parameters.past_present_share_buffer;
   void* fused_runner = data.fused_runner;
+  bool use_memory_efficient_attention = data.use_memory_efficient_attention;
 
   T* qkv = data.workspace;
 
   bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
-  DUMP_ATTENTION_INIT();
+  // Default format for memory efficient attention.
+  // When there is past state, the format shal be BxNxSxH, so we disable memory efficient attention when there is past.
+  DUMP_TENSOR_INIT();
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
       // For quantized attention, bias has been added so only need transpose here.
@@ -277,13 +280,16 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     } else {
       // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
+      // For memory efficient attention, transpose to 3xBxSxNxH (format 3)
       // For unfused kernel, transpose to 3xBxNxSxH (format 1)
-      // For fused causal kernel, use format 1 since we need have K and V in BNSH format to update present state,
-      //     we also update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
-      const int format = (use_fused_kernel ? 2 : 1);
+      // For fused causal kernel, use format 1 since we need have K and V to update present state,
+      //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
+      const int format = (use_fused_kernel ? 2 : (use_memory_efficient_attention ? 3 : 1));
       qkv_format = use_fused_kernel
                        ? AttentionQkvFormat::QKV_BSN3H
-                       : (use_fused_causal ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH : AttentionQkvFormat::Q_K_V_BNSH);
+                       : (use_memory_efficient_attention
+                              ? AttentionQkvFormat::Q_K_V_BSNH
+                              : (use_fused_causal ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH : AttentionQkvFormat::Q_K_V_BNSH));
 
       // For fused causal, we will update gemm_buffer with bias directly.
       T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
@@ -296,15 +302,42 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv,
                              true, v_head_size, qkv_add_bias, 3);
     }
-  } else {  // gemm_buffer == nullptr
+  } else if (data.value == nullptr) {  // gemm_buffer == nullptr and packed kv
+    // TODO: unpack kv to BNSH for unfused kernel so that we can remove the following constraint.
+    // CheckInputs verified this constraint.
+    assert(data.bias == nullptr);
+    assert(qk_head_size == v_head_size);
+
+    DUMP_TENSOR_D("packed_kv", data.key, batch_size * kv_sequence_length, num_heads, 2, qk_head_size);
+
+    if (use_memory_efficient_attention) {
+      // unpack kv to BSNH. Note that there is no bias so we need not output query to q.
+      constexpr int format = 4;
+      T* qkv_add_bias = nullptr;
+      const T* kv_bias = (data.bias == nullptr ? data.bias : data.bias + parameters.hidden_size);
+      LaunchAddBiasTranspose(stream, 2, format, max_threads_per_block,
+                             batch_size, kv_sequence_length, num_heads, qk_head_size,
+                             data.key, kv_bias, k,
+                             true, v_head_size, qkv_add_bias, 2);
+      DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    } else {
+      if (data.fused_cross_attention_kernel == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "packed KV format is not implemented for current GPU. Please disable packed kv in fusion options.");
+      }
+
+      qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
+    }
+  } else {  // gemm_buffer == nullptr and not packed kv
     assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
-    DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("query_bias", data.bias, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
-    DUMP_ATTENTION_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
+    DUMP_TENSOR_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
+    DUMP_TENSOR_D("query_bias", data.bias, num_heads, qk_head_size);
+    DUMP_TENSOR_D("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
+    DUMP_TENSOR_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
+    DUMP_TENSOR_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
 
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
@@ -318,7 +351,21 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
           data.bias, data.query, data.key, data.value, qkv, true, kv_sequence_length);
 
       qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
-    } else if (use_fused_kernel) {
+    }
+#if USE_FLASH_ATTENTION
+    else if (use_memory_efficient_attention) {
+      LaunchAddBias(stream, max_threads_per_block,
+                    batch_size, sequence_length, kv_sequence_length,
+                    num_heads, qk_head_size, v_head_size,
+                    data.bias, data.query, data.key, data.value, q, k, v);
+
+      DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    }
+#endif
+    else if (use_fused_kernel) {
       assert(qk_head_size == v_head_size);
 
       // Q (BxSxNxH), K (BxSxNxH), V (BxSxNxH) => BxSxNx(H + H + H)
@@ -327,7 +374,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
           batch_size, sequence_length,
           num_heads, qk_head_size,
           data.bias, data.query, data.key, data.value, qkv, false, kv_sequence_length);
-      DUMP_ATTENTION_D("qkv(BSN3H)", qkv, batch_size, sequence_length, num_heads, 2 * qk_head_size + v_head_size);
+      DUMP_TENSOR_D("qkv(BSN3H)", qkv, batch_size, sequence_length, num_heads, 2 * qk_head_size + v_head_size);
 
       qkv_format = AttentionQkvFormat::QKV_BSN3H;
     } else {  // unfused kernel
@@ -352,9 +399,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                                 data.value, data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1);
 
-      DUMP_ATTENTION_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
-      DUMP_ATTENTION_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
-      DUMP_ATTENTION_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
+      DUMP_TENSOR_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
   }
@@ -384,7 +431,7 @@ Status QkvToContext(
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
-  assert(int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
+  assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
 
   const int batches = batch_size * num_heads;
   const int size_per_batch_q = sequence_length * qk_head_size;
@@ -433,6 +480,7 @@ Status QkvToContext(
     assert(data.fused_cross_attention_kernel == nullptr);
     assert(!use_fused_kernel);
     assert(data.gemm_buffer != nullptr);
+    assert(!data.use_memory_efficient_attention);
 
     if (data.present != data.past) {
       // For easy testing. Production should better avoid this path.
@@ -444,7 +492,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
         stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
         batch_size, qk_head_size, num_heads, max_threads_per_block,
-        use_fused_causal ? nullptr : data.bias, // For fused causal, bias has been added to gemm_buffer
+        use_fused_causal ? nullptr : data.bias,  // For fused causal, bias has been added to gemm_buffer
         data.gemm_buffer, data.present));
 
     present_size_per_batch_k = parameters.max_sequence_length * qk_head_size;
@@ -454,7 +502,7 @@ Status QkvToContext(
   }
 
   // Q, K and V are ready now
-  DUMP_ATTENTION_INIT();
+  DUMP_TENSOR_INIT();
 
   if (data.fused_cross_attention_kernel != nullptr) {
     assert(qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H);
@@ -462,7 +510,7 @@ Status QkvToContext(
     LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-    DUMP_ATTENTION_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
+    DUMP_TENSOR_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
 
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
@@ -472,26 +520,34 @@ Status QkvToContext(
     LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-    DUMP_ATTENTION_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
+    DUMP_TENSOR_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
 
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(data.fused_cross_attention_kernel);
 
+    // When there is no bias, we can directly use q and packed kv from inputs. TODO: not need qkv in workspace.
+    void const* query = q;
+    void const* packed_kv = k;
+    if (data.value == nullptr && data.bias == nullptr) {
+      query = data.query;
+      packed_kv = data.key;
+    }
+
     run_fused_cross_attention(
-        q,                          // Q
-        k,                          // packed KV
-        q_sequence_offset,          // cumulated sequence length of Q
-        kv_sequence_offset,         // cumulated sequence length of KV
-        data.output,                // output
-        cross_attention_kernel,     // kernels
-        batch_size,                 // batch size
-        num_heads,                  // number of heads
-        qk_head_size,               // head size of Q/K/V
-        sequence_length,            // sequence length of Q
-        kv_sequence_length,         // sequence length of KV
+        query,                   // Q
+        packed_kv,               // packed KV
+        q_sequence_offset,       // cumulated sequence length of Q
+        kv_sequence_offset,      // cumulated sequence length of KV
+        data.output,             // output
+        cross_attention_kernel,  // kernels
+        batch_size,              // batch size
+        num_heads,               // number of heads
+        qk_head_size,            // head size of Q/K/V
+        sequence_length,         // sequence length of Q
+        kv_sequence_length,      // sequence length of KV
         stream);
 
-    DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    DUMP_TENSOR("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 
@@ -517,14 +573,53 @@ Status QkvToContext(
     if (use_fused_kernel) {
       assert(qkv_format == AttentionQkvFormat::QKV_BSN3H);
       fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
-      DUMP_ATTENTION("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     } else {
       assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
       fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
-      DUMP_ATTENTION("fused causal output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR("fused causal output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     }
     return Status::OK();
   }
+
+#if USE_FLASH_ATTENTION
+  if (data.use_memory_efficient_attention) {
+    // We only enable fused cross attention when there is no key padding mask.
+    // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
+    assert(data.mask_index == nullptr);
+    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+
+    const void* query = q;
+    const void* key = k;
+    const void* value = v;
+    if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
+      query = data.query;
+    }
+
+    MemoryEfficientAttentionParams p;
+    p.sm = device_prop.major * 10 + device_prop.minor;
+    p.is_half = sizeof(T) == 2;
+    p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
+    p.num_heads = parameters.num_heads;
+    p.sequence_length = parameters.sequence_length;
+    p.kv_sequence_length = parameters.total_sequence_length;
+    p.qk_head_size = parameters.head_size;
+    p.v_head_size = parameters.v_head_size;
+    p.causal = parameters.is_unidirectional;
+    p.cu_seqlens_q = nullptr;
+    p.cu_seqlens_k = nullptr;
+    p.query = query;
+    p.key = key;
+    p.value = value;
+    p.output = data.output;
+    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
+    p.stream = stream;
+    run_memory_efficient_attention(p);
+
+    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    return Status::OK();
+  }
+#endif
 
   // The following are unfused attention.
   assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -540,8 +635,9 @@ Status QkvToContext(
   float zero = 0.f;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(qk_head_size));
-  float alpha = use_raw_attention_mask ? one : rsqrt_head_size;
+  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                               : parameters.scale;
+  float alpha = use_raw_attention_mask ? one : scale;
 
   cublasSetStream(cublas, stream);
 
@@ -552,7 +648,7 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
-  DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
+  DUMP_TENSOR_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, total_sequence_length);
@@ -570,7 +666,7 @@ Status QkvToContext(
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.extra_add_qk, scratch1, scratch2,
-                                     parameters.is_unidirectional, rsqrt_head_size, mask_dimension,
+                                     parameters.is_unidirectional, scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax,
                                      persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
@@ -586,7 +682,7 @@ Status QkvToContext(
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
-  DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
+  DUMP_TENSOR_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;
@@ -600,7 +696,7 @@ Status QkvToContext(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  max_threads_per_block, false, temp_output, data.output);
-  DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  DUMP_TENSOR("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return result;
 }
 

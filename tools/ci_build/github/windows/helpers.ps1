@@ -372,6 +372,7 @@ function Install-Protobuf {
 
     pushd .
     $url=Get-DownloadURL -name protobuf -src_root $src_root
+    Write-Host "Downloading protobuf from $url"
     $temp_dir = Get-TempDirectory
     $protobuf_src_dir = Join-Path $temp_dir "protobuf"
     $download_finished = DownloadAndExtract -Uri $url -InstallDirectory $protobuf_src_dir -Force
