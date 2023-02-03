@@ -87,17 +87,14 @@ Status Sample(AllocatorPtr& allocator,
   dumper->Print("d_index_buffer_out", d_index_out.data(), parameters->batch_size, parameters->vocab_size);
 #endif
 
-  Status status;
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  status = dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                          d_sorted_softmaxed_score.data(),
-                                                                          reinterpret_cast<CudaT*>(d_sorted_score.data()),
-                                                                          parameters->vocab_size,
-                                                                          parameters->vocab_size,
-                                                                          parameters->vocab_size,
-                                                                          parameters->batch_size);
-  if (!status.IsOK())
-    return status;
+  ORT_RETURN_IF_ERROR(dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+                                                                                     d_sorted_softmaxed_score.data(),
+                                                                                     reinterpret_cast<CudaT*>(d_sorted_score.data()),
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->batch_size));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_softmaxed_score_buffer",
@@ -125,16 +122,13 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  status = dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                          d_softmaxed_score.data(),
-                                                                          reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                                          parameters->vocab_size,
-                                                                          parameters->vocab_size,
-                                                                          parameters->vocab_size,
-                                                                          parameters->batch_size);
-  if (!status.IsOK())
-    return status;
-
+  ORT_RETURN_IF_ERROR(dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+                                                                                     d_softmaxed_score.data(),
+                                                                                     reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->vocab_size,
+                                                                                     parameters->batch_size));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_softmaxed_score_buffer",

@@ -337,14 +337,11 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
   const CudaT* X_data = is_reuse_logits_buffer ? logits_data : reinterpret_cast<const CudaT*>(next_token_logits.data());
 
-  auto status = dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
+  ORT_RETURN_IF_ERROR(dispatch_blockwise_softmax_forward<CudaT, float, float, true>(
       cuda_stream, Y_data, X_data, vocab_size,
       is_reuse_logits_buffer ? padded_vocab_size : vocab_size,
       vocab_size,
-      batch_size * num_beams);
-
-  if (!status.IsOK())
-    return status;
+      batch_size * num_beams));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("next_token_scores after softmax", next_token_scores.data(), batch_size, num_beams, vocab_size);
