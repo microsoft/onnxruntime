@@ -29,6 +29,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.FusedConv">com.microsoft.FusedConv</a>
   * <a href="#com.microsoft.FusedGemm">com.microsoft.FusedGemm</a>
   * <a href="#com.microsoft.FusedMatMul">com.microsoft.FusedMatMul</a>
+  * <a href="#com.microsoft.GatedRelativePositionBias">com.microsoft.GatedRelativePositionBias</a>
   * <a href="#com.microsoft.GatherND">com.microsoft.GatherND</a>
   * <a href="#com.microsoft.Gelu">com.microsoft.Gelu</a>
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
@@ -1569,6 +1570,58 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.GatedRelativePositionBias"></a><a name="com.microsoft.gatedrelativepositionbias">**com.microsoft.GatedRelativePositionBias**</a>
+
+  query_layer = (query_layer + query_bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(1, 2)
+    gate_u, gate_r = torch.sigmoid(
+        self.gate_ur_linear(query_layer).view(batch_size, num_head, seq_len, 2, D/2).sum(-1, keepdim=False)
+    ).chunk(2, dim=-1)
+    gate_u_1 = gate_u * (gate_r * self.eco_a - 1.0) + 2.0
+    rel_pos_bias = gate_u_1 * rel_pos
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>query_layer</tt> : T</dt>
+<dd>tensor with shape (batch_size, seq_len, num_heads x head_size)</dd>
+<dt><tt>query_bias</tt> : T</dt>
+<dd>1-d tensor with shape (num_heads x head_size)</dd>
+<dt><tt>rel_pos</tt> : T</dt>
+<dd>tensor with shape (1, num_head, seq_len, seq_len)</dd>
+<dt><tt>weight</tt> : T</dt>
+<dd>gemm weight for the gated_ur_linear, shape (head_size, D), D is divisible by 2</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>bias for the gated_ur_linear, shape (D)</dd>
+<dt><tt>eco_a</tt> : T</dt>
+<dd>tensor of shape (1, num_heads, 1, 1)</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>output tensor with shape (batch_size, num_heads, seq_len, seq_len)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 </dl>
 
