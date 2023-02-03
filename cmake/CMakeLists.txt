@@ -217,6 +217,9 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# TritonOp support
+option(onnxruntime_ENABLE_TRITONOP "Enable TritonOp" OFF)
+
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
@@ -247,6 +250,9 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_TRAINING_APIS ON)
   set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
   set(onnxruntime_ENABLE_ATEN ON)
+  if (onnxruntime_USE_CUDA)
+    set(onnxruntime_ENABLE_TRITONOP ON)
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -813,6 +819,9 @@ function(onnxruntime_set_compile_flags target_name)
 
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
+    endif()
+    if (onnxruntime_ENABLE_TRITONOP)
+      target_compile_definitions(${target_name} PRIVATE ENABLE_TRITONOP)
     endif()
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)

@@ -4094,6 +4094,24 @@ Return true if all elements are true and false otherwise.
         }
       });
 
+#ifdef ENABLE_TRITONOP
+  ONNX_CONTRIB_OPERATOR_SCHEMA(TritonOp)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc("Triton Op.")
+      .Attr("func_name", "Function name of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .Attr("onnx_key", "The hash key for the ONNX graph.", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("onnx_string", "The onnx string of the triton kernel.", AttributeProto::STRING, std::string(""))
+      .Input(0, "inputs", "Input tensors.", "T", OpSchema::Variadic,
+             /*is_homogeneous*/ false,
+             /*min_arity*/ 0)
+      .Output(0, "outputs", "Output tensors.", "T", OpSchema::Variadic,
+              /*is_homogeneous*/ false,
+              /*min_arity*/ 1)
+      .TypeConstraint("T", OpSchema::all_tensor_types_with_bfloat(),
+                      "Allow inputs and outputs to be any kind of tensor.");
+#endif  // ENABLE_TRITONOP
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(SoftmaxCrossEntropyLossInternal)
       .SetDomain(kMSDomain)
       .SinceVersion(1)

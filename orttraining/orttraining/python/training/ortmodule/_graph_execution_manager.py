@@ -134,6 +134,17 @@ class GraphExecutionManager(GraphExecutionInterface):
         # Assign self._torch_alloc and self._torch_free if self._use_external_gpu_allocator is True
         self._get_torch_gpu_allocator_function_addresses()
 
+        # Enable Triton op executor if Triton is installed, backend has support and environment variable is set.
+        if ortmodule._defined_from_envvar("ORTMODULE_USE_TRITON", 0) != 0 and C.is_tritonop_on():
+            try:
+                import triton
+            except ImportError:
+                pass
+            else:
+                from onnxruntime.training.ortmodule.ort_triton import register_triton_op_executor
+
+                register_triton_op_executor()
+
     def _get_torch_gpu_allocator_function_addresses(self):
         if self._runtime_options.use_external_gpu_allocator and torch.cuda.is_available():
             # CPP extension to get torch GPU allocator's alloc and free function addresses

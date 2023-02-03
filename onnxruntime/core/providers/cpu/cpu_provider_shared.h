@@ -211,6 +211,11 @@ struct ProviderHostCPU {
   virtual bool contrib__IsATenOperatorExecutorInitialized() = 0;
   virtual Status contrib__ExecuteReduceSumATen(OpKernelContext* p_ctx, const gsl::span<const int64_t>& axes, bool keepdims) = 0;
 #endif
+
+#ifdef ENABLE_TRITONOP
+  virtual Status contrib__TritonOp__Compute(const contrib::TritonOp* p, OpKernelContext* context) = 0;
+#endif
+
 #endif
 };
 

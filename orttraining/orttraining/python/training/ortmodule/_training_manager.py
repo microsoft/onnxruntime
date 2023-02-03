@@ -17,6 +17,7 @@ from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._gradient_accumulation_manager import GradientAccumulationManager
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo
+from ._graph_transformer_registry import GraphTransformerRegistry
 from ._io import _FlattenedModule, _InputInfo
 from ._logger import TimeTrackerPhase, TrackTime
 from ._runtime_inspector import Phase
@@ -292,6 +293,10 @@ class TrainingManager(GraphExecutionManager):
                 if self._device != device:
                     self._device = device
 
+            # Build the gradient graph
+            if build_gradient_graph:
+                self._build_graph()
+
             if create_execution_session:
                 # Create execution session creates the training_session
                 self._create_execution_agent()
@@ -345,6 +350,15 @@ class TrainingManager(GraphExecutionManager):
         self._onnx_models.optimized_pre_grad_model = onnx.load_model_from_string(
             self._graph_builder.get_forward_model()
         )
+
+        # Apply registered graph transformers to the optimized model
+        device_type = self._device.type
+        if device_type == "cuda" and self.is_rocm_pytorch:
+            device_type = "rocm"
+        GraphTransformerRegistry.transform_all(
+            type(self._flattened_module._original_module).__name__, device_type, self._onnx_models.optimized_model.graph
+        )
+
         if self._debug_options.save_onnx_models.save:
             self._onnx_models.save_optimized_model(
                 self._debug_options.save_onnx_models.path,
