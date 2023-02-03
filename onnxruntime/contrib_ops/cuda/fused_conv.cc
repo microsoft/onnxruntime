@@ -9,10 +9,10 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
-class FusedConv : public onnxruntime::cuda::Conv<T> {
+class FusedConv : public onnxruntime::cuda::Conv<T, false> {
  public:
-  using Base = onnxruntime::cuda::Conv<T>;
-  FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T>(info) {
+  using Base = onnxruntime::cuda::Conv<T, false>;
+  FusedConv(const OpKernelInfo& info) : onnxruntime::cuda::Conv<T, false>(info) {
     std::string activation;
     if (info.GetAttr<std::string>("activation", &activation) == Status::OK() &&
         MapMode(activation) == Status::OK() &&

@@ -9,6 +9,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.BiasDropout">com.microsoft.BiasDropout</a>
   * <a href="#com.microsoft.BiasGelu">com.microsoft.BiasGelu</a>
   * <a href="#com.microsoft.BiasSoftmax">com.microsoft.BiasSoftmax</a>
+  * <a href="#com.microsoft.BiasSplitGelu">com.microsoft.BiasSplitGelu</a>
   * <a href="#com.microsoft.BifurcationDetector">com.microsoft.BifurcationDetector</a>
   * <a href="#com.microsoft.BitmaskBiasDropout">com.microsoft.BitmaskBiasDropout</a>
   * <a href="#com.microsoft.BitmaskDropout">com.microsoft.BitmaskDropout</a>
@@ -34,6 +35,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.GemmFastGelu">com.microsoft.GemmFastGelu</a>
   * <a href="#com.microsoft.GreedySearch">com.microsoft.GreedySearch</a>
   * <a href="#com.microsoft.GridSample">com.microsoft.GridSample</a>
+  * <a href="#com.microsoft.GroupNorm">com.microsoft.GroupNorm</a>
   * <a href="#com.microsoft.Inverse">com.microsoft.Inverse</a>
   * <a href="#com.microsoft.Irfft">com.microsoft.Irfft</a>
   * <a href="#com.microsoft.LongformerAttention">com.microsoft.LongformerAttention</a>
@@ -587,6 +589,39 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.BiasSplitGelu"></a><a name="com.microsoft.biassplitgelu">**com.microsoft.BiasSplitGelu**</a>
+
+  A fusion used in diffusion model that after adding bias, hidden state is sliced into two tensors of same size, then left
+  tensor multiplies the Gelu activation result of right tensor.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input tensor. Dimensions are (N, S, D), where N is the batch size, S are image size, and D is hidden dimension</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor. Dimensions are (D), where D is the same hidden dimension as input tensor</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>The output tensor with dimensions (N, S, D/2)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input X and output Y types to float tensors.</dd>
 </dl>
 
 
@@ -1811,6 +1846,61 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
+### <a name="com.microsoft.GroupNorm"></a><a name="com.microsoft.groupnorm">**com.microsoft.GroupNorm**</a>
+
+  Applies Group Normalization over a mini-batch of inputs as described in the paper Group Normalization (https://arxiv.org/abs/1803.08494).
+  
+  This operator transforms input according to
+    y = gamma * (x - mean) / sqrt(variance + epsilon) + beta
+  
+  The input channels are separated into num_groups groups, each containing num_channels / num_groups channels. num_channels must be divisible by num_groups. The mean and standard-deviation are calculated separately over the each group.
+  The weight and bias are per-channel affine transform parameter vectors of size num_channels.
+  
+  The activation attribute can be used to enable activation after group normalization.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>activation</tt> : int (required)</dt>
+<dd>Activation after group normalization: 0 for None, 1 for Swish</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>The epsilon value to use to avoid division by zero</dd>
+<dt><tt>groups</tt> : int (required)</dt>
+<dd>The number of groups of channels. It should be a divisor of the number of channels C</dd>
+</dl>
+
+#### Inputs
+
+<dl>
+<dt><tt>X</tt> : T</dt>
+<dd>Input data tensor. Dimensions are (N x H x W x C), where N is the batch size, C is the number of channels, and H and W are the height and width of the data</dd>
+<dt><tt>gamma</tt> : M</dt>
+<dd>1D gamma tensor for normalization with shape (C), where C is number of channels</dd>
+<dt><tt>beta</tt> : M</dt>
+<dd>1D beta tensor for normalization  with shape (C), where C is number of channels</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>Y</tt> : T</dt>
+<dd>The output tensor of the same shape as X</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(float)</dt>
+<dd>Constrain input X and output Y types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(float)</dt>
+<dd>Constrain gamma and beta to float tensors.</dd>
+</dl>
+
+
 ### <a name="com.microsoft.Inverse"></a><a name="com.microsoft.inverse">**com.microsoft.Inverse**</a>
 
 #### Version
@@ -2132,16 +2222,16 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Number of attention heads</dd>
 </dl>
 
-#### Inputs (4 - 5)
+#### Inputs (2 - 5)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, sequence_length, hidden_size)</dd>
 <dt><tt>key</tt> : T</dt>
-<dd>Key with shape (batch_size, kv_sequence_length, hidden_size)</dd>
-<dt><tt>value</tt> : T</dt>
+<dd>Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)</dd>
+<dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, kv_sequence_length, v_hidden_size)</dd>
-<dt><tt>bias</tt> : T</dt>
+<dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
 <dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
