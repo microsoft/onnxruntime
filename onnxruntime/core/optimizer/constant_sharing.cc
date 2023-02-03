@@ -130,15 +130,6 @@ struct GetOrAddValueInConstantStoreDispatcher {
 
 Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
                                   const logging::Logger& logger) const {
-  InlinedVector<std::string> graph_input_output_names;
-  graph_input_output_names.reserve(graph.GetInputs().size() + graph.GetOutputs().size());
-  for (const NodeArg* p_node_arg : graph.GetInputs()) {
-    graph_input_output_names.push_back(p_node_arg->Name());
-  }
-  for (const NodeArg* p_node_arg : graph.GetOutputs()) {
-    graph_input_output_names.push_back(p_node_arg->Name());
-  }
-
   int shared_count = 0;
 
   // Accumulated map from type/value/rank to initializer:
@@ -149,11 +140,11 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedVector<std::string> original_initializer_names;
   original_initializer_names.reserve(initialized_tensor_set.size());
   for (const auto& entry : initialized_tensor_set) {
-    // Ignore if the initializer exists in graph input/output, already handled, or not a constant initializer.
+    // Ignore if the initializer exists in graph output, already handled,
+    // or not a constant initializer (implicitly excludes the graph input).
     if (IsSharedInitializer(entry.first) ||
         !graph_utils::IsConstantInitializer(graph, entry.first) ||
-        std::find(graph_input_output_names.begin(), graph_input_output_names.end(), entry.first) !=
-            graph_input_output_names.end() ||
+        graph.IsOutput(graph.GetNodeArg(entry.first)) ||
         excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
       continue;
     }
