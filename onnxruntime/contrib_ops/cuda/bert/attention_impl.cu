@@ -663,7 +663,6 @@ Status QkvToContext(
     bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
-    DUMP_ATTENTION_D("relative_position_bias", data.relative_position_bias, batch_size, num_heads, sequence_length, total_sequence_length);
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
                                      mask_index, nullptr, data.relative_position_bias, scratch1, scratch2,
