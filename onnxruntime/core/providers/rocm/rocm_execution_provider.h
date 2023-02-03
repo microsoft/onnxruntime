@@ -14,6 +14,7 @@
 #include "core/providers/rocm/rocm_pch.h"
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 
@@ -99,9 +100,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateRocmAllocator(OrtDevice::DeviceId device_id, size_t rocm_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           ROCMExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
-  void EnableTunableOp();
-  void DisableTunableOp();
-  bool IsTunableOpEnabled() const;
+  ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
@@ -114,6 +113,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
   hipStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
+
+  rocm::tunable::RocmTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/framework/tuning_context.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 //
@@ -30,6 +31,7 @@ static constexpr const char* kOrtLoadConfigFromModelEnvVar = "ORT_LOAD_CONFIG_FR
 //
 static constexpr const char* kOrtConfigKey = "ort_config";
 static constexpr const char* kSessionOptionsKey = "session_options";
+static constexpr const char* kTuningResultsKeys = "tuning_results";
 
 class JsonConfigParser {
  public:
@@ -41,6 +43,8 @@ class JsonConfigParser {
   Status ParseSessionOptionsFromModelProto(/*out*/ SessionOptions& session_options);
 
   Status ParseRunOptionsFromModelProto(/*out*/ RunOptions& run_options);
+
+  Status ParseTuningResultsFromModelProto(/*out*/ std::vector<TuningResults>& results);
 
  private:
   // Logger instance that will be used to log events along the parsing steps

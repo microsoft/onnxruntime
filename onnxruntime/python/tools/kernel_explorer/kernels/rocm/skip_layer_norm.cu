@@ -20,7 +20,7 @@ class SkipLayerNormSmall : public IKernelExplorer {
   SkipLayerNormSmall(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
                      DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                      float epsilon, int hidden_size, int element_count)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
                 static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
@@ -44,7 +44,7 @@ class SkipLayerNormRegular : public IKernelExplorer {
   SkipLayerNormRegular(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
                 static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
@@ -68,7 +68,7 @@ class SkipLayerNormStaticSelection : public IKernelExplorer {
   SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
                                DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                                float epsilon, int hidden_size, int element_count)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
                 static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
@@ -92,10 +92,11 @@ class SkipLayerNormTunable : public IKernelExplorer {
   SkipLayerNormTunable(DeviceArray& output, DeviceArray& input, DeviceArray& skip,
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), static_cast<T*>(beta.ptr()),
                 static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {
-    op_.EnableTuning();
+
+    params_.TuningContext()->EnableTunableOp();
   }
 
   void Run() override {

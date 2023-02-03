@@ -72,7 +72,7 @@ size_t GetAttentionWorkspaceSize(
 template <typename T>
 Status QkvToContext(
     const hipDeviceProp_t& prop,
-    bool tuning,
+    RocmTuningContext* tuning_ctx,
     rocblas_handle& rocblas,
     hipStream_t stream,
     const int batch_size,
@@ -139,7 +139,7 @@ Status QkvToContext(
   const int temp_matrix_size = sequence_length * all_sequence_length;
 
   ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-      tuning, stream, rocblas,
+      tuning_ctx, stream, rocblas,
       blas::BlasOp::Trans, blas::BlasOp::NonTrans,
       all_sequence_length, sequence_length, head_size,
       // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
@@ -174,7 +174,7 @@ Status QkvToContext(
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-      tuning, stream, rocblas,
+      tuning_ctx, stream, rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       head_size, sequence_length, all_sequence_length,
       /*alpha=*/1.0f,
@@ -191,7 +191,7 @@ Status QkvToContext(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,
-    bool tuning,
+    RocmTuningContext* tuning_ctx,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -215,7 +215,7 @@ Status LaunchAttentionKernel(
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
   if (element_size == 2) {
     return QkvToContext(
-        prop, tuning, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        prop, tuning_ctx, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
         reinterpret_cast<const __half*>(input),
         reinterpret_cast<__half*>(output),
         reinterpret_cast<__half*>(workspace),
@@ -230,7 +230,7 @@ Status LaunchAttentionKernel(
         use_persistent_softmax);
   } else {
     return QkvToContext(
-        prop, tuning, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
+        prop, tuning_ctx, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
         reinterpret_cast<const float*>(input),
         reinterpret_cast<float*>(output),
         reinterpret_cast<float*>(workspace),
@@ -249,7 +249,7 @@ Status LaunchAttentionKernel(
 template <typename T>
 Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
-    bool tuning,
+    RocmTuningContext* tuning_ctx,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -352,7 +352,7 @@ Status DecoderQkvToContext(
   const int strideB = sequence_length * head_size;
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning, stream, rocblas,
+        tuning_ctx, stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -363,7 +363,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning, stream, rocblas,
+        tuning_ctx, stream, rocblas,
         blas::BlasOp::Trans, blas::BlasOp::NonTrans,
         kv_sequence_length, sequence_length, head_size,
         /*alpha=*/rsqrt_head_size,
@@ -386,7 +386,7 @@ Status DecoderQkvToContext(
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
   if (use_past && static_kv) {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning, stream, rocblas,
+        tuning_ctx, stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -397,7 +397,7 @@ Status DecoderQkvToContext(
         BN));
   } else {
     ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-        tuning, stream, rocblas,
+        tuning_ctx, stream, rocblas,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         head_size, sequence_length, kv_sequence_length,
         /*alpha=*/1.0f,
@@ -415,7 +415,7 @@ Status DecoderQkvToContext(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,
-    bool tuning,
+    RocmTuningContext* tuning_ctx,
     hipStream_t stream,
     rocblas_handle& rocblas,
     const size_t element_size,
@@ -442,7 +442,7 @@ Status LaunchDecoderAttentionKernel(
   if (element_size == 2) {
     return DecoderQkvToContext(
         prop,
-        tuning,
+        tuning_ctx,
         stream,
         rocblas,
         element_size,
@@ -469,7 +469,7 @@ Status LaunchDecoderAttentionKernel(
   } else {
     return DecoderQkvToContext(
         prop,
-        tuning,
+        tuning_ctx,
         stream,
         rocblas,
         element_size,

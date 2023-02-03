@@ -39,7 +39,6 @@ struct GemmFastGeluParams : OpParams {
   T beta;
   T* c;
   int64_t ldc;
-  bool tuning{false};
 };
 
 }  // namespace blas

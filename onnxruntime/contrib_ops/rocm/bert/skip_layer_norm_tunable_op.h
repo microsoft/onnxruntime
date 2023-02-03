@@ -20,10 +20,10 @@ namespace rocm {
 
 template <typename T>
 struct SkipLayerNormParams : OpParams {
-  SkipLayerNormParams(hipStream_t stream, T* output, const T* input,
+  SkipLayerNormParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, int ld, int element_count)
-      : OpParams(stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias),
+      : OpParams(tuning_ctx, stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias),
         epsilon(epsilon), ld(ld), element_count(element_count) {}
 
   std::string Signature() const override {

@@ -15,6 +15,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/tunable/cuda_tuning_context.h"
 
 namespace onnxruntime {
 
@@ -104,9 +105,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
-  void EnableTunableOp();
-  void DisableTunableOp();
-  bool IsTunableOpEnabled() const;
+  ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
@@ -125,6 +124,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
+
+  cuda::tunable::CudaTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:

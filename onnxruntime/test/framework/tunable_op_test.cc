@@ -7,6 +7,9 @@
 
 #include "core/common/common.h"
 #include "core/framework/tunable.h"
+#define TUNING_CONTEXT_IMPL
+#include "core/framework/tuning_context_impl.h"
+#undef TUNING_CONTEXT_IMPL
 
 using namespace std::chrono_literals;
 
@@ -17,12 +20,39 @@ namespace {
 // test on CPU and it does not use stream
 using StreamT = void*;
 
-class Timer : public ITimer<StreamT> {
+class TestTuningContext : public ITuningContext {
+ public:
+  void EnableTunableOp() override { tuning_enabled_ = true; }
+  void DisableTunableOp() override { tuning_enabled_ = false; }
+  bool IsTunableOpEnabled() const override { return tuning_enabled_; }
+
+  TuningResultsManager& GetTuningResultsManager() override { return manager_; }
+  const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
+
+ private:
+  bool tuning_enabled_{false};
+  TuningResultsManager manager_{};
+};
+
+class TestEP : public IExecutionProvider {
+  static constexpr const char* kEPType = "TestEP";
+  TestTuningContext tuning_ctx_{};
+
+ public:
+  TestEP() : IExecutionProvider{kEPType, true} {}
+
+  ITuningContext* GetTuningContext() const override {
+    return const_cast<TestTuningContext*>(&tuning_ctx_);
+  }
+
+};
+
+class TestTimer : public ITimer<StreamT> {
  public:
   using TimerBase = ITimer<StreamT>;
 
-  explicit Timer(StreamT stream) : TimerBase{stream} {}
-  ~Timer() = default;
+  explicit TestTimer(StreamT stream) : TimerBase{stream} {}
+  ~TestTimer() = default;
 
   void Start() override {
     start_ = std::chrono::steady_clock::now();
@@ -43,24 +73,27 @@ class Timer : public ITimer<StreamT> {
   TimePoint end_;
 };
 
-using OpParams = OpParams<StreamT>;
+using OpParams = OpParams<TestTuningContext, StreamT>;
 
 template <typename ParamsT>
 using Op = Op<ParamsT>;
 
 template <typename ParamsT>
-using TunableOp = TunableOp<ParamsT, Timer>;
+using TunableOp = TunableOp<ParamsT, TestTimer>;
 
 }  // namespace
 
 struct VecAddParams : OpParams {
   VecAddParams(const int* a_buf, const int* b_buf, int* c_buf, int num_elem, int beta)
-      : OpParams(nullptr),
+      : OpParams(nullptr, StreamT{}),
         a(a_buf),
         b(b_buf),
         c(c_buf),
         num_elem(num_elem),
-        beta(beta) {}
+        beta(beta) {
+    ep = std::make_shared<TestEP>();
+    tuning_ctx = static_cast<TestTuningContext*>(ep->GetTuningContext());
+  }
 
   std::string Signature() const {
     return std::to_string(num_elem) + "_" + std::to_string(beta);
@@ -71,6 +104,9 @@ struct VecAddParams : OpParams {
   int* c;
   int num_elem;
   int beta;
+
+  // Create a temporary tuning context for the test case.
+  std::shared_ptr<TestEP> ep;
 };
 
 void LaunchVecAddKernel(const int* a, const int* b, int* c, int num_elem, int beta) {
@@ -314,7 +350,7 @@ TEST(TunableOp, SelectFast) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFast op{};
-  op.EnableTuning();
+  params.TuningContext()->EnableTunableOp();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -342,7 +378,7 @@ TEST(TunableOp, SelectSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectSupported op{};
-  op.EnableTuning();
+  params.TuningContext()->EnableTunableOp();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -373,7 +409,7 @@ TEST(TunableOp, SelectFastestIfSupported) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFastestIfSupported op{};
-  op.EnableTuning();
+  params.TuningContext()->EnableTunableOp();
 
   auto status = op(&params);
   ASSERT_TRUE(status.IsOK());
@@ -398,7 +434,7 @@ TEST(TunableOp, DisabledWithManualSelection) {
   params.last_run = &last_run;
 
   TunableVecAddSelectFastestIfSupported op{};
-  op.DisableTuning();
+  params.TuningContext()->DisableTunableOp();
 
   auto status = op(&params);
   ASSERT_EQ(last_run, "FastestNarrow");
@@ -452,14 +488,13 @@ TEST(TunableOp, HandleInplaceUpdate) {
   constexpr const int a = 7500000;
   constexpr const int b = 42;
   int c{};
-  VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
 
   {
     // NO INPLACE UPDATE is carried out during tuning. We automatically get correct result.
     c = 4200;
-    params.beta = 0;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    op_not_handle_inplace_update.EnableTuning();
+    params.TuningContext()->EnableTunableOp();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -468,9 +503,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // inplace update in this case, If we don't process the params, we will get incorrect result (during tuning)
     c = 4200;
-    params.beta = 1;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddNotHandleInplaceUpdate op_not_handle_inplace_update{};
-    op_not_handle_inplace_update.EnableTuning();
+    params.TuningContext()->EnableTunableOp();
     auto status = op_not_handle_inplace_update(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_NE(c, 4200);     // value should be changed
@@ -480,9 +515,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // NO INPLACE UPDATE is carried out during tuning. We skip params processing. And we get correct result.
     c = 4200;
-    params.beta = 0;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/0);
     TunableVecAddHandleInplaceUpdate op{};
-    op.EnableTuning();
+    params.TuningContext()->EnableTunableOp();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7500042);
@@ -492,9 +527,9 @@ TEST(TunableOp, HandleInplaceUpdate) {
   {
     // inplace update in this case, We will handle the buffer and we will get correct result
     c = 4200;
-    params.beta = 1;
+    VecAddParamsRecordLastRun params(&a, &b, &c, 1, /*beta=*/1);
     TunableVecAddHandleInplaceUpdate op{};
-    op.EnableTuning();
+    params.TuningContext()->EnableTunableOp();
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(c, 7504242);

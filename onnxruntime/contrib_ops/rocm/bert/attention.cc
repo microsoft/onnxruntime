@@ -88,7 +88,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      IsTunableOpEnabled(), Stream(context), rocblas,
+      GetTuningContext(), Stream(context), rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       n, m, 1,
       /*alpha=*/1.0f,
@@ -99,7 +99,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // result(N, M) = 1 * weights x input + 1 x B.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      IsTunableOpEnabled(), Stream(context), rocblas,
+      GetTuningContext(), Stream(context), rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       n, m, k,
       /*alpha=*/1.0f,
@@ -114,7 +114,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
       device_prop,
-      IsTunableOpEnabled(),
+      GetTuningContext(),
       Stream(context),
       rocblas,
       element_size,
