@@ -33,12 +33,26 @@ class TestFusion(unittest.TestCase):
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
+    def test_multi_head_attention_fusion(self):
+        model = create_bert_attention()
+        dir = "."
+        model_path = os.path.join(dir, "attention.onnx")
+        onnx.save(model, model_path)
+        options = FusionOptions("bert")
+        options.use_multi_head_attention = True
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
+        os.remove(model_path)
+        self.verify_fusion(optimized_model, "attention_mha.onnx")
+
     def test_attention_fusion(self):
         model = create_bert_attention()
         dir = "."
         model_path = os.path.join(dir, "attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_opt.onnx")
@@ -53,7 +67,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "pruned_attention.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "pruned_attention_opt.onnx")
@@ -69,7 +85,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "bert_attention_reverse_add_order.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         # reverse add input order will get same optimized model
@@ -85,7 +103,9 @@ class TestFusion(unittest.TestCase):
         dir = "."
         model_path = os.path.join(dir, "attention_with_varied_qkv.onnx")
         onnx.save(model, model_path)
-        optimized_model = optimize_model(model_path)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, optimization_options=options)
         os.remove(model_path)
 
         self.verify_fusion(optimized_model, "attention_with_varied_qkv_opt.onnx")
@@ -102,7 +122,9 @@ class TestFusion(unittest.TestCase):
         onnx.save(model, model_path)
 
         # wrong num_heads and hidden_size
-        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8)
+        options = FusionOptions("bert")
+        options.use_raw_attention_mask(True)
+        optimized_model = optimize_model(model_path, "bert", num_heads=8, hidden_size=8, optimization_options=options)
 
         os.remove(model_path)
 

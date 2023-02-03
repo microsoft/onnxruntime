@@ -31,6 +31,7 @@ from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_gpt2 import Gpt2OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
+from onnx_model_unet import UnetOnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ MODEL_TYPES = {
         0,
     ),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
+    "unet": (UnetOnnxModel, "pytorch", 1),
 }
 
 
@@ -139,16 +141,17 @@ def optimize_by_fusion(
         model (ModelProto): model object
         model_type (str, optional): model type - like bert, bert_tf, bert_keras or gpt2. Defaults to 'bert'.
         num_heads (int, optional): number of attention heads. Defaults to 0.
-                                   0 allows detect the parameter from graph automatically (for model_type "bert" only).
+                                   0 allows detect the parameter from graph automatically.
         hidden_size (int, optional): hidden size. Defaults to 0.
-                                     0 allows detect the parameter from graph automatically (for model_type "bert" only).
-        optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions. Defaults to None.
+                                     0 allows detect the parameter from graph automatically.
+        optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions.
+                                                        Defaults to None.
 
      Returns:
         object of an optimizer class.
     """
-    if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
-        logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
+    if model_type not in ["bert", "unet"] and (num_heads == 0 or hidden_size == 0):
+        logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
 
@@ -198,7 +201,9 @@ def optimize_model(
 
     When opt_level is 0 and only_onnxruntime is False, only python fusion logic is used and onnxruntime is disabled.
 
-    When opt_level > 1, use_gpu shall set properly since the optimized graph might contain operators for GPU or CPU only.
+    When opt_level > 1, use_gpu shall set properly
+    since the optimized graph might contain operators for GPU or CPU only.
+
     If your model is intended for GPU inference only (especially float16 or mixed precision model), it is recommended to
     set use_gpu to be True, otherwise the model is not optimized for GPU inference.
 
@@ -208,23 +213,22 @@ def optimize_model(
         input (str): input model path.
         model_type (str, optional): model type - like bert, bert_tf, bert_keras or gpt2. Defaults to 'bert'.
         num_heads (int, optional): number of attention heads. Defaults to 0.
-                                   0 allows detect the parameter from graph automatically (for model_type "bert" only).
+            0 allows detect the parameter from graph automatically.
         hidden_size (int, optional): hidden size. Defaults to 0.
-                                     0 allows detect the parameter from graph automatically (for model_type "bert" only).
-        optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions. Defaults to None.
+            0 allows detect the parameter from graph automatically.
+        optimization_options (FusionOptions, optional): optimization options that turn on/off some fusions.
+            Defaults to None.
         opt_level (int, optional): onnxruntime graph optimization level (0, 1, 2 or 99) or None. Defaults to None.
-                                   When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
-                                   When the level > 0, onnxruntime will be used to optimize model first.
+            When the value is None, default value (1 for bert and gpt2, 0 for other model types) will be used.
+            When the level > 0, onnxruntime will be used to optimize model first.
         use_gpu (bool, optional): use gpu or not for onnxruntime. Defaults to False.
-        only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion. Defaults to False.
+        only_onnxruntime (bool, optional): only use onnxruntime to optimize model, and no python fusion.
+            Defaults to False.
 
      Returns:
         object of an optimizer class.
     """
     assert opt_level is None or opt_level in [0, 1, 2, 99]
-
-    if model_type != "bert" and (num_heads == 0 or hidden_size == 0):
-        logger.warning("Please specify parameters of num_heads and hidden_size when model_type is not 'bert'")
 
     (optimizer_class, _producer, default_opt_level) = MODEL_TYPES[model_type]
 
@@ -300,7 +304,8 @@ def get_fusion_statistics(optimized_model_path: str) -> Dict[str, int]:
 
 def _parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Graph optimization tool for ONNX Runtime. It transforms ONNX graph to use optimized operators for Transformer models."
+        description="Graph optimization tool for ONNX Runtime."
+        "It transforms ONNX graph to use optimized operators for Transformer models."
     )
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
@@ -320,7 +325,9 @@ def _parse_arguments():
         required=False,
         type=int,
         default=0,
-        help="number of attention heads like 12 for bert-base and 16 for bert-large. Default is 0 to detect automatically for BERT. For other model type, this parameter need specify correctly.",
+        help="number of attention heads like 12 for bert-base and 16 for bert-large. "
+        "Default is 0 to detect automatically for BERT."
+        "For other model type, this parameter need specify correctly.",
     )
 
     parser.add_argument(
@@ -328,14 +335,17 @@ def _parse_arguments():
         required=False,
         type=int,
         default=0,
-        help="hidden size like 768 for bert-base and 1024 for bert-large. Default is 0 to detect automatically for BERT. For other model type, this parameter need specify correctly.",
+        help="hidden size like 768 for bert-base and 1024 for bert-large. "
+        "Default is 0 to detect automatically for BERT. "
+        "For other model type, this parameter need specify correctly.",
     )
 
     parser.add_argument(
         "--input_int32",
         required=False,
         action="store_true",
-        help="Use int32 (instead of int64) inputs. It could avoid unnecessary data cast when EmbedLayerNormalization is fused for BERT.",
+        help="Use int32 (instead of int64) inputs. "
+        "It could avoid unnecessary data cast when EmbedLayerNormalization is fused for BERT.",
     )
     parser.set_defaults(input_int32=False)
 
@@ -343,7 +353,8 @@ def _parse_arguments():
         "--float16",
         required=False,
         action="store_true",
-        help="Convert all weights and nodes in float32 to float16. It has potential loss in precision compared to mixed precision conversion (see convert_float_to_float16).",
+        help="Convert all weights and nodes in float32 to float16. "
+        "It has potential loss in precision compared to mixed precision conversion.",
     )
     parser.set_defaults(float16=False)
 
@@ -374,7 +385,9 @@ def _parse_arguments():
         type=int,
         choices=[0, 1, 2, 99],
         default=None,
-        help="onnxruntime optimization level. 0 will disable onnxruntime graph optimization. The recommended value is 1. When opt_level > 1 is used, optimized model for GPU might not run in CPU. Level 2 and 99 are intended for --only_onnxruntime.",
+        help="onnxruntime optimization level. 0 will disable onnxruntime graph optimization. "
+        "The recommended value is 1. When opt_level > 1 is used, optimized model for GPU might not run in CPU. "
+        "Level 2 and 99 are intended for --only_onnxruntime.",
     )
 
     parser.add_argument(
@@ -408,7 +421,7 @@ def main():
     logger.debug(f"arguments:{args}")
 
     if os.path.realpath(args.input) == os.path.realpath(args.output):
-        logger.warning(f"Specified the same input and output path. Note that this may overwrite the original model")
+        logger.warning("Specified the same input and output path. Note that this may overwrite the original model")
 
     optimization_options = FusionOptions.parse(args)
 

@@ -12,8 +12,8 @@ import random
 import traceback
 import types
 import warnings
-from distutils.version import LooseVersion
 from typing import List
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import torch

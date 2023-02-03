@@ -4,12 +4,15 @@
 #include "core/providers/get_execution_providers.h"
 
 #include "core/graph/constants.h"
+#include "core/common/common.h"
+
+#include <string_view>
 
 namespace onnxruntime {
 
 namespace {
 struct ProviderInfo {
-  const char* name;
+  std::string_view name;
   bool available;
 };
 
@@ -145,15 +148,28 @@ constexpr ProviderInfo kProvidersInPriorityOrder[] =
             false,
 #endif
         },
+        {
+            kAzureExecutionProvider,
+#ifdef USE_AZURE
+            true,
+#else
+            false,
+#endif
+        },
         {kCpuExecutionProvider, true},  // kCpuExecutionProvider is always last
 };
+
+constexpr size_t kAllExecutionProvidersCount = sizeof(kProvidersInPriorityOrder) / sizeof(ProviderInfo);
+
 }  // namespace
 
 const std::vector<std::string>& GetAllExecutionProviderNames() {
   static const auto all_execution_providers = []() {
     std::vector<std::string> result{};
+    result.reserve(kAllExecutionProvidersCount);
     for (const auto& provider : kProvidersInPriorityOrder) {
-      result.push_back(provider.name);
+      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name , " name shorter");
+      result.push_back(std::string(provider.name));
     }
     return result;
   }();
@@ -165,8 +181,9 @@ const std::vector<std::string>& GetAvailableExecutionProviderNames() {
   static const auto available_execution_providers = []() {
     std::vector<std::string> result{};
     for (const auto& provider : kProvidersInPriorityOrder) {
+      ORT_ENFORCE(provider.name.size() <= kMaxExecutionProviderNameLen, "Make the EP:", provider.name, " name shorter");
       if (provider.available) {
-        result.push_back(provider.name);
+        result.push_back(std::string(provider.name));
       }
     }
     return result;
