@@ -146,6 +146,12 @@ MlasHalfGemmPackedBOffset(
     return PackedB + StartK * DimN + StartN;
 }
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+/*No it can NOT be constexpr!.*/
+#pragma warning(disable : 26497)
+#endif
+
 /**
  * @brief leading dimension of the packed B buffer
  *        Related to how B is packed
@@ -166,7 +172,9 @@ MlasHalfGemmPackedBLeadingDim(
     MLAS_UNREFERENCED_PARAMETER(DimK);
     return DimN;
 }
-
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 
 template<typename KernelType>
 void

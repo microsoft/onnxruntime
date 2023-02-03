@@ -744,9 +744,9 @@ extern "C" {
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
