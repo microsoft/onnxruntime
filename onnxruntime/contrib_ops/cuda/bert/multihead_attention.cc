@@ -94,6 +94,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
+                                   (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
                                    has_fused_cross_attention_kernel(sm, parameters.head_size,
                                                                     parameters.kv_sequence_length);
@@ -111,6 +112,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool use_fused_runner = !disable_fused_runner_ &&
                           fused_cross_attention_kernel == nullptr &&
+                          value != nullptr &&  // fused runner requires packed qkv instead of packed kv
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -162,10 +164,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = nullptr;
-  data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
