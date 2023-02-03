@@ -6286,7 +6286,7 @@ TEST_F(GraphTransformationTests, ConstantSharing_ShouldNotShareForGraphOutput) {
     }
     ASSERT_TRUE(add_initializer != nullptr);
     for (const auto& entry : initialized_tensor_set) {
-      if (entry.first.compare(add_initializer->Name()) == 0) {
+      if (entry.first.compare("y_scale") == 0) {
         const ONNX_NAMESPACE::TensorProto* tensor_proto = entry.second;
         onnxruntime::Initializer int64_const{*tensor_proto, graph.ModelPath()};
         ASSERT_TRUE(int64_const.size() == 1);
