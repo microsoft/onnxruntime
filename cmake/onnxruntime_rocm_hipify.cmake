@@ -23,6 +23,7 @@ set(contrib_ops_excluded_files
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"
   "bert/skip_layer_norm_impl.h"
+  "bert/cutlass_fmha/*"
   "bert/tensorrt_fused_multihead_attention/*"
   "bert/transformer_common.h"
   "bert/transformer_common.cc"
