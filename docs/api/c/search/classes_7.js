@@ -1,7 +1,7 @@
 var searchData=
 [
-  ['maptypeinfo_0',['MapTypeInfo',['../struct_ort_1_1_map_type_info.html',1,'Ort']]],
-  ['memoryallocation_1',['MemoryAllocation',['../struct_ort_1_1_memory_allocation.html',1,'Ort']]],
-  ['memoryinfo_2',['MemoryInfo',['../struct_ort_1_1_memory_info.html',1,'Ort']]],
-  ['modelmetadata_3',['ModelMetadata',['../struct_ort_1_1_model_metadata.html',1,'Ort']]]
+  ['kernelcontext_0',['KernelContext',['../struct_ort_1_1_kernel_context.html',1,'Ort']]],
+  ['kernelinfo_1',['KernelInfo',['../struct_ort_1_1_kernel_info.html',1,'Ort']]],
+  ['kernelinfoimpl_2',['KernelInfoImpl',['../struct_ort_1_1detail_1_1_kernel_info_impl.html',1,'Ort::detail']]],
+  ['kernelinfoimpl_3c_20ortkernelinfo_20_3e_3',['KernelInfoImpl&lt; OrtKernelInfo &gt;',['../struct_ort_1_1detail_1_1_kernel_info_impl.html',1,'Ort::detail']]]
 ];
