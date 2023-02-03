@@ -1079,7 +1079,9 @@ static bool HandleReduceOpWithArg(HandlerArgs& args) {
 }
 
 static bool HandleReduceOps(HandlerArgs& args) {
-  if ((args.node.OpType() == "ReduceSum" && args.ctx.opset < 13) || (args.ctx.opset < 18)) {
+  if ((args.node.OpType() == "ReduceSum" && args.ctx.opset < 13) ||
+      // or all other reduce operators since opset 18
+      (args.node.OpType() != "ReduceSum" && args.ctx.opset < 18)) {
     return HandleReduceOpWithArg(args);
   }
 

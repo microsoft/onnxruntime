@@ -222,10 +222,17 @@ TEST(TransposeOptimizerTests, TestPad) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    auto& pad_1 = builder.AddNode("Pad", {transpose_1_out_0}, {pad_1_out_0});
-    pad_1.AddAttribute("mode", "constant");
-    pad_1.AddAttribute("value", (float)2.3);
-    pad_1.AddAttribute("pads", std::vector<int64_t>{1, -2, 3, 4, 5, 6, 7, 8});
+    if (builder.DomainToVersionMap().find("")->second >= 18) {
+      auto* value = builder.MakeInitializer<float>({1}, {(float)2.3});
+      auto* pads = builder.MakeInitializer<int64_t>({8}, {1, -2, 3, 4, 5, 6, 7, 8});
+      auto& pad_1 = builder.AddNode("Pad", {transpose_1_out_0, pads, value}, {pad_1_out_0});
+      pad_1.AddAttribute("mode", "constant");
+    } else {
+      auto& pad_1 = builder.AddNode("Pad", {transpose_1_out_0}, {pad_1_out_0});
+      pad_1.AddAttribute("mode", "constant");
+      pad_1.AddAttribute("value", (float)2.3);
+      pad_1.AddAttribute("pads", std::vector<int64_t>{1, -2, 3, 4, 5, 6, 7, 8});
+    }
     auto& transpose_2 = builder.AddNode("Transpose", {pad_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
@@ -321,10 +328,15 @@ TEST(TransposeOptimizerTests, TestResize) {
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* resize_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
+    auto empty_arg = NodeArg("", nullptr);
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    builder.AddNode("Resize", {transpose_1_out_0, const_1}, {resize_1_out_0});
+    if (builder.DomainToVersionMap().find("")->second >= 11) {
+      builder.AddNode("Resize", {transpose_1_out_0, &empty_arg, const_1}, {resize_1_out_0});
+    } else {
+      builder.AddNode("Resize", {transpose_1_out_0, const_1}, {resize_1_out_0});
+    }
     auto& transpose_2 = builder.AddNode("Transpose", {resize_1_out_0}, {transpose_2_out_0});
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
@@ -4106,7 +4118,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
     if (builder.DomainToVersionMap().find("")->second >= 18) {
-      auto* init = builder.MakeInitializer<int64_t>({1}, {-1});
+      auto* init = builder.MakeInitializer<int64_t>({1}, {1});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, init}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
     }

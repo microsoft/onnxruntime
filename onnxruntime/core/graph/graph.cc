@@ -913,9 +913,7 @@ void Node::AddAttributeProto(AttributeProto value) {
   ADD_ATTR_SINGLE_IMPL(Type) \
   ADD_ATTR_LIST_IMPL(Type)
 
-#ifdef NDEBUG
 ADD_ATTR_IMPLS(int64_t)
-#endif
 ADD_ATTR_IMPLS(float)
 ADD_ATTR_IMPLS(std::string)
 ADD_ATTR_IMPLS(TensorProto)
@@ -927,47 +925,6 @@ ADD_ATTR_IMPLS(TypeProto)
 #undef ADD_ATTR_SINGLE_IMPL
 #undef ADD_ATTR_LIST_IMPL
 #undef ADD_ATTR_IMPLS
-
-#ifndef NDEBUG
-void Node::AddAttribute(std::string attr_name, int64_t value) {
-  if (attr_name == "axes" && (OpType() == "ReduceMax" ||
-                              OpType() == "ReduceMin" ||
-                              OpType() == "ReduceL1" ||
-                              OpType() == "ReduceL2" ||
-                              OpType() == "ReduceMean" ||
-                              OpType() == "ReduceSumSquare" ||
-                              OpType() == "ReduceLogSum" ||
-                              OpType() == "ReduceLogSumExp" ||
-                              OpType() == "ReduceProd" ||
-                              OpType() == "Squeeze" ||
-                              OpType() == "Unsqueeze")) {
-    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second < 18,
-                "This is an invalid model. ", OpType(), " does not accept attribute axis after opset 18.");
-  }
-  AttributeProto a = utils::MakeAttribute(std::move(attr_name), std::move(value));
-  AddAttributeProto(std::move(a));
-}
-
-  void Node::AddAttribute(std::string attr_name, gsl::span<const int64_t> values) {
-  if (attr_name == "axes" && (OpType() == "ReduceMax" ||
-                              OpType() == "ReduceMin" ||
-                              OpType() == "ReduceL1" ||
-                              OpType() == "ReduceL2" ||
-                              OpType() == "ReduceMean" ||
-                              OpType() == "ReduceSumSquare" ||
-                              OpType() == "ReduceLogSum" ||
-                              OpType() == "ReduceLogSumExp" ||
-                              OpType() == "ReduceProd" ||
-                              OpType() == "Squeeze" ||
-                              OpType() == "Unsqueeze")) {
-    ORT_ENFORCE(graph_->DomainToVersionMap().find("")->second < 18,
-                "This is an invalid model. ", OpType(), " does not accept attribute axis after opset 18.");
-  }
-  AttributeProto a = utils::MakeAttribute(std::move(attr_name), values);
-  AddAttributeProto(std::move(a));
-}
-#endif
-
 
 void Node::AddAttribute(std::string attr_name, GraphProto value) {
   // Do not move attr_name as it is needed below
