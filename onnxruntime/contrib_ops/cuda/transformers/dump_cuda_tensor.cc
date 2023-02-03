@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 namespace transformers {
 
-#ifdef DEBUG_GENERATION
+#if DUMP_TENSOR_LEVEL > 0
 template <typename T>
 class PinnedHostBuffer {
  public:

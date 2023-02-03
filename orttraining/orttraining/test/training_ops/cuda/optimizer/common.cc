@@ -105,7 +105,7 @@ void GetPerStepInput(
 }
 
 void AdamWTestLoop(
-    std::unique_ptr<IExecutionProvider> execution_provider,
+    ExecutionProviderCreationFunc execution_provider_creator,
     bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
     float alpha, float beta, float epsilon, float weight_decay, int64_t adam_mode, int64_t correct_bias,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,
@@ -117,9 +117,6 @@ void AdamWTestLoop(
     std::pair<float, float> momentum_1_tolerance,
     std::pair<float, float> momentum_2_tolerance,
     bool* update_signal) {
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.emplace_back(std::move(execution_provider));
-
   std::vector<std::string> ordered_weight_names;
   for (auto it = weight_name_shape_mapping.begin(); it != weight_name_shape_mapping.end(); ++it) {
     const std::string& weight_name = it->first;
@@ -134,12 +131,12 @@ void AdamWTestLoop(
   GetPerStepInput(weight_name_shape_mapping, named_weights, named_momentums_1, named_momentums_2,
                   0, weights_to_train, momentum1_to_train, momentum2_to_train);
 
-  for (size_t step = 0; step < 1; ++step) {
+  for (size_t step = 0; step < total_step; ++step) {
     OpTester test("AdamWOptimizer", 1, onnxruntime::kMSDomain);
 
     // Update the steps for each param group update.
     // Both torch and HF increase training step before applying gradients.
-    // The test alignes with them.
+    // The test aligns with them.
     int64_t increased_update_count = step + 1;
 
     // Weights/momentums before applying optimization.
@@ -205,6 +202,9 @@ void AdamWTestLoop(
       test.AddSeqOutput("updated_momentums_2", data.Momentum_2_Seq(), momentum_2_tolerance.first,
                         momentum_2_tolerance.second);
     }
+
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(std::move(execution_provider_creator()));
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
