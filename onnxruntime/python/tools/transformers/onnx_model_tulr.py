@@ -423,7 +423,8 @@ class FusionGRUGate(Fusion):
                   rpb_mul.input[1],
                   weight_matmul.input[1],
                   bias_add.input[0],
-                  eco_mul.input[1]]
+                  eco_mul.input[1],
+                  ]
         outputs = [rpb_mul.output[0]]
         gate_node = helper.make_node(
             "GatedRelativePositionBias",
@@ -436,8 +437,6 @@ class FusionGRUGate(Fusion):
 
         self.nodes_to_add.append(gate_node)
         self.node_name_to_graph_name[gate_node.name] = self.this_graph_name
-
-        return
 
 
 
@@ -454,6 +453,6 @@ class TulrOnnxModel(BertOnnxModel):
 
     def postprocess(self):
         self.rpb_fusion.apply()
-        #self.gru_fusion.apply()
+        self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
