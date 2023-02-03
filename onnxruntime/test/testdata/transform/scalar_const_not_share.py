@@ -7,8 +7,6 @@ import onnxscript
 from onnx import numpy_helper
 from onnxscript import opset17 as op
 
-import onnxruntime
-
 
 @onnxscript.script()
 def build_model(x: onnxscript.FLOAT):
