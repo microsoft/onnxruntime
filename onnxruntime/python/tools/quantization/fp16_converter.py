@@ -84,13 +84,13 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
     return tensor
 
 
-def convert_float_to_float16(
-    model,
-    min_positive_val=1e-7,
-    max_finite_val=1e4,
-    keep_io_types=False,
-    disable_shape_infer=False,
-    op_allow_list=None,
+def convert_model_from_float32_to_float16(
+        model,
+        min_positive_val=1e-7,
+        max_finite_val=1e4,
+        keep_io_types=False,
+        disable_shape_infer=False,
+        op_allow_list=None,
 ):
     """
     Convert tensor float type in the ONNX ModelProto input to tensor
@@ -146,7 +146,7 @@ def convert_float_to_float16(
     queue.append(model)
     name_mapping = {}
     graph_io_to_skip = set()
-    io_casts = set()
+    cast_operators = set()
     if keep_io_types:
         for i, n in enumerate(model.graph.input):
             if n.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
@@ -163,7 +163,7 @@ def convert_float_to_float16(
                 new_node = [helper.make_node("Cast", [n.name], [output_name], to=10, name=node_name)]
                 model.graph.node.extend(new_node)
                 value_info_list.append(new_value_info)
-                io_casts.add(node_name)
+                cast_operators.add(node_name)
 
         for i, n in enumerate(model.graph.output):
             if n.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
@@ -180,7 +180,7 @@ def convert_float_to_float16(
                 new_node = [helper.make_node("Cast", [input_name], [n.name], to=1, name=node_name)]
                 model.graph.node.extend(new_node)
                 value_info_list.append(new_value_info)
-                io_casts.add(node_name)
+                cast_operators.add(node_name)
 
     while queue:
         next_level = []
@@ -193,7 +193,7 @@ def convert_float_to_float16(
                 for n in q.node:
                     # if n is in the block list (doesn't support float16), no conversion for the node,
                     # and save the node for further processing
-                    if n.name in io_casts:
+                    if n.name in cast_operators:
                         continue
                     for i in range(len(n.input)):
                         if n.input[i] in name_mapping:
@@ -221,7 +221,7 @@ def convert_float_to_float16(
                     next_level.append(n)
                 q.t.CopyFrom(convert_tensor_float_to_float16(q.t, min_positive_val, max_finite_val))
                 for n in q.tensors:
-                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
+                    convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)
             # if q is graph, process graph.initializer(TensorProto), input, output and value_info (ValueInfoProto)
             if isinstance(q, onnx_proto.GraphProto):
                 for n in q.initializer:  # TensorProto type
@@ -290,7 +290,9 @@ class FP16Converter:
     def convert(self, keep_io_types=True):
         if self.model is None:
             return False
-        self.model = convert_float_to_float16(self.model, keep_io_types=keep_io_types, op_allow_list=self.allowed_list)
+        self.model = convert_model_from_float32_to_float16(
+            self.model, keep_io_types=keep_io_types, op_allow_list=self.allowed_list
+        )
         return True
 
     def set_allowed_list(self, allowed_list: list):
