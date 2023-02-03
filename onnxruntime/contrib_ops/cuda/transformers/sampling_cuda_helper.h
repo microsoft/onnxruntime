@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
