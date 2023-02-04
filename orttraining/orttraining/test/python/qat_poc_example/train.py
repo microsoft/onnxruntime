@@ -9,18 +9,14 @@ from torchvision import datasets, transforms
 def _get_dataloaders(data_dir, batch_size):
     """Preprocesses the data and returns dataloaders."""
 
-    transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-    )
+    transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
 
-    train_dataset = datasets.MNIST(
-        root=data_dir, train=True, download=True, transform=transform
-    )
+    train_dataset = datasets.MNIST(root=data_dir, train=True, download=True, transform=transform)
     test_dataset = datasets.MNIST(root=data_dir, train=False, transform=transform)
 
-    return torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size
-    ), torch.utils.data.DataLoader(test_dataset, batch_size=batch_size)
+    return torch.utils.data.DataLoader(train_dataset, batch_size=batch_size), torch.utils.data.DataLoader(
+        test_dataset, batch_size=batch_size
+    )
 
 
 def _train_epoch(model, optimizer, train_loader):
@@ -83,6 +79,4 @@ def train_model(qat_train_model, qat_eval_model, qat_optimizer_model, qat_checkp
         training_loss = _train_epoch(model, optimizer, train_loader)
         eval_loss = _eval(model, test_loader)
 
-        logging.info(
-            f"End of epoch: {epoch+1}, training loss: {training_loss:.4f}, eval loss: {eval_loss:.4f}"
-        )
+        logging.info(f"End of epoch: {epoch+1}, training loss: {training_loss:.4f}, eval loss: {eval_loss:.4f}")

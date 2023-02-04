@@ -77,15 +77,11 @@ def get_onnx_model(pt_model, device, batch_size, input_size, hidden_size, output
 def get_models():
     """Returns a tuple of (PyTorch model, ONNX model) for MNIST."""
 
-    logging.info(
-        "Creating PyTorch MNIST model and exporting to its equivalent ONNX model."
-    )
+    logging.info("Creating PyTorch MNIST model and exporting to its equivalent ONNX model.")
     device = "cuda"
     batch_size, input_size, hidden_size, output_size = 64, 784, 500, 10
     pt_model = get_model(device, batch_size, input_size, hidden_size, output_size)
-    onnx_model = get_onnx_model(
-        pt_model, device, batch_size, input_size, hidden_size, output_size
-    )
+    onnx_model = get_onnx_model(pt_model, device, batch_size, input_size, hidden_size, output_size)
     return pt_model, onnx_model
 
 
