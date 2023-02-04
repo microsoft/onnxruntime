@@ -50,7 +50,7 @@ if (shouldLoadSuiteTestData) {
 
 // The default backends and opset version lists. Those will be used in suite tests.
 const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu', 'jsep-webgpu'];
+    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu'];
 const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
                                    .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
                                    .map(dir => dir.name.slice(5));
@@ -458,7 +458,7 @@ function run(config: Test.Config) {
     // STEP 5. use Karma to run test
     npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
     const karmaCommand = path.join(npmBin, 'karma');
-    const webgpu = args.backends.indexOf('webgpu') > -1 || args.backends.indexOf('jsep-webgpu') > -1;
+    const webgpu = args.backends.indexOf('webgpu') > -1;
     const browser = getBrowserNameFromEnv(
         args.env,
         args.bundleMode === 'perf' ? 'perf' :

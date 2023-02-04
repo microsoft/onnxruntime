@@ -17,16 +17,7 @@ class OnnxjsBackend implements Backend {
     // onnxruntime-common).
     //       In future we should remove Session.Config and use InferenceSession.SessionOptions.
     //       Currently we allow this to happen to make test runner work.
-    const onnxjsOptions = {...options as unknown as Session.Config};
-    if (!onnxjsOptions.backendHint && options?.executionProviders && options?.executionProviders[0]) {
-      const ep = options?.executionProviders[0];
-      if (typeof ep === 'string') {
-        onnxjsOptions.backendHint = ep;
-      } else {
-        onnxjsOptions.backendHint = ep.name;
-      }
-    }
-    const session = new Session(onnxjsOptions);
+    const session = new Session(options as unknown as Session.Config);
 
     // typescript cannot merge method override correctly (so far in 4.2.3). need if-else to call the method.
     if (typeof pathOrBuffer === 'string') {

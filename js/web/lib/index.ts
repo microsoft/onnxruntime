@@ -14,15 +14,10 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
   registerBackend('webgl', onnxjsBackend, -10);
 }
 
-if (!BUILD_DEFS.DISABLE_WEBGPU) {
-  const onnxjsBackend = require('./backend-onnxjs').onnxjsBackend;
-  registerBackend('webgpu', onnxjsBackend, 999);  // set to 999 as the highest priority
-}
-
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
   if (!BUILD_DEFS.DISABLE_WEBGPU) {
-    registerBackend('jsep-webgpu', wasmBackend, 11);
+    registerBackend('webgpu', wasmBackend, 5);
   }
   registerBackend('cpu', wasmBackend, 10);
   registerBackend('wasm', wasmBackend, 10);

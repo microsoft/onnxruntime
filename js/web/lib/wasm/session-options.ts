@@ -48,7 +48,7 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
 
   // if using JSEP with WebGPU, always disable memory pattern
   if (options.executionProviders &&
-      options.executionProviders.some(ep => ['jsep-webgpu'].includes(typeof ep === 'string' ? ep : ep.name))) {
+      options.executionProviders.some(ep => (typeof ep === 'string' ? ep : ep.name) === 'webgpu')) {
     options.enableMemPattern = false;
   }
 };
@@ -64,7 +64,7 @@ const setExecutionProviders =
           case 'xnnpack':
             epName = 'XNNPACK';
             break;
-          case 'jsep-webgpu':
+          case 'webgpu':
             epName = 'JS';
             break;
           case 'wasm':

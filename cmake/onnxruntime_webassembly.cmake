@@ -199,10 +199,15 @@ else()
   endif()
 
   set(EXPORTED_RUNTIME_METHODS "['stackAlloc','stackRestore','stackSave','UTF8ToString','stringToUTF8','lengthBytesUTF8']")
+  if (onnxruntime_USE_JS)
+    set(EXPORTED_FUNCTIONS "_malloc,_free,_JsepOutput")
+  else()
+    set(EXPORTED_FUNCTIONS "_malloc,_free")
+  endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES LINK_FLAGS " \
                         -s \"EXPORTED_RUNTIME_METHODS=${EXPORTED_RUNTIME_METHODS}\" \
-                        -s \"EXPORTED_FUNCTIONS=_malloc,_free,_JsepOutput\" \
+                        -s \"EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}\" \
                         -s MAXIMUM_MEMORY=4294967296 \
                         -s WASM=1 \
                         -s NO_EXIT_RUNTIME=0 \
@@ -213,18 +218,12 @@ else()
                         -s VERBOSE=0 \
                         -s NO_FILESYSTEM=1 \
                         ${WASM_API_EXCEPTION_CATCHING} \
-                        -s ASYNCIFY=1 \
-                        -s ASYNCIFY_STACK_SIZE=65536 \
-                        -s ASYNCIFY_ADVISE=1 \
-                        -s ASYNCIFY_DEBUG=0 \
-                        -s ASYNCIFY_IGNORE_INDIRECT=0 \
-                        -s ASYNCIFY_REMOVE=OrtInit \
-                        -s ASYNCIFY_ADD=OrtRun \
                         --no-entry")
 
   if (onnxruntime_USE_JS)
     target_compile_definitions(onnxruntime_webassembly PRIVATE -DUSE_JS=1)
-    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\"")
+    set_property(TARGET onnxruntime_webassembly APPEND_STRING PROPERTY LINK_FLAGS
+      " --pre-js \"${ONNXRUNTIME_ROOT}/wasm/js_internal_api.js\" -s ASYNCIFY=1 -s ASYNCIFY_STACK_SIZE=65536")
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
