@@ -8,5 +8,6 @@ var struct_ort_r_o_c_m_provider_options =
     [ "gpu_mem_limit", "struct_ort_r_o_c_m_provider_options.html#a7c7c135368a2e0d66f6714b29574ceb3", null ],
     [ "has_user_compute_stream", "struct_ort_r_o_c_m_provider_options.html#ad067f914da5032b44ae4a4806eae778e", null ],
     [ "miopen_conv_exhaustive_search", "struct_ort_r_o_c_m_provider_options.html#afb27ec844e96c69711c8a46461616157", null ],
+    [ "tunable_op_enabled", "struct_ort_r_o_c_m_provider_options.html#ad57307c2950ffd2db1f4aa97c9c1797f", null ],
     [ "user_compute_stream", "struct_ort_r_o_c_m_provider_options.html#ab6a3987beb2e7022069a0f31a14e8471", null ]
 ];

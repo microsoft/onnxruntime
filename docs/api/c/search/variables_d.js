@@ -1,5 +1,7 @@
 var searchData=
 [
-  ['p_5f_0',['p_',['../struct_ort_1_1_base.html#ab6424ea36bd85db866473e004a6915e5',1,'Ort::Base']]],
-  ['p_5fdata_1',['p_data',['../struct_ort_1_1_value_1_1_ort_sparse_values_param.html#acf74425df27cfaf9b148d2b8a37711c0',1,'Ort::Value::OrtSparseValuesParam']]]
+  ['releasecannprovideroptions_0',['ReleaseCANNProviderOptions',['../struct_ort_api.html#a55be68299745699560dfbfd3de72a96c',1,'OrtApi']]],
+  ['releasecudaprovideroptions_1',['ReleaseCUDAProviderOptions',['../struct_ort_api.html#afdeece84d4904571e2f78bd0e098865c',1,'OrtApi']]],
+  ['releasednnlprovideroptions_2',['ReleaseDnnlProviderOptions',['../struct_ort_api.html#a03b3828bff9517b42a459eed14f7531a',1,'OrtApi']]],
+  ['releasetensorrtprovideroptions_3',['ReleaseTensorRTProviderOptions',['../struct_ort_api.html#ae17a8857260554d44bb2b27a67e39020',1,'OrtApi']]]
 ];

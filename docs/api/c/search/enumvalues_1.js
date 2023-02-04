@@ -75,8 +75,11 @@ var searchData=
   ['ortcudnnconvalgosearchheuristic_72',['OrtCudnnConvAlgoSearchHeuristic',['../group___global.html#gga881a44a5c3499f92d7caa4d7707b5807abb0da892fd6f350dce8e2073198655d0',1,'onnxruntime_c_api.h']]],
   ['ortdeviceallocator_73',['OrtDeviceAllocator',['../group___global.html#gga5b765504a386db304d59e999de9bd1d6a0260ff3f6a393889bae51c1ffc460b25',1,'onnxruntime_c_api.h']]],
   ['ortinvalidallocator_74',['OrtInvalidAllocator',['../group___global.html#gga5b765504a386db304d59e999de9bd1d6a5291f88595e2defec251f8b89e1c9881',1,'onnxruntime_c_api.h']]],
-  ['ortmemtypecpu_75',['OrtMemTypeCPU',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da12b2ba21b776131d66b7b21c1fb09961',1,'onnxruntime_c_api.h']]],
-  ['ortmemtypecpuinput_76',['OrtMemTypeCPUInput',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da1029fcb3f1ca7a371dbe8baeb0aa8a28',1,'onnxruntime_c_api.h']]],
-  ['ortmemtypecpuoutput_77',['OrtMemTypeCPUOutput',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da84d0d4e8e23535cc0e1ceea37bb1869a',1,'onnxruntime_c_api.h']]],
-  ['ortmemtypedefault_78',['OrtMemTypeDefault',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da4ecb169ee6f3e0a8d505c8a240070378',1,'onnxruntime_c_api.h']]]
+  ['ortmemoryinfodevicetype_5fcpu_75',['OrtMemoryInfoDeviceType_CPU',['../group___global.html#gga1e39271d4a47f765694d86e5a7d27565a8f5a9b9878f037cdf5ab71469d2af5c1',1,'onnxruntime_c_api.h']]],
+  ['ortmemoryinfodevicetype_5ffpga_76',['OrtMemoryInfoDeviceType_FPGA',['../group___global.html#gga1e39271d4a47f765694d86e5a7d27565a7af4a596ebed00b39945d72479c50bcb',1,'onnxruntime_c_api.h']]],
+  ['ortmemoryinfodevicetype_5fgpu_77',['OrtMemoryInfoDeviceType_GPU',['../group___global.html#gga1e39271d4a47f765694d86e5a7d27565a652906f5a6035ee1afb6d8a1ee299d3a',1,'onnxruntime_c_api.h']]],
+  ['ortmemtypecpu_78',['OrtMemTypeCPU',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da12b2ba21b776131d66b7b21c1fb09961',1,'onnxruntime_c_api.h']]],
+  ['ortmemtypecpuinput_79',['OrtMemTypeCPUInput',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da1029fcb3f1ca7a371dbe8baeb0aa8a28',1,'onnxruntime_c_api.h']]],
+  ['ortmemtypecpuoutput_80',['OrtMemTypeCPUOutput',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da84d0d4e8e23535cc0e1ceea37bb1869a',1,'onnxruntime_c_api.h']]],
+  ['ortmemtypedefault_81',['OrtMemTypeDefault',['../group___global.html#ggab7805016f4b26871e899a3cf4114ee0da4ecb169ee6f3e0a8d505c8a240070378',1,'onnxruntime_c_api.h']]]
 ];

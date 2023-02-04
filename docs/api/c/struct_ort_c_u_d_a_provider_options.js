@@ -8,5 +8,6 @@ var struct_ort_c_u_d_a_provider_options =
     [ "do_copy_in_default_stream", "struct_ort_c_u_d_a_provider_options.html#a5186a856edeaf860dc547db309e85f95", null ],
     [ "gpu_mem_limit", "struct_ort_c_u_d_a_provider_options.html#a69e9ef15821960254f52adc33a8d0f92", null ],
     [ "has_user_compute_stream", "struct_ort_c_u_d_a_provider_options.html#a2ca74dbd91996bad4a1c81af705a0ac7", null ],
+    [ "tunable_op_enabled", "struct_ort_c_u_d_a_provider_options.html#a89ece15f07b0f01538b3ea411d52d0e6", null ],
     [ "user_compute_stream", "struct_ort_c_u_d_a_provider_options.html#a610a0511f8795bdd2b137f0138cfc88f", null ]
 ];
