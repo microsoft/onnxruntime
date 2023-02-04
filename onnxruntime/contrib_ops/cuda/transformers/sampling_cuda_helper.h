@@ -11,6 +11,9 @@
 #include <iostream>
 #endif
 
+using onnxruntime::cuda::ToCudaType;
+using onnxruntime::cuda::dispatch_blockwise_softmax_forward;
+
 namespace onnxruntime {
 namespace contrib {
 namespace SamplingCudaHelper {
