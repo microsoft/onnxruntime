@@ -517,7 +517,19 @@ static Status SaveModel(Model& model, const T& file_path) {
            const file_path = UTF8ToString($2);
            const bytes = new Uint8Array(buffer_size);
            bytes.set(HEAPU8.subarray(buffer, buffer + buffer_size));
-           if (typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string') {
+           if (typeof FS != 'undefined' && typeof FS.write == 'function') {
+             // Emscripten's File System API
+             //
+             // Note: in debug build, Emscripten will generate a stub object for FS if the file system is not enabled.
+             // This means "typeof FS" will always return "object", so we need do further check. The stub does not
+             // include "write" function, so "typeof FS.write" will return "undefined" on a stub FS object.
+             //
+             // In release build, closure compiler will remove the stub object from source code, so we expect
+             // "typeof FS" to return "undefined" if the file system is not enabled.
+             const stream = FS.open(file_path, 'w+');
+             FS.write(stream, bytes, 0, buffer_size, 0);
+             FS.close(stream);
+           } else if (typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string') {
              // Node.js
              require('fs').writeFileSync(file_path, bytes);
            } else {
