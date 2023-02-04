@@ -520,9 +520,11 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
         op_domains.push_back(reinterpret_cast<OrtCustomOpDomain*>(domain));
       }
 
-      if (InferenceSession::AddCustomOpDomains(op_domains) != Status::OK()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+      if (AddCustomOpDomains(op_domains) != Status::OK()) {
         LOGS(*session_logger_, WARNING) << "Can't register TensorRT custom op domains with ORT.";
       }
+#endif
   }
 
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
