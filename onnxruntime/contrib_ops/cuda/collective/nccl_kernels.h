@@ -13,10 +13,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#if defined(ORT_USE_NCCL)
-#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
-#endif
-
 // -----------------------------------------------------------------------
 // Defines a new version of nccl classes
 // that independent with training::DistributedRunContext, only rely on MPI

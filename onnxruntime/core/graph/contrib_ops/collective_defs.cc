@@ -30,8 +30,8 @@ void RegisterCollectiveOps() {
   ONNX_CONTRIB_OPERATOR_SCHEMA(AllGather)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
-      .Attr("world_size",
-            "total world size that need to be gathered.",
+      .Attr("group_size",
+            "total size in the group that need to be gathered.",
             AttributeProto::INT,
             static_cast<int64_t>(1))
       .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
@@ -41,20 +41,18 @@ void RegisterCollectiveOps() {
           {"tensor(float16)", "tensor(float)", "tensor(double)"},
           "Constrain to float, float16 and double tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-        auto world_size = getAttribute(ctx, "world_size", 1);
-        assert(world_size >= static_cast<int64_t>(1));
+        auto group_size = getAttribute(ctx, "group_size", 1);
+        assert(group_size >= static_cast<int64_t>(1));
         // propagate type for output
         propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
         // propagate shape for output.
-        // output shape is [world_size * input_shape[0], ...]
+        // output shape is [group_size * input_shape[0], ...]
         auto output_type = ctx.getOutputType(0);
         auto input_type = ctx.getInputType(0);
-        // all input/output should be tensor
-        assert(input_type->value_case() == output_type->value_case() && input_type->value_case() == TypeProto::kTensorType);
         if (hasShape(*input_type)) {
           auto shape = input_type->tensor_type().shape();
-          auto dim = shape.dim(0) * world_size;
+          auto dim = shape.dim(0) * group_size;
           *shape.mutable_dim(0) = dim;
           *output_type->mutable_tensor_type()->mutable_shape() = shape;
         }

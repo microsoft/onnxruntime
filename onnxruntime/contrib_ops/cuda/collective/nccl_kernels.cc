@@ -1,9 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 #include "nccl_kernels.h"
 #include "mpi_include.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
 
 static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   if (type == DataTypeImpl::GetType<uint8_t>()) {
@@ -21,7 +25,7 @@ static ncclDataType_t GetNcclDataType(onnxruntime::MLDataType type) {
   } else if (type == DataTypeImpl::GetType<double>()) {
     return ncclFloat64;
   } else {
-    throw std::logic_error("Tensor type not supported in NCCL.");
+    ORT_THROW("Tensor type not supported in NCCL.");
   }
 }
 
