@@ -44,6 +44,7 @@ limitations under the License.
 
 #ifdef USE_OCT
 #include <octopus/threadpool.h>
+#include <iostream>
 #else
 #include <oneapi/tbb.h>
 #endif
@@ -468,7 +469,7 @@ void ThreadPool::TryBatchParallelFor(ThreadPool* tp,
 #ifdef USE_OCT
 
 void ThreadPool::ParallelFor(std::ptrdiff_t total, const FN& fn) {
-  octopus::AffinityPartitioner partitioner(dop_, std::max(total / (10 * dop_), unit_block_size));
+  octopus::AffinityPartitioner partitioner(2, std::max(total / (10 * dop_), unit_block_size));
   ((octopus::ThreadPool*)impl_)->ParallFor(const_cast<FN*>(&fn), total, &partitioner);
 }
 
