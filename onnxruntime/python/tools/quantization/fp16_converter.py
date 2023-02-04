@@ -4,10 +4,11 @@ import itertools
 import numpy as np
 import onnx
 import packaging.version as pv
-from onnx import helper, numpy_helper
-from onnx import onnx_pb as onnx_proto
+from onnx import TensorProto, helper, numpy_helper, onnx_pb
 
 from onnxruntime.quantization.onnx_model import ONNXModel
+
+# from onnx import onnx_pb as onnx_pb
 
 
 class FP16Converter:
@@ -64,11 +65,11 @@ class FP16Converter:
             TensorProto: the converted tensor.
         """
 
-        if not isinstance(tensor, onnx_proto.TensorProto):
+        if not isinstance(tensor, onnx_pb.TensorProto):
             raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
 
-        if tensor.data_type == onnx_proto.TensorProto.FLOAT:
-            tensor.data_type = onnx_proto.TensorProto.FLOAT16
+        if tensor.data_type == onnx_pb.TensorProto.FLOAT:
+            tensor.data_type = onnx_pb.TensorProto.FLOAT16
             # convert float_data (float type) to float16 and write to int32_data
             if tensor.float_data:
                 float16_data = self.__convert_np_to_float16(np.array(tensor.float_data))
@@ -128,7 +129,7 @@ class FP16Converter:
             finally:
                 pass
 
-        if not isinstance(model, onnx_proto.ModelProto):
+        if not isinstance(model, onnx_pb.ModelProto):
             raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
 
         # create op_allow_list
@@ -148,7 +149,7 @@ class FP16Converter:
         cast_operators = set()
         if keep_io_types:
             for i, n in enumerate(model.graph.input):
-                if n.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                if n.type.tensor_type.elem_type == onnx_pb.TensorProto.FLOAT:
                     output_name = "graph_input_cast_" + str(i)
                     name_mapping[n.name] = output_name
                     graph_io_to_skip.add(n.name)
@@ -157,7 +158,7 @@ class FP16Converter:
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(n)
                     new_value_info.name = output_name
-                    new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
+                    new_value_info.type.tensor_type.elem_type = onnx_pb.TensorProto.FLOAT16
                     # add Cast node (from tensor(float) to tensor(float16) after graph input
                     new_node = [helper.make_node("Cast", [n.name], [output_name], to=10, name=node_name)]
                     model.graph.node.extend(new_node)
@@ -165,7 +166,7 @@ class FP16Converter:
                     cast_operators.add(node_name)
 
             for i, n in enumerate(model.graph.output):
-                if n.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                if n.type.tensor_type.elem_type == onnx_pb.TensorProto.FLOAT:
                     input_name = "graph_output_cast_" + str(i)
                     name_mapping[n.name] = input_name
                     graph_io_to_skip.add(n.name)
@@ -175,7 +176,7 @@ class FP16Converter:
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(n)
                     new_value_info.name = input_name
-                    new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
+                    new_value_info.type.tensor_type.elem_type = onnx_pb.TensorProto.FLOAT16
                     new_node = [helper.make_node("Cast", [input_name], [n.name], to=1, name=node_name)]
                     model.graph.node.extend(new_node)
                     value_info_list.append(new_value_info)
@@ -184,10 +185,10 @@ class FP16Converter:
         while queue:
             for q in queue:
                 # if q is model, push q.graph (GraphProto)
-                if isinstance(q, onnx_proto.ModelProto):
+                if isinstance(q, onnx_pb.ModelProto):
                     queue.append(q.graph)
                 # if q is model.graph, push q.node.attribute (AttributeProto)
-                if isinstance(q, onnx_proto.GraphProto):
+                if isinstance(q, onnx_pb.GraphProto):
                     for n in q.node:
                         # if n is in the block list (doesn't support float16), no conversion for the node,
                         # and save the node for further processing
@@ -201,19 +202,19 @@ class FP16Converter:
                                 n.output[i] = name_mapping[n.output[i]]
                         # don't push the attr into queue for the node in node_keep_data_type_list
                         # so it will not be converted to float16
-                        if n.op_type not in op_allow_list:
+                        if n.op_type not in op_allow_list and n.op_type != "Cast":
                             node_list.append(n)
-                        else:
+                        elif n.op_type in op_allow_list or n.op_type == "Cast":
                             if n.op_type == "Cast":
                                 for attr in n.attribute:
-                                    if attr.name == "to" and attr.i == 1:
-                                        attr.i = 10
+                                    if attr.name == "to" and attr.i == TensorProto.FLOAT:
+                                        attr.i = TensorProto.FLOAT16
                                         break
                             for attr in n.attribute:
                                 queue.append(attr)
                 # if q is model.graph.node.attribute, push q.g and q.graphs (GraphProto)
                 # and process node.attribute.t and node.attribute.tensors (TensorProto)
-                if isinstance(q, onnx_proto.AttributeProto):
+                if isinstance(q, onnx_pb.AttributeProto):
                     queue.append(q.g)
                     for n in q.graphs:
                         queue.append(n)
@@ -221,17 +222,17 @@ class FP16Converter:
                     for n in q.tensors:
                         self.__convert_tensor_float_to_float16(n)
                 # if q is graph, process graph.initializer(TensorProto), input, output and value_info (ValueInfoProto)
-                if isinstance(q, onnx_proto.GraphProto):
+                if isinstance(q, onnx_pb.GraphProto):
                     for n in q.initializer:  # TensorProto type
-                        if n.data_type == onnx_proto.TensorProto.FLOAT:
+                        if n.data_type == onnx_pb.TensorProto.FLOAT:
                             n = self.__convert_tensor_float_to_float16(n)
                             value_info_list.append(self.make_value_info_from_tensor(n))
                     # for all ValueInfoProto with tensor(float) type in input, output and value_info, convert them to
                     # tensor(float16) except map and seq(map). And save them in value_info_list for further processing
                     for n in itertools.chain(q.input, q.output, q.value_info):
-                        if n.type.tensor_type.elem_type == onnx_proto.TensorProto.FLOAT:
+                        if n.type.tensor_type.elem_type == onnx_pb.TensorProto.FLOAT:
                             if n.name not in graph_io_to_skip:
-                                n.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT16
+                                n.type.tensor_type.elem_type = onnx_pb.TensorProto.FLOAT16
                                 value_info_list.append(n)
             queue.pop(0)
 
@@ -249,7 +250,7 @@ class FP16Converter:
                         new_value_info.CopyFrom(value_info)
                         output_name = node.name + "_input_cast_" + str(i)
                         new_value_info.name = output_name
-                        new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT
+                        new_value_info.type.tensor_type.elem_type = onnx_pb.TensorProto.FLOAT
                         # add Cast node (from tensor(float16) to tensor(float) before current node
                         node_name = node.name + "_input_cast" + str(i)
                         new_node = [helper.make_node("Cast", [node_input], [output_name], to=1, name=node_name)]
@@ -269,7 +270,7 @@ class FP16Converter:
                         new_value_info.CopyFrom(value_info)
                         input_name = node.name + "_output_cast_" + str(i)
                         new_value_info.name = input_name
-                        new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT
+                        new_value_info.type.tensor_type.elem_type = onnx_pb.TensorProto.FLOAT
                         # add Cast node (from tensor(float) to tensor(float16) after current node
                         node_name = node.name + "_output_cast" + str(i)
                         new_node = [helper.make_node("Cast", [input_name], [output], to=10, name=node_name)]
