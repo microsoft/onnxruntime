@@ -56,7 +56,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
   for (int i = 0; i < num_plugin_creator; i++) {
     auto plugin_creator = plugin_creators[i];
     std::string plugin_name(plugin_creator->getPluginName());
-    LOGS_DEFAULT(WARNING) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
     //auto plugin_field_collection = plugin_creator->getFieldNames();
     //IterateTensorRTPluginFields(plugin_field_collection);
