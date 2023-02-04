@@ -9,6 +9,7 @@
 #include "NvOnnxParser.h"
 #include "core/platform/ort_mutex.h"
 #include "tensorrt_execution_provider_info.h"
+//#include "tensorrt_execution_provider_custom_ops.h"
 
 namespace onnxruntime {
 
@@ -145,6 +146,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   }
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
+  void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) const override;
 
  private:
   TensorrtExecutionProviderInfo info_;

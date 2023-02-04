@@ -146,6 +146,12 @@ class IExecutionProvider {
   virtual ProviderOptions GetProviderOptions() const { return {}; }
 
   /**
+     Get provider specific custom op domain list.
+     Provider has the resposibility to release OrtProviderCustomOpDomain instances it creates.
+   */
+  virtual void GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& /*provider custom op domain list*/) const {};
+
+  /**
      Returns an opaque handle whose exact type varies based on the provider
      and is interpreted accordingly by the corresponding kernel implementation.
      For Direct3D operator kernels, this may return an IUnknown supporting

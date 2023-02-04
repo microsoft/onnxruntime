@@ -510,6 +510,21 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     }
   }
 
+  if (provider_type == onnxruntime::kTensorrtExecutionProvider) {
+      std::vector<OrtCustomOpDomain*> op_domains;
+      std::vector<OrtProviderCustomOpDomain*> op_provider_domains;
+
+      p_exec_provider->GetCustomOpDomainList(op_provider_domains);
+      for (auto domain : op_provider_domains)
+      {
+        op_domains.push_back(reinterpret_cast<OrtCustomOpDomain*>(domain));
+      }
+
+      if (AddCustomOpDomains(op_domains) != Status::OK()) {
+        LOGS(*session_logger_, WARNING) << "Can't register TensorRT custom op domains with ORT.";
+      }
+  }
+
   // if any EPs do not support concurrent calls to Run we add locking around graph execution
   if (p_exec_provider->ConcurrentRunSupported() == false) {
     is_concurrent_run_supported_ = false;

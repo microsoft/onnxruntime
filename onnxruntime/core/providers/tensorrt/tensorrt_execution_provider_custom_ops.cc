@@ -31,7 +31,7 @@ void IterateTensorRTPluginFields(const nvinfer1::PluginFieldCollection* plugin_f
  * There are several TRT plugins registered as onnx schema op through contrib op with ONNX domain, for example, 
  * EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT.
  * In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain backward compatible,
- * we need to keep those old/legacy TRT plugins with ONNX domain. Moving forward, all newly added TRT plugins should be registered with
+ * we need to keep those old/legacy TRT plugins with ONNX domain. Moving forward, any newly added TRT plugin nodes should be registered with
  * "trt.plugins" domain.
  *
  * Note: Current TRT plugin doesn't have APIs to get number of inputs/outputs of the plugin.
@@ -51,7 +51,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
   int num_plugin_creator = 0;
   auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
   std::unordered_set<std::string> registered_plugin_names;
-  std::unordered_set<std::string> legacy_trt_contrib_ops = {"EfficientNMS_TRT", "MultilevelCropAndResize_TRT", "PyramidROIAlign_TRT", "DisentangledAttention_TRT"};
+  std::unordered_set<std::string> legacy_trt_contrib_ops = {"EfficientNMS_TRT", "MultilevelCropAndResize_TRT", "PyramidROIAlign_TRT", "DisentangledAttention_TRT", "CustomVisionTransformerINT8Plugin", "CustomVisionTransformerPlugin"};
 
   for (int i = 0; i < num_plugin_creator; i++) {
     auto plugin_creator = plugin_creators[i];
@@ -65,17 +65,18 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
     if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
       continue;
     }
-    registered_plugin_names.insert(plugin_name);
+
+    std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
+    trt_custom_op->SetName(plugin_creator->getPluginName());
+    custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
 
     if (legacy_trt_contrib_ops.find(plugin_name) != legacy_trt_contrib_ops.end()) {
       std::unique_ptr<TensorRTCustomOp> legacy_trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
       legacy_trt_custom_op->SetName(plugin_creator->getPluginName());
       legacy_custom_op_domain->custom_ops_.push_back(legacy_trt_custom_op.release());
-    } else {
-      std::unique_ptr<TensorRTCustomOp> trt_custom_op = std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr);
-      trt_custom_op->SetName(plugin_creator->getPluginName());
-      custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
     }
+
+    registered_plugin_names.insert(plugin_name);
   }
   custom_op_domain_list.push_back(legacy_custom_op_domain.release());
   custom_op_domain_list.push_back(custom_op_domain.release());

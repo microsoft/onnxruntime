@@ -586,6 +586,10 @@ Status TensorrtExecutionProvider::OnRunEnd(bool sync_stream) {
   return Status::OK();
 }
 
+void TensorrtExecutionProvider::GetCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) const {
+  custom_op_domain_list = info_.custom_op_domain_list;
+}
+
 // Check the graph is the subgraph of control flow op
 bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const GraphViewer& graph) const {
   if (graph.IsSubgraph()) {
