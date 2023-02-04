@@ -520,7 +520,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
         op_domains.push_back(reinterpret_cast<OrtCustomOpDomain*>(domain));
       }
 
-      if (AddCustomOpDomains(op_domains) != Status::OK()) {
+      if (InferenceSession::AddCustomOpDomains(op_domains) != Status::OK()) {
         LOGS(*session_logger_, WARNING) << "Can't register TensorRT custom op domains with ORT.";
       }
   }
