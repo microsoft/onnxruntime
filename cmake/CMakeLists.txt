@@ -205,6 +205,8 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 
+option(onnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS "Build all available cuda kernels, like TopK kernels for type uint8" OFF)
+
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
 # 1. ORTModule
@@ -622,6 +624,12 @@ if (onnxruntime_USE_CUDA)
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
+    if (onnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS)
+      message( STATUS "Build all available kernels for CUDA EP")
+      list(APPEND ORT_PROVIDER_FLAGS -DBUILD_ALL_AVAILABLE_CUDA_KERNELS=1)
+      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_BUILD_ALL_AVAILABLE_CUDA_KERNELS=1)
+    endif()
+
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
@@ -1302,7 +1310,7 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
 
   if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
-    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
+  add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
   endif()
 endif()
 
