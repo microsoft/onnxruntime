@@ -51,12 +51,12 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
   int num_plugin_creator = 0;
   auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
   std::unordered_set<std::string> registered_plugin_names;
-  std::unordered_set<std::string> legacy_trt_contrib_ops = {"EfficientNMS_TRT", "MultilevelCropAndResize_TRT", "PyramidROIAlign_TRT", "DisentangledAttention_TRT", "CustomVisionTransformerINT8Plugin", "CustomVisionTransformerPlugin"};
+  std::unordered_set<std::string> legacy_trt_contrib_ops = {"EfficientNMS_TRT", "MultilevelCropAndResize_TRT", "PyramidROIAlign_TRT", "DisentangledAttention_TRT"};
 
   for (int i = 0; i < num_plugin_creator; i++) {
     auto plugin_creator = plugin_creators[i];
     std::string plugin_name(plugin_creator->getPluginName());
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
     //auto plugin_field_collection = plugin_creator->getFieldNames();
     //IterateTensorRTPluginFields(plugin_field_collection);

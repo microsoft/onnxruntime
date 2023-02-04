@@ -227,7 +227,6 @@ void RunWithOneSessionMultiThreadsInference(std::string model_name, std::string 
     params.trt_engine_cache_enable = 1;
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
     EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-    model_name = "testdata/trt_plugin_custom_op_test.onnx";
     auto status = session_object.Load(model_name);
     ASSERT_TRUE(status.IsOK());
     status = session_object.Initialize();
