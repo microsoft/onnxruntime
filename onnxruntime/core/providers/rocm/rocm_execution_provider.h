@@ -25,7 +25,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
   explicit ROCMExecutionProvider(const ROCMExecutionProviderInfo& info);
   virtual ~ROCMExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -56,7 +56,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
   }
 
   template <typename T>
@@ -64,7 +64,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, true);
   }
 
   template <typename T>
@@ -73,7 +73,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
     // In some ROCm async
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPUOutput),
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPUOutput),
                                         count_or_bytes);
   }
 

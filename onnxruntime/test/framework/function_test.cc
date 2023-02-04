@@ -52,7 +52,7 @@ static void Check(const char* source,
 
   std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   OrtValue ort_value;
-  CreateMLValue<float>(provider->GetAllocator(0, OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
+  CreateMLValue<float>(provider->GetAllocator(OrtMemTypeDefault), {int64_t(input_values.size())}, input_values, &ort_value);
 
   feeds.insert(std::make_pair(std::string(input_name), ort_value));
 

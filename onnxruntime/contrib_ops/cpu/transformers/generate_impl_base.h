@@ -88,7 +88,7 @@ class GenerateBase {
         device_copy_func_(device_copy_func) {
     cpu_allocator_ = decoder_session_state.GetExecutionProviders()
                          .Get(onnxruntime::kCpuExecutionProvider)
-                         ->GetAllocator(0, OrtMemTypeDefault);
+                         ->GetAllocator(OrtMemTypeDefault);
   }
 
   virtual ~GenerateBase() = default;

@@ -45,14 +45,14 @@ class CANNExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes);
   }
 
   template <typename T>
   IAllocatorUniquePtr<T> GetScratchBufferOnCANNPinned(size_t count_or_bytes) const {
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU),
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU),
                                         count_or_bytes);
   }
 
@@ -84,7 +84,6 @@ class CANNExecutionProvider : public IExecutionProvider {
     return CANNExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
   void RegisterAllocator(AllocatorManager& allocator_manager) override;
 
  private:

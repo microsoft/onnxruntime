@@ -35,7 +35,7 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
     ~Info() = default;
 
     AllocatorPtr GetAllocator(const OrtMemoryInfo& info) const {
-      return execution_provider_.GetAllocator(info.id, info.mem_type);
+      return execution_provider_.GetAllocator(info.mem_type);
     }
 
     const AllocatorPtr& GetAllocator() const {
