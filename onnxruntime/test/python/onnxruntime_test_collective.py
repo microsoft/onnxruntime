@@ -32,7 +32,7 @@ class ORTBertPretrainTest(unittest.TestCase):
         rank, size = self._get_rank_size()
         output_shape = [s * size if _ == 0 else s for _, s in enumerate(shape)]
         Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, output_shape)
-        node_def = helper.make_node("AllGather", ["X"], ["Y"], domain="com.microsoft", world_size=size)
+        node_def = helper.make_node("AllGather", ["X"], ["Y"], domain="com.microsoft", group_size=size)
         graph_def = helper.make_graph(
             [node_def],
             "",
