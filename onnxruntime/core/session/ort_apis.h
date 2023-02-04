@@ -430,5 +430,16 @@ ORT_API_STATUS_IMPL(HasSessionConfigEntry, _In_ const OrtSessionOptions* options
                     _In_z_ const char* config_key, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
                     _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
-}  // namespace OrtApis
 
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_Dnnl,
+                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
+ORT_API_STATUS_IMPL(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
+ORT_API_STATUS_IMPL(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys);
+ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options,
+                    _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
+
+}  // namespace OrtApis

@@ -28,6 +28,7 @@ namespace Dml
         struct NodeInfo
         {
             Microsoft::WRL::ComPtr<IDMLOperator> op;
+            std::string name;
         };
 
         struct GraphDesc
