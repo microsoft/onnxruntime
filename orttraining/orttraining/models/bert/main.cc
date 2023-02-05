@@ -39,28 +39,36 @@ using namespace onnxruntime::training::tensorboard;
 using namespace std;
 
 static SessionOptions session_options = {
-    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
-    ExecutionOrder::PRIORITY_BASED,    //execution_order
-    false,                             //enable_profiling
-    ORT_TSTR(""),                      //optimized_model_filepath
-    true,                              //enable_mem_pattern
-    true,                              //enable_mem_reuse
-    true,                              //enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
-    "",                                //session_logid
-    -1,                                //session_log_severity_level
-    0,                                 //session_log_verbosity_level
-    5,                                 //max_num_graph_transformation_steps
-    TransformerLevel::Level1,          //graph_optimization_level
-    {},                                //intra_op_param
-    {},                                //inter_op_param
-    {},                                //free_dimension_overrides
-    true,                              //use_per_session_threads
-    true,                              //thread_pool_allow_spinning
-    false,                             //use_deterministic_compute
-    {},                                //config_options
-    {},                                //initializers_to_share_map
+    ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
+    ExecutionOrder::PRIORITY_BASED,    // execution_order
+    false,                             // enable_profiling
+    ORT_TSTR(""),                      // optimized_model_filepath
+    true,                              // enable_mem_pattern
+    true,                              // enable_mem_reuse
+    true,                              // enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
+    "",                                // session_logid
+    -1,                                // session_log_severity_level
+    0,                                 // session_log_verbosity_level
+    5,                                 // max_num_graph_transformation_steps
+    TransformerLevel::Level1,          // graph_optimization_level
+    {},                                // intra_op_param
+    {},                                // inter_op_param
+    {},                                // free_dimension_overrides
+    true,                              // use_per_session_threads
+    true,                              // thread_pool_allow_spinning
+    false,                             // use_deterministic_compute
+    {},                                // config_options
+    {},                                // initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},                                // external_initializers
+#endif
+    nullptr,                           // custom_create_thread_fn
+    nullptr,                           // custom_thread_creation_options
+    nullptr,                           // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                // custom_op_libs
+#endif
 };
 
 struct BertParameters : public TrainingRunner::Parameters {

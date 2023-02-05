@@ -56,6 +56,7 @@ TEST(CApiTest, model_from_array) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
 TEST(CApiTest, session_options_empty_affinity_string) {
   Ort::SessionOptions options;
   options.AddConfigEntry(kOrtSessionOptionsConfigIntraOpThreadAffinities, "");
@@ -68,6 +69,7 @@ TEST(CApiTest, session_options_empty_affinity_string) {
     ASSERT_THAT(ex.what(), testing::HasSubstr("Affinity string must not be empty"));
   }
 }
+#endif
 
 #endif
 

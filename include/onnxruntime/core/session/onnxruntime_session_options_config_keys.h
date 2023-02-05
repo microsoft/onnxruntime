@@ -47,6 +47,12 @@ static const char* const kOrtSessionOptionsConfigSetDenormalAsZero = "session.se
 // Its default value is "0"
 static const char* const kOrtSessionOptionsDisableQuantQDQ = "session.disable_quant_qdq";
 
+// It controls whether to enable Double QDQ remover and Identical Children Consolidation
+// "0": not to disable. ORT does remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
+// "1": disable. ORT doesn't remove the middle 2 Nodes from a Q->(QD->Q)->QD pairs
+// Its default value is "0"
+static const char* const kOrtSessionOptionsDisableDoubleQDQRemover = "session.disable_double_qdq_remover";
+
 // If set to "1", enables the removal of QuantizeLinear/DequantizeLinear node pairs once all QDQ handling has been
 // completed. e.g. If after all QDQ handling has completed and we have -> FloatOp -> Q -> DQ -> FloatOp -> the
 // Q -> DQ could potentially be removed. This will provide a performance benefit by avoiding going from float to
@@ -158,6 +164,9 @@ static const char* const kOrtSessionOptionsConfigForceSpinningStop = "session.fo
 // "0": in some cases warnings will be logged but processing will continue. The default.
 // May be useful to expose bugs in models.
 static const char* const kOrtSessionOptionsConfigStrictShapeTypeInference = "session.strict_shape_type_inference";
+
+// The file saves configuration for partitioning node among logic streams
+static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 
 // This Option allows setting affinities for intra op threads.
 // Affinity string follows format:

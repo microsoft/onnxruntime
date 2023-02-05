@@ -56,9 +56,10 @@ struct CUDAExecutionProviderInfo {
   // arena config.
   OrtArenaCfg* default_memory_arena_cfg{nullptr};
   CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
-  // By default use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
-  // If set to true, try to use as much as possible memory for algo search.
-  bool cudnn_conv_use_max_workspace{false};
+
+  // By default, try to use as much as possible memory for algo search.
+  // If set to false, use fix workspace size (32M) for Conv algo search, the final algo might not be the best.
+  bool cudnn_conv_use_max_workspace{true};
 
   bool enable_cuda_graph{false};
 

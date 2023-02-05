@@ -29,6 +29,9 @@ using PATH_CHAR_TYPE = ORTCHAR_T;
 template <typename T>
 long OrtStrtol(const T* nptr, T** endptr);
 
+template <typename T>
+double OrtStrtod(const T* nptr, T** endptr);
+
 /**
  * Convert a C string to ssize_t(or ptrdiff_t)
  * @return the converted integer value.
@@ -83,6 +86,16 @@ inline long OrtStrtol<char>(const char* nptr, char** endptr) {
 template <>
 inline long OrtStrtol<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
   return wcstol(nptr, endptr, 10);
+}
+
+template <>
+inline double OrtStrtod<char>(const char* nptr, char** endptr) {
+  return strtod(nptr, endptr);
+}
+
+template <>
+inline double OrtStrtod<wchar_t>(const wchar_t* nptr, wchar_t** endptr) {
+  return wcstod(nptr, endptr);
 }
 
 namespace onnxruntime {

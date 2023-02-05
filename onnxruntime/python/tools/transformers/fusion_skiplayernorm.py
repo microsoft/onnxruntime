@@ -19,8 +19,13 @@ class FusionSkipLayerNormalization(Fusion):
     Note: This fusion does not check the input shape of Add and LayerNormalization.
     """
 
-    def __init__(self, model: OnnxModel):
-        super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
+    def __init__(
+        self,
+        model: OnnxModel,
+        fused_op_type: str = "SkipLayerNormalization",
+        search_op_types: str = "LayerNormalization",
+    ):
+        super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
         self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
@@ -44,6 +49,9 @@ class FusionSkipLayerNormalization(Fusion):
         if len(self.model.get_parents(add)) != 2:
             return
 
+        # Root Mean Square Layer Normalization
+        simplified = node.op_type == "SimplifiedLayerNormalization"
+
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
                 logger.debug(
@@ -61,19 +69,44 @@ class FusionSkipLayerNormalization(Fusion):
             if self.model.match_parent_path(gather_path[0], ["ConstantOfShape"], [1]) is None:
                 return
 
+        residual_add_has_multiple_consumers = False
+        add_children = self.model.get_children(add, input_name_to_nodes)
+
+        # This means that the residual Add before the LayerNormalization produces an output
+        # that is consumed by some other nodes other than the LayerNormalization itself
+        # We can still go ahead with the SkipLayerNormalization fusion but we need to
+        # preserve the output of Add and that needs to be produced by SkipLayerNormalization.
+        if len(add_children) != 1:
+            residual_add_has_multiple_consumers = True
+
+        outputs_to_keep = node.output
+
+        if residual_add_has_multiple_consumers:
+            outputs_to_keep.extend([add.output[0]])
+
+        outputs = [node.output[0]]
+
+        # Skip the other optional outputs of SkipLayerNormalization before adding the Add's output
+        if residual_add_has_multiple_consumers:
+            outputs.extend(["", "", add.output[0]])
+
         if (
             add is not None
             and add.op_type == "Add"
-            and self.model.is_safe_to_fuse_nodes([add, node], node.output, input_name_to_nodes, output_name_to_node)
+            and self.model.is_safe_to_fuse_nodes([add, node], outputs_to_keep, input_name_to_nodes, output_name_to_node)
         ):
             self.nodes_to_remove.extend([add, node])
 
-            inputs = [add.input[0], add.input[1], node.input[1], node.input[2]]
+            inputs = (
+                [add.input[0], add.input[1], node.input[1], node.input[2]]
+                if not simplified
+                else [add.input[0], add.input[1], node.input[1]]
+            )
             normalize_node = helper.make_node(
-                "SkipLayerNormalization",
+                self.fused_op_type,
                 inputs=inputs,
-                outputs=[node.output[0]],
-                name=self.model.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"),
+                outputs=outputs,
+                name=self.model.create_node_name(self.fused_op_type, name_prefix="SkipLayerNorm"),
             )
             normalize_node.domain = "com.microsoft"
 
@@ -101,8 +134,14 @@ class FusionBiasSkipLayerNormalization(Fusion):
         return_indice = []
         nodes = self.model.match_parent_path(node, ["Add", "MatMul"], [None, None], None, return_indice)
         if nodes is None:
-            return
-        assert len(return_indice) == 2
+            # In case of fp16, we could have a Cast between the MatMul and the bias Add
+            nodes = self.model.match_parent_path(
+                node, ["Add", "Cast", "MatMul"], [None, None, None], None, return_indice
+            )
+            if nodes is None:
+                return
+
+        assert len(return_indice) == 2 or len(return_indice) == 3
         add_input_index = return_indice[0]
         if add_input_index >= 2:
             return
@@ -126,9 +165,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
             return
 
         subgraph_nodes = [node, add]
-        if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes, [node.output[0]], input_name_to_nodes, output_name_to_node
-        ):
+        if not self.model.is_safe_to_fuse_nodes(subgraph_nodes, node.output, input_name_to_nodes, output_name_to_node):
             logger.debug(f"Skip fusing SkipLayerNormalization with Bias since it is not safe")
             return
 

@@ -39,8 +39,8 @@ inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& i
   return output_values;
 }
 
-inline void TrainingSession::ResetGrad() {
-  ThrowOnError(GetTrainingApi().ResetGrad(p_));
+inline void TrainingSession::LazyResetGrad() {
+  ThrowOnError(GetTrainingApi().LazyResetGrad(p_));
 }
 
 inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& input_values) {
@@ -103,6 +103,10 @@ inline void TrainingSession::ExportModelForInferencing(const std::basic_string<O
   }
   ThrowOnError(GetTrainingApi().ExportModelForInferencing(
       p_, inference_model_path.c_str(), graph_output_names.size(), output_names.data()));
+}
+
+inline void SetSeed(const int64_t seed) {
+  ThrowOnError(GetTrainingApi().SetSeed(seed));
 }
 
 }  // namespace Ort

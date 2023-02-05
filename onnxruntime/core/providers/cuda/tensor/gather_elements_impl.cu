@@ -3,7 +3,7 @@
 
 #include "core/providers/cuda/tensor/gather_elements_impl.h"
 #include "core/providers/cuda/tensor/scatter_elements_impl.h"
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/cuda/tensor/gather_elements_grad_impl.h"
 #endif
 
@@ -259,7 +259,7 @@ GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL(double)
 #undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_IMPL
 #undef GATHER_SCATTER_ELEMENTS_SPECIALIZED_TINDEX_IMPL
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 
 template <class T>
 struct FuncAtomicAdd {
