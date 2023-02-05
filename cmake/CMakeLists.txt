@@ -176,6 +176,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
 
+# option to enable custom operators in onnxruntime-extensions with a custom path
+option(onnxruntime_EXTENSIONS_OVERRIDDEN, "Enable onnxruntime-extensions overridden" OFF)
+
 # Enable registering custom op schemas from shared libraries in python environment.
 option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
 
@@ -1092,12 +1095,6 @@ if (onnxruntime_USE_TVM)
   endif()
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm ${FS_STDLIB})
   list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
-endif()
-
-
-# onnxruntime-extensions
-if (onnxruntime_USE_EXTENSIONS)
-  include(extensions)
 endif()
 
 #Dependencies end. In the next we'll enable "treat warning as error"

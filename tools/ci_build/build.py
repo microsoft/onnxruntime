@@ -1224,21 +1224,24 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+        for config in args.config:
+            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
 
-        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
-            # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+            if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+                # use absolute path here because onnxruntime-extensions is outside onnxruntime
+                onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+                cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
+                cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
+            else:
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
 
-        cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
-        print("[onnxruntime-extensions] onnxruntime_extensions_path: ", onnxruntime_extensions_path)
+            if is_reduced_ops_build(args):
+                operators_config_file = os.path.abspath(args.include_ops_by_config)
+                cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
 
-        if is_reduced_ops_build(args):
-            operators_config_file = os.path.abspath(args.include_ops_by_config)
-            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
-
-            # generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
+                # generate _selectedoplist.cmake by operators config file
+                run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
         cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]

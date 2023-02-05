@@ -444,12 +444,15 @@ endif()
 
 # onnxruntime-extensions
 if (onnxruntime_USE_EXTENSIONS)
-  FetchContent_Declare(
-    extensions
-    URL ${DEP_URL_extensions}
-    URL_HASH SHA1=${DEP_SHA1_extensions}
-  )
-  onnxruntime_fetchcontent_makeavailable(extensions)
+  if (NOT onnxruntime_EXTENSIONS_OVERRIDDEN)
+    FetchContent_Declare(
+      extensions
+      URL ${DEP_URL_extensions}
+      URL_HASH SHA1=${DEP_SHA1_extensions}
+    )
+    onnxruntime_fetchcontent_makeavailable(extensions)
+  endif()
+  include(extensions)
 endif()
 
 message("Finished fetching external dependencies")
