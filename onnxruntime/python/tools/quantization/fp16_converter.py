@@ -12,10 +12,10 @@ from onnxruntime.quantization.onnx_model import ONNXModel
 
 
 class FP16Converter:
-    default_allowed_list = ["Conv", "MatMul"]
+    default_allow_list = ["Conv", "MatMul"]
 
     def __init__(self):
-        self.allowed_list = self.default_allowed_list
+        self.allow_list = self.default_allow_list
         self.model = None
 
     @staticmethod
@@ -134,7 +134,7 @@ class FP16Converter:
 
         # create op_allow_list
         if op_allow_list is None:
-            op_allow_list = self.allowed_list
+            op_allow_list = self.allow_list
         op_allow_list = set(op_allow_list)
         # create a queue for BFS
         queue = []
@@ -285,12 +285,12 @@ class FP16Converter:
         if self.model is None:
             return False
         self.model = self.__convert_model_float_to_float16(
-            self.model, keep_io_types=keep_io_types, op_allow_list=self.allowed_list
+            self.model, keep_io_types=keep_io_types, op_allow_list=self.allow_list
         )
         return True
 
-    def set_allowed_list(self, allowed_list: list):
-        self.allowed_list = allowed_list
+    def set_allow_list(self, allow_list: list):
+        self.allow_list = allow_list
 
     def import_model_from_path(self, model_path):
         self.model = onnx.load(model_path)
@@ -309,17 +309,17 @@ class FP16Converter:
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Graph fp16 conversion tool for ONNX Runtime."
-        "It convert ONNX graph from fp32 to fp16 using --allowed_list."
+        "It convert ONNX graph from fp32 to fp16 using --allow_list."
     )
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
     parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
     parser.add_argument(
-        "--allowed_list",
+        "--allow_list",
         required=False,
         default=[],
         nargs="+",
-        help="Allowed list which contains all supported ops that can be converted into fp16.",
+        help="allow list which contains all supported ops that can be converted into fp16.",
     )
     parser.add_argument(
         "--use_external_data_format",
@@ -345,8 +345,8 @@ def main():
     args = parse_arguments()
     convertor = FP16Converter()
     convertor.import_model_from_path(args.input)
-    if args.allowed_list:
-        convertor.set_allowed_list(args.allowed_list)
+    if args.allow_list:
+        convertor.set_allow_list(args.allow_list)
     convertor.convert(args.keep_io_types)
     convertor.export_model_to_path(args.output, args.use_external_data_format)
 
