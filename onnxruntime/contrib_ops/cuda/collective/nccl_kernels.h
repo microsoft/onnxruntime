@@ -66,7 +66,7 @@ class AllGather final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int64_t world_size_;
+  int64_t group_size_;
 };
 
 }  // namespace cuda

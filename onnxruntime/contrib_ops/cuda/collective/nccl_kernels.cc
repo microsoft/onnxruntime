@@ -106,7 +106,7 @@ Status AllReduce::ComputeInternal(OpKernelContext* context) const {
 }
 
 AllGather::AllGather(const OpKernelInfo& info) : NcclKernel(info) {
-  info.GetAttrOrDefault("world_size", &world_size_, static_cast<int64_t>(1));
+  info.GetAttrOrDefault("group_size", &group_size_, static_cast<int64_t>(1));
 }
 
 Status AllGather::ComputeInternal(OpKernelContext* context) const {
@@ -118,7 +118,7 @@ Status AllGather::ComputeInternal(OpKernelContext* context) const {
   int64_t input_count = in_shape.Size();
   // construct output shape
   TensorShape out_shape(in_shape);
-  out_shape[0] = world_size_ * out_shape[0];
+  out_shape[0] = group_size_ * out_shape[0];
 
   void* output_data = context->Output(0, out_shape)->MutableDataRaw();
 
