@@ -1,6 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <numeric>
+#include <queue>
+#include <random>
+
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -859,6 +864,43 @@ TEST(TopKOperator, SelectTopKThreaded) {
   constexpr int64_t batch_size = 500;
   TestThreaded<float>(k, n, batch_size);
   TestThreaded<double>(k, n, batch_size);
+}
+
+
+void FillAndShuffle(std::vector<float>& values, int32_t batch_size, int32_t beam_size, int32_t vocab_size) {
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  for (int32_t batch = 0; batch < batch_size; batch++) {
+    int32_t batch_base_idx = batch * beam_size * vocab_size;
+    for (int32_t beam = 0; beam < beam_size; beam++) {
+      int32_t value = beam;
+      int32_t beam_base_idx = beam * vocab_size;
+      for (int32_t vocab = 0; vocab < vocab_size; vocab++) {
+        values[batch_base_idx + beam_base_idx + vocab] = (float)(value);
+        value += beam_size;
+      }
+      std::shuffle(values.begin() + batch_base_idx + beam_base_idx,
+                   values.begin() + batch_base_idx + beam_base_idx + vocab_size,
+                   generator);
+    }
+  }
+}
+
+
+TEST(TopKOperator, perf_test) {
+  int32_t batch_size = 4;
+  int32_t beam_size = 16;
+  int32_t vocab_size = 50257;
+  int32_t k = 2 * beam_size;
+  int32_t batch_x_beam_x_vocab = batch_size * beam_size * vocab_size;
+  std::vector<float> input_vals(batch_x_beam_x_vocab);
+  FillAndShuffle(input_vals, batch_size, beam_size, vocab_size);
+
+  std::vector<int64_t> input_dimensions = {batch_size, beam_size * vocab_size};
+  std::vector<float> expected_vals(batch_size * k);
+  std::vector<int64_t> expected_indices(batch_size * k);
+  std::vector<int64_t> expected_dimensions = {batch_size, k};
+  RunTest(11, k, input_vals, input_dimensions, expected_vals, expected_indices, expected_dimensions, false);
 }
 
 }  // namespace test

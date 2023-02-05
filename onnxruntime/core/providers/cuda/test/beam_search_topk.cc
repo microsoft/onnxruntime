@@ -1,4 +1,4 @@
-#ifndef NDEBUG
+//#ifndef NDEBUG
 
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
@@ -71,7 +71,7 @@ void ComputeTopKReference(const std::vector<float>& values,
 
 bool TestBeamSearchTopK() {
   int32_t batch_size = 4;
-  int32_t beam_size = 4;
+  int32_t beam_size = 16;
   int32_t vocab_size = 50257;
   int32_t k = 2 * beam_size;
   int32_t batch_x_beam_x_vocab = batch_size * beam_size * vocab_size;
@@ -99,6 +99,7 @@ bool TestBeamSearchTopK() {
   int32_t* top_k_indices = (int32_t*)(top_k_token + batch_size * k);
   CUDA_CALL_THROW(cudaMemcpy(values_device, values.data(), batch_x_beam_x_vocab * 4, cudaMemcpyHostToDevice));
 
+  for(int i = 0; i < 5; i++)
   contrib::cuda::BeamSearchTopK(values_device,
                                 batch_size,
                                 beam_size,
@@ -135,4 +136,4 @@ bool TestBeamSearchTopK() {
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif
+//#endif

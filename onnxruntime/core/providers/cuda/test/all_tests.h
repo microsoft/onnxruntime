@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#ifndef NDEBUG
+//#ifndef NDEBUG
 namespace onnxruntime {
 namespace cuda {
 namespace test {
@@ -14,4 +14,4 @@ bool TestGreedySearchTopOne();
 }  // namespace test
 }  // namespace cuda
 }  // namespace onnxruntime
-#endif
+//#endif

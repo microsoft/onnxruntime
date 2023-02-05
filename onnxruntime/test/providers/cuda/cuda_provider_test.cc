@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifndef NDEBUG
+//#ifndef NDEBUG
 #include "gtest/gtest.h"
 #include "core/common/status.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -21,4 +21,4 @@ TEST(CUDAEPTEST, ALL) {
 }  // namespace cuda
 }  // namespace onnxruntime
 
-#endif
+//#endif

@@ -1309,9 +1309,9 @@ if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=unsigned_compare_with_zero\"")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcudafe \"--diag_suppress=expr_has_no_effect\"")
 
-  if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
+  #if (onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO)
   add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:--generate-line-info>")
-  endif()
+  #endif()
 endif()
 
 if (onnxruntime_USE_TENSORRT)
