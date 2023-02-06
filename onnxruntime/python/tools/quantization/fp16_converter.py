@@ -4,7 +4,7 @@ import itertools
 import numpy as np
 import onnx
 import packaging.version as pv
-from onnx import AttributeProto, GraphProto, TensorProto, ModelProto, helper, numpy_helper
+from onnx import AttributeProto, GraphProto, ModelProto, TensorProto, helper, numpy_helper
 
 from onnxruntime.quantization.onnx_model import ONNXModel
 
