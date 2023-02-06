@@ -270,7 +270,7 @@ void SchemaRegistryManager::GetSchemaAndHistory(
       return;
     }
 
-    if (new_version) {
+    if (new_version < version) {
       GSL_SUPPRESS(es .84)
       unchecked_registry_indices.insert(unchecked_registry_indices.end(),
                                         checked_registry_indices.begin(),
