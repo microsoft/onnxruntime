@@ -3,7 +3,15 @@ from onnx import TensorProto, helper
 
 def GenerateModel(model_name):
     nodes = [
-        helper.make_node("DisentangledAttention_TRT", ["input1", "input2", "input3"], ["output"], "DisentangledAttention_TRT", domain="trt.plugins", factor=0.123, span=128),
+        helper.make_node(
+            "DisentangledAttention_TRT",
+            ["input1", "input2", "input3"],
+            ["output"],
+            "DisentangledAttention_TRT",
+            domain="trt.plugins",
+            factor=0.123,
+            span=128,
+        ),
     ]
 
     graph = helper.make_graph(
