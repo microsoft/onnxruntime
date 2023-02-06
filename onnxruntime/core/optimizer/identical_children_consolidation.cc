@@ -116,7 +116,7 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
           return ignore_identity;
         }
       } else {
-        identity.append(name);
+        identity.append(name).append("####");
       }
     } else {
       return ignore_identity;
