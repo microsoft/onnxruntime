@@ -487,6 +487,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 13,  Scatter,                            typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     11,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
+    {REG_INFO(     16,  ScatterElements,                    typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported,     requiredConstantCpuInputs(), std::nullopt, QueryScatter)},
     {REG_INFO(     11,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported)},
     {REG_INFO(     13,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported)},
     {REG_INFO(     16,  ScatterND,                          typeNameListScatterGatherND,    supportedTypeListScatterGatherND,       DmlGraphSupport::Supported,     requiredConstantCpuInputs(), std::nullopt, QueryScatter)},

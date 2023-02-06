@@ -2052,53 +2052,78 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
-GSL_SUPPRESS(r .11)
+namespace {
+
+struct ProviderBuffer {
+  char** buffer_;
+  char* next_write_;
+
+  ProviderBuffer(char** buf, size_t p_count) {
+    buffer_ = buf;
+    next_write_ = DataStart(p_count);
+  }
+
+  char* DataStart(size_t p_count) { return reinterpret_cast<char*>(buffer_ + p_count); }
+  // Return next buffer ptr
+  void Append(const std::string& provider, size_t p_index) {
+    // Maximum provider name length is now enforced at GetAvailableExecutionProviderNames()
+    const size_t to_copy = provider.size();
+#ifdef _MSC_VER
+    memcpy_s(next_write_, to_copy, provider.data(), to_copy);
+#elif defined(__APPLE__)
+    memcpy(next_write_, provider.data(), to_copy);
+#else
+    memcpy(next_write_, provider.data(), to_copy);
+#endif
+    next_write_[to_copy] = 0;
+    buffer_[p_index] = next_write_;
+    next_write_ += to_copy + 1;
+  }
+};
+}  // namespace
+
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
-  // TODO: there is no need to manually malloc/free these memory, it is insecure
-  // and inefficient. Instead, the implementation could scan the array twice,
-  // and use a single string object to hold all the names.
-  constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
-  const int available_count = narrow<int>(available_providers.size());
-  GSL_SUPPRESS(r .11)
-  char** const out = new char*[available_count];
-  if (out) {
-    for (int i = 0; i < available_count; i++) {
-      GSL_SUPPRESS(r .11)
-      out[i] = new char[MAX_LEN + 1];
-#ifdef _MSC_VER
-      strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
-      out[i][MAX_LEN] = '\0';
-#elif defined(__APPLE__)
-      strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
-#else
-      strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
-      out[i][MAX_LEN] = '\0';
-#endif
-    }
+  const size_t available_count = available_providers.size();
+
+  if (available_count == 0) {
+    out_ptr = nullptr;
+    *providers_length = 0;
+    return OrtApis::CreateStatus(ORT_FAIL, "Invalid build with no providers available");
   }
-  *providers_length = available_count;
-  *out_ptr = out;
+
+  size_t output_len = 0;
+  for (const auto& p : available_providers) {
+    output_len += p.size() + 1;
+  }
+
+  // We allocate and construct the buffer in char* to hold all the string pointers
+  // followed by the actual string data. We allocate in terms of char* to make it convinient and avoid casts.
+  const size_t ptrs_num = (sizeof(char*) * available_count + output_len + (sizeof(char*) - 1)) / sizeof(char*);
+  auto total_buffer = std::make_unique<char*[]>(ptrs_num);
+  ProviderBuffer provider_buffer(total_buffer.get(), available_count);
+
+  for (size_t p_index = 0; p_index < available_count; p_index++) {
+    provider_buffer.Append(available_providers[p_index], p_index);
+  }
+
+  *providers_length = narrow<int>(available_count);
+  *out_ptr = total_buffer.release();
   API_IMPL_END
   return nullptr;
 }
 
-// TODO: we don't really need the second parameter
+// This is a cleanup API, it should never return any failure
+// so any no-throw code can rely on it.
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
-                    _In_ int providers_length) {
+                    _In_ int /* providers_length */) {
   API_IMPL_BEGIN
-  if (ptr) {
-    for (int i = 0; i < providers_length; i++) {
-      GSL_SUPPRESS(r .11)
-      delete[] ptr[i];
-    }
-    GSL_SUPPRESS(r .11)
-    delete[] ptr;
-  }
+  // take possession of the memory and deallocate it
+  std::unique_ptr<char*[]> g(ptr);
   API_IMPL_END
-  return NULL;
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi,
@@ -2326,13 +2351,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
-  return OrtTrainingApis::GetTrainingApi(version);
+  if (version >= 13 && version <= ORT_API_VERSION)
+    return OrtTrainingApis::GetTrainingApi(version);
+
+  fprintf(stderr, "The given version [%u] is not supported. Training api only supports version 13 to %u.\n",
+          version, ORT_API_VERSION);
+  return nullptr;
 #else
 
   ORT_UNUSED_PARAMETER(version);
-  fprintf(stderr,
-          "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
 #endif
@@ -2382,7 +2409,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_14 = {
+static constexpr OrtApi ort_api_1_to_15 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2706,7 +2733,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.15.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_14;
+    return &ort_api_1_to_15;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

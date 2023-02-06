@@ -192,10 +192,12 @@ def parse_arguments():
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
 
-    parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
+    parser.add_argument("--disable_nccl", action="store_false", help="Disable NCCL, by default NCCL is disabled.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
-    parser.add_argument("--use_mpi", nargs="?", default=True, const=True, type=_str_to_bool)
+    parser.add_argument(
+        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Disabled by default."
+    )
 
     # enable ONNX tests
     parser.add_argument(
