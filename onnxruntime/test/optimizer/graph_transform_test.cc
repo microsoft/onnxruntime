@@ -4211,7 +4211,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {12}, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                                           pre_graph_checker, post_graph_checker));
   }
 
@@ -4228,7 +4228,7 @@ TEST_F(GraphTransformationTests, BiasSoftmaxFusionTest_OuterBroadcast) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<BiasSoftmaxFusion>();
-    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {12}, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 12, *logger_, std::move(transformer), TransformerLevel::Level2, 1,
                                           pre_graph_checker, post_graph_checker));
   }
 }
