@@ -110,13 +110,13 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
             default:
               break;
           }
-          indentity.append("####");
+          indentity.append();
         } else {
           // TODO: handle non-scalar constant inputs, using checksum or something else
           return ignore_identity;
         }
       } else {
-        identity.append(name).append("####");
+        identity.append(name+"####");
       }
     } else {
       return ignore_identity;
