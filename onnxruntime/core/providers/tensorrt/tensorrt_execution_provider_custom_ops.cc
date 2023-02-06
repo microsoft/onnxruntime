@@ -32,7 +32,6 @@ void IterateTensorRTPluginFields(const nvinfer1::PluginFieldCollection* plugin_f
  * EfficientNMS_TRT, MultilevelCropAndResize_TRT, PyramidROIAlign_TRT and DisentangledAttention_TRT.
  * In order not to break the old models using those TRT plugins which were registered with ONNX domain and maintain
  * backward compatible, we need to keep those legacy TRT plugins registered with ONNX domain with contrib ops.
- * "trt.plugins" domain.
  *
  * Here, we collect all registered TRT plugins from TRT registry and create custom ops all with "trt.plugins" domain. 
  *
