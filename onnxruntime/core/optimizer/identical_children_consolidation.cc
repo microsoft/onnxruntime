@@ -110,6 +110,7 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
             default:
               break;
           }
+          indentity.append("####");
         } else {
           // TODO: handle non-scalar constant inputs, using checksum or something else
           return ignore_identity;
@@ -117,8 +118,10 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
       } else {
         identity.append(name);
       }
+    } else {
+      return ignore_identity;
     }
   }
-  return {identity.append("####")};
+  return {identity};
 }
 }  // namespace onnxruntime
