@@ -134,6 +134,10 @@ bool TrySelectInputAndBiasWithAlignment(Node& add_node, Node& softmax_node, Node
   int rank = std::max({N1, N2});
   new_axis = (int)HandleNegativeAxis(axis, rank);
 
+  // The axis attribute for Softmax in OpSet-11 and OpSet-13 are different.
+  // Details in function documentatin.
+  if (is_since_opset_13 && new_axis != rank - 1) return false;
+
   int singlebatch_rank = rank - new_axis;
   if (singlebatch_rank > N1 || singlebatch_rank > N2) {
     return false;

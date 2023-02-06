@@ -278,7 +278,7 @@ TEST(NhwcTransformerTests, ConvSplit) {
                                                             conv_output_arg, .37f, 131);
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
-      if (builder.DomainToVersionMap().find("")->second >= 18) {
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
         split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
       }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));
@@ -331,7 +331,7 @@ TEST(NhwcTransformerTests, ConvSplitQLinearConcat) {
       conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
 
       Node& split_node = builder.AddNode("Split", {conv_output_arg}, {split_output1_arg, split_output2_arg});
-      if (builder.DomainToVersionMap().find("")->second >= 18) {
+      if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
         split_node.AddAttribute("num_outputs", static_cast<int64_t>(2));
       }
       split_node.AddAttribute("axis", static_cast<int64_t>(axis));

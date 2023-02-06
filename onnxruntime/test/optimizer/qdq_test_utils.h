@@ -378,7 +378,7 @@ GetQDQTestCaseFn BuildConsolidationTestCase(
     auto* split_output_3 = builder.MakeIntermediate();
     Node& split_node = builder.AddNode("Split", {upper_dq_output}, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
     }
 
@@ -459,7 +459,7 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     auto* split_output_3 = builder.MakeIntermediate();
     Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
     }
 

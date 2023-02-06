@@ -1999,8 +1999,9 @@ TEST(QDQTransformerTests, Clip) {
       auto* clip_output = builder.MakeIntermediate();
       constexpr float min = .0f;
       constexpr float max = 6.0f;
-      auto opset_version = builder.DomainToVersionMap().find("")->second;
-      if (opset_version >= 11) {
+      auto opset = builder.DomainToVersionMap().find(kOnnxDomain)->second;
+      EXPECT_EQ(opset_version, opset);
+      if (opset >= 11) {
         auto* min_initializer = builder.MakeScalarInitializer<float>(min);
         auto* max_initializer = builder.MakeScalarInitializer<float>(max);
         builder.AddNode("Clip", {dq_output, min_initializer, max_initializer}, {clip_output});

@@ -94,7 +94,7 @@ TEST(TransposeOptimizerTests, TestSplit) {
     transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
     auto& split_1 = builder.AddNode("Split", {transpose_1_out_0}, {split_1_out_0, split_1_out_1});
     split_1.AddAttribute("axis", (int64_t)1);
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_1.AddAttribute("num_outputs", static_cast<int64_t>(2));
     }
     auto& transpose_2 = builder.AddNode("Transpose", {split_1_out_0}, {transpose_2_out_0});
@@ -127,7 +127,7 @@ TEST(TransposeOptimizerTests, TestSplitDefaultAxis) {
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
     auto& split_1 = builder.AddNode("Split", {transpose_1_out_0}, {split_1_out_0, split_1_out_1});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_1.AddAttribute("num_outputs", static_cast<int64_t>(2));
     }
     auto& transpose_2 = builder.AddNode("Transpose", {split_1_out_0}, {transpose_2_out_0});
@@ -161,7 +161,7 @@ TEST(TransposeOptimizerTests, TestSplitNegativeAxis) {
     transpose_1.AddAttribute("perm", std::vector<int64_t>{1, 2, 0});
     auto& split_1 = builder.AddNode("Split", {transpose_1_out_0}, {split_1_out_0, split_1_out_1});
     split_1.AddAttribute("axis", (int64_t)1);
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       split_1.AddAttribute("num_outputs", static_cast<int64_t>(2));
     }
     auto& transpose_2 = builder.AddNode("Transpose", {split_1_out_0}, {transpose_2_out_0});
@@ -222,7 +222,7 @@ TEST(TransposeOptimizerTests, TestPad) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* value = builder.MakeInitializer<float>({1}, {(float)2.3});
       auto* pads = builder.MakeInitializer<int64_t>({8}, {1, -2, 3, 4, 5, 6, 7, 8});
       auto& pad_1 = builder.AddNode("Pad", {transpose_1_out_0, pads, value}, {pad_1_out_0});
@@ -332,7 +332,7 @@ TEST(TransposeOptimizerTests, TestResize) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 11) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 11) {
       builder.AddNode("Resize", {transpose_1_out_0, &empty_arg, const_1}, {resize_1_out_0});
     } else {
       builder.AddNode("Resize", {transpose_1_out_0, const_1}, {resize_1_out_0});
@@ -736,7 +736,7 @@ TEST(TransposeOptimizerTests, TestReduceSumKeepdimsTrue) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* init = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducesum_1 = builder.AddNode("ReduceSum", {transpose_1_out_0, init}, {reducesum_1_out_0});
       reducesum_1.AddAttribute("keepdims", (int64_t)1);
@@ -798,7 +798,7 @@ TEST(TransposeOptimizerTests, TestReduceSumKeepdimsFalse) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* init = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducesum_1 = builder.AddNode("ReduceSum", {transpose_1_out_0, init}, {reducesum_1_out_0});
       reducesum_1.AddAttribute("keepdims", (int64_t)0);
@@ -1200,7 +1200,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsTrue) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, axes}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)1);
@@ -1258,7 +1258,7 @@ TEST(TransposeOptimizerTests, TestReduceMaxKeepdimsFalse) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, axes}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
@@ -1316,7 +1316,7 @@ TEST(TransposeOptimizerTests, TestReduceMax) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       builder.AddNode("ReduceMax", {transpose_1_out_0, axes}, {reducemax_1_out_0});
     } else {
@@ -1371,7 +1371,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSum) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducelogsum_1 = builder.AddNode("ReduceLogSum", {transpose_1_out_0, axes}, {reducelogsum_1_out_0});
       reducelogsum_1.AddAttribute("keepdims", (int64_t)0);
@@ -1405,7 +1405,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceLogSumExp) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducelogsumexp_1 = builder.AddNode("ReduceLogSumExp", {transpose_1_out_0, axes}, {reducelogsumexp_1_out_0});
       reducelogsumexp_1.AddAttribute("keepdims", (int64_t)0);
@@ -1439,7 +1439,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMax) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, axes}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
@@ -1473,7 +1473,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMean) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducemean_1 = builder.AddNode("ReduceMean", {transpose_1_out_0, axes}, {reducemean_1_out_0});
       reducemean_1.AddAttribute("keepdims", (int64_t)0);
@@ -1507,7 +1507,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceMin) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducemin_1 = builder.AddNode("ReduceMin", {transpose_1_out_0, axes}, {reducemin_1_out_0});
       reducemin_1.AddAttribute("keepdims", (int64_t)0);
@@ -1541,7 +1541,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceProd) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reduceprod_1 = builder.AddNode("ReduceProd", {transpose_1_out_0, axes}, {reduceprod_1_out_0});
       reduceprod_1.AddAttribute("keepdims", (int64_t)0);
@@ -1575,7 +1575,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceSumSquare) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* init = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducesumsquare_1 = builder.AddNode("ReduceSumSquare", {transpose_1_out_0, init}, {reducesumsquare_1_out_0});
       reducesumsquare_1.AddAttribute("keepdims", (int64_t)0);
@@ -1609,7 +1609,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceL1) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducel1_1 = builder.AddNode("ReduceL1", {transpose_1_out_0, axes}, {reducel1_1_out_0});
       reducel1_1.AddAttribute("keepdims", (int64_t)0);
@@ -1643,7 +1643,7 @@ TEST(TransposeOptimizerTests, TestReduceOpsReduceL2) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* axes = builder.MakeInitializer<int64_t>({2}, {0, -2});
       auto& reducel2_1 = builder.AddNode("ReduceL2", {transpose_1_out_0, axes}, {reducel2_1_out_0});
       reducel2_1.AddAttribute("keepdims", (int64_t)0);
@@ -4117,7 +4117,7 @@ TEST(TransposeOptimizerTests, TestOmitIdentityTranspose) {
 
     auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
     transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
-    if (builder.DomainToVersionMap().find("")->second >= 18) {
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
       auto* init = builder.MakeInitializer<int64_t>({1}, {1});
       auto& reducemax_1 = builder.AddNode("ReduceMax", {transpose_1_out_0, init}, {reducemax_1_out_0});
       reducemax_1.AddAttribute("keepdims", (int64_t)0);
