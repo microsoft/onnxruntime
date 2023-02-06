@@ -479,7 +479,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          data,
-                                         topk_scores->Shape().Size() * sizeof(float),
+                                         topk_scores->SizeInBytes(),
                                          cudaMemcpyDeviceToHost,
                                          cuda_stream));
   }
