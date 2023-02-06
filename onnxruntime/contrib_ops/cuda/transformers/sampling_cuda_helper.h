@@ -140,8 +140,9 @@ Status Sample(AllocatorPtr& allocator,
   // Multinomial sampling
   gsl::span<float>& d_sampled = sampling_state->d_sampled;
   gsl::span<float>& h_sampled_all = sampling_state->h_sampled_all;
+  size_t sample_offset = (static_cast<size_t>(step) - 1) * static_cast<size_t>(parameters->batch_size);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_sampled.data(),
-                                       h_sampled_all.data() + (step - 1) * parameters->batch_size,
+                                       h_sampled_all.data() + sample_offset,
                                        sizeof(float) * parameters->batch_size,
                                        cudaMemcpyHostToDevice,
                                        cuda_stream));

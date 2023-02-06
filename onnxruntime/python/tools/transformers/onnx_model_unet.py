@@ -7,6 +7,8 @@ from logging import getLogger
 from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
+from fusion_biassplitgelu import FusionBiasSplitGelu
+from fusion_group_norm import FusionGroupNorm
 from fusion_options import FusionOptions
 from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
@@ -52,11 +54,20 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.fuse_reshape()
 
+        if (options is None) or options.enable_group_norm:
+            group_norm_fusion = FusionGroupNorm(self)
+            group_norm_fusion.apply()
+
+        if (options is None) or options.enable_bias_splitgelu:
+            bias_split_gelu_fusion = FusionBiasSplitGelu(self)
+            bias_split_gelu_fusion.apply()
+
         if (options is None) or options.enable_attention:
-            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False)
+            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
             self_attention_fusion.apply()
 
-            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True)
+            enable_packed_kv = (options is None) or options.enable_packed_kv
+            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
             cross_attention_fusion.apply()
 
         if (options is None) or options.enable_skip_layer_norm:

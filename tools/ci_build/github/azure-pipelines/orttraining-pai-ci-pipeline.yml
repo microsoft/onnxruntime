@@ -18,6 +18,10 @@ jobs:
       value: false
     - name: RocmVersion
       value: 5.4
+    - name: CCACHE_DIR
+      value: $(Pipeline.Workspace)/ccache
+    - name: TODAY
+      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
 
   # generated from tools/ci_build/github/pai/rocm-ci-pipeline-env.Dockerfile
   container:
@@ -46,6 +50,23 @@ jobs:
         bash ./tools/ci_build/github/pai/pai_get_thread.sh $(Agent.Name)
     target: host
 
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cache Task
+
+  - script: mkdir -p $(CCACHE_DIR)
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
+
+  - script: ccache -z && ccache -s
+    displayName: Show Cache Stats Before Building
+
   - task: CmdLine@2
     inputs:
       script: |-
@@ -57,6 +78,7 @@ jobs:
           --cmake_extra_defines \
               CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
               onnxruntime_BUILD_KERNEL_EXPLORER=ON \
+          --use_cache \
           --use_rocm \
           --rocm_version=$(RocmVersion) \
           --rocm_home ${ROCM_HOME} \
@@ -68,6 +90,9 @@ jobs:
           --build_wheel \
           --skip_tests
     displayName: 'Build onnxruntime'
+
+  - script: ccache -s
+    displayName: Show Cache Stats After Building
 
   - bash: |-
       echo "##vso[task.setvariable variable=onnxruntimeBuildSucceeded]true"

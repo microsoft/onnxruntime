@@ -227,25 +227,6 @@ if (onnxruntime_ENABLE_TRAINING)
   set(onnxruntime_ENABLE_ATEN ON)
 endif()
 
-# ENABLE_TRAINING includes all training functionality
-# The following 2 entry points
-# 1. ORTModule
-# 2. ORT Training APIs
-# It includes all the feature additions as well like
-# 1. Python OP
-# 2. Aten Fallback
-# 3. Strided Tensors
-# 4. All training ops including communication and  collectives ops
-# 5. ONNXBlock (Front end for training preparation when using training apis)
-# Some features are only enabled when onnxruntime_ENABLE_PYTHON is ON as they are only relevant
-# when using python env
-if (onnxruntime_ENABLE_TRAINING)
-  set(onnxruntime_ENABLE_TRAINING_OPS ON)
-  set(onnxruntime_ENABLE_TRAINING_APIS ON)
-  set(onnxruntime_ENABLE_TRAINING_TORCH_INTEROP ON)
-  set(onnxruntime_ENABLE_ATEN ON)
-endif()
-
 if (onnxruntime_ENABLE_TRAINING_APIS)
   set(onnxruntime_ENABLE_TRAINING_OPS ON)
 endif()
@@ -267,7 +248,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -1044,6 +1025,7 @@ endif()
 
 if (onnxruntime_USE_DNNL)
   include(dnnl)
+  add_compile_definitions(DNNL_OPENMP)
 endif()
 
 # TVM EP
@@ -1362,19 +1344,22 @@ if (onnxruntime_ENABLE_TRAINING)
 
     find_package(MPI)
 
-    if (MPI_CXX_FOUND)
-      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    else ()
-      set(onnxruntime_USE_NCCL OFF)
-      set(onnxruntime_USE_MPI OFF)
-      message( WARNING "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled." )
+    if (onnxruntime_USE_MPI OR onnxruntime_USE_NCCL)
+      if (MPI_CXX_FOUND)
+        message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+        message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+        mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+      else ()
+        message(
+          FATAL_ERROR
+          "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
+        )
+      endif()
     endif()
 
     # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+    if (onnxruntime_USE_NCCL)
       if (onnxruntime_USE_CUDA)
         set(NCCL_LIBNAME "nccl")
       elseif (onnxruntime_USE_ROCM)
@@ -1432,13 +1417,15 @@ if (onnxruntime_ENABLE_TRAINING)
         add_definitions(-DORT_USE_NCCL=1)
         message( STATUS "NCCL is enabled in Linux GPU Build." )
       else ()
-        set(onnxruntime_USE_NCCL OFF)
-        message( WARNING "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled." )
+        message(
+          FATAL_ERROR
+          "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled."
+        )
       endif()
     endif()
   endif()
 
-  if (onnxruntime_USE_MPI AND MPI_CXX_FOUND)
+  if (onnxruntime_USE_MPI)
     add_definitions(-DUSE_MPI=1)
   endif()
 
