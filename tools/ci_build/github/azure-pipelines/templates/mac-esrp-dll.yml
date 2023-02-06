@@ -5,7 +5,7 @@ parameters:
   Pattern: '*.dll'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
   displayName: ${{ parameters.DisplayName }}
   inputs:
     ConnectedServiceName: 'OnnxRuntime CodeSign 20190817'

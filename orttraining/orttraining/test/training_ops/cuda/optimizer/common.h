@@ -107,7 +107,7 @@ struct AdamTestInputOutput {
 };
 
 void AdamWTestLoop(
-    std::unique_ptr<IExecutionProvider> execution_provider,
+    ExecutionProviderCreationFunc execution_provider_creator,
     bool use_baseline_inputs_for_each_iteration, size_t total_step, float lr,
     float alpha, float beta, float epsilon, float weight_decay, int64_t adam_mode, int64_t correct_bias,
     std::unordered_map<std::string, std::vector<std::vector<float>>>& named_weights,

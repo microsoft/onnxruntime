@@ -198,8 +198,11 @@ class SymbolicShapeInference:
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
+            "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
+            "GroupNorm": self._infer_GroupNorm,
+            "BiasSplitGelu": self._infer_BiasSplitGelu,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -215,9 +218,10 @@ class SymbolicShapeInference:
             "_adaptive_avg_pool2d": self._infer_aten_pool2d,
             "numpy_T": self._infer_Transpose,
             "native_group_norm": self._infer_aten_group_norm,
-            "upsample_nearest1d": self._infer_aten_upsample_nearest,
-            "upsample_nearest2d": self._infer_aten_upsample_nearest,
-            "upsample_nearest3d": self._infer_aten_upsample_nearest,
+            "upsample_nearest1d": self._infer_aten_upsample,
+            "upsample_nearest2d": self._infer_aten_upsample,
+            "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bilinear2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -431,9 +435,13 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
+            "GroupNorm",
+            "BiasSplitGelu",
         ]
 
         if not skip_infer:
@@ -1382,14 +1390,14 @@ class SymbolicShapeInference:
                     )
                 )
 
-    def _infer_aten_upsample_nearest(self, node):
+    def _infer_aten_upsample(self, node):
         new_shape = None
         input_shape = self._get_shape(node, 0)
         if input_shape is not None:
             new_shape = input_shape[:2]
             output_size = self._try_get_value(node, 1)
             if output_size is not None:
-                new_shape += [dim_size.item() for dim_size in output_size]
+                new_shape += [dim_size.item() if type(dim_size) == np.int64 else dim_size for dim_size in output_size]
             else:
                 rank = len(input_shape)
                 new_shape += [str(self._new_symbolic_dim_from_output(node, 0, i)) for i in range(2, rank)]
@@ -1963,53 +1971,62 @@ class SymbolicShapeInference:
     def _infer_Attention(self, node):
         shape = self._get_shape(node, 0)
         shape_bias = self._get_shape(node, 2)
-        assert len(shape) == 3 and len(shape_bias) == 1
-        qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
-        if qkv_hidden_sizes_attr is not None:
-            assert len(qkv_hidden_sizes_attr) == 3
-            shape[2] = int(qkv_hidden_sizes_attr[2])
-        else:
-            shape[2] = int(shape_bias[0] / 3)
-        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
+        if shape and len(shape) == 3 and shape_bias and len(shape_bias) == 1:
+            qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
+            if qkv_hidden_sizes_attr is not None:
+                assert len(qkv_hidden_sizes_attr) == 3
+                shape[2] = int(qkv_hidden_sizes_attr[2])
+            elif isinstance(shape_bias[0], int):
+                shape[2] = int(shape_bias[0] / 3)
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
 
-        if len(node.output) > 1:
-            # input shape: (batch_size, sequence_length, hidden_size)
-            # past shape: (2, batch_size, num_heads, past_sequence_length, head_size)
-            # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length) or (batch_size, 1, max_seq_len, max_seq_len)
-            # present shape: (2, batch_size, num_heads, total_sequence_length, head_size), where total_sequence_length=sequence_length+past_sequence_length
-            input_shape = self._get_shape(node, 0)
-            past_shape = self._get_shape(node, 4)
-            mask_shape = self._get_shape(node, 3)
-            if len(past_shape) == 5:
-                if len(mask_shape) in [2, 3]:
-                    past_shape[3] = mask_shape[-1]
-                elif isinstance(input_shape[1], int) and isinstance(past_shape[3], int):
-                    past_shape[3] = input_shape[1] + past_shape[3]
-                else:
-                    past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
-                vi = self.known_vi_[node.output[1]]
-                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+            if len(node.output) > 1:
+                # input shape: (batch_size, sequence_length, hidden_size)
+                # past shape: (2, batch_size, num_heads, past_sequence_length, head_size)
+                # mask shape: (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length) or (batch_size, 1, max_seq_len, max_seq_len)
+                # present shape: (2, batch_size, num_heads, total_sequence_length, head_size), where total_sequence_length=sequence_length+past_sequence_length
+                input_shape = self._get_shape(node, 0)
+                past_shape = self._get_shape(node, 4)
+                mask_shape = self._get_shape(node, 3)
+                if past_shape and len(past_shape) == 5:
+                    if mask_shape and len(mask_shape) in [2, 3]:
+                        past_shape[3] = mask_shape[-1]
+                    elif input_shape and len(input_shape) == 3:
+                        if isinstance(input_shape[1], int) and isinstance(past_shape[3], int):
+                            past_shape[3] = input_shape[1] + past_shape[3]
+                        else:
+                            past_shape[3] = f"{past_shape[3]}+{input_shape[1]}"
+                    vi = self.known_vi_[node.output[1]]
+                    vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
 
     def _infer_BiasGelu(self, node):
         self._propagate_shape_and_type(node)
 
     def _infer_MultiHeadAttention(self, node):
         # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # Without packed KV:
+        #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+        #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # With packed KV:
+        #   Input 1 (key) has shape (batch_size, kv_sequence_length, num_heads, 2, head_size)
+        #   Input 2 (value) is nullptr
         # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
         query_shape = self._get_shape(node, 0)
-        value_shape = self._get_shape(node, 2)
+        key_shape = self._get_shape(node, 1)
+        if query_shape is not None and len(query_shape) == 3:
 
-        assert len(query_shape) == 3 and len(value_shape) == 3
-        output_shape = query_shape
-        output_shape[2] = value_shape[2]
+            # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
+            output_shape = query_shape
+            if key_shape and len(key_shape) == 3:
+                value_shape = self._get_shape(node, 2)
+                if value_shape and len(value_shape) == 3:
+                    output_shape[2] = value_shape[2]
 
-        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-        vi = self.known_vi_[node.output[0]]
-        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
@@ -2055,6 +2072,19 @@ class SymbolicShapeInference:
         # output for inference, infer the shape and type for it too
         if len(node.output) > 3:
             self._propagate_shape_and_type(node, 0, 3)
+
+    def _infer_GroupNorm(self, node):
+        self._propagate_shape_and_type(node)
+
+    def _infer_BiasSplitGelu(self, node):
+        input_shape = self._get_shape(node, 0)
+        bias_shape = self._get_shape(node, 1)
+        if input_shape and bias_shape and isinstance(bias_shape[0], int):
+            output_shape = input_shape
+            output_shape[2] = int(bias_shape[0] / 2)
+            vi = self.known_vi_[node.output[0]]
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")
