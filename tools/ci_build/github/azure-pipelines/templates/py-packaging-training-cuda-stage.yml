@@ -100,6 +100,13 @@ stages:
             CudaVersion: ${{ parameters.cuda_version }}
             GccVersion: ${{ parameters.gcc_version }}
             UploadWheel: ${{ parameters.upload_wheel }}
+          Python310:
+            PythonVersion: '3.10'
+            TorchVersion: ${{ parameters.torch_version }}
+            OpsetVersion: ${{ parameters.opset_version }}
+            CudaVersion: ${{ parameters.cuda_version }}
+            GccVersion: ${{ parameters.gcc_version }}
+            UploadWheel: ${{ parameters.upload_wheel }}
 
       steps:
       - task: CmdLine@2
@@ -170,8 +177,7 @@ stages:
                   --enable_onnx_tests \
                   ${{ parameters.build_py_parameters }} \
                   --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-$(GccVersion)/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=${{ parameters.cmake_cuda_architectures }}' onnxruntime_BUILD_UNIT_TESTS=OFF \
-                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) \
-                  --enable_training_torch_interop ;
+                  --use_cuda --cuda_version=$(CudaVersion) --cuda_home=/usr/local/cuda-$(CudaVersion) --cudnn_home=/usr/local/cuda-$(CudaVersion) ;
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2

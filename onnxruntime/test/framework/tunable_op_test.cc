@@ -297,8 +297,8 @@ Status FastestNarrow(const VecAddParamsRecordLastRun* params) {
 class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
  public:
   TunableVecAddSelectFast() {
-    this->ops_.emplace_back(SlowFull);
-    this->ops_.emplace_back(FastFull);
+    this->RegisterOp(SlowFull);
+    this->RegisterOp(FastFull);
   }
 };
 
@@ -325,8 +325,8 @@ TEST(TunableOp, SelectFast) {
 class TunableVecAddSelectSupported : public TunableOp<VecAddParamsRecordLastRun> {
  public:
   TunableVecAddSelectSupported() {
-    this->ops_.emplace_back(SlowFull);
-    this->ops_.emplace_back(FastestNarrow);
+    this->RegisterOp(SlowFull);
+    this->RegisterOp(FastestNarrow);
   }
 };
 
@@ -353,9 +353,9 @@ TEST(TunableOp, SelectSupported) {
 class TunableVecAddSelectFastestIfSupported : public TunableOp<VecAddParamsRecordLastRun> {
  public:
   TunableVecAddSelectFastestIfSupported() {
-    this->ops_.emplace_back(SlowFull);
-    this->ops_.emplace_back(FastFull);
-    this->ops_.emplace_back(FastestNarrow);
+    this->RegisterOp(SlowFull);
+    this->RegisterOp(FastFull);
+    this->RegisterOp(FastestNarrow);
 
     this->SetDefaultId(2);
   }
@@ -411,7 +411,7 @@ TEST(TunableOp, DisabledWithManualSelection) {
 class TunableVecAddNotHandleInplaceUpdate : public TunableOp<VecAddParams> {
  public:
   TunableVecAddNotHandleInplaceUpdate() {
-    this->ops_.emplace_back(VecAddFunc);
+    this->RegisterOp(VecAddFunc);
   }
 };
 
@@ -419,7 +419,7 @@ class TunableVecAddNotHandleInplaceUpdate : public TunableOp<VecAddParams> {
 class TunableVecAddHandleInplaceUpdate : public TunableOp<VecAddParams> {
  public:
   TunableVecAddHandleInplaceUpdate() {
-    this->ops_.emplace_back(VecAddFunc);
+    this->RegisterOp(VecAddFunc);
   }
 
   const VecAddParams* PreTuning(const VecAddParams* params) override {

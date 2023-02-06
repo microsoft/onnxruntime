@@ -213,7 +213,7 @@ class StandAloneKernelContext : public OpKernelContext {
     return static_cast<int>(output_count_);
   }
 
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT {
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const override {
     *output = allocator_;
     return Status::OK();
   }

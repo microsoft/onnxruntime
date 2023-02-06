@@ -65,7 +65,7 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
 
   static size_t RegisterShortExecuteTests() {
     size_t test_registered = 0;
-    
+
     for (size_t b = 1; b < 16; b++) {
       test_registered += RegisterSingleTest(b, b, b, 1, 14, 211);
       test_registered += RegisterSingleTest(b, b, b, 1, 21);
@@ -91,7 +91,7 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
       test_registered += RegisterSingleTest(1, b, b, 1, 0, 0);
       if (!Packed) {
         test_registered += RegisterSingleTest(1, b, 32, 3, 0, 0);
-        test_registered += RegisterSingleTest(1, 32, b, 5, 0, 0);      
+        test_registered += RegisterSingleTest(1, 32, b, 5, 0, 0);
       }
     }
     test_registered += RegisterSingleTest(43, 500, 401, 1, 183, 223);
@@ -100,6 +100,16 @@ class QgemmShortExecuteTest<AType, BType, int32_t, Packed, Threaded> : public Ml
     if (!Packed) {
       test_registered += RegisterSingleTest(43, 500, 401, 7, 183, 223);
       test_registered += RegisterSingleTest(1023, 1023, 1023, 3, 5, 8);
+    }
+    size_t dims[] = {400, 500, 1024};
+    size_t kdims[] = {1003, 2048 + 50, 4096 - 100};
+    for (size_t m : dims){
+      for (size_t n : dims){
+        for (size_t k : kdims){
+          test_registered += RegisterSingleTest(m-3, n+5, k, 1, 14, 211);
+          test_registered += RegisterSingleTest(m+5, n-3, k, 1, 17);
+        }
+      }
     }
 
     return test_registered;

@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_APIS__
     enum LRScheduler
     {
         None = 0,
@@ -336,7 +336,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!NativeTrainingMethods.TrainingEnabled())
             {
-                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training and enable_training_on_device. \n");
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
             }
             var options = sessOptions;
             if (sessOptions == null)

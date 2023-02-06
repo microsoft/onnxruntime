@@ -1,6 +1,7 @@
 {
   "devDependencies": {
     "@types/fs-extra": "^9.0.13",
+    "@types/node": "^18.11.18",
     "@types/npmlog": "^4.1.4",
     "@typescript-eslint/eslint-plugin": "^4.22.1",
     "@typescript-eslint/parser": "^4.22.1",

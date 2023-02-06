@@ -1782,6 +1782,34 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+def test_aten_upsample_bilinear():
+    class _NeuralNetUpsampleBilinear(torch.nn.Module):
+        def __init__(self):
+            super(_NeuralNetUpsampleBilinear, self).__init__()
+
+        def forward(self, input):
+            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleBilinear().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 4, 6, 8], dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
         def __init__(self, D):
@@ -4820,9 +4848,14 @@ def test_ortmodule_attribute_name_collision_warning():
     with pytest.warns(UserWarning) as warning_record:
         ort_model = ORTModule(pt_model)
 
-    assert len(warning_record) == 2
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
+    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
+    # instead.')
+    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
+    assert len(warning_record) == 3
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():

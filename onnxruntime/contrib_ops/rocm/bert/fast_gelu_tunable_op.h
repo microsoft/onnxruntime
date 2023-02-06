@@ -111,18 +111,18 @@ Status FastGeluStaticSelection(const FastGeluParams<half>* params) {
   return HIP_CALL(hipGetLastError());
 }
 
-#define ADD_OP(threads_per_block)                                 \
-  this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 1>{}); \
-  this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 2>{}); \
-  this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 4>{}); \
-  this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 8>{}); \
-  this->ops_.emplace_back(FastGeluOp<T, threads_per_block, 16>{});
+#define ADD_OP(threads_per_block)                          \
+  this->RegisterOp(FastGeluOp<T, threads_per_block, 1>{}); \
+  this->RegisterOp(FastGeluOp<T, threads_per_block, 2>{}); \
+  this->RegisterOp(FastGeluOp<T, threads_per_block, 4>{}); \
+  this->RegisterOp(FastGeluOp<T, threads_per_block, 8>{}); \
+  this->RegisterOp(FastGeluOp<T, threads_per_block, 16>{});
 
 template <typename T>
 class FastGeluTunableOp : public onnxruntime::rocm::tunable::TunableOp<FastGeluParams<T>> {
  public:
   FastGeluTunableOp() {
-    this->ops_.emplace_back(FastGeluStaticSelection<T>);
+    this->RegisterOp(FastGeluStaticSelection<T>);
     ADD_OP(64);
     ADD_OP(128);
     ADD_OP(192);

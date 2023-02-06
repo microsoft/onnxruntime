@@ -8,12 +8,12 @@
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
-#ifdef ENABLE_STREAM
+#ifdef ORT_ENABLE_STREAM
 StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                 int32_t num_streams,
                                                 gsl::span<const size_t> notification_owners,
                                                 size_t num_barriers,
-                                                const DeviceStreamCollection& device_stream_map,
+                                                const DeviceStreamCollection* device_stream_map,
                                                 gsl::span<const int> feed_mlvalue_idxs,
                                                 gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
                                                 std::vector<OrtValue>& fetches,
@@ -26,14 +26,14 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
                                                                                   fetches,
                                                                                   fetch_allocators,
                                                                                   sess_state,
-                                                                                  device_stream_map.GetStreams()),
+                                                                                  device_stream_map ? device_stream_map->GetStreams() : gsl::span<Stream*>({})),
                                                                            logger_(&sess_logger),
                                                                            single_thread_mode_(single_thread_mode),
                                                                            device_stream_map_(device_stream_map),
                                                                            count_down_barriers_(num_barriers) {
   notifications_.reserve(notification_owners.size());
   for (size_t i = 0; i < notification_owners.size(); ++i) {
-    auto* stream = device_stream_map_.GetStream(notification_owners[i]);
+    auto* stream = device_stream_map_ ? device_stream_map_->GetStream(notification_owners[i]) : nullptr;
     if (stream)
       notifications_.emplace_back(stream->CreateNotification(/*TODO: calculate num of consumers*/ 0));
     else
@@ -69,8 +69,12 @@ bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
 }
 
 Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
-  ORT_ENFORCE(idx < device_stream_map_.NumStreams());
-  return device_stream_map_.GetStream(idx);
+  if (device_stream_map_) {
+    ORT_ENFORCE(idx < device_stream_map_->NumStreams());
+    return device_stream_map_->GetStream(idx);
+  } else {
+    return nullptr;
+  }
 }
 
 #else
@@ -109,16 +113,16 @@ StreamExecutionContext ::StreamExecutionContext(const SessionState& sess_state,
   }
 }
 
-synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) { 
-    ORT_THROW("Try to get notification in a build which doesn't enable Stream!"); 
+synchronize::Notification* StreamExecutionContext ::GetNotification(size_t /*idx*/) {
+  ORT_THROW("Try to get notification in a build which doesn't enable Stream!");
 }
 
 bool StreamExecutionContext ::DecCountDownBarrier(size_t /*barrier_id*/) {
-    ORT_THROW("Try to decrease barrier in a build which doesn't enable Stream!");
+  ORT_THROW("Try to decrease barrier in a build which doesn't enable Stream!");
 }
 
 Stream* StreamExecutionContext ::GetDeviceStream(size_t /*idx*/) {
-    return nullptr;
+  return nullptr;
 }
 #endif
 
@@ -166,7 +170,8 @@ void StreamExecutionContext ::RecycleNodeInputs(onnxruntime::NodeIndex node_inde
   }
 }
 
-void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag,
+              size_t since, bool is_downstream) {
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
@@ -191,7 +196,10 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   // counter otherwise later in backward the downstream won't execute correctly.
   // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
   // by Torch Dynamo.
-  if (since >= end && since < logic_stream->steps_.size() && logic_stream->steps_[since]->IsBarrier()) {
+  // We only need to do this on a triggered downstream. For example if the barrier is the first step of whole CPU plan,
+  // and the forward part is empty, the normal run of the forward part will not do this extra barrier handling.
+  if (is_downstream && since >= end && since < logic_stream->steps_.size() &&
+      logic_stream->steps_[since]->IsBarrier()) {
     if (!ctx.TaskStatus().IsOK()) {
       ctx.CompleteTask();
       return;
@@ -224,6 +232,8 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
     ctx.CompleteTask();
     return;
   }
+#else
+  ORT_UNUSED_PARAMETER(is_downstream);
 #endif
 
   while (since < end) {
@@ -265,11 +275,8 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   return;
 }
 
-void ScheduleDownstream(StreamExecutionContext& ctx,
-                        size_t trigger,
-                        bool single_thread_mode,
-                        const bool& terminate_flag,
-                        SessionScope& session_scope) {
+void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single_thread_mode,
+                        const bool& terminate_flag, SessionScope& session_scope) {
   auto* plan = ctx.GetSessionState().GetExecutionPlan();
   auto& downstream_map = plan->downstream_map;
   auto* tp = single_thread_mode ? nullptr : ctx.GetSessionState().GetInterOpThreadPool();
@@ -278,10 +285,9 @@ void ScheduleDownstream(StreamExecutionContext& ctx,
     for (auto downstream : it->second) {
       // increase the task count before schedule down-stream
       ctx.AddTask();
-      concurrency::ThreadPool::Schedule(tp,
-                                        [&ctx, downstream, &terminate_flag, &session_scope]() {
-                                          RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
-                                        });
+      concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, &terminate_flag, &session_scope]() {
+        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second, true);
+      });
     }
   }
 }

@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_APIS__
         // NOTE: The order of the APIs in this struct should match exactly that in
         // OrtTrainingApi  (onnxruntime_training_c_api.cc)
         [StructLayout(LayoutKind.Sequential)]
@@ -53,10 +53,10 @@ namespace Microsoft.ML.OnnxRuntime
                 DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(NativeMethods.OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
                 // TODO: Make this save the pointer, and not copy the whole structure across
-                api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+                api_ = (OrtApi)OrtGetApi(13 /*ORT_API_VERSION*/);
 
                 OrtGetTrainingApi = (DOrtGetTrainingApi)Marshal.GetDelegateForFunctionPointer(api_.GetTrainingApi, typeof(DOrtGetTrainingApi));
-                trainingApiPtr = OrtGetTrainingApi(4 /*ORT_API_VERSION*/);
+                trainingApiPtr = OrtGetTrainingApi(13 /*ORT_API_VERSION*/);
                 if (trainingApiPtr != IntPtr.Zero)
                 {
                     trainingApi_ = (OrtTrainingApi)Marshal.PtrToStructure(trainingApiPtr, typeof(OrtTrainingApi));

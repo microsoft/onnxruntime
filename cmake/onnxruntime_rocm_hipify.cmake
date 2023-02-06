@@ -9,6 +9,8 @@ set(contrib_ops_excluded_files
   "bert/attention.h"
   "bert/attention_impl.cu"
   "bert/attention_softmax.h"
+  "bert/multihead_attention.cc"
+  "bert/multihead_attention.h"
   "bert/embed_layer_norm.cc"
   "bert/embed_layer_norm.h"
   "bert/embed_layer_norm_impl.cu"
@@ -21,9 +23,19 @@ set(contrib_ops_excluded_files
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"
   "bert/skip_layer_norm_impl.h"
+  "bert/cutlass_fmha/*"
   "bert/tensorrt_fused_multihead_attention/*"
   "bert/transformer_common.h"
   "bert/transformer_common.cc"
+  "diffusion/group_norm.h"
+  "diffusion/group_norm.cc"
+  "diffusion/group_norm_impl.cu"
+  "diffusion/group_norm_impl.h"
+  "diffusion/bias_split_gelu_impl.h"
+  "diffusion/bias_split_gelu_impl.cu"
+  "diffusion/bias_split_gelu.h"
+  "diffusion/bias_split_gelu.cc"
+  "diffusion/nhwc_conv.cc"
   "math/complex_mul.cc"
   "math/complex_mul.h"
   "math/complex_mul_impl.cu"
@@ -91,6 +103,10 @@ set(contrib_ops_excluded_files
   "inverse.cc"
   "fused_conv.cc"
 )
+
+if (NOT onnxruntime_ENABLE_ATEN)
+  list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
+endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
