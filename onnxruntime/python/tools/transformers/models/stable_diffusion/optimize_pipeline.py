@@ -29,7 +29,6 @@ import sys
 from pathlib import Path
 
 import coloredlogs
-import onnx
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from fusion_options import FusionOptions

@@ -12,8 +12,7 @@ from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
 from fusion_transpose import FusionTranspose
-from fusion_utils import FusionUtils
-from onnx import ModelProto, TensorProto, helper, numpy_helper
+from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
