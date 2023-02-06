@@ -1,6 +1,7 @@
 import onnx
 from onnx import TensorProto, helper
 
+
 def GenerateModel(model_name):
     nodes = [
         helper.make_node(
@@ -29,6 +30,7 @@ def GenerateModel(model_name):
 
     model = helper.make_model(graph)
     onnx.save(model, model_name)
+
 
 if __name__ == "__main__":
     GenerateModel("trt_plugin_custom_op_test.onnx")
