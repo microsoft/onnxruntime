@@ -123,6 +123,8 @@ class MLASCPUIDInfo
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
+    bool HasFp16VectorAcceleration() const { return has_fp16_; }
+
     uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
 
     int32_t GetCurrentUarch() const { return -1; }
@@ -137,6 +139,7 @@ class MLASCPUIDInfo
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
+    bool has_fp16_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 

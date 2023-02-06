@@ -36,6 +36,9 @@ Abstract:
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
     has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
+
+    // raw hack! Need CPUIDInfo implementation for more precise detection
+    has_fp16_ = has_arm_neon_dot_;
 }
 #endif
 

@@ -25,15 +25,8 @@ Abstract:
 bool MLASCALL
 MlasFp16AccelerationSupported()
 {
-#ifdef MLAS_NEON64_INTRINSICS
-    // TODO!! Only support for ARMv8.2
-    // TODO!! how to detect ARMv8.0 ???
-    return true;
-#else
-    return false;
-#endif
+    return MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
 }
-
 
 
 void
