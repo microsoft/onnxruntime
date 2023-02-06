@@ -1235,10 +1235,11 @@ def generate_build_tree(
                 # use absolute path here because onnxruntime-extensions is outside onnxruntime
                 onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
                 cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
-                cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
                 print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
             else:
                 print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
+
+            cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
 
             if is_reduced_ops_build(args):
                 operators_config_file = os.path.abspath(args.include_ops_by_config)
