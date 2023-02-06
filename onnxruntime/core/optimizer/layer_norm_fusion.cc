@@ -158,6 +158,10 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     }
 
+    if (!p_reduce_mean_input || !p_sub_input || p_reduce_mean_input != p_sub_input) {
+      continue;
+    }
+
     if (p_sub_node_dup) {
       const NodeArg* p_sub_dup_input = nullptr;
       for (NodeArg* node_arg : graph.GetNode(p_sub_node_dup->Index())->MutableInputDefs()) {
