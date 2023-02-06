@@ -63,7 +63,7 @@ git submodule update --init
   ```
 
 ## TensorRT
-**Ubuntu 18.04, CUDA 11.0, TensorRT 7.1.3.4**
+**Ubuntu 20.04, CUDA 11.8, TensorRT 8.5.1**
 
 1. Update submodules
 ```
@@ -78,7 +78,9 @@ git submodule update --init
 3. Run the Docker image
 
   ```
-  docker run -it onnxruntime-trt
+  docker run --gpus all -it onnxruntime-trt
+  or
+  nvidia-docker run -it onnxruntime-trt
   ```
 
 ## OpenVINO
