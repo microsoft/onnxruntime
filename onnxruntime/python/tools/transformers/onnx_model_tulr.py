@@ -212,11 +212,6 @@ class FusionTulrAttention(FusionAttention):
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
-        if is_qkv_diff_dims:
-            attention_node.attribute.extend(
-                [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])]
-            )
-
         if self.mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
