@@ -120,7 +120,7 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
     } else {
       return ignore_identity;
     }
-    indentity.append("####");
+    identity.append("####");
   }
   return {identity};
 }
