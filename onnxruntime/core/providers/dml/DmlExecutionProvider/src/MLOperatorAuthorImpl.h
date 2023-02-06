@@ -347,7 +347,7 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
         Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextNodeWrapperPrivate, IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
-        IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
+        IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
  public:
