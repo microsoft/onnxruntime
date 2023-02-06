@@ -24,7 +24,7 @@ class FP16Converter:
         return helper.make_tensor_value_info(tensor.name, tensor.data_type, shape)
 
     @staticmethod
-    def __np_float16_to_int(np_list: list[np.float16()]):
+    def __np_float16_to_int(np_list: []):
         """
         Convert numpy float16 to python int.
 
