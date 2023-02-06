@@ -26,15 +26,12 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const CudaT*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+    return dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  } else {
-    dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-        gsl::narrow_cast<int>(N));
   }
-
-  return Status::OK();
+  return dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(N));
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                           \
