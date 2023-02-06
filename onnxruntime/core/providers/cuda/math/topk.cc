@@ -7,31 +7,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-#ifdef BUILD_ALL_AVAILABLE_CUDA_KERNELS
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    1, 9,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()),
-    TopK<false>);
-
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    10, 10,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).InputMemoryType(OrtMemTypeCPUInput, 1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    TopK<true>);
-
-ONNX_OPERATOR_KERNEL_EX(
-    TopK,
-    kOnnxDomain,
-    11,
-    kCudaExecutionProvider,
-    (*KernelDefBuilder::Create()).InputMemoryType(OrtMemTypeCPUInput, 1).TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes()).TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
-    TopK<true>);
-#else
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     TopK,
     kOnnxDomain,
@@ -74,7 +49,6 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<int64_t>()})
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
     TopK<true>);
-#endif
 
 template <bool inputk>
 TopK<inputk>::TopK(const OpKernelInfo& info) : CudaKernel(info) {
@@ -132,14 +106,6 @@ Status TopK<inputk>::ComputeInternal(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported for TopK operator");
   }
 
-#ifdef BUILD_ALL_AVAILABLE_CUDA_KERNELS
-  if (IS_PRIM_TYPE(uint8_t)) return TOPKIMPL(uint8_t);
-  if (IS_PRIM_TYPE(uint16_t)) return TOPKIMPL(uint16_t);
-  if (IS_PRIM_TYPE(uint32_t)) return TOPKIMPL(uint32_t);
-  if (IS_PRIM_TYPE(uint64_t)) return TOPKIMPL(uint64_t);
-  if (IS_PRIM_TYPE(int8_t)) return TOPKIMPL(int8_t);
-  if (IS_PRIM_TYPE(int16_t)) return TOPKIMPL(int16_t);
-#endif
   if (IS_PRIM_TYPE(int32_t)) return TOPKIMPL(int32_t);
   if (IS_PRIM_TYPE(int64_t)) return TOPKIMPL(int64_t);
   if (IS_PRIM_TYPE(MLFloat16)) return TOPKIMPL(MLFloat16);
