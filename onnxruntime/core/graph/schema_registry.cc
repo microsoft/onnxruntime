@@ -248,9 +248,6 @@ void SchemaRegistryManager::GetSchemaAndHistory(
     const std::string& domain,
     const ONNX_NAMESPACE::OpSchema** latest_schema,
     int* earliest_opset_where_unchanged) const {
-
-   auto& onnx_domain_version_map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
-
   // A greedy algorithm is used to search for a schema registration in some registry,
   // while potentially inferring from other registries the allowed schema version
   // given the op-set version.  Each time a registry fails to locate the schema
@@ -273,10 +270,7 @@ void SchemaRegistryManager::GetSchemaAndHistory(
       return;
     }
 
-    // Only consider re-search the schema with a reduced op-set version for non ONNX domain.
-    // The reason is ort custom op can register an operator in ONNX domain with baseline opset version set to 1,
-    // which has the chance to make later search in ONNX schema registry use version=1 and end up with getting the old schema.
-    if (new_version < version && onnx_domain_version_map.find(domain) == onnx_domain_version_map.end()) {
+    if (new_version) {
       GSL_SUPPRESS(es .84)
       unchecked_registry_indices.insert(unchecked_registry_indices.end(),
                                         checked_registry_indices.begin(),
