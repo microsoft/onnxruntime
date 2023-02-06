@@ -1465,7 +1465,7 @@ template <typename... Args>
 inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
                                           int line_number, const char* func_name, const char* format,
                                           Args&&... args) const noexcept {
-  int msg_len = snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
+  int msg_len = std::snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
 
   if (msg_len < 0) {  // Formatting error
     return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
@@ -1487,7 +1487,7 @@ inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, co
 #else
     std::unique_ptr<char[]> buffer(new char[buffer_size]);
 #endif
-    snprintf(buffer.get(), buffer_size, format, std::forward<Args>(args)...);
+    std::snprintf(buffer.get(), buffer_size, format, std::forward<Args>(args)...);
     status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
   }
 
