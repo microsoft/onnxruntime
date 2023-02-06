@@ -42,7 +42,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
         if ds_version > Version("0.8.0") or ds_version < Version("0.4.0"):
             warnings.warn(
                 "Skip modifying optimizer because of unsupported DeepSpeed version {}, "
-                "supported version: 0.4.0 - 0.7.3.".format(deepspeed.__version__),
+                "supported version: 0.4.0 - 0.8.0.".format(deepspeed.__version__),
                 UserWarning,
             )
             return False

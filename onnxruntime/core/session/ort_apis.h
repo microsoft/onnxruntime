@@ -449,4 +449,3 @@ ORT_API_STATUS_IMPL(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingL
                     _In_z_ const char* func_name);
 ORT_API_STATUS_IMPL(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out);
 }  // namespace OrtApis
-

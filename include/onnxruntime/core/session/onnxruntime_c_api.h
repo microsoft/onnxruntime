@@ -30,7 +30,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 14
+#define ORT_API_VERSION 15
 
 #ifdef __cplusplus
 extern "C" {
@@ -2103,7 +2103,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr, _Out_ int* provider_length);
 
-  /** \brief Release data from OrtApi::GetAvailableProviders
+  /** \brief Release data from OrtApi::GetAvailableProviders. This API will never fail
+   * so you can rely on it in a noexcept code.
    *
    * \param[in] ptr The `out_ptr` result from OrtApi::GetAvailableProviders.
    * \param[in] providers_length The `provider_length` result from OrtApi::GetAvailableProviders
@@ -3552,6 +3553,13 @@ struct OrtApi {
 
   /* \brief: Get the training C Api
    *
+   * \param[in] version Must be ::ORT_API_VERSION
+   * \return The ::OrtTrainingApi for the version requested.
+   *         nullptr will be returned and no error message will be printed if the training api is not supported with
+   *         this build.
+   *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
+   *         example when using a runtime older than the version created with this header file.
+   *
    * \since Version 1.13
    */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
@@ -3703,7 +3711,6 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                   _In_ const char* registration_func_name);
 
-  /// @}
   /// \name OrtKernelInfo
   /// Custom operator APIs.
   /// @{
@@ -3795,6 +3802,7 @@ struct OrtApi {
    * of an input during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
    * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -3809,6 +3817,7 @@ struct OrtApi {
    * of an output during kernel/session creation.
    *
    * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
    * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -3893,11 +3902,11 @@ struct OrtApi {
    * If oneDNN is not available, this function will return failure.
    *
    * \param[in] options
-   * \param[in] cann_options
+   * \param[in] dnnl_options
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Dnnl,
                   _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
@@ -3908,7 +3917,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
 
@@ -3926,7 +3935,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
                   _In_reads_(num_keys) const char* const* provider_options_keys,
@@ -3945,13 +3954,13 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   ORT_API2_STATUS(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 
   /** \brief Release an ::OrtDnnlProviderOptions
    *
-   * \since Version 1.14.
+   * \since Version 1.15.
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
