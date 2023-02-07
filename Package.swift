@@ -29,9 +29,8 @@ let package = Package(
                       url: "https://onnxruntimepackages.z14.web.core.windows.net/pod-archive-onnxruntime-c-1.13.1.zip",
                       checksum: "f83c847421a6198d060af5e8535314cfe540a208552db7870b838ebc90cdaa3f"),
         
-            .testTarget(
-                name: "onnxTests",
-                dependencies: ["objcOnnxWrapper"],
-                path: "swift/onnxTests"),
+        .testTarget(name: "onnxTests",
+                    dependencies: ["objcOnnxWrapper"],
+                    path: "swift/onnxTests"),
     ]
 )
