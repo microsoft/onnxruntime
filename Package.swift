@@ -7,12 +7,12 @@ let package = Package(
     name: "onnxruntime",
     platforms: [.iOS(.v13)],
     products: [
-        .library(name: "onnxruntime", targets: ["cOnnxWrapper", "objcOnnxWrapper"]),
+        .library(name: "onnxruntime", targets: ["objcOnnxWrapper"]),
     ],
     dependencies: [],
     targets: [
         .target(name: "swiftOnnxWrapper",
-                dependencies: ["objcOnnxWrapper", "cOnnxWrapper"],
+                dependencies: ["objcOnnxWrapper"],
                 path: "swift/onnxWrapper"),
         
         .target(name: "objcOnnxWrapper",
@@ -27,14 +27,9 @@ let package = Package(
                                   "-fvisibility=hidden",
                                   "-fvisibility-inlines-hidden"
                                  ])
-                ],
-                linkerSettings: [
-                    .linkedFramework("onnxruntime"),
+                ], linkerSettings: [
+                    .unsafeFlags(["-ObjC"]),
                 ]),
-        
-        .target(name: "cOnnxWrapper",
-                dependencies: ["onnxruntime"],
-                path: "swift/cOnnxWrapper"),
         
         // to generate checksum use `shasum -a 256 path/tp/my/zip` or `swift package compute-checksum path/tp/my/zip`
         .binaryTarget(name: "onnxruntime",

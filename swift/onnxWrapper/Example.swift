@@ -3,10 +3,21 @@
 
 import Foundation
 import objcOnnxWrapper
-import cOnnxWrapper
 
 public class OnnxWrapper {
-    public init() {
-        
+    public private(set) var session: ORTSession
+    public private(set) var env: ORTEnv
+    
+    public init(modelPath: String, threadCount: Int32 = 1) {
+        do {
+            env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
+            let options = try ORTSessionOptions()
+            try options.setLogSeverityLevel(ORTLoggingLevel.verbose)
+            try options.setIntraOpNumThreads(threadCount)
+            // Create the ORTSession
+            session = try ORTSession(env: env, modelPath: modelPath, sessionOptions: options)
+        } catch {
+            fatalError(error.localizedDescription)
+        }
     }
 }
