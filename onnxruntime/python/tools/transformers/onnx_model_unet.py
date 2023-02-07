@@ -9,8 +9,11 @@ from typing import Optional
 from fusion_attention_unet import FusionAttentionUnet
 from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
+from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
+from fusion_transpose import FusionTranspose
 from onnx import ModelProto
+from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
 
 logger = getLogger(__name__)
@@ -30,10 +33,61 @@ class UnetOnnxModel(BertOnnxModel):
         super().__init__(model, num_heads=num_heads, hidden_size=hidden_size)
 
     def preprocess(self):
-        return
+        self.remove_useless_div()
 
     def postprocess(self):
+        self.merge_sequential_transpose()
         self.prune_graph()
+        self.remove_unused_constant()
+
+    def remove_useless_div(self):
+        """Remove Div by 1"""
+        div_nodes = [node for node in self.nodes() if node.op_type == "Div"]
+
+        nodes_to_remove = []
+        for div in div_nodes:
+            if self.find_constant_input(div, 1.0) == 1:
+                nodes_to_remove.append(div)
+
+        for node in nodes_to_remove:
+            self.replace_input_of_all_nodes(node.output[0], node.input[0])
+
+        if nodes_to_remove:
+            self.remove_nodes(nodes_to_remove)
+            logger.info("Removed %d useless Div (by 1) nodes", len(nodes_to_remove))
+
+    def convert_conv_to_nhwc(self):
+        # Do not update weight here since save external data has a bug
+        conv_to_nhwc_conv = FusionNhwcConv(self, update_weight=False)
+        conv_to_nhwc_conv.apply()
+
+    def merge_sequential_transpose(self):
+        fusion_transpose = FusionTranspose(self)
+        fusion_transpose.apply()
+
+        remove_count = 0
+        nodes = self.get_nodes_by_op_type("Transpose")
+        for node in nodes:
+            permutation = OnnxModel.get_node_attribute(node, "perm")
+            assert isinstance(permutation, list)
+            if permutation != list(range(len(permutation))):
+                continue
+            assert not (
+                self.find_graph_output(node.output[0])
+                or self.find_graph_input(node.input[0])
+                or self.find_graph_output(node.input[0])
+            )
+
+            # Let all children nodes skip current Transpose node and link to its parent
+            # Note that we cannot update parent node output since parent node might have more than one children.
+            self.replace_input_of_all_nodes(node.output[0], node.input[0])
+
+            self.remove_node(node)
+            remove_count += 1
+
+        total = len(fusion_transpose.nodes_to_remove) + remove_count
+        if total:
+            logger.info("Removed %d Transpose nodes", total)
 
     def optimize(self, options: Optional[FusionOptions] = None):
         if (options is not None) and not options.enable_shape_inference:
@@ -78,7 +132,7 @@ class UnetOnnxModel(BertOnnxModel):
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
 
-        self.postprocess()
+        self.convert_conv_to_nhwc()
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
@@ -87,6 +141,29 @@ class UnetOnnxModel(BertOnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
-        self.remove_unused_constant()
+        self.postprocess()
 
         logger.info(f"opset version: {self.get_opset_version()}")
+
+    def get_fused_operator_statistics(self):
+        """
+        Returns node count of fused operators.
+        """
+        op_count = {}
+        ops = [
+            "Attention",
+            "MultiHeadAttention",
+            "Gelu",
+            "FastGelu",
+            "LayerNormalization",
+            "SkipLayerNormalization",
+            "BiasSplitGelu",
+            "GroupNorm",
+            "NhwcConv",
+        ]
+        for op in ops:
+            nodes = self.get_nodes_by_op_type(op)
+            op_count[op] = len(nodes)
+
+        logger.info(f"Optimized operators:{op_count}")
+        return op_count
