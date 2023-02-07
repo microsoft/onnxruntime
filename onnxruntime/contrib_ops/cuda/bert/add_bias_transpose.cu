@@ -243,7 +243,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
 
 template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
-                                    const int rotary_embedding_dim, const int step) {
+                                    const int rotary_embedding_dim, const int head_size,
+                                    const int step) {
+  // AddBiasTransposeQKV with rotary embedding
   // Format 1 for unfused attention, or fused causal attention
   //     Input:  BxSxMxNxH
   //     Output: MxBxNxSxH
@@ -253,7 +255,6 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   int s = blockIdx.x;
   int b = blockIdx.y;
 
-  const int head_size = blockDim.x;
   const int num_heads = blockDim.y;
 
   const int sequence_length = gridDim.x;
@@ -261,76 +262,93 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   const int H = head_size;
   const int NH = num_heads * head_size;
   const int NHS = NH * sequence_length;
-  const int tidx = threadIdx.x;
-
-  if (tidx >= head_size) {
-    return;
-  }
-
-  extern __shared__ __align__(sizeof(float2)) char smem_[];
 
   constexpr int vec_size = Vec_t<T>::size;
   using Vec_t = typename Vec_t<T>::Type;
 
-  const int src_q_idx = n * head_size + (s * M) * NH + b * NHS * M + tidx * vec_size;
-  const int src_k_idx = n * head_size + (1 + s * M) * NH + b * NHS * M + tidx * vec_size;
-  const int src_v_idx = n * head_size + (2 + s * M) * NH + b * NHS * M + tidx * vec_size;
+  extern __shared__ __align__(sizeof(float2)) char smem_[];
 
-  Vec_t q, k, v;
-  q = *reinterpret_cast<const Vec_t*>(&input[src_q_idx]);
-  k = *reinterpret_cast<const Vec_t*>(&input[src_k_idx]);
-  v = *reinterpret_cast<const Vec_t*>(&input[src_v_idx]);
+  int tidx = threadIdx.x;
+  const int stride = blockDim.x;
 
-  Vec_t q_bias, k_bias, v_bias;
-  q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + tidx * vec_size]);
-  k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + tidx * vec_size]);
-  v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + tidx * vec_size]);
+  if (tidx * vec_size < head_size) {
+    const bool is_masked = tidx * vec_size >= head_size;
 
-  q = add(q, q_bias);
-  k = add(k, k_bias);
-  v = add(v, v_bias);
+    const int src_q_idx = n * head_size + (s * M) * NH + b * NHS * M + tidx * vec_size;
+    const int src_k_idx = n * head_size + (1 + s * M) * NH + b * NHS * M + tidx * vec_size;
+    const int src_v_idx = n * head_size + (2 + s * M) * NH + b * NHS * M + tidx * vec_size;
 
-  T* q_smem = reinterpret_cast<T*>(smem_);
-  T* k_smem = q_smem + rotary_embedding_dim;
+    Vec_t q, k, v;
+    Vec_t q_bias, k_bias, v_bias;
 
-  const int half_rotary_dim = rotary_embedding_dim / 2;
-  const int half_idx        = (tidx * vec_size) / half_rotary_dim;
-  const int intra_half_idx  = (tidx * vec_size) % half_rotary_dim;
-  const int smem_pitch      = half_rotary_dim;
+    if (!is_masked) {
+      q = *reinterpret_cast<const Vec_t*>(&input[src_q_idx]);
+      k = *reinterpret_cast<const Vec_t*>(&input[src_k_idx]);
+      v = *reinterpret_cast<const Vec_t*>(&input[src_v_idx]);
 
-  *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
-  *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx) = k;
+      q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + tidx * vec_size]);
+      k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + tidx * vec_size]);
+      v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + tidx * vec_size]);
+    }
 
-  __syncthreads();
+    q = add(q, q_bias);
+    k = add(k, k_bias);
+    v = add(v, v_bias);
 
-  const int transpose_idx = half_idx * (half_rotary_dim / 2) + intra_half_idx / 2;
-  constexpr int tidx_factor = vec_size / 2;
+    const bool do_rotary = !is_masked && vec_size * tidx < rotary_embedding_dim;
 
-  vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
-  vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+    T* q_smem = reinterpret_cast<T*>(smem_);
+    T* k_smem = q_smem + rotary_embedding_dim;
 
-  apply_rotary_embedding(q, k, transpose_idx / tidx_factor, rotary_embedding_dim, step);
+    const int half_rotary_dim = rotary_embedding_dim / 2;
+    const int half_idx        = (tidx * vec_size) / half_rotary_dim;
+    const int intra_half_idx  = (tidx * vec_size) % half_rotary_dim;
+    const int smem_pitch      = half_rotary_dim;
 
-  write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
-  write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+    if (do_rotary) {
+      *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx) = q;
+      *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx) = k;
+    }
 
-  __syncthreads();
+    __syncthreads();
 
-  q = *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx);
-  k = *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx);
+    const int transpose_idx = half_idx * (half_rotary_dim / 2) + intra_half_idx / 2;
+    constexpr int tidx_factor = vec_size / 2;
 
-  const int dest_q_idx = s * head_size + n * sequence_length * H + b * NHS + tidx * vec_size;
-  const int dest_k_idx = s * head_size + n * sequence_length * H + b * NHS + NHS * batch_size + tidx * vec_size;
-  const int dest_v_idx = s * head_size + n * sequence_length * H + b * NHS + 2 * NHS * batch_size + tidx * vec_size;
+    if (do_rotary) {
+      vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
 
-  *reinterpret_cast<Vec_t*>(&output[dest_q_idx]) = q;
-  *reinterpret_cast<Vec_t*>(&output[dest_k_idx]) = k;
-  *reinterpret_cast<Vec_t*>(&output[dest_v_idx]) = v;
+      apply_rotary_embedding(q, k, transpose_idx / tidx_factor, rotary_embedding_dim, step);
 
-  if (nullptr != qkv_add_bias) {
-    *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_q_idx]) = q;
-    *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_k_idx]) = k;
-    *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_v_idx]) = v;
+      write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
+      write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
+    }
+
+    __syncthreads();
+
+    if (do_rotary) {
+      q = *reinterpret_cast<Vec_t*>(q_smem + half_idx * smem_pitch + intra_half_idx);
+      k = *reinterpret_cast<Vec_t*>(k_smem + half_idx * smem_pitch + intra_half_idx);
+    }
+
+    const int dest_q_idx = s * head_size + n * sequence_length * H + b * NHS + tidx * vec_size;
+    const int dest_k_idx = s * head_size + n * sequence_length * H + b * NHS + NHS * batch_size + tidx * vec_size;
+    const int dest_v_idx = s * head_size + n * sequence_length * H + b * NHS + 2 * NHS * batch_size + tidx * vec_size;
+
+    if (!is_masked) {
+      *reinterpret_cast<Vec_t*>(&output[dest_q_idx]) = q;
+      *reinterpret_cast<Vec_t*>(&output[dest_k_idx]) = k;
+      *reinterpret_cast<Vec_t*>(&output[dest_v_idx]) = v;
+
+      if (nullptr != qkv_add_bias) {
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_q_idx]) = q;
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_k_idx]) = k;
+        *reinterpret_cast<Vec_t*>(&qkv_add_bias[src_v_idx]) = v;
+      }
+    }
+
+    tidx += stride;
   }
 }
 
@@ -414,13 +432,6 @@ __global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, co
   }
 }
 
-template <typename T>
-__global__ void AddBiasTransposeQKVLarge(const int head_size, const T* input, const T* biases, T* output,
-                                         T* qkv_add_bias, const int M, const int rotary_embedding_dim,
-                                         const int step) {
-  // Not implemented yet
-  return;
-}
 
 template <typename T>
 __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size) {
@@ -599,8 +610,11 @@ void InvokeAddBiasTranspose(
       if (v_head_size == -1 || qk_head_size == v_head_size) {
         if (do_rotary) {
           const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
-          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias,
-                                                             qk_head_size, step);
+          size_t smem_size = 2 * qk_head_size * sizeof(T);
+          const dim3 block2(qk_head_size / 2, num_heads, 1);
+          AddBiasTransposeQKV<T><<<grid, block2, smem_size, stream>>>(total_matrix_count, input, biases, output,
+                                                                      qkv_add_bias, qk_head_size, qk_head_size,
+                                                                      step);
         } else {
           AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
         }
@@ -626,8 +640,11 @@ void InvokeAddBiasTranspose(
       if (v_head_size == -1 || qk_head_size == v_head_size) {
         if (do_rotary) {
           const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
-          AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output,
-                                                                  qkv_add_bias, total_matrix_count, qk_head_size, step);
+          size_t smem_size = 2 * qk_head_size * sizeof(T);
+          const dim3 block2(CeilDiv(max_threads_per_block / 2, num_heads), num_heads, 1);
+          AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
+                                                                      qkv_add_bias, qk_head_size, qk_head_size,
+                                                                      step);
         } else {
           AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output,
                                                                   qkv_add_bias, total_matrix_count);
