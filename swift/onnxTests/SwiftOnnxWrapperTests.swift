@@ -16,10 +16,10 @@ final class SwiftOnnxWrapperTests: XCTestCase {
             try options.setLogSeverityLevel(ORTLoggingLevel.verbose)
             try options.setIntraOpNumThreads(threadCount)
             // Create the ORTSession
-            let session = try ORTSession(env: env, modelPath: modelPath, sessionOptions: options)
-            XCTAssertNotNil(session)
+            _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: options)
+            XCTFail("Missing model, session should throw")
         } catch {
-            XCTFail(error.localizedDescription)
+            XCTAssertEqual(error.localizedDescription, "Load model from  failed:Load model  failed. File doesn't exist")
         }
     }
 }
