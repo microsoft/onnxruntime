@@ -327,7 +327,7 @@ class OnnxModel:
         self,
         node,
         parent_op_types,
-        parent_input_index,
+        parent_input_index=None,
         output_name_to_node=None,
         return_indice=None,
     ):
@@ -347,7 +347,8 @@ class OnnxModel:
         Returns:
             parents: a list of matched parent node.
         """
-        assert len(parent_input_index) == len(parent_op_types)
+        if parent_input_index is not None:
+            assert len(parent_input_index) == len(parent_op_types)
 
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -358,16 +359,19 @@ class OnnxModel:
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
-                parent_input_index[i],
+                parent_input_index[i] if parent_input_index is not None else None,
                 output_name_to_node,
                 exclude=[],
                 return_indice=return_indice,
             )
             if matched_parent is None:
-                logger.debug(
-                    f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
-                    stack_info=True,
-                )
+                if parent_input_index is not None:
+                    logger.debug(
+                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                        stack_info=True,
+                    )
+                else:
+                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
