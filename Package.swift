@@ -7,7 +7,7 @@ let package = Package(
     name: "onnxruntime",
     platforms: [.iOS(.v13)],
     products: [
-        .library(name: "onnxruntime", targets: ["objcOnnxWrapper"]),
+        .library(name: "onnxruntime", targets: ["swiftOnnxWrapper", "objcOnnxWrapper"]),
     ],
     dependencies: [],
     targets: [
@@ -26,7 +26,7 @@ let package = Package(
                                   "-Werror",
                                   "-fvisibility=hidden",
                                   "-fvisibility-inlines-hidden"
-                                 ])
+                                 ]),
                 ], linkerSettings: [
                     .unsafeFlags(["-ObjC"]),
                 ]),
