@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
+
+#include "core/common/span_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
@@ -73,7 +75,7 @@ static bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Nod
 }
 
 static inline bool IsNeighborNodeExpectedTypes(Node::NodeConstIterator start, const Node::NodeConstIterator end, std::initializer_list<std::string> expected_types) {
-  return IsNeighborNodeExpectedTypes(start, end, gsl::make_span(expected_types));
+  return IsNeighborNodeExpectedTypes(start, end, AsSpan(expected_types));
 }
 
 /** Match subgraph like the following:
@@ -819,7 +821,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& layer_norm_node = *p_layer_norm;
     ORT_RETURN_IF_ERROR(Recurse(layer_norm_node, modified, graph_level, logger));
-    if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {1}, kOnnxDomain) ||
+    if (!graph_utils::IsSupportedOptypeVersionAndDomain(layer_norm_node, "LayerNormalization", {1, 17}, kOnnxDomain) ||
         !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
       continue;
     }
@@ -843,7 +845,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());
 
     if (IsNeighborNodeExpectedTypes(layer_norm_add_node.InputEdgesBegin(), layer_norm_add_node.InputNodesEnd(), {"Gather", "Gather"})) {
-      //DistilBert
+      // DistilBert
       if (FuseSubGraphDistilBert(graph, layer_norm_add_node, layer_norm_node, logger)) {
         modified = true;
       }

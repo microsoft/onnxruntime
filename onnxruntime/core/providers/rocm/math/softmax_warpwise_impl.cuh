@@ -164,5 +164,5 @@ __global__ void softmax_warp_forward(output_t* dst, const input_t* src, int batc
   }
 }
 
-}  // namespace cuda
+}  // namespace rocm
 }  // namespace onnxruntime

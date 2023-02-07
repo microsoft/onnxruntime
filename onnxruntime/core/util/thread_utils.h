@@ -12,21 +12,31 @@ struct OrtThreadPoolParams {
   //1: Don't create thread pool
   //n: Create a thread pool with n threads.
   int thread_pool_size = 0;
+
   //If it is true and thread_pool_size = 0, populate the thread affinity information in ThreadOptions.
   //Otherwise if the thread_options has affinity information, we'll use it and set it.
   //In the other case, don't set affinity
   bool auto_set_affinity = false;
+
   //If it is true, the thread pool will spin a while after the queue became empty.
   bool allow_spinning = true;
+
   //It it is non-negative, thread pool will split a task by a decreasing block size
   //of remaining_of_total_iterations / (num_of_threads * dynamic_block_base_)
   int dynamic_block_base_ = 0;
 
   unsigned int stack_size = 0;
-  //Index is thread id, value is processor ID
-  //If the vector is empty, no explict affinity binding
-  size_t* affinity_vec = nullptr;
-  size_t affinity_vec_len = 0;
+
+  // A utf-8 string of affinity settings, format be like:
+  // <1st_thread_affinity_config>;<2nd_thread_affinity_config>;<3rd_thread_affinity_config>...
+  // ith_thread_affinity_config could be:
+  // 1,2,3
+  // meaing ith thread attach to logical processor 1,2,3
+  // or
+  // 1-8
+  // meaning ith thread will be attached to first 8 logical processors
+  std::string affinity_str;
+
   const ORTCHAR_T* name = nullptr;
 
   // Set or unset denormal as zero

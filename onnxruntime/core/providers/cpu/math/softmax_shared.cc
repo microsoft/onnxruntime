@@ -22,7 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"

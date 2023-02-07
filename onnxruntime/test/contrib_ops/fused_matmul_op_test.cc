@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
+#include "test/common/dnnl_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -270,7 +271,7 @@ TEST(FusedMatMulOpTest, FloatTypeTransposeBatch) {
   RunFusedMatMulTest<float>("FusedMatMul", 1, true, true, true, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)  
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -281,7 +282,6 @@ TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 #endif
   std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   for (auto t : GenerateSimpleTestCases<float>()) {
-
     OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
 
     std::vector<int64_t> input0_dims(t.input0_dims);
@@ -316,7 +316,7 @@ TEST(FusedMatMulOpTest, Float16_NoTranspose) {
 }
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)  
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
 TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -325,8 +325,24 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     return;
   }
 #endif
+#ifdef USE_DNNL
+   if (!DnnlHasBF16Support()) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
+
   std::vector<float> common_input_vals{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   for (auto t : GenerateSimpleTestCases<float>()) {
+    #if defined(USE_DNNL)
+    // disable scalar or 1D tensor input for oneDNN EP.
+    if (t.name == "test left 1D" ||
+        t.name == "test right 1D" ||
+        t.name == "test scalar output" ||
+        t.name == "test 2D with empty input") {
+      continue;
+    }
+    #endif //  USE_DNNL
 
     OpTester test("FusedMatMul", 1, onnxruntime::kMSDomain);
 
@@ -358,11 +374,13 @@ TEST(FusedMatMulOpTest, BFloat16_NoTranspose) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
-#endif 
+#elif USE_DNNL
+    execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
-#endif
+#endif //  USE_CUDA USE_RCOM USE_DNNL
 
 }  // namespace transpose_matmul
 }  // namespace test

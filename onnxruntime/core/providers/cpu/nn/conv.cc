@@ -17,6 +17,7 @@
 
 #include "core/providers/cpu/nn/conv.h"
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/util/math_cpuonly.h"
 
@@ -79,7 +80,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
+    auto* col_data = alloc->Alloc(sizeof(T) * SafeInt<size_t>(col_buffer_size));
     col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
@@ -205,7 +206,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     // If the output was not allocated inplace with the sum tensor, then copy here.
     const auto* sum_data = Sum->Data<float>();
     if (Ydata != sum_data) {
-      memcpy(Ydata, sum_data, sum_shape.Size() * sizeof(float));
+      memcpy(Ydata, sum_data, SafeInt<size_t>(sum_shape.Size()) * sizeof(float));
     }
     Beta = 1.0f;
   }
@@ -232,7 +233,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
                     Beta,
                     thread_pool);
 
-    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(SafeInt<size_t>(sizeof(float)) * WorkingBufferSize)
+    auto* working_data = WorkingBufferSize > 0 ? alloc->Alloc(sizeof(float) * SafeInt<size_t>(WorkingBufferSize))
                                                : nullptr;
     BufferUniquePtr working_buffer(working_data, BufferDeleter(std::move(alloc)));
 
@@ -253,7 +254,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
     const int64_t kernel_dim = C / conv_attrs_.group * kernel_size;
     const int64_t col_buffer_size = kernel_dim * output_image_size;
 
-    auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
+    auto* col_data = alloc->Alloc(sizeof(float) * SafeInt<size_t>(col_buffer_size));
     BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
     auto* col_buffer_data = static_cast<float*>(col_buffer.get());
 
@@ -274,9 +275,9 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
         math::Gemm<float>(
             CblasNoTrans,
             CblasNoTrans,
-            M / conv_attrs_.group,
-            output_image_size,
-            kernel_dim,
+            narrow<ptrdiff_t>(M / conv_attrs_.group),
+            narrow<ptrdiff_t>(output_image_size),
+            narrow<ptrdiff_t>(kernel_dim),
             1,
             W->Data<float>() + group_id * W_offset,
             col_buffer_data,
@@ -285,7 +286,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
             thread_pool);
       }
 
-      MlasActivation(&activation_, Ydata, Bdata, M, output_image_size, output_image_size);
+      MlasActivation(&activation_, Ydata, Bdata, narrow<size_t>(M), narrow<size_t>(output_image_size), narrow<size_t>(output_image_size));
 
       Xdata += X_offset * conv_attrs_.group;
       Ydata += Y_offset * conv_attrs_.group;

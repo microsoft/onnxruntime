@@ -10,15 +10,6 @@
 
 namespace onnxruntime {
 
-void InterOpDomainDeleter(OrtCustomOpDomain* domain) {
-  if (nullptr != domain) {
-    for (auto op : domain->custom_ops_) {
-      delete op;
-    }
-    delete domain;
-  }
-}
-
 void LoadInterOp(const std::basic_string<ORTCHAR_T>& model_uri, InterOpDomains& domains, const InterOpLogFunc& log_func) {
   int fd;
 
@@ -58,13 +49,11 @@ void LoadInterOp(const ONNX_NAMESPACE::GraphProto& graph_proto, InterOpDomains& 
   for (int i = 0; i < graph_proto.node_size(); ++i) {
     const auto& node_proto = graph_proto.node(i);
     if (node_proto.op_type() == "PyOp") {
-      OrtCustomOpDomain* pyop_domain = nullptr;
-      Ort::ThrowOnError(Ort::GetApi().CreateCustomOpDomain(node_proto.domain().c_str(), &pyop_domain));
-      Ort::ThrowOnError(Ort::GetApi().CustomOpDomain_Add(pyop_domain, LoadPyOp(node_proto, log_func)));
-      auto ort_domain = std::unique_ptr<OrtCustomOpDomain, decltype(&InterOpDomainDeleter)>(pyop_domain, &InterOpDomainDeleter);
-      domains.push_back(std::move(ort_domain));
+      auto pyop_domain = Ort::CustomOpDomain(node_proto.domain().c_str());
+      pyop_domain.Add(LoadPyOp(node_proto, log_func));
+      domains.push_back(std::move(pyop_domain));
     } else {
-      for (int j = 0; j < node_proto.attribute_size(); ++j) {
+      for (int j = 0, limit = node_proto.attribute_size(); j < limit; ++j) {
         const auto& attr = node_proto.attribute(j);
         if (utils::HasGraph(attr)) {
           LoadInterOp(attr.g(), domains, log_func);  //load pyop in subgraph

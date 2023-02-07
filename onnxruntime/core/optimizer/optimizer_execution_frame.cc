@@ -1,19 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/optimizer/optimizer_execution_frame.h"
+
 #include "core/common/common.h"
-#include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
-#include "core/framework/data_transfer_manager.h"
-#include "core/framework/tensorprotoutils.h"
-#include "core/framework/data_types.h"
-#include "core/framework/mldata_type_utils.h"
-#include "core/framework/kernel_registry.h"
-#include "core/framework/fuse_nodes_funcs.h"
+#include "core/common/status.h"
 #include "core/framework/callback.h"
+#include "core/framework/data_transfer_manager.h"
+#include "core/framework/data_types.h"
+#include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/kernel_registry.h"
+#include "core/framework/kernel_type_str_resolver.h"
+#include "core/framework/mldata_type_utils.h"
+#include "core/framework/op_kernel.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/TensorSeq.h"
-#include "core/optimizer/optimizer_execution_frame.h"
 
 namespace onnxruntime {
 
@@ -119,18 +122,40 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   node_index_info_ = std::make_unique<NodeIndexInfo>(nodes, ort_value_name_idx_map_);
 }
 
-Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const{
+Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const {
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
-  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), out);
+  const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, out);
+}
+
+static Status TryCreateKernel(const Node& node,
+                              const KernelRegistry& kernel_registry,
+                              const IExecutionProvider& execution_provider,
+                              const std::unordered_map<int, OrtValue>& constant_initialized_tensors,
+                              const OrtValueNameIdxMap& ort_value_name_idx_map,
+                              FuncManager& funcs_mgr,
+                              const DataTransferManager& data_transfer_mgr,
+                              /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
+  const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  const KernelCreateInfo* kernel_create_info = nullptr;
+  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
+                                                    &kernel_create_info));
+  OpKernelInfo kernel_info(node,
+                           *kernel_create_info->kernel_def,
+                           execution_provider,
+                           constant_initialized_tensors,
+                           ort_value_name_idx_map,
+                           data_transfer_mgr);
+  return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 
 std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   FuncManager func;
-  auto status = kernel_registry->TryCreateKernel(*node, execution_provider_, initializers_,
-                                                 ort_value_name_idx_map_, func, data_transfer_mgr_,
-                                                 op_kernel);
+  auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_,
+                                ort_value_name_idx_map_, func, data_transfer_mgr_,
+                                op_kernel);
 
   // Kernel found in the CPU kernel registry
   if (status.IsOK())

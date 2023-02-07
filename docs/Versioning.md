@@ -22,7 +22,7 @@ models that are stamped with ONNX opset versions in the range [7-9].
 ### Version matrix
 The [table](https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support) summarizes the relationship between the ONNX Runtime version and the ONNX opset version implemented in that release.
 Please note the backward compatibility notes above.
-For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/master/docs/Versioning.md).
+For more details on ONNX Release versions, see [this page](https://github.com/onnx/onnx/blob/main/docs/Versioning.md).
 
 ## Tool Compatibility
 A variety of tools can be used to create ONNX models. Unless otherwise noted, please use the latest released version of the tools to convert/export the ONNX model. Most tools are backwards compatible and support multiple ONNX versions. Join this with the table above to evaluate ONNX Runtime compatibility.
@@ -40,4 +40,3 @@ A variety of tools can be used to create ONNX models. Unless otherwise noted, pl
 |[Paddle2ONNX](https://pypi.org/project/paddle2onnx/)| [Latest stable](https://github.com/PaddlePaddle/Paddle2ONNX/releases) | 1.6-1.9 |
 |[AutoML](https://docs.microsoft.com/en-us/azure/machine-learning/service/concept-automated-ml)|[1.0.39+](https://pypi.org/project/azureml-automl-core)|1.5|
 | |[1.0.33](https://pypi.org/project/azureml-automl-core/1.0.33/)|1.4|
-

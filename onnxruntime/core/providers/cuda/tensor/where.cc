@@ -115,8 +115,8 @@ struct TernaryElementwisePreparation {
         auto offset = out_rank - rank;
         for (auto i = offset; i < out_rank; ++i) {
           // the stride for broadcast dimension is kept as 0
-          if (shape.GetDims()[i - offset] != 1) {
-            padded_strides[i] = pitches[i - offset];
+          if (shape.GetDims()[gsl::narrow_cast<size_t>(i) - offset] != 1) {
+            padded_strides[i] = pitches[gsl::narrow_cast<size_t>(i) - offset];
           }
         }
       }
@@ -185,7 +185,7 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(prepare.TernaryElementwiseBroadcastPrepareHelper(condition_shape, X_shape, Y_shape, output_shape));
 
   WhereImpl<CudaT>(
-      Stream(),
+      Stream(context),
       prepare.output_rank_or_simple_broadcast,
       prepare.a_index_type,
       prepare.a_padded_strides,

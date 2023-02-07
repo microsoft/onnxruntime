@@ -5,7 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-
+#include "core/providers/cpu/tensor/utils.h"
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamwbase.h"
 
 namespace onnxruntime {
@@ -21,7 +21,6 @@ class AdamWOptimizer final : public OpKernel, public AdamWOptimizerBase {
   Status Compute(OpKernelContext* context) const override;
 
  private:
-  Status CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const override;
   Status AdamWComputeMode0(Tensor& weight, Tensor& gradient, Tensor& momentums_1, Tensor& momentums_2, float lr,
                            float alpha_correction,
                            float beta_correction) const;

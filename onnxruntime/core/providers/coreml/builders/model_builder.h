@@ -20,8 +20,8 @@ class ModelBuilder {
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger, uint32_t coreml_flags);
   ~ModelBuilder() = default;
 
-  Status Compile(std::unique_ptr<Model>& model, const std::string& path) ORT_MUST_USE_RESULT;
-  Status SaveCoreMLModel(const std::string& path) ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status Compile(std::unique_ptr<Model>& model, const std::string& path);
+  [[nodiscard]] Status SaveCoreMLModel(const std::string& path);
 
   // Accessors for members
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
@@ -55,18 +55,18 @@ class ModelBuilder {
   std::unordered_set<std::string> unique_names_;
 
   // Convert the onnx model to CoreML::Specification::Model
-  Status Initialize() ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status Initialize();
 
   // If a CoreML operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();
 
   // Copy and process all the initializers to CoreML model
-  Status RegisterInitializers() ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status RegisterInitializers();
 
-  Status AddOperations() ORT_MUST_USE_RESULT;
-  Status RegisterModelInputs() ORT_MUST_USE_RESULT;
-  Status RegisterModelOutputs() ORT_MUST_USE_RESULT;
-  Status RegisterModelInputOutput(const NodeArg& node_arg, bool is_input) ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status AddOperations();
+  [[nodiscard]] Status RegisterModelInputs();
+  [[nodiscard]] Status RegisterModelOutputs();
+  [[nodiscard]] Status RegisterModelInputOutput(const NodeArg& node_arg, bool is_input);
 
   // Record the onnx scalar output names
   void AddScalarOutput(const std::string& output_name);

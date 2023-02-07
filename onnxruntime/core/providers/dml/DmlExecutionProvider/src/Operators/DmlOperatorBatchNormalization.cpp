@@ -202,6 +202,6 @@ void CALLBACK QueryBatchNormalization(IMLOperatorSupportQueryContextPrivate* con
 }
 
 DML_OP_DEFINE_CREATION_FUNCTION(BatchNormalization, DmlOperatorBatchNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(FusedBatchNormalization, DmlOperatorBatchNormalization);
+DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedBatchNormalization, DmlOperatorBatchNormalization);
 
 } // namespace Dml

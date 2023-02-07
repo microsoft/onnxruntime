@@ -15,7 +15,11 @@ __version__ = "0.1.0"
 onnx_domain = "ai.onnx"
 ms_domain = "com.microsoft"
 QUANT_OP_NAME = "QuantizeLinear"
+QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
+DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
+TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+
 
 type_to_name = {
     1: "FLOAT",
@@ -302,7 +306,7 @@ def attribute_to_kwarg(attribute):
         raise ValueError("attribute {} does not have type specified.".format(attribute.name))
 
     # Based on attribute type definitions from AttributeProto
-    # definition in https://github.com/onnx/onnx/blob/master/onnx/onnx.proto
+    # definition in https://github.com/onnx/onnx/blob/main/onnx/onnx.proto
     if attribute.type == 1:
         value = attribute.f
     elif attribute.type == 2:
@@ -366,7 +370,7 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
     """
     Helper function to generate a identifiable filepath by concatenating the given identifier as a suffix.
     """
-    return filename.parent.joinpath(filename.stem + identifier).with_suffix(filename.suffix)
+    return filename.parent.joinpath(filename.stem + identifier + filename.suffix)
 
 
 def apply_plot(hist, hist_edges):
@@ -506,6 +510,24 @@ def optimize_model(model_path: Path, opt_model_path: Path):
     _ = InferenceSession(model_path.as_posix(), sess_option, providers=["CPUExecutionProvider"])
 
 
+def add_pre_process_metadata(model):
+    """Tag the model that it went through quantization pre-processing"""
+    metadata_props = {"onnx.quant.pre_process": "onnxruntime.quant"}
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            metadata_props.update({prop.key: prop.value})
+    onnx.helper.set_model_props(model, metadata_props)
+
+
+def model_has_pre_process_metadata(model):
+    """Check the model whether it went through quantization pre-processing"""
+    if model.metadata_props:
+        for prop in model.metadata_props:
+            if prop.key == "onnx.quant.pre_process" and prop.value == "onnxruntime.quant":
+                return True
+    return False
+
+
 def add_infer_metadata(model):
     metadata_props = {"onnx.infer": "onnxruntime.quant"}
     if model.metadata_props:
@@ -573,7 +595,7 @@ def add_quant_suffix(tensor_name):
 
 
 def add_quant_input_suffix(tensor_name):
-    return tensor_name + "_QuantizeLinear_Input"
+    return tensor_name + QUANT_INPUT_SUFFIX
 
 
 def add_quant_output_suffix(tensor_name):
@@ -589,4 +611,4 @@ def add_dequant_input_suffix(tensor_name):
 
 
 def add_dequant_output_suffix(tensor_name):
-    return tensor_name + "_DequantizeLinear_Output"
+    return tensor_name + DEQUANT_OUTPUT_SUFFIX

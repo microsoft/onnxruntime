@@ -98,6 +98,7 @@ class ORTModule(torch.nn.Module):
                 override_policy=_FallbackPolicy.FALLBACK_FORCE_TORCH_FORWARD,
             )
 
+        self.train(module.training)
         # Finally, ORTModule initialization is complete.
         # Assign self._is_initialized to True after all the ORTModule class attributes have been assigned
         # else, they will be assigned to self._torch_module.original_module instead.

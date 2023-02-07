@@ -39,8 +39,8 @@ mkdir -p /tmp/src
 cd /tmp/src
 
 echo "Installing cmake"
-GetFile https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-`uname -m`.tar.gz /tmp/src/cmake-3.23.2-linux-`uname -m`.tar.gz
-tar -zxf /tmp/src/cmake-3.23.2-linux-`uname -m`.tar.gz --strip=1 -C /usr
+GetFile https://github.com/Kitware/CMake/releases/download/v3.24.3/cmake-3.24.3-linux-`uname -m`.tar.gz /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz
+tar -zxf /tmp/src/cmake-3.24.3-linux-`uname -m`.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz

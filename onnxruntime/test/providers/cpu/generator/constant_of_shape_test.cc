@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 #include <type_traits>
 
 using namespace ONNX_NAMESPACE;
@@ -133,6 +134,11 @@ void RunTypedTest(TensorProto::DataType dt, T value) {
 }
 
 TEST(ConstantOfShape, TypeTests) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1876): Unspecified error";
+  }
+
   // bool can not be tested due to a shortcoming of
   // our test infrastructure which makes use of
   // std::vector<T> which has a specialization for bool

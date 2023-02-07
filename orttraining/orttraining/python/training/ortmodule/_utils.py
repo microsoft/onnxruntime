@@ -12,8 +12,8 @@ import random
 import traceback
 import types
 import warnings
-from distutils.version import LooseVersion
 from typing import List
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import torch
@@ -63,11 +63,11 @@ def _ortvalue_from_torch_tensor(torch_tensor):
     return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _ortvalues_to_torch_tensor(ortvalues, device):
+def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if len(ortvalues) == 0:
         return tuple()
 
-    if "ort" == device.type:
+    if device is not None and "ort" == device.type:
         if not hasattr(C, "to_aten_ort_device_tensor"):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
@@ -194,10 +194,16 @@ def get_device_from_inputs(args, kwargs):
 def _create_iobinding(io_binding, inputs, model, device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, OrtValue(_ortvalue_from_torch_tensor(inputs[idx])))
+        io_binding.bind_ortvalue_input(
+            value_info.name,
+            OrtValue(
+                _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
+            ),
+        )
 
+    device_id = get_device_index(device)
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+        io_binding.bind_output(value_info.name, device.type, device_id=device_id)
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module, user_module: torch.nn.Module):

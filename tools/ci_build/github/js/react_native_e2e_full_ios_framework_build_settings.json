@@ -1,0 +1,16 @@
+{
+    "build_osx_archs": {
+        "iphonesimulator": [
+            "x86_64"
+        ]
+    },
+    "build_params": [
+        "--ios",
+        "--parallel",
+        "--use_xcode",
+        "--build_apple_framework",
+        "--use_coreml",
+        "--skip_tests",
+        "--apple_deploy_target=11.0"
+    ]
+}

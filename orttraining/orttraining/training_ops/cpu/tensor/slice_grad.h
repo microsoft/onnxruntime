@@ -22,7 +22,8 @@ class SliceGrad final : public OpKernel, public SliceBase {
   Status ComputeImpl(OpKernelContext* ctx,
                      Tensor& output_grad_tensor,
                      const gsl::span<const int64_t>& output_dims,
-                     TensorShapeVector* flattened_output_dims,
+                     TensorShapeVector* p_flattened_input_dims,
+                     TensorShapeVector* p_flattened_output_dims,
                      const gsl::span<const int64_t>& starts,
                      const gsl::span<const int64_t>& steps) const;
 };

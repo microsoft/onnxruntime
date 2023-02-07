@@ -4,6 +4,7 @@
 #include "core/providers/cpu/signal/window_functions.h"
 
 #include <cmath>
+#include <core/common/safeint.h>
 
 #include "core/providers/common.h"
 #include "core/providers/cpu/signal/utils.h"
@@ -79,7 +80,7 @@ static Status create_cosine_sum_window(OpKernelContext* ctx, onnx::TensorProto_D
 
   utils::MLTypeCallDispatcher<float, double, int8_t, int16_t, int32_t, int64_t, uint8_t, uint16_t, uint32_t, uint64_t>
       dispatcher(output_datatype);
-  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, size, a0, a1, a2, is_periodic);
+  return dispatcher.InvokeRet<Status, CosineSumWindow>(Y, onnxruntime::narrow<size_t>(size), a0, a1, a2, is_periodic);
 }
 
 Status HannWindow::Compute(OpKernelContext* ctx) const {
@@ -110,7 +111,8 @@ Status BlackmanWindow::Compute(OpKernelContext* ctx) const {
   return create_cosine_sum_window(ctx, data_type_, a0, a1, a2, is_periodic_);
 }
 
-static inline double hz_to_mel_scale(double hz) { return 2595 * std::log10(1 + hz / 700); }
+// 'hz' is a #define in AIX, hence using hz1
+static inline double hz_to_mel_scale(double hz1) { return 2595 * std::log10(1 + hz1 / 700); }
 
 static inline double mel_scale_to_hz(double mels) { return 700 * (pow(10, (mels / 2595)) - 1); }
 
@@ -144,7 +146,7 @@ struct CreateMelWeightMatrix {
     auto* Y_data = reinterpret_cast<T*>(Y->MutableDataRaw());
 
     // Set the weight matrix to 0
-    memset(Y_data, 0, num_spectrogram_bins * num_mel_bins * sizeof(T));
+    memset(Y_data, 0, num_spectrogram_bins * SafeInt<size_t>(num_mel_bins) * sizeof(T));
 
     // The mel filterbank is a triangular shaped peak with a height of 1 and a base equal to the size of the MEL range
     // divided by the number of bins needed times 2. This triangle is then slid across the mel domain linearly, with a
@@ -154,15 +156,16 @@ struct CreateMelWeightMatrix {
     // low_frequency where the mel triangle filter banks begin, and they end on the high_frequency_mel
     // The range is divided evenly to create the needed points corresponding to the begin, center, end points of each
     // triangle filterbank
-    InlinedVector<size_t> frequency_bins(num_mel_bins + 2);
+    InlinedVector<size_t> frequency_bins(SafeInt<size_t>(num_mel_bins) + 2);
     auto low_frequency_mel = hz_to_mel_scale(lower_edge_hertz);
     auto high_frequency_mel = hz_to_mel_scale(upper_edge_hertz);
     auto mel_step = (high_frequency_mel - low_frequency_mel) / static_cast<float>(frequency_bins.size());
 
     // Convert each point from mel scale back to hertz, and then compute the corresponding index in the fft
     for (size_t i = 0; i < frequency_bins.size(); i++) {
-      auto hz = mel_scale_to_hz(low_frequency_mel + mel_step * i);
-      frequency_bins[i] = static_cast<size_t>(std::floor(((dft_length + 1) * hz) / sample_rate));
+      // 'hz' is a #define in AIX, hence using hz1
+      auto hz1 = mel_scale_to_hz(low_frequency_mel + mel_step * i);
+      frequency_bins[i] = static_cast<size_t>(std::floor(((dft_length + 1) * hz1) / sample_rate));
     }
 
     for (size_t i = 0; i < static_cast<size_t>(num_mel_bins); i++) {

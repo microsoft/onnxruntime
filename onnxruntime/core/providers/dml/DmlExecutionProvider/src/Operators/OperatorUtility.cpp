@@ -123,7 +123,7 @@ namespace Dml
             }
         }
     } // namespace ActivationHelper
-    
+
     namespace FusionHelpers
     {
         struct OperatorInfo
@@ -184,8 +184,10 @@ namespace Dml
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet13::sc_sinceVer_Relu },
             OperatorInfo{ "Relu",               onnxruntime::kOnnxDomain, OnnxOperatorSet14::sc_sinceVer_Relu },
             OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_LeakyRelu },
+            OperatorInfo{ "LeakyRelu",          onnxruntime::kOnnxDomain, OnnxOperatorSet16::sc_sinceVer_LeakyRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_PRelu },
             OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet9::sc_sinceVer_PRelu },
+            OperatorInfo{ "PRelu",              onnxruntime::kOnnxDomain, OnnxOperatorSet16::sc_sinceVer_PRelu },
             OperatorInfo{ "ThresholdedRelu",    onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_ThresholdedRelu },
             OperatorInfo{ "ThresholdedRelu",    onnxruntime::kOnnxDomain, OnnxOperatorSet10::sc_sinceVer_ThresholdedRelu },
             OperatorInfo{ "Elu",                onnxruntime::kOnnxDomain, OnnxOperatorSet7::sc_sinceVer_Elu },
@@ -225,7 +227,7 @@ namespace Dml
                 return std::nullopt;
             }
 
-            if (!opIt->activationFilter.empty() && 
+            if (!opIt->activationFilter.empty() &&
                 std::find(opIt->activationFilter.begin(), opIt->activationFilter.end(), activationOpType) ==  opIt->activationFilter.end())
             {
                 return std::nullopt;
@@ -236,8 +238,8 @@ namespace Dml
                 return std::nullopt;
             }
 
-            // All fused ops just have "Fused" prepended to their name (e.g. "Conv" -> "FusedConv").
-            std::string fusedOpType = std::string("Fused").append(candidateOpType);
+            // All fused ops have "DmlFused" prepended to their name (e.g. "Conv" -> "DmlFusedConv").
+            std::string fusedOpType = std::string("DmlFused").append(candidateOpType);
 
             return FusedOpProperties{ std::move(fusedOpType), onnxruntime::kMSDmlDomain };
         }

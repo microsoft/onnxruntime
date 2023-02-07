@@ -25,7 +25,7 @@ using ONNX_NAMESPACE::OPTIONAL_VALUE;
 
 void RegisterDmlSchemas() {
 
-  MS_DML_OPERATOR_SCHEMA(FusedConv)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedConv)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused Conv+Activation)DOC")
@@ -52,7 +52,7 @@ void RegisterDmlSchemas() {
       ONNX_NAMESPACE::convPoolShapeInference(ctx, true, false, 0, 1);
     });
 
-  MS_DML_OPERATOR_SCHEMA(FusedConvTranspose)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedConvTranspose)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused ConvTranspose+Activation)DOC")
@@ -79,7 +79,7 @@ void RegisterDmlSchemas() {
     .TypeAndShapeInferenceFunction(
         [](ONNX_NAMESPACE::InferenceContext& ctx) { ONNX_NAMESPACE::convTransposeShapeInference(ctx); });
 
-  MS_DML_OPERATOR_SCHEMA(FusedInstanceNormalization)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedInstanceNormalization)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused InstanceNormalization+Activation)DOC")
@@ -100,7 +100,7 @@ void RegisterDmlSchemas() {
       ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
     });
         
-  MS_DML_OPERATOR_SCHEMA(FusedBatchNormalization)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedBatchNormalization)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused BatchNormalization+Activation)DOC")
@@ -133,7 +133,7 @@ void RegisterDmlSchemas() {
       // the other outputs as well.
     });
     
-  MS_DML_OPERATOR_SCHEMA(FusedMeanVarianceNormalization)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedMeanVarianceNormalization)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused MeanVarianceNormalization+Activation)DOC")
@@ -151,7 +151,7 @@ void RegisterDmlSchemas() {
     .Attr(AttrName::FusedRatio, "", onnx::AttributeProto::FLOAT, false)
     .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput);
   
-  MS_DML_OPERATOR_SCHEMA(FusedGemm)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedGemm)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused Gemm+Activation)DOC")
@@ -194,7 +194,7 @@ void RegisterDmlSchemas() {
       }
     });
 
-  MS_DML_OPERATOR_SCHEMA(FusedMatMul)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedMatMul)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused MatMul+Activation)DOC")
@@ -283,7 +283,7 @@ void RegisterDmlSchemas() {
           resultShape;
     });
 
-  MS_DML_OPERATOR_SCHEMA(FusedAdd)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedAdd)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused Add+Activation)DOC")
@@ -307,7 +307,7 @@ void RegisterDmlSchemas() {
             *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
     });
 
-  MS_DML_OPERATOR_SCHEMA(FusedSum)
+  MS_DML_OPERATOR_SCHEMA(DmlFusedSum)
     .SetDomain(kMSDmlDomain)
     .SinceVersion(1)
     .SetDoc(R"DOC(DirectML fused Sum+Activation)DOC")

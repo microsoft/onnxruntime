@@ -5,7 +5,7 @@
 
 #include <type_traits>
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/status.h"
 #include "core/common/common.h"

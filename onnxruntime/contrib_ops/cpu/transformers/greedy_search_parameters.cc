@@ -6,7 +6,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-constexpr int kMaxSequenceLength = 4096;
+constexpr int kMaxSequenceLength = 16384;
 
 void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   model_type = static_cast<int>(info.GetAttrOrDefault<int64_t>("model_type", 0));
@@ -14,6 +14,7 @@ void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) {
   pad_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("pad_token_id", -1));
   decoder_start_token_id = static_cast<int>(info.GetAttrOrDefault<int64_t>("decoder_start_token_id", -1));
   no_repeat_ngram_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("no_repeat_ngram_size", 0));
+  vocab_size = static_cast<int>(info.GetAttrOrDefault<int64_t>("vocab_size", -1));
 }
 
 void GreedySearchParameters::ParseFromInputs(OpKernelContext* context) {
@@ -37,8 +38,7 @@ void GreedySearchParameters::ParseFromInputs(OpKernelContext* context) {
   num_beams = static_cast<int>(1);
 
   auto* repetition_penalty_tensor = context->Input<Tensor>(3);
-  repetition_penalty = repetition_penalty_tensor ?
-                       static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
+  repetition_penalty = repetition_penalty_tensor ? static_cast<float>(*repetition_penalty_tensor->Data<float>()) : 1.0f;
   ORT_ENFORCE(repetition_penalty > 0.0f, "repetition_penalty shall be greater than 0, got ", repetition_penalty);
 }
 

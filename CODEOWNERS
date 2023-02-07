@@ -1,6 +1,5 @@
 # Mobile
-/onnxruntime/test/testdata/kernel_def_hashes/ @microsoft/onnxruntime-mobile
-/onnxruntime/core/framework/kernel_def_hash_helpers.* @microsoft/onnxruntime-mobile
+/onnxruntime/core/flatbuffers/schema/ort.fbs @microsoft/onnxruntime-mobile
 
 # Contrib Ops
 /onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas
@@ -16,3 +15,5 @@ requirements-dev.txt @microsoft/onnxruntime-admin
 requirements-doc.txt @microsoft/onnxruntime-admin
 requirements-training.txt @microsoft/onnxruntime-admin
 requirements.txt.in @microsoft/onnxruntime-admin
+/cgmanifests/cgmanifest.json @microsoft/onnxruntime-admin
+/cgmanifests/generated/cgmanifest.json @microsoft/onnxruntime-admin

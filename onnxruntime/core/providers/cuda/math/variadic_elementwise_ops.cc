@@ -179,7 +179,7 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
     if (first_input_tensor.DataRaw() != output_tensor.DataRaw()) {
       CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
           output_tensor.MutableDataRaw(), first_input_tensor.DataRaw(), first_input_tensor.SizeInBytes(),
-          cudaMemcpyDeviceToDevice, Stream()));
+          cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     return Status::OK();
@@ -197,11 +197,11 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
 
     // special case for no broadcasting and 2 inputs
     if (input_count == 2) {
-      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(), input_tensors[0],
+      return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(Stream(context), input_tensors[0],
                                                                              input_tensors[1], output_tensor);
     }
 
-    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(), input_tensors,
+    return dispatcher.template InvokeRet<Status, NoBroadcastBatchImplDispatchTarget>(Stream(context), input_tensors,
                                                                                      output_tensor);
   }
 
@@ -218,12 +218,12 @@ Status VariadicElementwiseOp<VariadicElementwiseOpTag, SupportedElementTypes...>
   // special case for 2 inputs
   if (input_count == 2) {
     return dispatcher.template InvokeRet<Status, BinaryImplDispatchTarget>(
-        Stream(), input_tensors[0], input_tensors[1], output_tensor);
+        Stream(context), input_tensors[0], input_tensors[1], output_tensor);
   }
 
   // general case for more than 2 inputs
   return dispatcher.template InvokeRet<Status, GeneralImplDispatchTarget>(
-      Stream(), input_tensors, output_tensor);
+      Stream(context), input_tensors, output_tensor);
 }
 
 namespace {
@@ -235,46 +235,37 @@ using MinOp = VariadicElementwiseOp<variadic_elementwise_ops::Min, uint32_t, uin
 
 using MaxOp = VariadicElementwiseOp<variadic_elementwise_ops::Max, uint32_t, uint64_t, int32_t, int64_t, MLFloat16,
                                     float, double, BFloat16>;
-
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_uzilhfd_datatypes = new std::vector<MLDataType>(
-    BuildKernelDefConstraints<uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16>());
-const DeleteOnUnloadPtr<std::vector<MLDataType>> k_hfd_datatypes =
-    new std::vector<MLDataType>(BuildKernelDefConstraints<MLFloat16, float, double, BFloat16>());
-
 }  // namespace
 
 // kernel registration
 
-#define REGISTER_KERNEL(name, impl_class, version, datatypes)       \
-  ONNX_OPERATOR_KERNEL_EX(                                          \
-      name,                                                         \
-      kOnnxDomain,                                                  \
-      version,                                                      \
-      kCudaExecutionProvider,                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes), \
-      impl_class)
+#define REGISTER_KERNEL(name, impl_class, version, datatypes)                                                        \
+  ONNX_OPERATOR_KERNEL_EX(name, kOnnxDomain, version, kCudaExecutionProvider,                                        \
+                          (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), \
+                          impl_class)
 
 #define REGISTER_VERSIONED_KERNEL(name, impl_class, start_version, end_version, datatypes) \
   ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                                       \
-      name,                                                                                \
-      kOnnxDomain,                                                                         \
-      start_version, end_version,                                                          \
-      kCudaExecutionProvider,                                                              \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", datatypes),                        \
-      impl_class)
+      name, kOnnxDomain, start_version, end_version, kCudaExecutionProvider,               \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", BuildKernelDefConstraints<datatypes>()), impl_class)
 
-REGISTER_KERNEL(Sum, SumOp, 13, *k_hfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Sum, SumOp, 8, 12, *k_hfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Sum, SumOp, 6, 7, *k_hfd_datatypes)
+#define UZILHFD_TYPES uint32_t, uint64_t, int32_t, int64_t, MLFloat16, float, double, BFloat16
+#define HFD_TYPES MLFloat16, float, double, BFloat16
 
-REGISTER_KERNEL(Min, MinOp, 13, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Min, MinOp, 12, 12, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Min, MinOp, 6, 11, *k_hfd_datatypes)
+REGISTER_KERNEL(Sum, SumOp, 13, HFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Sum, SumOp, 8, 12, HFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Sum, SumOp, 6, 7, HFD_TYPES)
 
-REGISTER_KERNEL(Max, MaxOp, 13, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Max, MaxOp, 12, 12, *k_uzilhfd_datatypes)
-REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, *k_hfd_datatypes)
+REGISTER_KERNEL(Min, MinOp, 13, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Min, MinOp, 12, 12, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Min, MinOp, 6, 11, HFD_TYPES)
 
+REGISTER_KERNEL(Max, MaxOp, 13, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Max, MaxOp, 12, 12, UZILHFD_TYPES)
+REGISTER_VERSIONED_KERNEL(Max, MaxOp, 6, 11, HFD_TYPES)
+
+#undef HFD_TYPES
+#undef UZILHFD_TYPES
 #undef REGISTER_VERSIONED_KERNEL
 #undef REGISTER_KERNEL
 

@@ -3,9 +3,15 @@
 
 #include <memory>
 #include <assert.h>
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/common/span_utils.h"
+#include "core/providers/cpu/math/softmax_shared.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/dump_tensor.h"
+#include <vector>
+#include <numeric>
+#include <algorithm>
 
 namespace onnxruntime {
 namespace contrib {
@@ -100,15 +106,15 @@ void NoRepeatNGramLogitsProcessor<T>::Process(const ISequences* sequences,
     gsl::span<T> beam_token_scores = next_token_scores.GetScores(i);
     gsl::span<const int32_t> sequence = sequences->GetSequence(i);
 
-    gsl::span<const int32_t> prefix = sequence.subspan(sequence.length() - prefix_length);
-    ORT_ENFORCE(prefix.length() == prefix_length);
+    gsl::span<const int32_t> prefix = sequence.subspan(sequence.size() - prefix_length);
+    ORT_ENFORCE(prefix.size() == narrow<size_t>(prefix_length));
 
     std::unordered_set<int32_t> blocked_word_ids;
-    for (int j = 0; j <= static_cast<int>(sequence.length()) - ngram_size_; j++) {
+    for (int j = 0; j <= static_cast<int>(sequence.size()) - ngram_size_; j++) {
       // Here we use naive algorithm for matching. The complexity is O(batch_beam_size * ngram_size * sequence_length)
       // TODO(tianleiwu): build N-Gram index (hash table with prefix of length NGram - 1 as key,
       //                  and list of last word of NGram as value) for fast matching.
-      if (ngram_size_ == 1 || prefix == sequence.subspan(j, prefix_length)) {
+      if (ngram_size_ == 1 || SpanEq(prefix, sequence.subspan(j, prefix_length))) {
         blocked_word_ids.insert(sequence[static_cast<gsl::index>(j) + prefix_length]);
       }
     }
@@ -185,12 +191,63 @@ void PrefixVocabMaskLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
 #endif
 }
 
+template <typename T>
+TemperatureLogitsProcessor<T>::TemperatureLogitsProcessor(float temperature) : temperature_(temperature) {
+}
+
+template <typename T>
+void TemperatureLogitsProcessor<T>::Process(const ISequences* /*sequences*/,
+                                            NextTokenScores<T>& next_token_scores) {
+  if (temperature_ == 1.0f) {
+    return;
+  }
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p /= temperature_;
+    ++p;
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("TemperatureLogitsProcessor", next_token_scores);
+#endif
+}
+
+template <typename T>
+PresencePenaltyLogitsProcessor<T>::PresencePenaltyLogitsProcessor(const gsl::span<const int32_t>& presence_mask,
+                                                                  float presence_penalty)
+    : presence_mask_(presence_mask), presence_penalty_(presence_penalty) {
+}
+
+template <typename T>
+void PresencePenaltyLogitsProcessor<T>::Process(const ISequences*,
+                                                NextTokenScores<T>& next_token_scores) {
+  if (presence_penalty_ == 0.0f) {
+    return;
+  }
+
+  assert(!presence_mask_.empty());
+
+  T* p = next_token_scores.scores.data();
+  for (size_t i = 0; i < next_token_scores.scores.size(); i++) {
+    *p -= presence_mask_[i] * presence_penalty_;
+  }
+
+#ifdef DEBUG_GENERATION
+  DumpScores("PresencePenaltyLogitsProcessor", next_token_scores);
+#endif
+}
+
 void LogitsProcessorList::Init(const BeamSearchParameters& parameters) {
   LogitsProcessorInitImpl<BeamSearchParameters>(parameters);
 }
 
 void LogitsProcessorList::Init(const GreedySearchParameters& parameters) {
   LogitsProcessorInitImpl<GreedySearchParameters>(parameters);
+}
+
+void LogitsProcessorList::Init(const SamplingParameters& parameters) {
+  LogitsProcessorInitImpl<SamplingParameters>(parameters);
 }
 
 void LogitsProcessorList::Process(const ISequences* sequences,

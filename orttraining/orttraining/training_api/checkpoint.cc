@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/clog_sink.h"
 #include "core/common/path.h"
 #include "core/framework/framework_common.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/platform/env.h"
@@ -14,7 +14,8 @@
 
 #include "orttraining/core/framework/checkpoint_common.h"
 #include "orttraining/core/framework/protobuf_message_sequence.h"
-#include "orttraining/training_api/include/checkpoint.h"
+#include "orttraining/training_api/checkpoint.h"
+#include "orttraining/training_api/utils.h"
 
 namespace onnxruntime {
 namespace training {
@@ -46,15 +47,11 @@ Status CreateTensorProtosFromOrtValues(
     const DataTransferManager& data_transfer_manager,
     std::vector<ONNX_NAMESPACE::TensorProto>& saved_tensor_protos) {
   // Order the tensors by name.
-  std::vector<std::string> ordered_tensor_names{};
+  InlinedVector<std::string> ordered_tensor_names{};
   ordered_tensor_names.reserve(name_to_ort_value.size());
   std::transform(name_to_ort_value.begin(), name_to_ort_value.end(), std::back_inserter(ordered_tensor_names),
                  [](const NameMLValMap::value_type& v) { return v.first; });
   std::sort(ordered_tensor_names.begin(), ordered_tensor_names.end());
-
-  // Copy the tensor data and create TensorProto storing the data.
-  std::vector<char> tensor_data_buffer{};
-  static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
 
   saved_tensor_protos.reserve(ordered_tensor_names.size());
 
@@ -64,7 +61,6 @@ Status CreateTensorProtosFromOrtValues(
     const OrtValue& ort_value = name_to_ort_value.at(tensor_name);
     ORT_RETURN_IF_NOT(ort_value.IsTensor(), "ort_value.IsTensor() was false");
     const Tensor& src_tensor = ort_value.Get<Tensor>();
-    tensor_data_buffer.resize(src_tensor.SizeInBytes());
 
     // Currently large model size not considered, so exception thrown here
     // when protobuf upper limit hit.
@@ -73,23 +69,8 @@ Status CreateTensorProtosFromOrtValues(
       ORT_THROW("checkpoint file size hit upper limit.");
     }
 
-    auto& tensor_location = src_tensor.Location();
-    if (tensor_location.device.Type() == OrtDevice::CPU ||
-        tensor_location.mem_type == OrtMemTypeCPUInput ||
-        tensor_location.mem_type == OrtMemTypeCPUOutput ||
-        tensor_location.device.Type() == OrtDevice::GPU) {
-      gsl::span<char> dst_span = gsl::make_span(tensor_data_buffer);
-      ORT_RETURN_IF_NOT(src_tensor.SizeInBytes() == static_cast<size_t>(dst_span.size_bytes()), "src size != dst size");
-      Tensor dst_tensor{src_tensor.DataType(), src_tensor.Shape(), dst_span.data(), cpu_alloc_info};
-      ORT_RETURN_IF_ERROR(data_transfer_manager.CopyTensor(src_tensor, dst_tensor));
-
-      // Convert Tensor to TensorProto.
-      ONNX_NAMESPACE::TensorProto tensor_proto;
-      tensor_proto = utils::TensorToTensorProto(dst_tensor, tensor_name);
-      saved_tensor_protos.emplace_back(tensor_proto);
-    } else {
-      ORT_THROW("Unsupported device type for saving tensors");
-    }
+    saved_tensor_protos.emplace_back(utils::CopyTensorToTensorProto(
+        src_tensor, tensor_name, data_transfer_manager));
   }
 
   return Status::OK();
@@ -182,11 +163,11 @@ Status OrtSaveInternal(
     const std::vector<ONNX_NAMESPACE::TensorProto>& non_trainable_tensor_protos,
     const PathString& checkpoint_path) {
   // Make sure name unique across trainable and non-trainable lists.
-  std::unordered_set<std::string> trainable_unique_names;
-  std::unordered_set<std::string> non_trainable_unique_names;
-  std::vector<std::string> inter_sec;
+  std::set<std::string> trainable_unique_names;
+  std::set<std::string> non_trainable_unique_names;
+  InlinedVector<std::string> inter_sec;
   auto check_unique = [](const std::vector<ONNX_NAMESPACE::TensorProto>& tensor_protos,
-                         std::unordered_set<std::string>& unique_names) {
+                         std::set<std::string>& unique_names) {
     for (auto& tensor_proto : tensor_protos) {
       ORT_ENFORCE(unique_names.find(tensor_proto.name()) == unique_names.end(),
                   "Duplicated tensor proto named ", tensor_proto.name());
@@ -231,7 +212,7 @@ Status OrtSaveModuleStatesInternal(ModuleCheckpointState& module_state,
     ORT_ENFORCE(module_state.train_session_data_transfer_mgr,
                 "module checkpoint state has null train_session_data_transfer_mgr.");
 
-    std::unordered_map<PathString, std::unordered_map<std::string, OrtValue>>
+    InlinedHashMap<PathString, std::unordered_map<std::string, OrtValue>>
         parameter_ort_values;
     for (auto it = param_states.begin(); it != param_states.end(); ++it) {
       if (it->second->RequiresGrad()) {
@@ -277,17 +258,9 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Re-organize optimizer_state_ort_values mapping
     // Firstly indexed by momentum names; Secondly indexed by parameter names.
-    std::unordered_map<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
-    for (const std::pair<std::string, ParameterOptimizerState>&
-             param_named_optimizer_state : group_optimizer_state_ptr->param_named_optimizer_states) {
-      const std::string& param_name = param_named_optimizer_state.first;
-      const auto& param_optimizer_state = param_named_optimizer_state.second;
-
-      for (const std::pair<std::string, OrtValue>&
-               momentum_named_state : param_optimizer_state.momentum_named_states) {
-        const std::string& momentum_name = momentum_named_state.first;
-        const OrtValue& m_state_val = momentum_named_state.second;
-
+    InlinedHashMap<std::string, std::unordered_map<std::string, OrtValue>> optimizer_state_ort_values;
+    for (const auto& [param_name, param_optimizer_state] : group_optimizer_state_ptr->param_named_optimizer_states) {
+      for (const auto& [momentum_name, m_state_val] : param_optimizer_state.momentum_named_states) {
         if (optimizer_state_ort_values.find(momentum_name) == optimizer_state_ort_values.end()) {
           std::unordered_map<std::string, OrtValue> param_name_to_ortvalue{{param_name, m_state_val}};
           optimizer_state_ort_values.insert({momentum_name, param_name_to_ortvalue});
@@ -319,8 +292,8 @@ Status OrtSaveOptimizerStatesInternal(OptimizerCheckpointState& optimizer_state,
 
     // Storing group-wise properties.
     PropertyBag properties;
-    properties.AddProperty<float>(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
-    properties.AddProperty<int64_t>(builtin_step_property_name, group_optimizer_state_ptr->step);
+    properties.AddProperty(builtin_lr_property_name, group_optimizer_state_ptr->initial_lr);
+    properties.AddProperty(builtin_step_property_name, group_optimizer_state_ptr->step);
     std::vector<ONNX_NAMESPACE::TensorProto> group_wise_properties_tensor_protos;
     properties.ToTensorProtos(group_wise_properties_tensor_protos);
 
@@ -363,7 +336,7 @@ Status OrtSaveInternal(
 Status OrtLoadModuleStatesInternal(
     const PathString& parameter_folder_path, ModuleCheckpointState& module_state) {
   // Find parameter files.
-  std::vector<std::pair<PathString, bool>> param_filenames;
+  InlinedVector<std::pair<PathString, bool>> param_filenames;
   FilterFilesFromDirectory(
       parameter_folder_path,
       [&param_filenames](const PathChar* filename) -> bool {
@@ -531,9 +504,11 @@ Status OrtLoadCustomPropertyInternal(const PathString& property_folder_path,
 }
 
 Status OrtLoadInternal(const PathString& checkpoint_path,
-                       std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
+                       ONNX_NAMESPACE::ModelProto& model_proto) {
   // Find tensor proto files.
-  std::vector<PathString> tensor_proto_filenames;
+  InlinedHashMap<std::string, ONNX_NAMESPACE::TensorProto> param_tensor_protos;
+  InlinedVector<PathString> tensor_proto_filenames;
+
   FilterFilesFromDirectory(
       checkpoint_path,
       [&tensor_proto_filenames](const PathChar* filename) -> bool {
@@ -550,10 +525,21 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
     const auto tensor_file_full_path = ConcatPathComponent<PathChar>(checkpoint_path, tensor_file_path);
     LoadTensorProtoFromFile(tensor_file_full_path, tensor_protos, "[params]");
 
-    for (const auto& tensor_proto : tensor_protos) {
-      param_tensor_protos.push_back(tensor_proto);
+    for (auto& tensor_proto : tensor_protos) {
+      auto tensor_proto_name = tensor_proto.name();
+      param_tensor_protos.emplace(std::make_pair(tensor_proto_name, std::move(tensor_proto)));
     }
   }
+
+  // Load imported initializers into the Model
+  for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
+    ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
+    auto it = param_tensor_protos.find(init.name());
+    ORT_ENFORCE(it != param_tensor_protos.end(),
+                "The initializer name was not found in the checkpoint file loaded.");
+    init = it->second;
+  }
+
   return Status::OK();
 }
 
@@ -581,9 +567,9 @@ Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkp
   return OrtLoadInternal(checkpoint_path, checkpoint_states);
 }
 
-Status LoadCheckpoint(const PathString& checkpoint_path,
-                      std::vector<ONNX_NAMESPACE::TensorProto>& param_tensor_protos) {
-  return OrtLoadInternal(checkpoint_path, param_tensor_protos);
+Status LoadCheckpointToModel(const PathString& checkpoint_path,
+                             ONNX_NAMESPACE::ModelProto& model_proto) {
+  return OrtLoadInternal(checkpoint_path, model_proto);
 }
 
 }  // namespace api

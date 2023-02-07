@@ -3,22 +3,16 @@
 
 #pragma once
 
-#include "core/common/common.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/tensor.h"
+#include "core/providers/cpu/nn/layer_norm_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T, bool simplified>
-class LayerNorm final : public OpKernel {
+template <bool simplified>
+class LayerNorm final : public LayerNormImpl {
  public:
-  LayerNorm(const OpKernelInfo& op_kernel_info);
-  Status Compute(OpKernelContext* p_op_kernel_context) const override;
-
- private:
-  int64_t axis_;
-  float epsilon_;
+  LayerNorm(const OpKernelInfo& op_kernel_info)
+      : LayerNormImpl(op_kernel_info, simplified) {}
 };
 
 }  // namespace contrib

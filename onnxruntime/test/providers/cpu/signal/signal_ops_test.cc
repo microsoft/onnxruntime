@@ -8,13 +8,14 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/test_random_seed.h"
+#include "test/util/include/default_providers.h"
 
 using std::vector;
 
 namespace onnxruntime {
 namespace test {
 
-static const int kMinOpsetVersion = 17;
+static constexpr int kMinOpsetVersion = 17;
 
 static void TestNaiveDFTFloat(bool onesided) {
   OpTester test("DFT", kMinOpsetVersion);
@@ -56,15 +57,34 @@ static void TestRadix2DFTFloat(bool onesided) {
   test.Run();
 }
 
-TEST(SignalOpsTest, DFTFloat_naive) { TestNaiveDFTFloat(false); }
+TEST(SignalOpsTest, DFTFloat_naive) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
+  }
 
-TEST(SignalOpsTest, DFTFloat_naive_onesided) { TestNaiveDFTFloat(true); }
+  TestNaiveDFTFloat(false);
+}
+
+TEST(SignalOpsTest, DFTFloat_naive_onesided) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
+  }
+
+  TestNaiveDFTFloat(true);
+}
 
 TEST(SignalOpsTest, DFTFloat_radix2) { TestRadix2DFTFloat(false); }
 
 TEST(SignalOpsTest, DFTFloat_radix2_onesided) { TestRadix2DFTFloat(true); }
 
 TEST(SignalOpsTest, DFTFloat_inverse) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
+  }
+
   OpTester test("DFT", kMinOpsetVersion);
 
   vector<int64_t> shape = {1, 5, 2};
@@ -106,7 +126,7 @@ static void TestDFTInvertible(bool complex) {
 
   RandomValueGenerator random(GetTestRandomSeed());
   // TODO(garymm, smk2007): Add tests for different dft_length values.
-  const int64_t num_batches = 2;
+  constexpr int64_t num_batches = 2;
   for (int64_t axis = 1; axis < 2; axis += 1) {
     for (int64_t signal_dim1 = 1; signal_dim1 <= 4; signal_dim1 += 1) {
       for (int64_t signal_dim2 = 1; signal_dim2 <= 4; signal_dim2 += 1) {
@@ -135,9 +155,23 @@ static void TestDFTInvertible(bool complex) {
   }
 }
 
-TEST(SignalOpsTest, DFT_invertible_real) { TestDFTInvertible(false); }
+TEST(SignalOpsTest, DFT_invertible_real) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
+  }
 
-TEST(SignalOpsTest, DFT_invertible_complex) { TestDFTInvertible(true); }
+  TestDFTInvertible(false);
+}
+
+TEST(SignalOpsTest, DFT_invertible_complex) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1988): Not implemented";
+  }
+
+  TestDFTInvertible(true);
+}
 
 TEST(SignalOpsTest, STFTFloat) {
   OpTester test("STFT", kMinOpsetVersion);

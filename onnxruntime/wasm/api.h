@@ -59,6 +59,13 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
                                                                           size_t log_verbosity_level);
 
 /**
+ * append an execution provider for a session.
+ * @param name the name of the execution provider
+ */
+int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
+                                                    const char* name);
+
+/**
  * store configurations for a session.
  * @param session_options a handle to session options created by OrtCreateSessionOptions
  * @param config_key configuration keys and value formats are defined in

@@ -12,12 +12,12 @@ namespace test {
 TEST(CumSumTest, _1DTest) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {5}, {1., 2., 3., 4., 5.});
-  // Pass in 0D Axis for all OpenVINO tests, and keep one 1D Axis test for coverage.
-  #ifdef USE_OPENVINO
+// Pass in 0D Axis for all OpenVINO tests, and keep one 1D Axis test for coverage.
+#ifdef USE_OPENVINO
   test.AddInput<int32_t>("axis", {}, {0});
-  #else
+#else
   test.AddInput<int32_t>("axis", {1}, {0});
-  #endif 
+#endif
   test.AddOutput<float>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -52,6 +52,30 @@ TEST(CumSumTest, _1DTestExclusive) {
   test.AddOutput<float>("y", {5}, {0., 1., 3., 6., 10.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+
+// GH13165.
+TEST(CumSumTest, _1DTestExclusiveAxisHasSingleValue) {
+  {
+    // forward
+    OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+    test.AddAttribute<int64_t>("exclusive", 1);
+    test.AddInput<float>("x", {1, 2}, {1., 2.});
+    test.AddInput<int32_t>("axis", {}, {0});  // dim value of axis is 1
+    test.AddOutput<float>("y", {1, 2}, {0., 0.});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+  {
+    // reverse
+    OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+    test.AddAttribute<int64_t>("exclusive", 1);
+    test.AddAttribute<int64_t>("reverse", 1);
+    test.AddInput<float>("x", {1, 2}, {1., 2.});
+    test.AddInput<int32_t>("axis", {}, {0});  // dim value of axis is 1
+    test.AddOutput<float>("y", {1, 2}, {0., 0.});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  }
+}
+
 TEST(CumSumTest, _2DTestAxis0) {
   OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
   test.AddInput<float>("x", {2, 3}, {1., 2., 3., 4., 5., 6.});

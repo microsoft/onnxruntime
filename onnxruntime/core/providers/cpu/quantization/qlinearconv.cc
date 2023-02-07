@@ -102,7 +102,7 @@ class QLinearConv : public OpKernel {
     const auto* W_scale_data = W_scale->Data<float>();
     output_scales.resize(static_cast<size_t>(W_scale_size));
     for (int64_t i = 0; i < W_scale_size; i++) {
-      output_scales[i] = (X_scale_value * W_scale_data[i] / Y_scale_value);
+      output_scales[onnxruntime::narrow<size_t>(i)] = (X_scale_value * W_scale_data[i] / Y_scale_value);
     }
 
     return output_scales;
@@ -646,6 +646,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   BufferUniquePtr col_buffer;
   BufferUniquePtr indirection_buffer;
+  size_t ind_buf_length = 0;
   std::vector<ActType> padding_data;
 
   bool use_indirection_buffer = false;
@@ -664,10 +665,16 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       memset(col_data, 0, SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
     }
   }
+
+  bool parallel_batch = is_symmetric_conv_ && channels_last_;
+
   if (use_indirection_buffer) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
-    auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size);
+    ind_buf_length = SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size;
+    if (parallel_batch)
+      ind_buf_length *= SafeInt<size_t>(N); // ind buffer per each image in the batch
+    auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
@@ -709,6 +716,69 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
   const int32_t stride_m = ComputeOutputStride(degree_of_par, output_image_size, group_output_channels, kernel_dim, compute_stride);
   const int64_t task_count = (output_image_size + stride_m - 1) / stride_m;
 
+  if (parallel_batch) // process all batch images in the same parallel section
+  {
+    auto conv_worker = [&](ptrdiff_t batch) {
+      int64_t image_id = batch / task_count;
+      int64_t output_start = (batch % task_count) * stride_m;
+      int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
+
+      auto* worker_input_image = Xdata + X_offset * image_id;
+
+      ActType const** worker_indirection_buffer = nullptr;
+      if (indirection_buffer) {
+        size_t offset = SafeInt<size_t>(image_id * output_image_size + output_start) * kernel_size;
+        assert(offset < ind_buf_length);
+        worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + offset;
+
+        math::Im2col<ActType, StorageOrder::NHWC>()(
+          worker_input_image,
+          C,
+          input_shape.GetDims().data(),
+          output_shape.GetDims().data(),
+          kernel_shape.data(),
+          strides.data(),
+          dilations.data(),
+          pads.data(),
+          static_cast<ptrdiff_t>(kernel_rank),
+          output_start,
+          output_count,
+          worker_indirection_buffer,
+          padding_data.data());
+      }
+
+      auto* worker_output = Ydata + Y_offset * image_id + output_start * M;
+
+      MLAS_CONV_SYM_PARAMS conv_params = {};
+      if (worker_indirection_buffer) {
+        conv_params.InputIndirection = reinterpret_cast<void const**>(worker_indirection_buffer);
+      } else {
+        conv_params.InputDirect = worker_input_image + output_start * C;
+      }
+      conv_params.Filter = packed_W_buffer_.get();
+      conv_params.Output = worker_output;
+      conv_params.InputChannels = static_cast<size_t>(C);
+      conv_params.OutputChannels = static_cast<size_t>(M);
+      conv_params.OutputCount = static_cast<size_t>(output_count);
+      conv_params.KernelSize = static_cast<size_t>(kernel_size);
+      conv_params.Bias = column_sums_.data();
+      conv_params.Scale = output_scales.data();
+      conv_params.PerChannelScale = output_scales.size() > 1;
+      conv_params.OutputZeroPoint = Y_zero_point_value;
+      conv_params.InputIsSigned = std::is_signed<ActType>::value;
+
+      if (is_depthwise_conv) {
+        MlasConvSymDepthwise(conv_params);
+      } else {
+        MlasConvSym(conv_params);
+      }
+    };
+
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count * N), conv_worker);
+
+    return Status::OK();
+  }
+
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
     auto* output_data = Ydata;
@@ -745,7 +815,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-      int64_t output_start = batch * stride_m;
+      int64_t output_start = (int64_t)batch * (int64_t)stride_m;
       int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
 
       ActType const** worker_indirection_buffer = nullptr;
@@ -921,7 +991,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           static_cast<size_t>(M));
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count), conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).

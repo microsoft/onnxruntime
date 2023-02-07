@@ -100,6 +100,8 @@ Status FreeDimensionOverrideTransformer::ApplyImpl(Graph& graph, bool& modified,
       auto* mutable_graph_input = graph.GetNodeArg(graph_input->Name());
       assert(mutable_graph_input != nullptr);
       mutable_graph_input->SetShape(new_shape);
+
+      graph.SetGraphResolveNeeded();
       modified = true;
     }
   }

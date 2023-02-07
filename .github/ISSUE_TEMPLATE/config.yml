@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/microsoft/onnxruntime/issues
+    about: questions and discussions related to ONNX Runtime
+  - name: PyTorch Converter Issues
+    url: https://github.com/pytorch/pytorch/issues
+    about: issues related to PyTorch converter
+  - name: TensorFlow Converter Issues
+    url: https://github.com/onnx/tensorflow-onnx
+    about: issues converting TensorFlow models to ONNX
+  - name: Security Vulnerabilities
+    url: https://github.com/microsoft/onnxruntime/security/policy
+    about: review our security policy for more details

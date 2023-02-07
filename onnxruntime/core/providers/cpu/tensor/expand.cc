@@ -3,6 +3,7 @@
 
 #include "expand.h"
 #include <cmath>
+#include <core/common/safeint.h>
 
 namespace onnxruntime {
 
@@ -78,9 +79,9 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     return Status::OK();
   }
 
-  std::unique_ptr<int64_t[]> input_dim_group = std::make_unique<int64_t[]>(max_dims_size);
-  std::unique_ptr<int64_t[]> output_dim_group = std::make_unique<int64_t[]>(max_dims_size);
-  std::unique_ptr<int64_t[]> expand_dim_size = std::make_unique<int64_t[]>(max_dims_size);
+  std::unique_ptr<int64_t[]> input_dim_group = std::make_unique<int64_t[]>(onnxruntime::narrow<size_t>(max_dims_size));
+  std::unique_ptr<int64_t[]> output_dim_group = std::make_unique<int64_t[]>(onnxruntime::narrow<size_t>(max_dims_size));
+  std::unique_ptr<int64_t[]> expand_dim_size = std::make_unique<int64_t[]>(onnxruntime::narrow<size_t>(max_dims_size));
   auto dim_group_start = max_dims_size;
 
   for (int64_t input_dims_iter = input_dims_size - 1,
@@ -102,16 +103,16 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
 
     if ((input_dim == 1 && output_dim > 1) || output_dims_iter == 0) {
       --dim_group_start;
-      input_dim_group[dim_group_start] = input_count;
-      output_dim_group[dim_group_start] = output_count;
-      expand_dim_size[dim_group_start] = output_count / input_count / last_dim_size;
-      last_dim_size *= expand_dim_size[dim_group_start];
+      input_dim_group[onnxruntime::narrow<size_t>(dim_group_start)] = input_count;
+      output_dim_group[onnxruntime::narrow<size_t>(dim_group_start)] = output_count;
+      expand_dim_size[onnxruntime::narrow<size_t>(dim_group_start)] = output_count / input_count / last_dim_size;
+      last_dim_size *= expand_dim_size[onnxruntime::narrow<size_t>(dim_group_start)];
     }
   }
 
-  auto distribute_count = input_dim_group[dim_group_start] / input_dim_group[max_dims_size - 1];
-  std::vector<int64_t> output_offsets(distribute_count, 0);
-  int64_t copy_len = input_dim_group[max_dims_size - 1];
+  auto distribute_count = input_dim_group[onnxruntime::narrow<size_t>(dim_group_start)] / input_dim_group[SafeInt<size_t>(max_dims_size) - 1];
+  std::vector<int64_t> output_offsets(onnxruntime::narrow<size_t>(distribute_count), 0);
+  int64_t copy_len = input_dim_group[SafeInt<size_t>(max_dims_size) - 1];
   auto copy_byte = copy_len * sizeof(T);
 
   auto distribute_fn =
@@ -120,12 +121,12 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       auto input_offset = i * copy_len;
       int64_t output_offset = 0;
       for (auto j = dim_group_start + 1, remains = input_offset; j < max_dims_size; ++j) {
-        auto current_count = remains / input_dim_group[j];
-        output_offset += current_count * output_dim_group[j];
-        remains = remains % input_dim_group[j];
+        auto current_count = remains / input_dim_group[onnxruntime::narrow<size_t>(j)];
+        output_offset += current_count * output_dim_group[onnxruntime::narrow<size_t>(j)];
+        remains = remains % input_dim_group[onnxruntime::narrow<size_t>(j)];
       }  //for j
-      memcpy(output_data + output_offset, input_data + input_offset, copy_byte);
-      output_offsets[i] = output_offset;
+      memcpy(output_data + output_offset, input_data + input_offset, onnxruntime::narrow<size_t>(copy_byte));
+      output_offsets[onnxruntime::narrow<size_t>(i)] = output_offset;
     } //for i
   };  //distribute_fn
 
@@ -135,11 +136,11 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
   if (per_thread_tasks > 4) {
     concurrency::ThreadPool::TryParallelFor(
       context->GetOperatorThreadPool(),
-      distribute_count,
+      onnxruntime::narrow<ptrdiff_t>(distribute_count),
       static_cast<double>(copy_byte),
       std::move(distribute_fn));
   } else {
-    distribute_fn(0, distribute_count);
+    distribute_fn(0, onnxruntime::narrow<ptrdiff_t>(distribute_count));
   }  //else
 
   for (auto i = max_dims_size - 1; i >= dim_group_start; --i) {
@@ -147,12 +148,12 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
       [&](ptrdiff_t j_start, ptrdiff_t j_end) {
       for (auto j = j_start; j < j_end; j++) {
 	auto output_offset = output_offsets[j];
-	if (output_offset % output_dim_group[i] == 0) {
-	  auto copy_len = output_dim_group[i] / expand_dim_size[i];
-	  auto copy_byte = copy_len * sizeof(T);
+	if (output_offset % output_dim_group[onnxruntime::narrow<size_t>(i)] == 0) {
+	  auto copy_len = output_dim_group[onnxruntime::narrow<size_t>(i)] / expand_dim_size[onnxruntime::narrow<size_t>(i)];
+	  auto copy_byte = SafeInt<size_t>(copy_len) * sizeof(T);
 	  auto output_from = output_data + output_offset;
 	  auto output_at = output_from + copy_len;
-	  auto output_end = output_from + output_dim_group[i];
+	  auto output_end = output_from + output_dim_group[onnxruntime::narrow<size_t>(i)];
 	  while (output_at + copy_len <= output_end) {
 	    memcpy(output_at, output_from, copy_byte);
 	    output_at += copy_len;
@@ -174,11 +175,11 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     if (per_thread_tasks > 20) {
       concurrency::ThreadPool::TryParallelFor(
         context->GetOperatorThreadPool(),
-        distribute_count,
+        onnxruntime::narrow<std::ptrdiff_t>(distribute_count),
         static_cast<double>(copy_byte),
         std::move(copy_fn));
     } else {
-      copy_fn(0, distribute_count);
+      copy_fn(0, onnxruntime::narrow<std::ptrdiff_t>(distribute_count));
     }  //else
   }  //for
   return Status::OK();

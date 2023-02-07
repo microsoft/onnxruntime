@@ -22,7 +22,7 @@ namespace android {
 namespace nn {
 namespace wrapper {
 
-OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale, int32_t zeroPoint)
+OperandType::OperandType(Type type, const Shape& d, float scale, int32_t zeroPoint)
     : type(type), dimensions(d) {
   operandType = {
       /*.type = */ static_cast<int32_t>(type),
@@ -33,7 +33,7 @@ OperandType::OperandType(Type type, const std::vector<uint32_t>& d, float scale,
   };
 }
 
-OperandType::OperandType(Type type, const std::vector<uint32_t>& d, SymmPerChannelQuantParams&& channelQuant)
+OperandType::OperandType(Type type, const Shape& d, SymmPerChannelQuantParams&& channelQuant)
     : type(type), dimensions(d), channelQuant(std::move(channelQuant)) {
   operandType = {
       /*.type = */ static_cast<int32_t>(type),
@@ -101,7 +101,7 @@ size_t OperandType::GetOperandBlobByteSize() const {
   return num_elements * GetElementByteSize();
 }
 
-void OperandType::SetDimensions(const std::vector<uint32_t>& d) {
+void OperandType::SetDimensions(const Shape& d) {
   dimensions = d;
   operandType.dimensionCount = static_cast<uint32_t>(dimensions.size());
   operandType.dimensions = dimensions.size() > 0 ? dimensions.data() : nullptr;

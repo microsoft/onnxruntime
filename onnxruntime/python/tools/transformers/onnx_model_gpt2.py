@@ -51,8 +51,18 @@ class Gpt2OnnxModel(BertOnnxModel):
                     [0, 0],
                     output_name_to_node,
                 )
+
                 if nodes is None:
-                    continue
+                    nodes = self.match_parent_path(
+                        gemm_node,
+                        ["Reshape", "SkipLayerNormalization"],
+                        [0, 0],
+                        output_name_to_node,
+                    )
+
+                    if nodes is None:
+                        continue
+
             (reshape_before_gemm, root_node) = nodes
 
             matmul_node_name = self.create_node_name("MatMul", "FullyConnect_MatMul")

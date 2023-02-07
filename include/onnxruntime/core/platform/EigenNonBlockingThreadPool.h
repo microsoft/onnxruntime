@@ -268,13 +268,20 @@ class ThreadPoolProfiler {
   bool enabled_ = false;
   MainThreadStat& GetMainThreadStat();  //return thread local stat
   int num_threads_;
-  struct ChildThreadStat {
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
+#endif  // _MSC_VER
+  struct ORT_ALIGN_TO_AVOID_FALSE_SHARING ChildThreadStat {
     std::thread::id thread_id_;
     uint64_t num_run_ = 0;
     onnxruntime::TimePoint last_logged_point_ = Clock::now();
     int32_t core_ = -1;                   //core that the child thread is running on
-    PaddingToAvoidFalseSharing padding_;  //to prevent false sharing
   };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif  // _MSC_VER
   std::vector<ChildThreadStat> child_thread_stats_;
   std::string thread_pool_name_;
 };
@@ -308,9 +315,9 @@ class ExtendedThreadPoolInterface : public Eigen::ThreadPoolInterface {
 
   // Special case alternative to RunInParallelSection for use without
   // an existing parallel section.  Ideally we would use a single
-  // iplemenation and a stack-allocated ThreadPoolParallelSection.
+  // implementation and a stack-allocated ThreadPoolParallelSection.
   //
-  // However, on the BM_ThreadPoolParallelFor microbenchmark I saw
+  // However, on the BM_ThreadPoolParallelFor micro-benchmark I saw
   // ~20% overhead on the resulting single-loop parallel sections.
   // There are some additional costs (~5%) for additional invocations
   // through lambda functions on loop entry.  Most significantly, on
@@ -442,7 +449,7 @@ class RunQueue {
   // PushBack adds w at the end of the queue.
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushBack(Work w) {
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::lock_guard<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -462,7 +469,7 @@ class RunQueue {
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
   PushResult PushBackWithTag(Work w, Tag tag, unsigned& w_idx) {
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::lock_guard<OrtMutex> lock(mutex_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back - 1) & kMask;
     Elem& e = array_[w_idx];
@@ -483,7 +490,7 @@ class RunQueue {
   Work PopBack() {
     if (Empty())
       return Work();
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::lock_guard<OrtMutex> lock(mutex_);
     unsigned back;
     Elem* e;
     ElemState s;
@@ -525,7 +532,7 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
-    std::unique_lock<OrtMutex> lock(mutex_);
+    std::lock_guard<OrtMutex> lock(mutex_);
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
 
@@ -674,6 +681,18 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
 
   ThreadPoolProfiler profiler_;
 
+  void SignalAllAndWait() {
+    done_ = true;
+
+    // Now if all threads block without work, they will start exiting.
+    // But note that threads can continue to work arbitrary long,
+    // block, submit new work, unblock and otherwise live full life.
+    WakeAllWorkersForExit();
+    // Join threads explicitly (by destroying) to avoid destruction order within
+    // this class.
+    for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+  }
+
  public:
   void StartProfiling() override {
     profiler_.Start();
@@ -743,22 +762,24 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       ComputeCoprimes(i, &all_coprimes_.back());
     }
 
-    worker_data_.resize(num_threads_);
-    for (auto i = 0u; i < num_threads_; i++) {
-      worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+    // Eigen::MaxSizeVector has neither essential exception safety features
+    // such as swap, nor it is movable. So we have to join threads right here
+    // on exception
+    ORT_TRY {
+      worker_data_.resize(num_threads_);
+      for (auto i = 0u; i < num_threads_; i++) {
+        worker_data_[i].thread.reset(env_.CreateThread(name, i, WorkerLoop, this, thread_options));
+      }
+    } ORT_CATCH(...) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        SignalAllAndWait();
+        throw;
+      });
     }
   }
 
   ~ThreadPoolTempl() override {
-    done_ = true;
-
-    // Now if all threads block without work, they will start exiting.
-    // But note that threads can continue to work arbitrary long,
-    // block, submit new work, unblock and otherwise live full life.
-    WakeAllWorkersForExit();
-    // Join threads explicitly (by destroying) to avoid destruction order within
-    // this class.
-    for (size_t i = 0; i < worker_data_.size(); ++i) worker_data_[i].thread.reset();
+    SignalAllAndWait();
   }
 
   // Run fn().  Ordinarily, the function will be added to the thread pool and executed
@@ -1311,7 +1332,13 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
   // threads in the pool, and their lifetime is managed along with the
   // pool.
 
-  struct PerThread {
+#ifdef _MSC_VER
+#pragma warning(push)
+// C4324: structure was padded due to alignment specifier
+#pragma warning(disable : 4324)
+#endif // _MSC_VER
+
+  struct ORT_ALIGN_TO_AVOID_FALSE_SHARING PerThread {
     constexpr PerThread() : pool(nullptr) {
     }
     ThreadPoolTempl* pool;            // Parent pool, or null for normal threads.
@@ -1327,8 +1354,12 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     // of times that the work-stealing code paths are used for
     // rebalancing.
     InlinedVector<int> preferred_workers;
-    PaddingToAvoidFalseSharing padding_2;
   };
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif // _MSC_VER
+
 
   struct WorkerData {
     constexpr WorkerData() : thread(), queue() {

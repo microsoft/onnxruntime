@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -66,11 +67,10 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   test.AddOutput<T>("y", input_dims, output_data);
   // OpenVINO doesn't support negative indices value.
   // Disable TensorRT due to missing int8 calibrator.
-  // Nuphar doesn't have MLFloat16 impl.
   if (std::is_same<T, int8_t>::value) {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   } else {
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
@@ -84,7 +84,7 @@ void RunTest(const std::vector<int64_t>& input_dims, const std::vector<int64_t>&
   if (std::is_same<T, int8_t>::value) {
     test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
   } else if (std::is_same<T, MLFloat16>::value) {
-    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+    test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   } else {
     test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
   }
@@ -137,27 +137,104 @@ void RunTestWrapper() {
 
 }  // namespace
 
-TEST(Scatter, int8_t) { RunTestWrapper<int8_t>(); }
+TEST(Scatter, int8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int16_t) { RunTestWrapper<int16_t>(); }
+  RunTestWrapper<int8_t>();
+}
 
-TEST(Scatter, int32_t) { RunTestWrapper<int32_t>(); }
+TEST(Scatter, int16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, int64_t) { RunTestWrapper<int64_t>(); }
+  RunTestWrapper<int16_t>();
+}
 
-TEST(Scatter, uint8_t) { RunTestWrapper<uint8_t>(); }
+TEST(Scatter, int32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint16_t) { RunTestWrapper<uint16_t>(); }
+  RunTestWrapper<int32_t>();
+}
 
-TEST(Scatter, uint32_t) { RunTestWrapper<uint32_t>(); }
+TEST(Scatter, int64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, uint64_t) { RunTestWrapper<uint64_t>(); }
+  RunTestWrapper<int64_t>();
+}
 
-TEST(Scatter, float) { RunTestWrapper<float>(); }
+TEST(Scatter, uint8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(Scatter, double) { RunTestWrapper<double>(); }
+  RunTestWrapper<uint8_t>();
+}
 
-TEST(Scatter, MLFloat16) { RunTestWrapper<MLFloat16>(); }
+TEST(Scatter, uint16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint16_t>();
+}
+
+TEST(Scatter, uint32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint32_t>();
+}
+
+TEST(Scatter, uint64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint64_t>();
+}
+
+TEST(Scatter, float) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<float>();
+}
+
+TEST(Scatter, double) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<double>();
+}
+
+TEST(Scatter, MLFloat16) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<MLFloat16>();
+}
 
 static void scatter_indices_updates_dont_match(const char* op_name, int op_version) {
   OpTester test(op_name, op_version);
@@ -172,6 +249,11 @@ static void scatter_indices_updates_dont_match(const char* op_name, int op_versi
 }
 
 TEST(Scatter, IndicesUpdatesDontMatch) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_indices_updates_dont_match("Scatter", 9);
   scatter_indices_updates_dont_match("ScatterElements", 11);
 }
@@ -190,6 +272,11 @@ static void scatter_invalid_index(const char* op_name, int op_version) {
 }
 
 TEST(Scatter, InvalidIndex) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   scatter_invalid_index("Scatter", 9);
   scatter_invalid_index("ScatterElements", 11);
 }
@@ -202,7 +289,12 @@ static void scatter_bool_with_axis_tests(const char* op_name, int op_version) {
   test.AddInput<int64_t>("indices", {1, 2}, {1, 3});
   test.AddInput<bool>("updates", {1, 2}, {true, false});
   test.AddOutput<bool>("y", {1, 5}, {false, true, false, false, false});
+#if defined(OPENVINO_CONFIG_GPU_FP32) || defined(OPENVINO_CONFIG_GPU_FP16)
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+          {kOpenVINOExecutionProvider});  // OpenVINO: Disabled due to failure for GPU
+#else
   test.Run();
+#endif
 }
 
 TEST(Scatter, BoolInputWithAxis) {

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "attention_impl.h"
+#include "contrib_ops/cuda/bert/attention_impl.h"
 
 using namespace onnxruntime::cuda;
 
@@ -27,9 +27,9 @@ __global__ void ConcatTensorToTensor(const int tensor_add_sequence_length,
   const int H = blockDim.x;
 
   // K: number of identical tensors
-  // tensor_in:    K x BxNxS'xH
-  // tensor_add:   K x BxNxSxH
-  // tensor_out:   K x BxNx(S'+S)xH
+  // tensor_in:    K x BxNxPxH
+  // tensor_add:   K x BxNxLxH
+  // tensor_out:   K x BxNxTxH, where T = P + L
   const int tensor_in_sequence_length = all_sequence_length - tensor_add_sequence_length;
 
   const int present_SH = all_sequence_length * H;
@@ -67,9 +67,9 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
   const int stride = blockDim.x;
 
   // K: number of identical tensor
-  // tensor_in:    K x BxNxS'xH
-  // tensor_add:   K x BxNxSxH
-  // tensor_out:   K x BxNx(S'+S)xH
+  // tensor_in:    K x BxNxPxH
+  // tensor_add:   K x BxNxLxH
+  // tensor_out:   K x BxNxTxH
   const int tensor_in_sequence_length = all_sequence_length - tensor_add_sequence_length;
 
   const int present_SH = all_sequence_length * H;
@@ -92,8 +92,7 @@ __global__ void ConcatTensorToTensorLarge(const int tensor_add_sequence_length,
   }
 }
 
-
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -109,10 +108,17 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
     const int H = head_size / 2;
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
-      ConcatTensorToTensor<float2><<<grid, block, 0, stream>>>(sequence_length, reinterpret_cast<const float2*>(tensor_in), reinterpret_cast<const float2*>(tensor_add), reinterpret_cast<float2*>(tensor_out));
+      ConcatTensorToTensor<float2><<<grid, block, 0, stream>>>(sequence_length,
+                                                               reinterpret_cast<const float2*>(tensor_in),
+                                                               reinterpret_cast<const float2*>(tensor_add),
+                                                               reinterpret_cast<float2*>(tensor_out));
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<float2><<<grid, block, 0, stream>>>(sequence_length, H, reinterpret_cast<const float2*>(tensor_in), reinterpret_cast<const float2*>(tensor_add), reinterpret_cast<float2*>(tensor_out));
+      ConcatTensorToTensorLarge<float2><<<grid, block, 0, stream>>>(sequence_length,
+                                                                    H,
+                                                                    reinterpret_cast<const float2*>(tensor_in),
+                                                                    reinterpret_cast<const float2*>(tensor_add),
+                                                                    reinterpret_cast<float2*>(tensor_out));
     }
   } else {
     if (head_size * num_heads <= max_threads_per_block) {
@@ -120,14 +126,17 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
       ConcatTensorToTensor<float><<<grid, block, 0, stream>>>(sequence_length, tensor_in, tensor_add, tensor_out);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<float><<<grid, block, 0, stream>>>(sequence_length, head_size, tensor_in, tensor_add, tensor_out);
+      ConcatTensorToTensorLarge<float><<<grid, block, 0, stream>>>(sequence_length,
+                                                                   head_size,
+                                                                   tensor_in,
+                                                                   tensor_add,
+                                                                   tensor_out);
     }
-
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatTensorToTensor(cudaStream_t stream,
+Status LaunchConcatTensorToTensor(cudaStream_t stream,
                                 const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
@@ -143,19 +152,33 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
     const int H = head_size / 4;
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
-      ConcatTensorToTensor<float2><<<grid, block, 0, stream>>>(sequence_length, reinterpret_cast<const float2*>(tensor_in), reinterpret_cast<const float2*>(tensor_add), reinterpret_cast<float2*>(tensor_out));
+      ConcatTensorToTensor<float2><<<grid, block, 0, stream>>>(sequence_length,
+                                                               reinterpret_cast<const float2*>(tensor_in),
+                                                               reinterpret_cast<const float2*>(tensor_add),
+                                                               reinterpret_cast<float2*>(tensor_out));
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<float2><<<grid, block, 0, stream>>>(sequence_length, H, reinterpret_cast<const float2*>(tensor_in), reinterpret_cast<const float2*>(tensor_add), reinterpret_cast<float2*>(tensor_out));
+      ConcatTensorToTensorLarge<float2><<<grid, block, 0, stream>>>(sequence_length,
+                                                                    H,
+                                                                    reinterpret_cast<const float2*>(tensor_in),
+                                                                    reinterpret_cast<const float2*>(tensor_add),
+                                                                    reinterpret_cast<float2*>(tensor_out));
     }
   } else if (0 == (head_size & 1)) {
     const int H = head_size / 2;
     if (H * num_heads <= max_threads_per_block) {
       const dim3 block(H, num_heads, 1);
-      ConcatTensorToTensor<half2><<<grid, block, 0, stream>>>(sequence_length, reinterpret_cast<const half2*>(tensor_in), reinterpret_cast<const half2*>(tensor_add), reinterpret_cast<half2*>(tensor_out));
+      ConcatTensorToTensor<half2><<<grid, block, 0, stream>>>(sequence_length,
+                                                              reinterpret_cast<const half2*>(tensor_in),
+                                                              reinterpret_cast<const half2*>(tensor_add),
+                                                              reinterpret_cast<half2*>(tensor_out));
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<half2><<<grid, block, 0, stream>>>(sequence_length, H, reinterpret_cast<const half2*>(tensor_in), reinterpret_cast<const half2*>(tensor_add), reinterpret_cast<half2*>(tensor_out));
+      ConcatTensorToTensorLarge<half2><<<grid, block, 0, stream>>>(sequence_length,
+                                                                   H,
+                                                                   reinterpret_cast<const half2*>(tensor_in),
+                                                                   reinterpret_cast<const half2*>(tensor_add),
+                                                                   reinterpret_cast<half2*>(tensor_out));
     }
   } else {  // this should be an "odd" case. probably not worth catching it in the half2 kernel.
     if (head_size * num_heads <= max_threads_per_block) {
@@ -163,13 +186,17 @@ bool LaunchConcatTensorToTensor(cudaStream_t stream,
       ConcatTensorToTensor<half><<<grid, block, 0, stream>>>(sequence_length, tensor_in, tensor_add, tensor_out);
     } else {
       const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
-      ConcatTensorToTensorLarge<half><<<grid, block, 0, stream>>>(sequence_length, head_size, tensor_in, tensor_add, tensor_out);
+      ConcatTensorToTensorLarge<half><<<grid, block, 0, stream>>>(sequence_length,
+                                                                  head_size,
+                                                                  tensor_in,
+                                                                  tensor_add,
+                                                                  tensor_out);
     }
   }
-  return CUDA_CALL(cudaPeekAtLastError());
+  return CUDA_CALL(cudaGetLastError());
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -180,20 +207,20 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const float* k_v,
                                float* present) {
   return LaunchConcatTensorToTensor(
-    stream,
-    all_sequence_length,
-    sequence_length,
-    batch_size,
-    head_size,
-    num_heads,
-    max_threads_per_block,
-    2,
-    past,
-    k_v,
-    present);
+      stream,
+      all_sequence_length,
+      sequence_length,
+      batch_size,
+      head_size,
+      num_heads,
+      max_threads_per_block,
+      2,
+      past,
+      k_v,
+      present);
 }
 
-bool LaunchConcatPastToPresent(cudaStream_t stream,
+Status LaunchConcatPastToPresent(cudaStream_t stream,
                                const int all_sequence_length,
                                const int sequence_length,
                                const int batch_size,
@@ -204,17 +231,17 @@ bool LaunchConcatPastToPresent(cudaStream_t stream,
                                const half* k_v,
                                half* present) {
   return LaunchConcatTensorToTensor(
-    stream,
-    all_sequence_length,
-    sequence_length,
-    batch_size,
-    head_size,
-    num_heads,
-    max_threads_per_block,
-    2,
-    past,
-    k_v,
-    present);
+      stream,
+      all_sequence_length,
+      sequence_length,
+      batch_size,
+      head_size,
+      num_heads,
+      max_threads_per_block,
+      2,
+      past,
+      k_v,
+      present);
 }
 
 }  // namespace cuda

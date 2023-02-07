@@ -5,6 +5,7 @@
 
 #include <locale>
 #include <sstream>
+#include <string_view>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -15,8 +16,8 @@ namespace onnxruntime {
  * Tries to parse a value from an entire string.
  */
 template <typename T>
-bool TryParseStringWithClassicLocale(const std::string& str, T& value) {
-  ORT_IF_CONSTEXPR (std::is_integral<T>::value && std::is_unsigned<T>::value) {
+bool TryParseStringWithClassicLocale(std::string_view str, T& value) {
+  if constexpr (std::is_integral<T>::value && std::is_unsigned<T>::value) {
     // if T is unsigned integral type, reject negative values which will wrap
     if (!str.empty() && str[0] == '-') {
       return false;
@@ -28,7 +29,7 @@ bool TryParseStringWithClassicLocale(const std::string& str, T& value) {
     return false;
   }
 
-  std::istringstream is{str};
+  std::istringstream is{std::string{str}};
   is.imbue(std::locale::classic());
   T parsed_value{};
 
@@ -43,12 +44,12 @@ bool TryParseStringWithClassicLocale(const std::string& str, T& value) {
   return true;
 }
 
-inline bool TryParseStringWithClassicLocale(const std::string& str, std::string& value) {
+inline bool TryParseStringWithClassicLocale(std::string_view str, std::string& value) {
   value = str;
   return true;
 }
 
-inline bool TryParseStringWithClassicLocale(const std::string& str, bool& value) {
+inline bool TryParseStringWithClassicLocale(std::string_view str, bool& value) {
   if (str == "0" || str == "False" || str == "false") {
     value = false;
     return true;
@@ -66,7 +67,7 @@ inline bool TryParseStringWithClassicLocale(const std::string& str, bool& value)
  * Parses a value from an entire string.
  */
 template <typename T>
-Status ParseStringWithClassicLocale(const std::string& s, T& value) {
+Status ParseStringWithClassicLocale(std::string_view s, T& value) {
   ORT_RETURN_IF_NOT(TryParseStringWithClassicLocale(s, value), "Failed to parse value: \"", value, "\"");
   return Status::OK();
 }
@@ -75,7 +76,7 @@ Status ParseStringWithClassicLocale(const std::string& s, T& value) {
  * Parses a value from an entire string.
  */
 template <typename T>
-T ParseStringWithClassicLocale(const std::string& s) {
+T ParseStringWithClassicLocale(std::string_view s) {
   T value{};
   ORT_THROW_IF_ERROR(ParseStringWithClassicLocale(s, value));
   return value;

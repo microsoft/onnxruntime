@@ -4,6 +4,8 @@
  */
 package ai.onnxruntime;
 
+import ai.onnxruntime.TensorInfo.OnnxTensorType;
+
 /** Describes an {@link OnnxMap} object or output node. */
 public class MapInfo implements ValueInfo {
 
@@ -40,6 +42,21 @@ public class MapInfo implements ValueInfo {
     this.size = size;
     this.keyType = keyType;
     this.valueType = valueType;
+  }
+
+  /**
+   * Construct a MapInfo with the specified size, key type and value type.
+   *
+   * <p>Called from JNI.
+   *
+   * @param size The size.
+   * @param keyTypeInt The int representing the {@link OnnxTensorType} of the keys.
+   * @param valueTypeInt The int representing the {@link OnnxTensorType} of the values.
+   */
+  MapInfo(int size, int keyTypeInt, int valueTypeInt) {
+    this.size = size;
+    this.keyType = OnnxJavaType.mapFromOnnxTensorType(OnnxTensorType.mapFromInt(keyTypeInt));
+    this.valueType = OnnxJavaType.mapFromOnnxTensorType(OnnxTensorType.mapFromInt(valueTypeInt));
   }
 
   @Override

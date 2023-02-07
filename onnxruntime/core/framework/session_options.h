@@ -5,12 +5,16 @@
 
 #include <string>
 #include <vector>
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 #include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 #include "core/framework/config_options.h"
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#include "core/framework/library_handles.h"
+#endif
 
 namespace onnxruntime {
 
@@ -83,7 +87,7 @@ struct SessionOptions {
   std::string session_logid;  ///< logger id to use for session output
 
   /// Log severity for the inference session. Applies to session load, initialization, etc.
-  /// See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use default logger severity)
   int session_log_severity_level = -1;
   int session_log_verbosity_level = 0;  ///< VLOG level if debug build and session_log_severity_level is 0 (VERBOSE).
@@ -136,6 +140,13 @@ struct SessionOptions {
 
   // custom function callback to join a thread
   OrtCustomJoinThreadFn custom_join_thread_fn = nullptr;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  // Store handles to custom op libraries so that their lifetimes extend the lifetime of the session options object.
+  // Lazily initialized by the first call to SessionOptions::AddCustomOpLibraryHandle().
+  std::shared_ptr<LibraryHandles> custom_op_libs;
+  void AddCustomOpLibraryHandle(PathString library_name, void* library_handle);
+#endif
 };
 
 }  // namespace onnxruntime

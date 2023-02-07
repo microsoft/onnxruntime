@@ -8,8 +8,27 @@ using Xunit;
 
 namespace Microsoft.ML.OnnxRuntime.Tests
 {
-    public partial class InferenceTest
+  /// <summary>
+  /// This is compensate for the absence of string.Contains() in .NET Standard 2.0
+  /// Contains(String, StringComparison)
+  /// </summary>
+  public static class StringExtensions
+  {
+    public static bool Contains(this String str, String substring,
+                                StringComparison comp)
     {
+      if (substring == null)
+        throw new ArgumentNullException("substring",
+                                     "substring cannot be null.");
+      else if (!Enum.IsDefined(typeof(StringComparison), comp))
+        throw new ArgumentException("comp is not a member of StringComparison",
+                                 "comp");
+
+      return str.IndexOf(substring, comp) >= 0;
+    }
+  }
+  public partial class InferenceTest
+  {
         private const string module = "onnxruntime.dll";
         private const string propertiesFile = "Properties.txt";
 
@@ -213,6 +232,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 #endif
 
+        private static Func<DirectoryInfo, IEnumerable<DirectoryInfo>> getOpsetDirectories = delegate (DirectoryInfo modelsDirInfo)
+        {
+            return modelsDirInfo.EnumerateDirectories("opset*", SearchOption.AllDirectories);
+        };
+
         private static Dictionary<string, string> GetSkippedModels(DirectoryInfo modelsDirInfo)
         {
             var skipModels = new Dictionary<string, string>() {
@@ -229,45 +253,35 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "tf_resnet_v1_50", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_101", "result mismatch when Conv BN Fusion is applied" },
                 { "tf_resnet_v1_152", "result mismatch when Conv BN Fusion is applied" },
+                { "cntk_simple_seg", "Bad onnx test output caused by wrong SAME_UPPER/SAME_LOWER for ConvTranspose" },
                 { "coreml_Imputer-LogisticRegression_sklearn_load_breast_cancer", "Can't determine model file name" },
                 { "mask_rcnn_keras", "Model should be edited to remove the extra outputs" },
                 { "test_strnormalizer_export_monday_casesensintive_lower", "ElementType not currently supported"},
                 { "test_max_float64", "node test error"},
                 { "test_min_uint8", "node test error"},
                 { "test_mod_mixed_sign_float64", "node test error"},
-                { "test_einsum_transpose", "node test error"},
                 { "test_momentum", "node test error"},
                 { "test_max_uint16", "node test error"},
                 { "test_resize_downsample_scales_linear_align_corners", "node test error"},
                 { "test_strnormalizer_nostopwords_nochangecase", "node test error"},
-                { "test_cumsum_2d_negative_axis", "node test error"},
                 { "test_adagrad_multiple", "node test error"},
                 { "test_einsum_inner_prod", "node test error"},
-                { "test_clip_default_int8_min", "node test error"},
-                { "test_max_int8", "node test error"},
                 { "test_sequence_insert_at_back", "node test error"},
                 { "test_mod_mixed_sign_int8", "node test error"},
                 { "test_maxunpool_export_with_output_shape", "node test error"},
                 { "test_strnormalizer_export_monday_empty_output", "node test error"},
                 { "test_strnormalizer_export_monday_insensintive_upper_twodim", "ElementType not currently supported"},
-                { "test_clip_default_int8_max", "node test error"},
-                { "test_einsum_sum", "node test error"},
                 { "test_min_int16", "node test error"},
                 { "test_adagrad", "node test error"},
                 { "test_min_float64", "node test error"},
                 { "test_max_int16", "node test error"},
-                { "test_einsum_batch_diagonal", "node test error"},
                 { "test_sequence_insert_at_front", "node test error"},
-                { "test_cumsum_1d_exclusive", "node test error"},
                 { "test_training_dropout_default", "node test error"},
                 { "test_training_dropout", "node test error"},
                 { "test_adam", "node test error"},
                 { "test_training_dropout_mask", "node test error"},
                 { "test_clip_default_int8_inbounds", "node test error"},
                 { "test_eyelike_with_dtype", "node test error"},
-                { "test_cumsum_1d", "node test error"},
-                { "test_conv_with_autopad_same", "node test error"},
-                { "test_cumsum_1d_reverse_exclusive", "node test error"},
                 { "test_cast_STRING_to_FLOAT", "node test error"},
                 { "test_cast_FLOAT16_to_DOUBLE", "node test error"},
                 { "test_cast_FLOAT_to_DOUBLE", "node test error"},
@@ -289,35 +303,24 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bitshift_right_uint16", "node test error"},
                 { "test_bitshift_left_uint16", "node test error"},
                 { "test_pow_types_float32_uint64", "node test error"},
-                { "test_cumsum_2d_axis_0", "node test error"},
                 { "test_max_uint8", "node test error"},
                 { "test_strnormalizer_export_monday_casesensintive_nochangecase", "ElementType not currently supported"},
                 { "test_momentum_multiple", "node test error"},
-                { "test_cumsum_1d_reverse", "node test error"},
                 { "test_pow_types_float32_uint32", "node test error"},
-                { "test_if_seq", "node test error"},
+                { "test_if_seq", "sequence type is not supported in test infra."},
                 { "test_resize_downsample_scales_cubic_align_corners", "node test error"},
                 { "test_einsum_batch_matmul", "node test error"},
                 { "test_nesterov_momentum", "node test error"},
-                { "test_cumsum_2d_axis_1", "node test error"},
                 { "test_strnormalizer_export_monday_casesensintive_upper", "node test error"},
                 { "test_min_uint16", "node test error"},
                 { "test_adam_multiple", "node test error"},
-                { "test_loop13_seq", "node test error"},
-                { "test_convtranspose_autopad_same", "node test error"},
+                { "test_loop13_seq", "sequence type is not supported in test infra." },
                 { "test_training_dropout_default_mask", "node test error"},
                 { "test_min_int8", "node test error"},
                 { "test_identity_sequence", "data type not supported"},
                 { "test_gru_batchwise", "batchwise operations not supported"},
                 { "test_lstm_batchwise", "batchwise operations not supported"},
                 { "test_simple_rnn_batchwise", "batchwise operations not supported"},
-                { "test_sub_uint8", "data type not supported"},
-                { "test_mul_uint8", "data type not supported"},
-                { "test_add_uint8", "data type not supported"},
-                { "test_div_uint8", "data type not supported"},
-                { "test_batchnorm_epsilon", "opset14 version not implemented yet"},
-                { "test_batchnorm_epsilon_training_mode", "opset14 version not implemented yet"},
-                { "test_batchnorm_example", "opset14 version not implemented yet"},
                 { "test_batchnorm_example_training_mode", "opset14 version not implemented yet"},
                 { "test_bernoulli", "random generator"},
                 { "test_bernoulli_seed", "random generator"},
@@ -326,23 +329,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_bernoulli_seed_expanded", "random generator"},
                 { "test_bernoulli_double_expanded", "random generator"},
                 { "test_shape", "opset15 version not implemented yet"},
-                { "test_shape_clip_end", "opset15 version not implemented yet"},
-                { "test_shape_clip_start", "opset15 version not implemented yet"},
-                { "test_shape_end_1", "opset15 version not implemented yet"},
-                { "test_shape_end_negative", "opset15 version not implemented yet"},
-                { "test_shape_example", "opset15 version not implemented yet"},
-                { "test_shape_start_1", "opset15 version not implemented yet"},
-                { "test_shape_start_negative_1", "opset15 version not implemented yet"},
-                { "test_shape_start_1_end_2", "opset15 version not implemented yet"},
-                { "test_shape_start_1_end_negative_1", "opset15 version not implemented yet"},
-                { "test_shape_end_negative_1", "opset15 version not implemented yet"},
-                { "test_optional_get_element", "not implemented yet"},
-                { "test_optional_get_element_sequence", "not implemented yet"},
-                { "test_optional_has_element", "not implemented yet"},
-                { "test_optional_has_element_empty", "not implemented yet"},
-                { "test_identity_opt", "opset16 version not implemented yet"},
-                { "test_if_opt", "opset16 version not implemented yet"},
-                { "test_loop16_seq_none", "opset16 version not implemented yet"},
+                { "test_optional_get_element", "optional type is not supported in test infra."},
+                { "test_optional_get_element_sequence", "optional type is not supported in test infra."},
+                { "test_identity_opt", "optional type is not supported in test infra." },
+                { "test_if_opt", "optional type is not supported in test infra." },
+                { "test_loop16_seq_none", "sequence type is not supported in test infra." },
                 { "test_sequence_map_extract_shapes", "sequence type is not supported in test infra." },
                 { "test_sequence_map_identity_1_sequence_1_tensor", "sequence type is not supported in test infra." },
                 { "test_sequence_map_identity_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
@@ -354,7 +345,51 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 { "test_sequence_map_extract_shapes_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_1_sequence_1_tensor_expanded", "sequence type is not supported in test infra." },
                 { "test_sequence_map_add_2_sequences", "sequence type is not supported in test infra." },
-                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." }
+                { "test_sequence_map_identity_1_sequence", "sequence type is not supported in test infra." },
+                { "BERT-Squad-int8", "training domain"},
+                { "YOLOv3-12-int8", "training_domain"},
+                // the expansion of Softplus uses Exp(1). ORT has a Softplus kernel, so testing the expansion is 
+                // unnecessary and fails as ORT support for Exp started at opset 6 (as ORT didn't exist until opset 7).
+                { "test_softplus_example_expanded", "Not applicable"},
+                { "test_softplus_expanded", "Not applicable"},
+
+                // opset 18 models. these should be supported by ORT 1.14 when released
+                { "test_bitwise_and_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_and_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_and_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_and_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_not_2d", "pending opset 18 support"},
+                { "test_bitwise_not_3d", "pending opset 18 support"},
+                { "test_bitwise_not_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i16_4d", "pending opset 18 support"},
+                { "test_bitwise_or_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_or_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_bitwise_or_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i16_3d", "pending opset 18 support"},
+                { "test_bitwise_xor_i32_2d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui8_bcast_4v3d", "pending opset 18 support"},
+                { "test_bitwise_xor_ui64_bcast_3v1d", "pending opset 18 support"},
+                { "test_col2im", "pending opset 18 support"},
+                { "test_col2im_5d", "pending opset 18 support"},
+                { "test_col2im_dilations", "pending opset 18 support"},
+                { "test_col2im_pads", "pending opset 18 support"},
+                { "test_col2im_strides", "pending opset 18 support"},
+                { "test_scatter_elements_with_axis", "pending opset 18 support"},
+                { "test_scatter_elements_without_axis", "pending opset 18 support"},
+                { "test_scatter_elements_with_duplicate_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_negative_indices", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_max", "pending opset 18 support"},
+                { "test_scatter_elements_with_reduction_min", "pending opset 18 support"},
+                { "test_scatternd", "pending opset 18 support"},
+                { "test_scatternd_add", "pending opset 18 support"},
+                { "test_scatternd_max", "pending opset 18 support"},
+                { "test_scatternd_min", "pending opset 18 support"},
+                { "test_scatternd_multiply", "pending opset 18 support"},
+                { "test_optional_get_element_optional_sequence", "pending opset 18 support"},
+                { "test_optional_get_element_optional_tensor", "pending opset 18 support"},
+                { "test_optional_has_element_empty_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_optional_input", "pending opset 18 support"},
+                { "test_optional_has_element_tensor_input", "pending opset 18 support"},
             };
 
             // The following models fails on nocontribops win CI
@@ -371,7 +406,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var isMlOpsDisabled = (disableMlOpsEnvVar != null) ? disableMlOpsEnvVar.Equals("ON") : false;
             if (isMlOpsDisabled)
             {
-                foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+                foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
                 {
                     foreach (var modelDir in opsetDir.EnumerateDirectories())
                     {
@@ -402,6 +437,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 skipModels["coreml_VGG16_ImageNet"] = "System out of memory";
                 skipModels["test_ssd"] = "System out of memory";
                 skipModels["roberta_sequence_classification"] = "System out of memory";
+                // models from model zoo
+                skipModels["VGG 19"] = "bad allocation";
+                skipModels["VGG 19-caffe2"] = "bad allocation";
+                skipModels["VGG 19-bn"] = "bad allocation";
+                skipModels["VGG 16"] = "bad allocation";
+                skipModels["VGG 16-bn"] = "bad allocation";
+                skipModels["VGG 16-fp32"] = "bad allocation";
             }
 
             return skipModels;
@@ -413,14 +455,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
                 //var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
                 foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    if (!skipModels.ContainsKey(modelDir.Name))
+                    if (!(skipModels.ContainsKey(modelDir.Name) ||
+                          modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                          modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase)))
                     {
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
                 } //model
             } //opset
@@ -432,15 +476,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var modelsDirInfo = new DirectoryInfo(modelsDir);
             var skipModels = GetSkippedModels(modelsDirInfo);
 
-            foreach (var opsetDir in modelsDirInfo.EnumerateDirectories())
+            foreach (var opsetDir in getOpsetDirectories(modelsDirInfo))
             {
-                var modelRoot = new DirectoryInfo(Path.Combine(modelsDir, opsetDir.Name));
-                foreach (var modelDir in modelRoot.EnumerateDirectories())
+                foreach (var modelDir in opsetDir.EnumerateDirectories())
                 {
-                    if (skipModels.ContainsKey(modelDir.Name))
+                    if (skipModels.ContainsKey(modelDir.Name) ||
+                        modelDir.Name.Contains("int8", StringComparison.OrdinalIgnoreCase) ||
+                        modelDir.Name.Contains("qdq", StringComparison.OrdinalIgnoreCase))
                     {
                         //Console.WriteLine("Model {0} is skipped due to the error: {1}", modelDir.FullName, skipModels[modelDir.Name]);
-                        yield return new object[] { modelDir.Parent.Name, modelDir.Name };
+                        yield return new object[] { modelDir.Parent.FullName, modelDir.Name };
                     }
 
                 }
@@ -450,12 +495,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         [Theory(DisplayName = "TestPreTrainedModels")]
         [MemberData(nameof(GetModelsForTest))]
         [MemberData(nameof(GetSkippedModelForTest), Skip = "Skipped due to Error, please fix the error and enable the test")]
-        private void TestPreTrainedModels(string opset, string modelName)
+        private void TestPreTrainedModels(string opsetDir, string modelName)
         {
-            var modelsDir = GetTestModelsDir();
+            var opsetDirInfo = new DirectoryInfo(opsetDir);
+            var opset = opsetDirInfo.Name;
             string onnxModelFileName = null;
 
-            var modelDir = new DirectoryInfo(Path.Combine(modelsDir, opset, modelName));
+            var modelDir = new DirectoryInfo(Path.Combine(opsetDir, modelName));
 
             try
             {

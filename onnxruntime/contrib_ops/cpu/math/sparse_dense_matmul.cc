@@ -4,6 +4,7 @@
 #if !defined(DISABLE_SPARSE_TENSORS)
 
 #include "core/framework/sparse_tensor.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
@@ -120,10 +121,9 @@ struct SparseToDenseCoo {
     auto coo_view = A.AsCoo();
     const auto& ind_dims = coo_view.Indices().Shape().GetDims();
     ORT_RETURN_IF_NOT(ind_dims.size() == 2, "COO indices must be 2-D, got: ", ind_dims.size());
-
-    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Indices().Data<int64_t>(), ind_dims[0], ind_dims[1]);
-    ConstEigenMatrixMapRowMajor<T> map_b(B.Data<T>(), b_dims[0], b_dims[1]);
-    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), out_dims[0], out_dims[1]);
+    ConstEigenMatrixMapRowMajor<int64_t> a_indicies_map(coo_view.Indices().Data<int64_t>(), narrow<size_t>(ind_dims[0]), narrow<size_t>(ind_dims[1]));
+    ConstEigenMatrixMapRowMajor<T> map_b(B.Data<T>(), narrow<size_t>(b_dims[0]), narrow<size_t>(b_dims[1]));
+    EigenMatrixMapRowMajor<T> output_map(output.MutableData<T>(), narrow<size_t>(out_dims[0]), narrow<size_t>(out_dims[1]));
     output_map.setZero();
 
     const auto rhs_right = (ctx.trans_B) ? b_dims[0] : b_dims[1];
@@ -140,8 +140,8 @@ struct SparseToDenseCoo {
       ORT_RETURN_IF_NOT(m < out_left, "COO m index: ", m, " is out of bounds of out_left: ", out_left);
       const T a_value = a_values[i];
       for (int64_t n = 0; n < rhs_right; ++n) {
-        const T b_value = (ctx.trans_B) ? map_b(n, k) : map_b(k, n);
-        output_map(m, n) += Mul(a_value, ctx.alpha, b_value);
+        const T b_value = (ctx.trans_B) ? map_b(narrow<size_t>(n), narrow<size_t>(k)) : map_b(narrow<size_t>(k), narrow<size_t>(n));
+        output_map(narrow<size_t>(m), narrow<size_t>(n)) += Mul(a_value, ctx.alpha, b_value);
       }
     }
 

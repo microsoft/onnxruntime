@@ -27,20 +27,20 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
 
   const size_t batch = static_cast<size_t>(state.range(3));
   const size_t threads = static_cast<size_t>(state.range(4));
-  
+
   OrtThreadPoolParams tpo;
   tpo.thread_pool_size = int(threads);
   tpo.auto_set_affinity = true;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> tp(
       onnxruntime::concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
-      tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
+                                                 tpo, onnxruntime::concurrency::ThreadPoolType::INTRA_OP));
 
   auto A_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(M * K * batch) + 16, int8_t(-120), int8_t(120));
   auto B_holder = RandomVectorUniform<int8_t>(static_cast<size_t>(N * K * batch), int8_t(-122), int8_t(122));
   std::vector<int32_t> C_holder(static_cast<size_t>(M * N * batch));
   std::vector<uint8_t> pack_b_holder;
 
-  size_t packed_b_size  = MlasGemmPackBSize(N, K, a_signed, true);
+  size_t packed_b_size = MlasSymmQgemmPackBSize(N, K, a_signed);
   pack_b_holder.resize(packed_b_size * batch);
 
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
@@ -67,6 +67,7 @@ void SYMMQGEMM(benchmark::State& state, bool a_signed) {
   }
 }
 
+#if defined(MLAS_TARGET_ARM64)
 static void SymmQGemmSize(benchmark::internal::Benchmark* b) {
   b->ArgNames(qgemm_arg_names);
   // Args for  "M", "N", "K", "Batch",
@@ -101,3 +102,4 @@ static void SymmQGemmSize(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK_CAPTURE(SYMMQGEMM, SignedActivation, true)->Apply(SymmQGemmSize)->UseRealTime();
+#endif

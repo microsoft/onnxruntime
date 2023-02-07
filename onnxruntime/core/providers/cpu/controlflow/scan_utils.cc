@@ -11,11 +11,10 @@
 
 #include "core/providers/cpu/controlflow/scan_utils.h"
 
-#include "gsl/gsl"
-
 #include "core/framework/mldata_type_utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
+#include "core/framework/stream_execution_context.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -111,7 +110,7 @@ Status AllocateOutput(OpKernelContextInternal& context, const GraphViewer& subgr
     scan_output_dims.push_back(sequence_len);
   }
 
-  std::copy(graph_output_dims.cbegin(), graph_output_dims.cend(), std::back_inserter(scan_output_dims));
+  std::copy(graph_output_dims.begin(), graph_output_dims.end(), std::back_inserter(scan_output_dims));
 
   if (!temporary) {
     ORT_RETURN_IF_ERROR(OutputIterator::Create(context, output_index, is_loop_state_var, is_v8,
@@ -272,7 +271,8 @@ Status IterateSequence(OpKernelContextInternal& context, const SessionState& ses
 
     // Create Executor and run graph.
     status = utils::ExecuteSubgraph(session_state, ffm, feeds, fetches, fetch_allocators,
-                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger());
+                                    ExecutionMode::ORT_SEQUENTIAL, context.GetTerminateFlag(), context.Logger(),
+                                    context.GetComputeStream());
 
     ORT_RETURN_IF_ERROR(status);
 
@@ -304,16 +304,16 @@ void CalculateTransposedShapeForInput(const TensorShape& original_shape, int64_t
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
-  permutations.reserve(rank);
-  permutations.push_back(axis);
+  permutations.reserve(onnxruntime::narrow<size_t>(rank));
+  permutations.push_back(onnxruntime::narrow<size_t>(axis));
 
-  transposed_shape.reserve(rank);
-  transposed_shape.push_back(dims[axis]);
+  transposed_shape.reserve(onnxruntime::narrow<size_t>(rank));
+  transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(axis)]);
 
   for (int64_t i = 0; i < rank; ++i) {
     if (i != axis) {
-      permutations.push_back(i);
-      transposed_shape.push_back(dims[i]);
+      permutations.push_back(onnxruntime::narrow<size_t>(i));
+      transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
     }
   }
 }
@@ -323,20 +323,20 @@ void CalculateTransposedShapeForOutput(const TensorShape& original_shape, int64_
   int64_t rank = original_shape.NumDimensions();
   const auto& dims = original_shape.GetDims();
 
-  permutations.reserve(rank);
-  transposed_shape.reserve(rank);
+  permutations.reserve(onnxruntime::narrow<size_t>(rank));
+  transposed_shape.reserve(onnxruntime::narrow<size_t>(rank));
 
   for (int64_t i = 1; i <= axis; ++i) {
-    permutations.push_back(i);
-    transposed_shape.push_back(dims[i]);
+    permutations.push_back(onnxruntime::narrow<size_t>(i));
+    transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
   }
 
   permutations.push_back(0);
   transposed_shape.push_back(dims[0]);
 
   for (int64_t i = axis + 1; i < rank; ++i) {
-    permutations.push_back(i);
-    transposed_shape.push_back(dims[i]);
+    permutations.push_back(onnxruntime::narrow<size_t>(i));
+    transposed_shape.push_back(dims[onnxruntime::narrow<size_t>(i)]);
   }
 }
 

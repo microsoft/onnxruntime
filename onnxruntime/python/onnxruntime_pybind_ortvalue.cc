@@ -314,6 +314,36 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
       }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.",
       py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+      .def("push_back_batch", [](
+          std::vector<OrtValue>* v,
+          std::vector<py::object>& torch_tensors,
+          std::vector<int64_t>& data_ptrs,
+          std::vector<py::object>& element_types,
+          const std::vector<std::vector<int64_t>>& shapes,
+          const std::vector<OrtDevice>& devices) {
+
+        for (size_t i = 0; i < torch_tensors.size(); ++i) {
+          py::object& element_type = element_types.at(i);
+          const std::vector<int64_t>& shape = shapes.at(i);
+          int64_t data_ptr = data_ptrs.at(i);
+
+          ORT_ENFORCE(data_ptr, "Pointer to data memory is not valid");
+
+          PyArray_Descr* dtype;
+          if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+            throw std::runtime_error("Not a valid numpy type");
+          }
+          int type_num = dtype->type_num;
+          Py_DECREF(dtype);
+
+          auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+          auto device = devices.at(i);
+          OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+          OrtValue ml_value;
+          Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
+          v->push_back(ml_value);
+        }
+      }, "Add a batch of OrtValue's by wrapping PyTorch tensors.")
 #endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })

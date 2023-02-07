@@ -146,14 +146,14 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 }  // namespace
 
 NodeUnit::NodeUnit(const Node& node)
-    : output_nodes_{&node},
-      target_node_(node),
+      :target_node_(node),
       type_(Type::SingleNode) {
   InitForSingleNode();
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-    : output_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+      :q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+      dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
       inputs_{GetQDQIODefs(target_node_, node_group, true /* is_input */)},
@@ -242,6 +242,33 @@ void NodeUnit::InitForSingleNode() {
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }
+}
+
+Node::EdgeConstIterator NodeUnit::OutputEdgesBegin(size_t index) const {
+  if (type_ == Type::SingleNode) {
+    ORT_ENFORCE(index == 0, "invalid output node index");
+    return target_node_.OutputEdgesBegin();
+  } else {
+    ORT_ENFORCE(index < q_nodes_.size(), "invalid output node index");
+    return q_nodes_[index]->OutputEdgesBegin();
+  }
+}
+
+Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) const {
+  if (type_ == Type::SingleNode) {
+    ORT_ENFORCE(index == 0, "invalid output node index");
+    return target_node_.OutputEdgesEnd();
+  } else {
+    ORT_ENFORCE(index < q_nodes_.size(), "invalid output node index");
+    return q_nodes_[index]->OutputEdgesEnd();
+  }
+}
+
+std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
+  std::vector<const Node*> all_nodes = dq_nodes_;
+  all_nodes.push_back(&target_node_);
+  all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
+  return all_nodes;
 }
 
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>

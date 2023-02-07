@@ -9,6 +9,7 @@ trigger: none
 variables:
   CDP_DEFINITION_BUILD_COUNT: $[counter('', 0)]
   DEBIAN_FRONTEND: noninteractive
+  ComponentDetection.Timeout: 1200
 
 resources:
   repositories: 
@@ -20,13 +21,16 @@ resources:
 extends:
   template: v2/OneBranch.Official.CrossPlat.yml@templates
   parameters:
+    nugetPublishing:
+      feeds:      
+      - name: PublicPackages/ORT-Nightly
+        files_to_publish: '*.nupkg;!*.symbols.nupkg'
+        continueOnConflict: true
     git:
       submodules: false
     globalSdl: # https://aka.ms/obpipelines/sdl
-      # tsa:
-      #  enabled: true
-      # credscan:
-      #   suppressionsFile: $(Build.SourcesDirectory)\.config\CredScanSuppressions.json
+      tsa:
+        enabled: true      
       prefast:
         enabled: false
       cg:
@@ -346,3 +350,30 @@ extends:
             
         - script: |
             dir $(Build.SourcesDirectory)\unzipped\runtimes\win-x64\_native
+            
+      - job: NuGet_Publishing
+        pool:
+          type: windows
+        variables:
+          ob_outputDirectory: '$(Build.BinariesDirectory)'
+          ob_sdl_binskim_enabled: false
+          ob_pipelineartifacts_enabled: false
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}:
+            ob_nugetPublishing_enabled: true          
+        dependsOn:
+        - NuGet_Packaging
+        condition: succeeded()
+        steps:
+        - task: DownloadPipelineArtifact@2
+          displayName: 'Download Pipeline Artifact'
+          inputs:
+            buildType: 'current'        
+            artifactName: 'drop_Windows_Build_NuGet_Packaging'
+            itemPattern: 'merged/**'
+            targetPath: '$(Build.BinariesDirectory)'
+            
+        - powershell: |
+           Rename-Item  -Path merged packages
+           
+          workingDirectory: '$(Build.BinariesDirectory)'
+          displayName: 'Rename nuget folder'

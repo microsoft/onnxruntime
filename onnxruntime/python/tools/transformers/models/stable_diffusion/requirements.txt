@@ -1,0 +1,14 @@
+# Install the following package in python 3.10
+diffusers==0.12.1
+transformers==4.26.0
+numpy==1.24.1
+accelerate==0.15.0
+onnxruntime-gpu>=1.14
+onnx==1.13.0
+coloredlogs
+packaging==23.0
+protobuf==3.20.3
+psutil==5.9.4
+sympy==1.11.1
+--extra-index-url https://download.pytorch.org/whl/cu117
+torch==1.13.1+cu117

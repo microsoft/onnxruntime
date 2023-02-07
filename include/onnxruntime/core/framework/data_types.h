@@ -9,7 +9,7 @@
 #include <type_traits>
 #include <map>
 #include <unordered_map>
-#include "core/common/gsl_suppress.h"
+#include "core/common/gsl.h"
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
@@ -458,6 +458,7 @@ class TensorType : public TensorTypeBase {
 
 #if defined(DISABLE_OPTIONAL_TYPE)
 
+// TODO is this still needed after removing kernel def hashes?
 /// Common base-class for all disabled types. We need DataTypeImpl::ToString to work in a minimal build
 /// with disabled types to keep the ORT format model kernel hashes stable.
 class DisabledTypeBase : public DataTypeImpl {

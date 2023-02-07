@@ -32,9 +32,9 @@ TensorDesc::TensorDesc(
 
     m_bufferTensorDesc.GuaranteedBaseOffsetAlignment = guaranteedBaseOffsetAlignment;
     m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
-        m_bufferTensorDesc.DataType, 
-        m_bufferTensorDesc.DimensionCount, 
-        m_sizes, 
+        m_bufferTensorDesc.DataType,
+        m_bufferTensorDesc.DimensionCount,
+        m_sizes,
         strides ? m_strides : nullptr
         );
 }
@@ -210,6 +210,24 @@ gsl::span<const uint32_t> TensorDesc::GetStrides() const
     return { m_strides, m_strides + m_bufferTensorDesc.DimensionCount };
 }
 
+void TensorDesc::SetStrides(gsl::span<const uint32_t> strides)
+{
+    m_bufferTensorDesc.Strides = strides.empty() ? nullptr : strides.data();
+
+    if (!strides.empty())
+    {
+        ML_CHECK_VALID_ARGUMENT(strides.size() <= std::size(m_strides));
+        ML_CHECK_VALID_ARGUMENT(strides.size() == m_bufferTensorDesc.DimensionCount);
+        std::copy(strides.begin(), strides.end(), m_strides);
+    }
+
+    m_bufferTensorDesc.TotalTensorSizeInBytes = DMLCalcBufferTensorSize(
+        m_bufferTensorDesc.DataType,
+        m_bufferTensorDesc.DimensionCount,
+        m_sizes,
+        strides.empty() ? nullptr : m_strides);
+}
+
 DML_TENSOR_DESC TensorDesc::GetDmlDesc()
 {
     if (m_tensorType == DML_TENSOR_TYPE_INVALID)
@@ -217,6 +235,8 @@ DML_TENSOR_DESC TensorDesc::GetDmlDesc()
         return { m_tensorType, nullptr };
     }
 
+    // Update the DML_BUFFER_TENSOR_DESC Sizes and Strides pointers to point internally to the TensorDesc fields.
+    // This update matters whether it was a new instance or a copy from via copy constructor from another TensorDesc.
     m_bufferTensorDesc.Sizes = m_sizes;
     if (m_bufferTensorDesc.Strides)
     {

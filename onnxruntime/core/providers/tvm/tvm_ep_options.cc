@@ -31,6 +31,9 @@ constexpr const char* kInputShapes = "input_shapes";
 
 static const std::unordered_set<std::string> valid_keys {
   std::string{kExecutor},
+  std::string{kSoFolder},
+  std::string{kCheckHash},
+  std::string{kHashFilePath},
   std::string{kTarget},
   std::string{kTargetHost},
   std::string{kOptLevel},

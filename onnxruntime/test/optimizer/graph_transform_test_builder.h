@@ -16,6 +16,24 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#define TEST_RETURN_IF(condition)                                               \
+  do {                                                                          \
+    if (condition) {                                                            \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,  \
+                                           ::onnxruntime::common::FAIL,         \
+                                           #condition " is evaluated to true"); \
+    }                                                                           \
+  } while (false)
+
+#define TEST_RETURN_IF_NOT(condition)                                            \
+  do {                                                                           \
+    if (!(condition)) {                                                          \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
+                                           ::onnxruntime::common::FAIL,          \
+                                           #condition " is evaluated to false"); \
+    }                                                                            \
+  } while (false)
+
 namespace onnxruntime {
 namespace test {
 template <typename T>
@@ -97,12 +115,48 @@ class ModelTestBuilder {
   }
 
   template <typename T>
+  NodeArg* MakeIntermediate(const std::optional<std::vector<int64_t>>& shape) {
+    ONNX_NAMESPACE::TypeProto type_proto;
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    if (shape != std::nullopt) {
+      type_proto.mutable_tensor_type()->mutable_shape();
+      for (auto& d : *shape) {
+        auto dim = type_proto.mutable_tensor_type()->mutable_shape()->add_dim();
+        if (d != -1) {
+          dim->set_dim_value(d);
+        }
+      }
+    }
+    std::string name = graph_.GenerateNodeArgName("node");
+    return &graph_.GetOrCreateNodeArg(name, &type_proto);
+  }
+
+  template <typename T>
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape, const std::vector<T>& data) {
     std::string name = graph_.GenerateNodeArgName("constant");
     ONNX_NAMESPACE::TensorProto tensor_proto;
     tensor_proto.set_name(name);
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
     tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
+
+    for (auto& dim : shape) {
+      tensor_proto.add_dims(dim);
+    }
+
+    graph_.AddInitializedTensor(tensor_proto);
+
+    return &graph_.GetOrCreateNodeArg(name, nullptr);
+  }
+
+  // Special handle for std::vector<bool>.
+  NodeArg* MakeInitializerBool(const std::vector<int64_t>& shape, const std::vector<bool>& data) {
+    std::string name = graph_.GenerateNodeArgName("constant");
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    tensor_proto.set_name(name);
+    tensor_proto.set_data_type(utils::ToTensorProtoElementType<bool>());
+    std::unique_ptr<bool[]> data_buffer = std::make_unique<bool[]>(data.size());
+    for (size_t i = 0; i < data.size(); ++i) data_buffer[i] = data[i];
+    tensor_proto.set_raw_data(data_buffer.get(), data.size());
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
@@ -314,9 +368,9 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
  * @param pre_graph_checker The graph checker function before applying the transformer
  * @param post_graph_checker The graph checker function after applying the transformer
  */
-void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
-                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
-                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
-                          const std::function<void(Graph&)>& post_graph_checker);
+Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
+                            const std::function<Status(Graph&)>& post_graph_checker);
 }  // namespace test
 }  // namespace onnxruntime

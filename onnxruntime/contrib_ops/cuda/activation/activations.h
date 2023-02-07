@@ -77,6 +77,20 @@ class Gelu final : public UnaryElementwise {
   MAKE_FUNC_CTX_NULL()
 };
 
+template <typename T>
+class QuickGelu final : public UnaryElementwise {
+ public:
+  QuickGelu(const OpKernelInfo& info) : UnaryElementwise(info) {
+    alpha_ = info.GetAttrOrDefault<float>("alpha", 1.702f);
+  }
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  MAKE_FUNC_CTX_ALPHA()
+  float alpha_;
+};
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -7,8 +7,9 @@
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 #include "test/providers/kernel_compute_test_utils.h"
 #endif
 
@@ -172,10 +173,9 @@ void RunTestWrapper<std::string>() {
   test4.AddInput<std::string>("data", {2, 2}, {"a", "b", "c", "d"});
   test4.AddInput<int32_t>("indices", {2, 2}, {0, 0, -3, -3});
   test4.AddOutput<std::string>("output", {2, 2}, {"a", "a", "c", "c"});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip Openvino, which will not throw error message but will ensure no out-of-bound access
   test4.Run(OpTester::ExpectResult::kExpectFailure, "GatherElements op: Out of range value in index tensor",
-            {kNupharExecutionProvider, kOpenVINOExecutionProvider});
+            {kOpenVINOExecutionProvider});
 
   // 3D input - axis 1
   OpTester test5("GatherElements", 11);
@@ -210,7 +210,7 @@ void RunTestWrapper<std::string>() {
   test8.Run();
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 template <typename T, typename TIndex>
 void RunKernelComputeTest(std::initializer_list<int64_t> input_dims, std::initializer_list<int64_t> indices_dims,
                           std::initializer_list<int64_t> indices_strides = {}, bool has_axis = false,
@@ -255,31 +255,122 @@ void RunKernelComputeTestWrapper() {
 }  // namespace
 
 // Disable TensorRT due to missing int8 calibrator
-TEST(GatherElementsOpTest, int8_t) { RunTestWrapper<int8_t>(); }
+TEST(GatherElementsOpTest, int8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, int16_t) { RunTestWrapper<int16_t>(); }
+  RunTestWrapper<int8_t>();
+}
 
-TEST(GatherElementsOpTest, int32_t) { RunTestWrapper<int32_t>(); }
+TEST(GatherElementsOpTest, int16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, int64_t) { RunTestWrapper<int64_t>(); }
+  RunTestWrapper<int16_t>();
+}
 
-TEST(GatherElementsOpTest, uint8_t) { RunTestWrapper<uint8_t>(); }
+TEST(GatherElementsOpTest, int32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, uint16_t) { RunTestWrapper<uint16_t>(); }
+  RunTestWrapper<int32_t>();
+}
 
-TEST(GatherElementsOpTest, uint32_t) { RunTestWrapper<uint32_t>(); }
+TEST(GatherElementsOpTest, int64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, uint64_t) { RunTestWrapper<uint64_t>(); }
+  RunTestWrapper<int64_t>();
+}
 
-TEST(GatherElementsOpTest, float) { RunTestWrapper<float>(); }
+TEST(GatherElementsOpTest, uint8_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, double) { RunTestWrapper<double>(); }
+  RunTestWrapper<uint8_t>();
+}
 
-TEST(GatherElementsOpTest, MLFloat16) { RunTestWrapper<MLFloat16>(); }
+TEST(GatherElementsOpTest, uint16_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
 
-TEST(GatherElementsOpTest, bool) { RunTestWrapper<bool>(); }
+  RunTestWrapper<uint16_t>();
+}
 
-TEST(GatherElementsOpTest, string) { RunTestWrapper<std::string>(); }
+TEST(GatherElementsOpTest, uint32_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint32_t>();
+}
+
+TEST(GatherElementsOpTest, uint64_t) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<uint64_t>();
+}
+
+TEST(GatherElementsOpTest, float) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<float>();
+}
+
+TEST(GatherElementsOpTest, double) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<double>();
+}
+
+TEST(GatherElementsOpTest, MLFloat16) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<MLFloat16>();
+}
+
+TEST(GatherElementsOpTest, bool) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
+  RunTestWrapper<bool>();
+}
+
+TEST(GatherElementsOpTest, string) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: GatherElements op: Out of range value in index tensor";
+  }
+
+  RunTestWrapper<std::string>();
+}
 
 TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   // indices out of bounds
@@ -288,13 +379,12 @@ TEST(GatherElementsOpTest, IndicesOutOfBounds) {
   test.AddInput<float>("data", {2, 2}, {1, 2, 3, 4});
   test.AddInput<int64_t>("indices", {2, 2}, {0, 0, 2, 2});
   test.AddOutput<float>("output", {2, 2}, {1, 1, 3, 3});
-  // skip nuphar, which will not throw error message but will ensure no out-of-bound access
   // skip cuda as the cuda kernel won't throw the error message
   // skip openvino which will not throw error message but will ensure no out-of-bound access
   // skip TensorRT because it doesn't support out of bounds indices
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
-           {kNupharExecutionProvider, kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
-            kTensorrtExecutionProvider});
+           {kCudaExecutionProvider, kRocmExecutionProvider, kOpenVINOExecutionProvider,
+            kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(GatherElementsOpTest, BigIndices) {
@@ -315,7 +405,7 @@ TEST(GatherElementsOpTest, BigIndices) {
   test1.Run();
 }
 
-#if defined(ENABLE_TRAINING) && (defined(USE_CUDA) || defined(USE_ROCM))
+#if defined(ENABLE_STRIDED_TENSORS) && (defined(USE_CUDA) || defined(USE_ROCM))
 TEST(GatherElementsOpTest, Strided_float) { RunKernelComputeTestWrapper<float>(); }
 
 TEST(GatherElementsOpTest, Strided_double) { RunKernelComputeTestWrapper<double>(); }
