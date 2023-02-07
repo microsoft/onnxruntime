@@ -7,13 +7,12 @@ let package = Package(
     name: "onnxruntime",
     platforms: [.iOS(.v16)],
     products: [
-        .library(name: "onnxruntime", targets: ["swiftOnnxWrapper", "objcOnnxWrapper"]),
+        .library(name: "onnxruntime",
+                 type: .static,
+                 targets: ["objcOnnxWrapper"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "swiftOnnxWrapper",
-                dependencies: ["objcOnnxWrapper"],
-                path: "swift/onnxWrapper"),
         
         .target(name: "objcOnnxWrapper",
                 dependencies: ["onnxruntime"],
