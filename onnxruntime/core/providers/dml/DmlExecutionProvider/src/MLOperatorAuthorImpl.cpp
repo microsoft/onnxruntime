@@ -2246,7 +2246,13 @@ namespace Windows::AI::MachineLearning::Adapter
                 return false;
             }
 
-            shapeDims[dimIndex] = gsl::narrow<uint32_t>(shape.dim(dimIndex).dim_value());
+            int64_t dimValue = shape.dim(dimIndex).dim_value();
+            if (dimValue < 0)
+            {
+                return false;
+            }
+
+            shapeDims[dimIndex] = gsl::narrow<uint32_t>(dimValue);
         }
 
         return true;
