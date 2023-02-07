@@ -1,4 +1,4 @@
-<!DOCTYPE html><html class="default" lang="en"><head><meta charSet="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>ExecutionProviderOption | ONNX Runtime JavaScript API</title><meta name="description" content="Documentation for ONNX Runtime JavaScript API"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script async src="../assets/search.js" id="search-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os"</script><header class="tsd-page-toolbar">
+<!DOCTYPE html><html class="default" lang="en"><head><meta charSet="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>XnnpackExecutionProviderOption | ONNX Runtime JavaScript API</title><meta name="description" content="Documentation for ONNX Runtime JavaScript API"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script async src="../assets/search.js" id="search-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os"</script><header class="tsd-page-toolbar">
 <div class="tsd-toolbar-contents container">
 <div class="table-cell" id="tsd-search" data-base="..">
 <div class="field"><label for="tsd-search-field" class="tsd-widget tsd-toolbar-icon search no-caption"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M15.7824 13.833L12.6666 10.7177C12.5259 10.5771 12.3353 10.499 12.1353 10.499H11.6259C12.4884 9.39596 13.001 8.00859 13.001 6.49937C13.001 2.90909 10.0914 0 6.50048 0C2.90959 0 0 2.90909 0 6.49937C0 10.0896 2.90959 12.9987 6.50048 12.9987C8.00996 12.9987 9.39756 12.4863 10.5008 11.6239V12.1332C10.5008 12.3332 10.5789 12.5238 10.7195 12.6644L13.8354 15.7797C14.1292 16.0734 14.6042 16.0734 14.8948 15.7797L15.7793 14.8954C16.0731 14.6017 16.0731 14.1267 15.7824 13.833ZM6.50048 10.499C4.29094 10.499 2.50018 8.71165 2.50018 6.49937C2.50018 4.29021 4.28781 2.49976 6.50048 2.49976C8.71001 2.49976 10.5008 4.28708 10.5008 6.49937C10.5008 8.70852 8.71314 10.499 6.50048 10.499Z" fill="var(--color-text)"></path></svg></label><input type="text" id="tsd-search-field" aria-label="Search"/></div>
@@ -14,20 +14,16 @@
 <ul class="tsd-breadcrumb">
 <li><a href="../index.html">ONNX Runtime JavaScript API</a></li>
 <li><a href="../modules/InferenceSession.html">InferenceSession</a></li>
-<li><a href="InferenceSession.ExecutionProviderOption.html">ExecutionProviderOption</a></li></ul>
-<h1>Interface ExecutionProviderOption</h1></div>
+<li><a href="InferenceSession.XnnpackExecutionProviderOption.html">XnnpackExecutionProviderOption</a></li></ul>
+<h1>Interface XnnpackExecutionProviderOption</h1></div>
 <section class="tsd-panel tsd-hierarchy">
 <h4>Hierarchy</h4>
 <ul class="tsd-hierarchy">
-<li><span class="target">ExecutionProviderOption</span>
+<li><a href="InferenceSession.ExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">ExecutionProviderOption</a>
 <ul class="tsd-hierarchy">
-<li><a href="InferenceSession.CpuExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">CpuExecutionProviderOption</a></li>
-<li><a href="InferenceSession.CudaExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">CudaExecutionProviderOption</a></li>
-<li><a href="InferenceSession.WebAssemblyExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">WebAssemblyExecutionProviderOption</a></li>
-<li><a href="InferenceSession.WebGLExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">WebGLExecutionProviderOption</a></li>
-<li><a href="InferenceSession.XnnpackExecutionProviderOption.html" class="tsd-signature-type" data-tsd-kind="Interface">XnnpackExecutionProviderOption</a></li></ul></li></ul></section><aside class="tsd-sources">
+<li><span class="target">XnnpackExecutionProviderOption</span></li></ul></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/microsoft/onnxruntime/blob/6f2dd10d52/js/common/lib/inference-session.ts#L174">inference-session.ts:174</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/microsoft/onnxruntime/blob/6f2dd10d52/js/common/lib/inference-session.ts#L192">inference-session.ts:192</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-index-accordion" open><summary class="tsd-accordion-summary tsd-index-summary">
@@ -35,15 +31,16 @@
 <div class="tsd-accordion-details">
 <section class="tsd-index-section">
 <h3 class="tsd-index-heading">Properties</h3>
-<div class="tsd-index-list"><a href="InferenceSession.ExecutionProviderOption.html#name" class="tsd-index-link tsd-kind-property tsd-parent-kind-interface"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="#FF984D" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="12" id="icon-1024-path"></rect><path d="M9.354 16V7.24H12.174C12.99 7.24 13.638 7.476 14.118 7.948C14.606 8.412 14.85 9.036 14.85 9.82C14.85 10.604 14.606 11.232 14.118 11.704C13.638 12.168 12.99 12.4 12.174 12.4H10.434V16H9.354ZM10.434 11.428H12.174C12.646 11.428 13.022 11.284 13.302 10.996C13.59 10.7 13.734 10.308 13.734 9.82C13.734 9.324 13.59 8.932 13.302 8.644C13.022 8.356 12.646 8.212 12.174 8.212H10.434V11.428Z" fill="var(--color-text)" id="icon-1024-text"></path></svg><span>name</span></a>
+<div class="tsd-index-list"><a href="InferenceSession.XnnpackExecutionProviderOption.html#name" class="tsd-index-link tsd-kind-property tsd-parent-kind-interface"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="#FF984D" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="12" id="icon-1024-path"></rect><path d="M9.354 16V7.24H12.174C12.99 7.24 13.638 7.476 14.118 7.948C14.606 8.412 14.85 9.036 14.85 9.82C14.85 10.604 14.606 11.232 14.118 11.704C13.638 12.168 12.99 12.4 12.174 12.4H10.434V16H9.354ZM10.434 11.428H12.174C12.646 11.428 13.022 11.284 13.302 10.996C13.59 10.7 13.734 10.308 13.734 9.82C13.734 9.324 13.59 8.932 13.302 8.644C13.022 8.356 12.646 8.212 12.174 8.212H10.434V11.428Z" fill="var(--color-text)" id="icon-1024-text"></path></svg><span>name</span></a>
 </div></section></div></details></section></section>
 <section class="tsd-panel-group tsd-member-group">
 <h2>Properties</h2>
 <section class="tsd-panel tsd-member tsd-kind-property tsd-parent-kind-interface"><a id="name" class="tsd-anchor"></a>
 <h3 class="tsd-anchor-link"><code class="tsd-tag ts-flagReadonly">Readonly</code> <span>name</span><a href="#name" aria-label="Permalink" class="tsd-anchor-icon"><svg class="icon icon-tabler icon-tabler-link" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" id="icon-anchor-a"></path><path d="M10 14a3.5 3.5 0 0 0 5 0l4 -4a3.5 3.5 0 0 0 -5 -5l-.5 .5" id="icon-anchor-b"></path><path d="M14 10a3.5 3.5 0 0 0 -5 0l-4 4a3.5 3.5 0 0 0 5 5l.5 -.5" id="icon-anchor-c"></path></svg></a></h3>
-<div class="tsd-signature">name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div><aside class="tsd-sources">
+<div class="tsd-signature">name<span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">&quot;xnnpack&quot;</span></div><aside class="tsd-sources">
+<p>Overrides <a href="InferenceSession.ExecutionProviderOption.html">ExecutionProviderOption</a>.<a href="InferenceSession.ExecutionProviderOption.html#name">name</a></p>
 <ul>
-<li>Defined in <a href="https://github.com/microsoft/onnxruntime/blob/6f2dd10d52/js/common/lib/inference-session.ts#L175">inference-session.ts:175</a></li></ul></aside></section></section></div>
+<li>Defined in <a href="https://github.com/microsoft/onnxruntime/blob/6f2dd10d52/js/common/lib/inference-session.ts#L193">inference-session.ts:193</a></li></ul></aside></section></section></div>
 <div class="col-4 col-menu menu-sticky-wrap menu-highlight">
 <div class="tsd-navigation settings">
 <details class="tsd-index-accordion"><summary class="tsd-accordion-summary">
@@ -70,9 +67,9 @@
 <li class="tsd-kind-namespace"><a href="../modules/Tensor.html">Tensor</a></li></ul></li></ul></div></details></nav>
 <nav class="tsd-navigation secondary menu-sticky">
 <ul>
-<li class="current tsd-kind-interface tsd-parent-kind-namespace"><a href="InferenceSession.ExecutionProviderOption.html" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="var(--color-ts-interface)" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="6" id="icon-256-path"></rect><path d="M9.51 16V15.016H11.298V8.224H9.51V7.24H14.19V8.224H12.402V15.016H14.19V16H9.51Z" fill="var(--color-text)" id="icon-256-text"></path></svg><span>Execution<wbr/>Provider<wbr/>Option</span></a>
+<li class="current tsd-kind-interface tsd-parent-kind-namespace"><a href="InferenceSession.XnnpackExecutionProviderOption.html" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><rect fill="var(--color-icon-background)" stroke="var(--color-ts-interface)" stroke-width="1.5" x="1" y="1" width="22" height="22" rx="6" id="icon-256-path"></rect><path d="M9.51 16V15.016H11.298V8.224H9.51V7.24H14.19V8.224H12.402V15.016H14.19V16H9.51Z" fill="var(--color-text)" id="icon-256-text"></path></svg><span>Xnnpack<wbr/>Execution<wbr/>Provider<wbr/>Option</span></a>
 <ul>
-<li class="tsd-kind-property tsd-parent-kind-interface"><a href="InferenceSession.ExecutionProviderOption.html#name" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-1024-path"></use><use href="#icon-1024-text"></use></svg>name</a></li></ul></li></ul></nav></div></div>
+<li class="tsd-kind-property tsd-parent-kind-interface"><a href="InferenceSession.XnnpackExecutionProviderOption.html#name" class="tsd-index-link"><svg class="tsd-kind-icon" width="24" height="24" viewBox="0 0 24 24"><use href="#icon-1024-path"></use><use href="#icon-1024-text"></use></svg>name</a></li></ul></li></ul></nav></div></div>
 <div class="container tsd-generator">
 <p>Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></div>
 <div class="overlay"></div><script src="../assets/main.js"></script></body></html>
