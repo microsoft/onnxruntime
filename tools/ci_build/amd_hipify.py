@@ -59,6 +59,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("GPU_WARP_SIZE = 32", "GPU_WARP_SIZE = 64")
     s = s.replace("std::exp", "expf")
     s = s.replace("std::log", "logf")
+    s = s.replace("WaitCudaNotificationOnDevice", "WaitRocmNotificationOnDevice")
+    s = s.replace("hipHostAlloc", "hipHostMalloc")
     s = s.replace(
         "#include <cub/device/device_radix_sort.cuh>",
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
@@ -66,6 +68,10 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace(
         '#include "cub/device/device_radix_sort.cuh"',
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
+    )
+    s = s.replace(
+        "#include <cub/device/device_segmented_radix_sort.cuh>",
+        "#include <hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp>",
     )
     s = s.replace(
         "#include <cub/device/device_reduce.cuh>", "#include <hipcub/backend/rocprim/device/device_reduce.hpp>"
