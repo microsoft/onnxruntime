@@ -245,7 +245,7 @@ if (onnxruntime_USE_ROCM)
   endif()
 
   if (NOT CMAKE_HIP_ARCHITECTURES)
-    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a")
+    set(CMAKE_HIP_ARCHITECTURES "gfx906;gfx908;gfx90a;gfx1030")
   endif()
 
   file(GLOB rocm_cmake_components ${onnxruntime_ROCM_HOME}/lib/cmake/*)
@@ -603,6 +603,7 @@ if (onnxruntime_USE_CUDA)
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
       list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
+
 endif()
 if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
