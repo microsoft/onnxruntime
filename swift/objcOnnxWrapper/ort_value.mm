@@ -30,20 +30,20 @@ namespace {
 //}
 
 // TODO: SzymonL Fix this
-//ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
-//    const Ort::TypeInfo& CXXAPITypeInfo) {
-//  auto* result = [[ORTValueTypeInfo alloc] init];
-//  const auto valueType = CXXAPITypeInfo.GetONNXType();
-//
-//  result.type = CAPIToPublicValueType(valueType);
-//
-//  if (valueType == ONNX_TYPE_TENSOR) {
-//    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
+ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
+    const Ort::TypeInfo& CXXAPITypeInfo) {
+  auto* result = [[ORTValueTypeInfo alloc] init];
+  const auto valueType = CXXAPITypeInfo.GetONNXType();
+
+  result.type = CAPIToPublicValueType(valueType);
+
+  if (valueType == ONNX_TYPE_TENSOR) {
+    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
 //    result.tensorTypeAndShapeInfo = CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
-//  }
-//
-//  return result;
-//}
+  }
+
+  return result;
+}
 
 // out = a * b
 // returns true iff the result does not overflow
@@ -95,8 +95,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 
 - (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error {
   try {
-      // TODO: SzymonL Fix this
-      return NULL; //CXXAPIToPublicValueTypeInfo(*_typeInfo);
+      return CXXAPIToPublicValueTypeInfo(*_typeInfo);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -105,7 +104,7 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
       // TODO: SzymonL Fix this
-      return NULL; // CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
+      return NULL; //CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
