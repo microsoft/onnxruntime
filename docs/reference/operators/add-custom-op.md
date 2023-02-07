@@ -15,6 +15,43 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 * TOC placeholder
 {:toc}
 
+## Define and register a custom operator
+A custom operator class inherits from `Ort::CustomOpBase` and provides implementations for methods that define the operator's characteristics and functionality. For example, the following snippet shows the class definition for a basic custom operator named "MyCustomOp" with 2 inputs and 1 output.
+
+```C++
+struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
+    return std::make_unique<MyCustomKernel>(api, info).release();
+  };
+  
+  // Returns the name of the custom operator.
+  const char* GetName() const { return "MyCustomOp"; };
+
+  // Returns the custom operator's execution provider.
+  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
+
+  // Returns the number of inputs.
+  size_t GetInputTypeCount() const { return 2; };
+  
+  // Returns the type of each input. Both inputs are tensor(float).
+  ONNXTensorElementDataType GetInputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+
+  // Returns the number of outputs.
+  size_t GetOutputTypeCount() const { return 1; };
+  
+  // Returns the type of each output. The single output is a tensor(float).
+  ONNXTensorElementDataType GetOutputType(size_t index) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; };
+};
+```
+
+Refer to the [OrtCustomOp struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h) or the [Ort::CustomOpBase struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h) definitions for a listing of all custom operator methods.
+
+## Create a library of custom operators
+Custom operators can be defined in a shared library (e.g., a .dll on Windows or a .so on Linux), which is then registered with an ONNX Runtime session.
+
+```C++
+```
+
 ## Register a custom operator
 A new op can be registered with ONNX Runtime using the Custom Operator API in [onnxruntime_c_api](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h).
 
