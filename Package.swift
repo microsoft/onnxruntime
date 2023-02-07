@@ -27,6 +27,9 @@ let package = Package(
                                   "-fvisibility=hidden",
                                   "-fvisibility-inlines-hidden"
                                  ])
+                ],
+                linkerSettings: [
+                    .linkedFramework("onnxruntime"),
                 ]),
         
         .target(name: "cOnnxWrapper",
