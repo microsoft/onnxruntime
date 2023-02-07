@@ -12,37 +12,38 @@
 NS_ASSUME_NONNULL_BEGIN
 
 namespace {
+// TODO: SzymonL Fix this
+//ORTTensorTypeAndShapeInfo* CXXAPIToPublicTensorTypeAndShapeInfo(
+//    const Ort::ConstTensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
+//  auto* result = [[ORTTensorTypeAndShapeInfo alloc] init];
+//  const auto elementType = CXXAPITensorTypeAndShapeInfo.GetElementType();
+//  const std::vector<int64_t> shape = CXXAPITensorTypeAndShapeInfo.GetShape();
+//
+//  result.elementType = CAPIToPublicTensorElementType(elementType);
+//  auto* shapeArray = [[NSMutableArray alloc] initWithCapacity:shape.size()];
+//  for (size_t i = 0; i < shape.size(); ++i) {
+//    shapeArray[i] = @(shape[i]);
+//  }
+//  result.shape = shapeArray;
+//
+//  return result;
+//}
 
-ORTTensorTypeAndShapeInfo* CXXAPIToPublicTensorTypeAndShapeInfo(
-    const Ort::ConstTensorTypeAndShapeInfo& CXXAPITensorTypeAndShapeInfo) {
-  auto* result = [[ORTTensorTypeAndShapeInfo alloc] init];
-  const auto elementType = CXXAPITensorTypeAndShapeInfo.GetElementType();
-  const std::vector<int64_t> shape = CXXAPITensorTypeAndShapeInfo.GetShape();
-
-  result.elementType = CAPIToPublicTensorElementType(elementType);
-  auto* shapeArray = [[NSMutableArray alloc] initWithCapacity:shape.size()];
-  for (size_t i = 0; i < shape.size(); ++i) {
-    shapeArray[i] = @(shape[i]);
-  }
-  result.shape = shapeArray;
-
-  return result;
-}
-
-ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
-    const Ort::TypeInfo& CXXAPITypeInfo) {
-  auto* result = [[ORTValueTypeInfo alloc] init];
-  const auto valueType = CXXAPITypeInfo.GetONNXType();
-
-  result.type = CAPIToPublicValueType(valueType);
-
-  if (valueType == ONNX_TYPE_TENSOR) {
-    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
-    result.tensorTypeAndShapeInfo = CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
-  }
-
-  return result;
-}
+// TODO: SzymonL Fix this
+//ORTValueTypeInfo* CXXAPIToPublicValueTypeInfo(
+//    const Ort::TypeInfo& CXXAPITypeInfo) {
+//  auto* result = [[ORTValueTypeInfo alloc] init];
+//  const auto valueType = CXXAPITypeInfo.GetONNXType();
+//
+//  result.type = CAPIToPublicValueType(valueType);
+//
+//  if (valueType == ONNX_TYPE_TENSOR) {
+//    const auto tensorTypeAndShapeInfo = CXXAPITypeInfo.GetTensorTypeAndShapeInfo();
+//    result.tensorTypeAndShapeInfo = CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
+//  }
+//
+//  return result;
+//}
 
 // out = a * b
 // returns true iff the result does not overflow
@@ -94,7 +95,8 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 
 - (nullable ORTValueTypeInfo*)typeInfoWithError:(NSError**)error {
   try {
-    return CXXAPIToPublicValueTypeInfo(*_typeInfo);
+      // TODO: SzymonL Fix this
+      return NULL; //CXXAPIToPublicValueTypeInfo(*_typeInfo);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
@@ -102,7 +104,8 @@ bool SafeMultiply(size_t a, size_t b, size_t& out) {
 - (nullable ORTTensorTypeAndShapeInfo*)tensorTypeAndShapeInfoWithError:(NSError**)error {
   try {
     const auto tensorTypeAndShapeInfo = _typeInfo->GetTensorTypeAndShapeInfo();
-    return CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
+      // TODO: SzymonL Fix this
+      return NULL; // CXXAPIToPublicTensorTypeAndShapeInfo(tensorTypeAndShapeInfo);
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_NULLABLE(error)
 }
