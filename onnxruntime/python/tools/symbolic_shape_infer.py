@@ -218,9 +218,10 @@ class SymbolicShapeInference:
             "_adaptive_avg_pool2d": self._infer_aten_pool2d,
             "numpy_T": self._infer_Transpose,
             "native_group_norm": self._infer_aten_group_norm,
-            "upsample_nearest1d": self._infer_aten_upsample_nearest,
-            "upsample_nearest2d": self._infer_aten_upsample_nearest,
-            "upsample_nearest3d": self._infer_aten_upsample_nearest,
+            "upsample_nearest1d": self._infer_aten_upsample,
+            "upsample_nearest2d": self._infer_aten_upsample,
+            "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bilinear2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -1389,14 +1390,14 @@ class SymbolicShapeInference:
                     )
                 )
 
-    def _infer_aten_upsample_nearest(self, node):
+    def _infer_aten_upsample(self, node):
         new_shape = None
         input_shape = self._get_shape(node, 0)
         if input_shape is not None:
             new_shape = input_shape[:2]
             output_size = self._try_get_value(node, 1)
             if output_size is not None:
-                new_shape += [dim_size.item() for dim_size in output_size]
+                new_shape += [dim_size.item() if type(dim_size) == np.int64 else dim_size for dim_size in output_size]
             else:
                 rank = len(input_shape)
                 new_shape += [str(self._new_symbolic_dim_from_output(node, 0, i)) for i in range(2, rank)]
