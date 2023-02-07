@@ -52,7 +52,7 @@ Status QAttention<T, int8_t>::CheckInputs(const Tensor* input,
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(AttentionBase::CheckInputs(input->Shape(), weights->Shape(), bias->Shape(),
                                                  mask_index, past_tensor,
-                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // relative_position_bias
                                                  parameters,
                                                  device_prop.maxThreadsPerBlock));
 
@@ -198,7 +198,7 @@ Status QAttention<T, int8_t>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
   data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
   data.past = (nullptr == past_tensor) ? nullptr : reinterpret_cast<const CudaT*>(past_tensor->Data<T>());
-  data.extra_add_qk = nullptr;  // add_qk is not supported in quantized attention
+  data.relative_position_bias = nullptr;  // add_qk is not supported in quantized attention
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
