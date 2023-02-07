@@ -2351,13 +2351,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
-  return OrtTrainingApis::GetTrainingApi(version);
+  if (version >= 13 && version <= ORT_API_VERSION)
+    return OrtTrainingApis::GetTrainingApi(version);
+
+  fprintf(stderr, "The given version [%u] is not supported. Training api only supports version 13 to %u.\n",
+          version, ORT_API_VERSION);
+  return nullptr;
 #else
 
   ORT_UNUSED_PARAMETER(version);
-  fprintf(stderr,
-          "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
 #endif
@@ -2407,7 +2409,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_14 = {
+static constexpr OrtApi ort_api_1_to_15 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2731,7 +2733,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.15.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_14;
+    return &ort_api_1_to_15;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

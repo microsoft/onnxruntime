@@ -290,7 +290,7 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
   max = std::numeric_limits<float>::max();
 
   // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
-  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
+  bool min_max_are_attributes = node.SinceVersion() < 11;
   bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {

@@ -80,7 +80,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 #else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   // convert to ort by loading the onnx model
@@ -125,7 +125,7 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   //  load the ORT format model and execute it

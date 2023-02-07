@@ -16,7 +16,7 @@ parameters:
   default: '*.dll'
 
 steps:
-- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+- task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@2
   displayName: ${{ parameters.DisplayName }}
   condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:

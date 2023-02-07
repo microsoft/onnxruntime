@@ -44,7 +44,7 @@ class BatchNorm : public OpKernel {
     // From opset 9 onwards, by default, only the spatial case (spatial == 1) is defined per spec
     // For opset 14 onwards, training is an attribute.
     // For opset < 14, since no training attribute is present we assume optional outputs indicate training mode.
-    if (op_kernel_info.node().SinceVersion() == 14) {
+    if (op_kernel_info.node().SinceVersion() >= 14) {
       is_train_ = op_kernel_info.GetAttrOrDefault<int64_t>("training_mode", 0) == 1;
     } else {
       is_train_ = op_kernel_info.GetOutputCount() > 1;
