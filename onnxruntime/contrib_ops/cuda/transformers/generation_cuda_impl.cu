@@ -181,7 +181,7 @@ void LaunchLogitsProcessKernel(
     float repetition_penalty,
     int no_repeat_ngram_size,
     cudaStream_t stream) {
-  int total_elements = batch_size * num_beams * vocab_size;
+  int total_elements = batch_size * num_beams * padded_vocab_size;
   constexpr int blockSize = 256;
   const int gridSize = (total_elements + blockSize - 1) / blockSize;
   LogitsProcessKernel<T><<<gridSize, blockSize, 0, stream>>>(
@@ -320,33 +320,33 @@ void GetTempStorageSize(const T* d_keys_in,
                         bool is_descending,
                         size_t& temp_storage_bytes) {
   if (is_descending) {
-    cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
-                                                       temp_storage_bytes,
-                                                       d_keys_in,
-                                                       (T*)nullptr,
-                                                       d_values_in,
-                                                       (int*)nullptr,
-                                                       num_items,
-                                                       num_segments,
-                                                       d_offsets,
-                                                       d_offsets + 1,
-                                                       0,
-                                                       sizeof(T) * 8,
-                                                       stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
+                                                                       temp_storage_bytes,
+                                                                       d_keys_in,
+                                                                       (T*)nullptr,
+                                                                       d_values_in,
+                                                                       (int*)nullptr,
+                                                                       num_items,
+                                                                       num_segments,
+                                                                       d_offsets,
+                                                                       d_offsets + 1,
+                                                                       0,
+                                                                       sizeof(T) * 8,
+                                                                       stream));
   } else {
-    cub::DeviceSegmentedRadixSort::SortPairs(nullptr,
-                                             temp_storage_bytes,
-                                             d_keys_in,
-                                             (T*)nullptr,
-                                             d_values_in,
-                                             (int*)nullptr,
-                                             num_items,
-                                             num_segments,
-                                             d_offsets,
-                                             d_offsets + 1,
-                                             0,
-                                             sizeof(T) * 8,
-                                             stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairs(nullptr,
+                                                             temp_storage_bytes,
+                                                             d_keys_in,
+                                                             (T*)nullptr,
+                                                             d_values_in,
+                                                             (int*)nullptr,
+                                                             num_items,
+                                                             num_segments,
+                                                             d_offsets,
+                                                             d_offsets + 1,
+                                                             0,
+                                                             sizeof(T) * 8,
+                                                             stream));
   }
 }
 
@@ -412,33 +412,33 @@ void LaunchSortPairs(void* d_temp_storage,
                      cudaStream_t stream,
                      bool is_descending) {
   if (is_descending) {
-    cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
-                                                       temp_storage_bytes,
-                                                       d_keys_in,
-                                                       d_keys_out,
-                                                       d_values_in,
-                                                       d_values_out,
-                                                       num_items,
-                                                       num_segments,
-                                                       d_offsets,
-                                                       d_offsets + 1,
-                                                       0,
-                                                       sizeof(T) * 8,
-                                                       stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
+                                                                       temp_storage_bytes,
+                                                                       d_keys_in,
+                                                                       d_keys_out,
+                                                                       d_values_in,
+                                                                       d_values_out,
+                                                                       num_items,
+                                                                       num_segments,
+                                                                       d_offsets,
+                                                                       d_offsets + 1,
+                                                                       0,
+                                                                       sizeof(T) * 8,
+                                                                       stream));                                                      
   } else {
-    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage,
-                                             temp_storage_bytes,
-                                             d_keys_in,
-                                             d_keys_out,
-                                             d_values_in,
-                                             d_values_out,
-                                             num_items,
-                                             num_segments,
-                                             d_offsets,
-                                             d_offsets + 1,
-                                             0,
-                                             sizeof(T) * 8,
-                                             stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage,
+                                                             temp_storage_bytes,
+                                                             d_keys_in,
+                                                             d_keys_out,
+                                                             d_values_in,
+                                                             d_values_out,
+                                                             num_items,
+                                                             num_segments,
+                                                             d_offsets,
+                                                             d_offsets + 1,
+                                                             0,
+                                                             sizeof(T) * 8,
+                                                             stream));
   }
 }
 
@@ -598,7 +598,7 @@ template void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
 
 // Ref: https://github.com/pytorch/pytorch/blob/release/1.13/aten/src/ATen/native/cuda/MultinomialKernel.cu
 template <typename scalar_t, typename accscalar_t>
-__global__ void sampleMultinomialOnce(int64_t* dest,
+__global__ void sampleMultinomialOnce(int32_t* dest,
                                       int distributions,
                                       int categories,
                                       scalar_t* sampled,
@@ -714,16 +714,16 @@ __global__ void sampleMultinomialOnce(int64_t* dest,
 // Only support n_sample = 1
 void TorchMultinomialKernelLauncher(float* d_input,
                                     float* d_sampled,
-                                    int64_t* d_output,
+                                    int32_t* d_output,
                                     int batch_size,
                                     int vocab_size,
                                     int* d_presence_mask,
                                     cudaStream_t stream) {
   // Store the props in class variables
   int device;
-  cudaGetDevice(&device);
+  CUDA_CALL_THROW(cudaGetDevice(&device));
   cudaDeviceProp props;
-  cudaGetDeviceProperties(&props, device);
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&props, device));
 
   int numSM = props.multiProcessorCount;
   int maxThreads = props.maxThreadsPerBlock;

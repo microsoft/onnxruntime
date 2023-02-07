@@ -28,8 +28,8 @@ class FusionUtils:
         logger.debug(f"Did not cast graph input {input_name} to int32: found {graph_input is not None}")
         return False, input_name
 
-    def cast_input_to_int32(self, input_name: str):
-        cast_output = input_name + "_int32"
+    def cast_input(self, input_name: str, target_type="int32"):
+        cast_output = input_name + "_" + target_type
 
         # Avoid consequent Cast nodes.
         inputs = [input_name]
@@ -40,10 +40,23 @@ class FusionUtils:
                 inputs = [parent_node.input[0]]
 
         cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
-        cast_node.attribute.extend([helper.make_attribute("to", int(TensorProto.INT32))])
+
+        if target_type == "int32":
+            to_type = int(TensorProto.INT32)
+        elif target_type == "float32":
+            to_type = int(TensorProto.FLOAT)
+        elif target_type == "float16":
+            to_type = int(TensorProto.FLOAT16)
+        else:
+            raise ValueError("Invalid target_type: {target_type}")
+
+        cast_node.attribute.extend([helper.make_attribute("to", to_type)])
         self.model.add_node(cast_node)
 
         return cast_output, cast_node
+
+    def cast_input_to_int32(self, input_name: str):
+        return self.cast_input(input_name, "int32")
 
     def remove_cast_int32(self, input_name: str):
         input_name_to_nodes = self.model.input_name_to_nodes()
@@ -59,6 +72,32 @@ class FusionUtils:
                     output_name = node.output[0]
                     self.model.remove_node(node)
                     self.model.replace_input_of_all_nodes(output_name, input_name)
+
+    @staticmethod
+    def skip_parent(model: OnnxModel, node, parent_node, input_name_to_nodes):
+        """
+        Before:
+              (input)-->parent-->node-->(output)
+        After:
+              (input)-->parent-->
+                |
+                +----->node-->(output)
+
+        This function returns a flag about whether the parent node can be removed.
+        Note that this function assumes the node has first input links from parent!
+        """
+        parent_can_be_removed = False
+        input_name_to_nodes[node.input[0]].remove(node)
+        # We can remove the first Transpose if its output is not used (linked to graph output or other nodes) anymore.
+        if len(input_name_to_nodes[node.input[0]]) == 0 and not model.find_graph_output(
+            node.input[0]
+        ):  # checks main graph output. TODO: deal with subgraph
+            parent_can_be_removed = True
+            # self.nodes_to_remove.append(transpose_a)
+
+        input_name_to_nodes[parent_node.input[0]].append(node)
+        node.input[0] = parent_node.input[0]
+        return parent_can_be_removed
 
     @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
@@ -215,7 +254,10 @@ class FusionUtils:
             graph_output_names = set(self.model.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
+                    if (
+                        not bool(set(node.input) & graph_input_names)
+                        and len(self.model.input_name_to_nodes()[node.input[0]]) == 1  # parent has only one child
+                    ):
                         self.model.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue

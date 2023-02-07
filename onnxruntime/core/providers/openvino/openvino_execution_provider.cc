@@ -13,14 +13,13 @@ namespace onnxruntime {
 
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider} {
-  
+
   InitProviderOrtApi();
-  
+
   openvino_ep::BackendManager::GetGlobalContext().device_type = info.device_type_;
   openvino_ep::BackendManager::GetGlobalContext().precision_str = info.precision_;
   openvino_ep::BackendManager::GetGlobalContext().enable_vpu_fast_compile = info.enable_vpu_fast_compile_;
-  openvino_ep::BackendManager::GetGlobalContext().use_compiled_network = info.use_compiled_network_;
-  openvino_ep::BackendManager::GetGlobalContext().blob_dump_path = info.blob_dump_path_;
+  openvino_ep::BackendManager::GetGlobalContext().cache_dir = info.cache_dir_;
   openvino_ep::BackendManager::GetGlobalContext().context = info.context_;
   openvino_ep::BackendManager::GetGlobalContext().enable_opencl_throttling = info.enable_opencl_throttling_;
   openvino_ep::BackendManager::GetGlobalContext().enable_dynamic_shapes = info.enable_dynamic_shapes_;
@@ -33,7 +32,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
   }
   //to check if target device is available
   //using ie_core capability GetAvailableDevices to fetch list of devices plugged in
-  if (info.use_compiled_network_ == false) {
+  if (info.cache_dir_.empty()) {
     bool device_found = false;
     bool device_id_found = false;
     auto available_devices = openvino_ep::BackendManager::GetGlobalContext().ie_core.GetAvailableDevices();
@@ -122,17 +121,17 @@ OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
 #endif
   openvino_ep::BackendManager::GetGlobalContext().onnx_opset_version = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
 
-#if defined (OPENVINO_2021_4)
-  openvino_ep::GetCapability obj(graph_viewer,
-                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2021_4");
-  result = obj.Execute();
-#elif defined (OPENVINO_2022_1)
+#if defined (OPENVINO_2022_1)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_1");
   result = obj.Execute();
 #elif defined (OPENVINO_2022_2)
   openvino_ep::GetCapability obj(graph_viewer,
                                  openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_2");
+  result = obj.Execute();
+#elif defined (OPENVINO_2022_3)
+  openvino_ep::GetCapability obj(graph_viewer,
+                                 openvino_ep::BackendManager::GetGlobalContext().device_type, "V_2022_3");
   result = obj.Execute();
 #endif
 
@@ -148,11 +147,7 @@ common::Status OpenVINOExecutionProvider::Compile(
 
     NodeComputeInfo compute_info;
 
-#if defined(OV_API_20)
     openvino_ep::BackendManager::GetGlobalContext().use_api_2 = true;
-#else
-    openvino_ep::BackendManager::GetGlobalContext().use_api_2 = false;
-#endif
 
     std::shared_ptr<openvino_ep::BackendManager> backend_manager = std::make_shared<openvino_ep::BackendManager>(fused_node, graph_body_viewer, *GetLogger());
 

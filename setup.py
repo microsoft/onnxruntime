@@ -80,8 +80,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_armnn"):
     package_name = "onnxruntime-armnn"
 elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
-elif parse_arg_remove_boolean(sys.argv, "--use_cloud"):
-    package_name = "onnxruntime-cloud"
+elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
+    package_name = "onnxruntime-azure"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -174,7 +174,7 @@ try:
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
-        def _rewrite_ld_preload_cloud(self):
+        def _rewrite_ld_preload_azure(self):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 f.write("import os\n")
                 f.write("from ctypes import CDLL, RTLD_GLOBAL, util\n")
@@ -186,7 +186,7 @@ try:
                 f.write("    try:\n")
                 f.write("        LoadLib(lib_name)\n")
                 f.write("    except OSError:\n")
-                f.write('        print("Could not load ort cloud-ep dependency: " + lib_name)\n')
+                f.write('        print("Could not load ort azure-ep dependency: " + lib_name)\n')
                 f.write('        os.environ["ORT_" + lib_name + "_UNAVAILABLE"] = "1"\n')
 
         def run(self):
@@ -313,8 +313,8 @@ try:
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
-                if "onnxruntime-cloud" == package_name:
-                    self._rewrite_ld_preload_cloud()
+                if "onnxruntime-azure" == package_name:
+                    self._rewrite_ld_preload_azure()
 
             _bdist_wheel.run(self)
             if is_manylinux and not disable_auditwheel_repair and not is_openvino:
@@ -481,9 +481,12 @@ packages = [
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.transformers",
+    "onnxruntime.transformers.models.bart",
+    "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.stable_diffusion",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}
@@ -520,41 +523,48 @@ classifiers = [
 if not enable_training:
     classifiers.extend(["Operating System :: Microsoft :: Windows", "Operating System :: MacOS"])
 
-if enable_training:
+if enable_training or enable_training_apis:
+    packages.append("onnxruntime.training")
+    if enable_training:
+        packages.extend(
+            [
+                "onnxruntime.training.amp",
+                "onnxruntime.training.experimental",
+                "onnxruntime.training.experimental.gradient_graph",
+                "onnxruntime.training.optim",
+                "onnxruntime.training.torchdynamo",
+                "onnxruntime.training.ortmodule",
+                "onnxruntime.training.ortmodule.experimental",
+                "onnxruntime.training.ortmodule.experimental.json_config",
+                "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
+                "onnxruntime.training.utils.data",
+            ]
+        )
+
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
+            "*.cpp",
+            "*.cu",
+            "*.cuh",
+            "*.h",
+        ]
+
     packages.extend(
         [
-            "onnxruntime.training",
-            "onnxruntime.training.amp",
-            "onnxruntime.training.experimental",
-            "onnxruntime.training.experimental.gradient_graph",
-            "onnxruntime.training.optim",
-            "onnxruntime.training.torchdynamo",
-            "onnxruntime.training.ortmodule",
-            "onnxruntime.training.ortmodule.experimental",
-            "onnxruntime.training.ortmodule.experimental.json_config",
-            "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
-            "onnxruntime.training.utils.data",
+            "onnxruntime.training.api",
+            "onnxruntime.training.onnxblock",
+            "onnxruntime.training.onnxblock.loss",
+            "onnxruntime.training.onnxblock.optim",
         ]
     )
-    if enable_training_apis:
-        packages.append("onnxruntime.training.api")
-        packages.append("onnxruntime.training.onnxblock")
-        packages.append("onnxruntime.training.onnxblock.loss")
-        packages.append("onnxruntime.training.onnxblock.optim")
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
-        "*.cpp",
-        "*.cu",
-        "*.cuh",
-        "*.h",
-    ]
+
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:
@@ -567,25 +577,25 @@ if enable_training:
         # To support the package consisting of both openvino and training modules part of it
         package_name = "onnxruntime-training"
 
-    disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
-    disable_local_version = (
-        disable_local_version == "1"
-        or disable_local_version.lower() == "true"
-        or disable_local_version.lower() == "yes"
-    )
-    # local version should be disabled for internal feeds.
-    if not disable_local_version:
-        # we want put default training packages to pypi. pypi does not accept package with a local version.
-        if not default_training_package_device or nightly_build:
-            if cuda_version:
-                # removing '.' to make Cuda version number in the same form as Pytorch.
-                local_version = "+cu" + cuda_version.replace(".", "")
-            elif rocm_version:
-                # removing '.' to make Rocm version number in the same form as Pytorch.
-                local_version = "+rocm" + rocm_version.replace(".", "")
-            else:
-                # cpu version for documentation
-                local_version = "+cpu"
+        disable_local_version = environ.get("ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION", "0")
+        disable_local_version = (
+            disable_local_version == "1"
+            or disable_local_version.lower() == "true"
+            or disable_local_version.lower() == "yes"
+        )
+        # local version should be disabled for internal feeds.
+        if not disable_local_version:
+            # we want put default training packages to pypi. pypi does not accept package with a local version.
+            if not default_training_package_device or nightly_build:
+                if cuda_version:
+                    # removing '.' to make Cuda version number in the same form as Pytorch.
+                    local_version = "+cu" + cuda_version.replace(".", "")
+                elif rocm_version:
+                    # removing '.' to make Rocm version number in the same form as Pytorch.
+                    local_version = "+rocm" + rocm_version.replace(".", "")
+                else:
+                    # cpu version for documentation
+                    local_version = "+cpu"
 
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]

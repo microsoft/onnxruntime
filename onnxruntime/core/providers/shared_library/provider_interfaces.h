@@ -880,8 +880,13 @@ struct ProviderHost {
 
 #if defined(USE_CANN)
   virtual RandomGenerator& RandomGenerator__Default() = 0;
-  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
   virtual std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) = 0;
+#endif
+
+  virtual void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) = 0;
+
+#ifdef _WIN32
+  virtual std::string ToUTF8String(const std::wstring& s) = 0;
 #endif
 
   virtual ProviderHostCPU& GetProviderHostCPU() = 0;

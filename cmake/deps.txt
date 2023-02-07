@@ -23,10 +23,10 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.zip;cf36
 microsoft_wil;https://github.com/microsoft/wil/archive/5f4caba4e7a9017816e47becdd918fcc872039ba.zip;fd119887d0d17c37adf1fc227b054befa28158ad
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.0.3.zip;e4f37b93b2da78a5816c2495603a4188d316214b
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e378535ededbe5af52c8f969d2dedbe73d5
-onnx;https://github.com/onnx/onnx/archive/1ba785612a79fe749aa1e478336e534743372639.zip;6c22c32fabafac81107186ea6bedb31741a3142d
+onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.13.0.zip;8dda5079cdb5a134b08b0c73f4592a6404fc2dc6
 #use the commit where it's several commits after 8.5-GA branch (https://github.com/onnx/onnx-tensorrt/commit/369d6676423c2a6dbf4a5665c4b5010240d99d3c)
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/369d6676423c2a6dbf4a5665c4b5010240d99d3c.zip;62119892edfb78689061790140c439b111491275
-protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.18.3.zip;b95bf7e9de9c2249b6c1f2ca556ace49999e90bd
+protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.20.2.zip;9f71dad95fb83438e88822a9969fc93773fd8c48
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
 pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/1787867f6183f056420e532eec640cba25efafea.zip;e43e80781560c5ab404a4da20f34d846f5f5d101
 pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.10.1.zip;769b6aa67a77f17a770960f604b727645b6f6a13
@@ -34,3 +34,12 @@ pytorch_cpuinfo;https://github.com/pytorch/cpuinfo/archive/5916273f79a21551890fd
 re2;https://github.com/google/re2/archive/refs/tags/2022-06-01.zip;aa77313b76e91b531ee7f3e45f004c6a502a5374
 safeint;https://github.com/dcleblanc/SafeInt/archive/ff15c6ada150a5018c5ef2172401cb4529eac9c0.zip;913a4046e5274d329af2806cb53194f617d8c0ab
 tensorboard;https://github.com/tensorflow/tensorboard/archive/373eb09e4c5d2b3cc2493f0949dc4be6b6a45e81.zip;67b833913605a4f3f499894ab11528a702c2b381
+cutlass;https://github.com/NVIDIA/cutlass/archive/refs/tags/v2.11.0.zip;be70c559f07251ba7f33c789dba98872b444c10f
+# below are deps introduced by triton client, might remove after 1.14 release
+openssl;https://github.com/openssl/openssl/archive/refs/tags/openssl-3.0.7.zip;dda8fc81308555410505eb4a9eab3e1da0436a1d
+rapidjson;https://github.com/Tencent/rapidjson/archive/refs/tags/v1.1.0.zip;0fe7b4f7b83df4b3d517f4a202f3a383af7a0818
+boost;https://github.com/boostorg/boost/archive/refs/tags/boost-1.81.0.zip;f6ab0da855f825b4eb1abd949967d01a4c5e4e1b
+b64;https://github.com/libb64/libb64/archive/refs/tags/v2.0.0.1.zip;815b6d31d50d9e63df55b25ce555e7b787153c28
+pthread;https://sourceforge.net/projects/pthreads4w/files/pthreads4w-code-v3.0.0.zip;3b9e417e4474c34542b76ad40529e396ac109fb4
+triton;https://github.com/triton-inference-server/server/archive/refs/tags/v2.28.0.zip;4b305570aa1e889946e20e36050b6770e4108fee
+# above are deps introduced by triton client, might remove after 1.14 release

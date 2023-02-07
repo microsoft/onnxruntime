@@ -178,22 +178,22 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     output_group.set_defaults(run_shape_inference=False)
 
     output_group.add_argument(
-        "-pvs",
-        "--pad_vocab_size",
+        "-dpvs",
+        "--disable_pad_vocab_size",
         required=False,
         action="store_true",
-        help="Pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size",
+        help="Do not pad logits MatMul weight to be a multiple of 8 along the dimension where dim value is the vocab size. The logits MatMul may hence be of poor performance for fp16 precision.",
     )
-    output_group.set_defaults(pad_vocab_size=True)
+    output_group.set_defaults(disable_pad_vocab_size=False)
 
     output_group.add_argument(
-        "-sgd",
-        "--separate_gpt2_decoder_for_init_run",
+        "-dsgd",
+        "--disable_separate_gpt2_decoder_for_init_run",
         required=False,
         action="store_true",
-        help="Have separate decoder subgraphs for initial and remaining runs. This allows for optimizations based on sequence lengths in each subgraph",
+        help="Do not create separate decoder subgraphs for initial and remaining runs. This does not allow for optimizations based on sequence lengths in each subgraph",
     )
-    output_group.set_defaults(separate_gpt2_decoder_for_init_run=True)
+    output_group.set_defaults(disable_separate_gpt2_decoder_for_init_run=False)
 
     output_group.add_argument(
         "-i",
@@ -272,6 +272,14 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Presence mask for custom sampling",
     )
     model_group.set_defaults(presence_mask=False)
+
+    model_group.add_argument(
+        "--seed",
+        required=False,
+        action="store_true",
+        help="Random seed for sampling op",
+    )
+    model_group.set_defaults(seed=False)
 
     beam_parameters_group = parser.add_argument_group(
         "Beam search parameters not stored in the output model, for testing parity and performance"
@@ -475,7 +483,7 @@ def t5_to_onnx(args: argparse.Namespace):
         Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
-        optimize_onnx=False,
+        optimize_onnx=(args.precision != Precision.FLOAT16),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,
@@ -1403,7 +1411,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # This can be expanded to other models/decoding strategies later
     logits_matmul_weight_padded = False
     if (
-        args.pad_vocab_size
+        not args.disable_pad_vocab_size
         and args.precision == Precision.FLOAT16
         and is_gpt2
         and (is_beamsearch or is_greedysearch or is_sampling)
@@ -1420,7 +1428,11 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
     gpt2_init_decoder_generated = False
     gpt2_init_decoder_onnx_path = None
-    if args.separate_gpt2_decoder_for_init_run and is_gpt2 and (is_beamsearch or is_greedysearch or is_sampling):
+    if (
+        not args.disable_separate_gpt2_decoder_for_init_run
+        and is_gpt2
+        and (is_beamsearch or is_greedysearch or is_sampling)
+    ):
         logger.info(f"Creating an initial run GPT2 decoder from {args.decoder_onnx}. ")
 
         gpt2_init_decoder_onnx_filename = "gpt2_init_past_{}.onnx".format(
@@ -1529,8 +1541,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     else:
         inputs.append("")
 
-    if is_sampling and args.custom and args.presence_mask:
-        inputs.append("presence_mask")
+    if is_sampling:
+        if args.custom and args.presence_mask:
+            inputs.append("presence_mask")
+        else:
+            inputs.append("")
+
+        if args.seed:
+            inputs.append("seed")
 
     outputs = ["sequences"]
     if args.output_sequences_scores:
@@ -1708,6 +1726,10 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             "presence_mask", TensorProto.INT32, ["batch_size", vocab_size]
         )
         graph_inputs.append(presence_mask)
+
+    if is_sampling and args.seed:
+        seed = onnx.helper.make_tensor_value_info("seed", TensorProto.INT32, [1])
+        graph_inputs.append(seed)
 
     # graph outputs
     sequences = None
@@ -2278,9 +2300,13 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
     if args.model_type == "gpt2" and is_greedy:
         if args.top_p > 0.0 and args.top_p < 1.0:
             convert_generation_model(args, GenerationType.SAMPLING)
-            logger.info("The test for gpt2_sampling onnx model is not implemented yet")
-            return
-        convert_generation_model(args, GenerationType.GREEDYSEARCH)
+            logger.info(
+                "The test for gpt2_sampling onnx model is limited to non-custom model with small top_p(e.g <=0.01) value. The result should be the same as gpt2 greedy search."
+            )
+            if args.top_p > 0.01 or args.custom or args.seed:
+                return
+        else:
+            convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)
 

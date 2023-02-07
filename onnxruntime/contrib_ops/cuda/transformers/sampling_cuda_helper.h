@@ -11,6 +11,9 @@
 #include <iostream>
 #endif
 
+using onnxruntime::cuda::ToCudaType;
+using onnxruntime::cuda::dispatch_blockwise_softmax_forward;
+
 namespace onnxruntime {
 namespace contrib {
 namespace SamplingCudaHelper {
@@ -88,14 +91,14 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_sorted_softmaxed_score = sampling_state->d_sorted_softmaxed_score;
-  dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                 d_sorted_softmaxed_score.data(),
-                                                                 reinterpret_cast<CudaT*>(d_sorted_score.data()),
-                                                                 parameters->vocab_size,
-                                                                 parameters->vocab_size,
-                                                                 parameters->vocab_size,
-                                                                 parameters->batch_size);
-
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+                                                                                      d_sorted_softmaxed_score.data(),
+                                                                                      reinterpret_cast<CudaT*>(d_sorted_score.data()),
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->batch_size)));
+ 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_sorted_softmaxed_score_buffer",
                  d_sorted_softmaxed_score.data(),
@@ -122,13 +125,13 @@ Status Sample(AllocatorPtr& allocator,
 #endif
 
   gsl::span<float>& d_softmaxed_score = sampling_state->d_softmaxed_score;
-  dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
-                                                                 d_softmaxed_score.data(),
-                                                                 reinterpret_cast<CudaT*>(next_token_scores.data()),
-                                                                 parameters->vocab_size,
-                                                                 parameters->vocab_size,
-                                                                 parameters->vocab_size,
-                                                                 parameters->batch_size);
+  ORT_RETURN_IF_ERROR((dispatch_blockwise_softmax_forward<CudaT, float, float, false>(cuda_stream,
+                                                                                      d_softmaxed_score.data(),
+                                                                                      reinterpret_cast<CudaT*>(next_token_scores.data()),
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->vocab_size,
+                                                                                      parameters->batch_size)));
 
 #ifdef DEBUG_GENERATION
   dumper->Print("d_softmaxed_score_buffer",
@@ -140,8 +143,9 @@ Status Sample(AllocatorPtr& allocator,
   // Multinomial sampling
   gsl::span<float>& d_sampled = sampling_state->d_sampled;
   gsl::span<float>& h_sampled_all = sampling_state->h_sampled_all;
+  size_t sample_offset = (static_cast<size_t>(step) - 1) * static_cast<size_t>(parameters->batch_size);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_sampled.data(),
-                                       h_sampled_all.data() + (step - 1) * parameters->batch_size,
+                                       h_sampled_all.data() + sample_offset,
                                        sizeof(float) * parameters->batch_size,
                                        cudaMemcpyHostToDevice,
                                        cuda_stream));
@@ -150,7 +154,7 @@ Status Sample(AllocatorPtr& allocator,
   dumper->Print("d_sampled", d_sampled.data(), parameters->batch_size, 1);
 #endif
 
-  gsl::span<int64_t>& d_indices = sampling_state->d_indices;
+  gsl::span<int32_t>& d_indices = sampling_state->d_indices;
   gsl::span<int>& presence_mask = sampling_state->d_presence_mask;
   cuda::TorchMultinomialKernelLauncher(d_softmaxed_score.data(),
                                        d_sampled.data(),
@@ -164,9 +168,9 @@ Status Sample(AllocatorPtr& allocator,
   dumper->Print("d_indices", d_indices.data(), parameters->batch_size, 1);
 #endif
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens_cpu.data(),
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
                                        sampling_state->d_indices.data(),
-                                       greedy_state->next_tokens_cpu.size_bytes(),
+                                       greedy_state->next_tokens.size_bytes(),
                                        cudaMemcpyDeviceToHost,
                                        cuda_stream));
 

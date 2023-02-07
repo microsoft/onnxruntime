@@ -151,7 +151,7 @@ Status QOrderedMatMul::ComputeInternal(OpKernelContext* context) const {
   TensorShape shapeY(tensor_A.Shape());
   shapeY[shapeY.NumDimensions() - 1] = colsB;
 
-  const float zero = 0.0f;
+  constexpr float zero = 0.0f;
   const int8_t* C = nullptr;
   const float* scaleC = &zero;
   const Tensor* tensor_C = context->Input<Tensor>(6);

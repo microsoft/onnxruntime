@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #pragma once
 
-#ifdef USE_CLOUD
+#ifdef USE_AZURE
 #include <memory>
 #include "gsl/gsl"
 #include "core/framework/tensor.h"
