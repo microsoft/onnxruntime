@@ -4,7 +4,6 @@
 #include "api.h"
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include <iostream>
 #include <vector>
@@ -323,7 +322,6 @@ void OrtReleaseTensor(OrtValue* tensor) {
 OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
                                    size_t log_verbosity_level,
                                    bool terminate,
-                                   bool synchronize,
                                    const char* tag) {
   OrtRunOptions* run_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateRunOptions, &run_options);
@@ -339,7 +337,6 @@ OrtRunOptions* OrtCreateRunOptions(size_t log_severity_level,
     RETURN_NULLPTR_IF_ERROR(RunOptionsUnsetTerminate, run_options);
   }
 
-  RETURN_NULLPTR_IF_ERROR(AddRunConfigEntry, run_options, kOrtRunOptionsConfigSynchronizeExecutionProviders, synchronize ?"1" : "0");
   if (tag != nullptr) {
     RETURN_NULLPTR_IF_ERROR(RunOptionsSetRunTag, run_options, tag);
   }

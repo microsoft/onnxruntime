@@ -795,7 +795,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                   logger);
   }
 #endif
-  bool synchronize_execution_providers = std::stoi(run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigSynchronizeExecutionProviders, "1"));
+  bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
   return ExecuteGraph(session_state,
                       feeds_fetches_manager,
                       feeds, fetches,
