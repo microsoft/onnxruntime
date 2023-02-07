@@ -3,7 +3,7 @@
 
 import XCTest
 import Foundation
-@testable import objcOnnxWrapper
+@testable import OnnxWrapper
 
 final class SwiftOnnxWrapperTests: XCTestCase {
     func testExample() throws {

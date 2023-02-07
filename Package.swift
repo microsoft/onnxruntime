@@ -9,11 +9,11 @@ let package = Package(
     products: [
         .library(name: "onnxruntime",
                  type: .static,
-                 targets: ["objcOnnxWrapper"]),
+                 targets: ["OnnxWrapper"]),
     ],
     dependencies: [],
     targets: [
-        .target(name: "objcOnnxWrapper",
+        .target(name: "OnnxWrapper",
                 dependencies: ["onnxruntime"],
                 path: "swift/objcOnnxWrapper",
                 cxxSettings: [
@@ -30,7 +30,7 @@ let package = Package(
                       checksum: "f83c847421a6198d060af5e8535314cfe540a208552db7870b838ebc90cdaa3f"),
         
         .testTarget(name: "onnxTests",
-                    dependencies: ["objcOnnxWrapper"],
+                    dependencies: ["OnnxWrapper"],
                     path: "swift/onnxTests"),
     ]
 )
