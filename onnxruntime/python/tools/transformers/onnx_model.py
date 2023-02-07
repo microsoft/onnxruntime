@@ -128,6 +128,8 @@ class OnnxModel:
         for graph in self.graphs():
             if node in graph.node:
                 graph.node.remove(node)
+                return
+        logger.warning("Failed to remove node %s", node)  # It might be a bug to hit this line.
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
@@ -182,6 +184,12 @@ class OnnxModel:
                 node.output[j] = new_output_name
 
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        # This function shall be used carefully. For example:
+        #       Add --[old_name]--> Cast ---> [new_name]
+        #        |
+        #        +----[old_name]--> Transpose -->
+        # If we want to remove the Cast node: replace output of Add to new_name is not enough;
+        # The input of Transpose shall also be updated to new_name.
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
@@ -553,7 +561,9 @@ class OnnxModel:
             graph_output_names = set(self.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
+                    if (not bool(set(node.input) & graph_input_names)) and len(
+                        self.input_name_to_nodes()[node.input[0]]
+                    ) == 1:
                         self.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue
