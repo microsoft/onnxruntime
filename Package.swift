@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "onnxruntime",
-    platforms: [.iOS(.v13)],
+    platforms: [.iOS(.v16)],
     products: [
         .library(name: "onnxruntime", targets: ["swiftOnnxWrapper", "objcOnnxWrapper"]),
     ],
