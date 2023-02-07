@@ -342,9 +342,8 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     // TODO: modify this codes when opset >= 18 (axes is an input).
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    } else if (reduce_mean_node.GetInputEdgesCount() == 2) {
-      auto axes = reduce_mean_node.InputNodesBegin();
-      ++axes;
+    } else if (reduce_mean_node.InputDefs().size() == 2) {
+      auto axes = reduce_mean_node.InputDefs()[1];
       auto axes_const = graph.GetConstantInitializer(axes->Name(), true);
       if (axes_const != nullptr) {
         Initializer initializer{*axes_const, graph.ModelPath()};
@@ -600,9 +599,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
-    } else if (reduce_mean_node.GetInputEdgesCount() == 2) {
-      auto axes = reduce_mean_node.InputNodesBegin();
-      ++axes;
+    } else if (reduce_mean_node.InputDefs().size() == 2) {
+      auto axes = reduce_mean_node.InputDefs()[1];
       auto axes_const = graph.GetConstantInitializer(axes->Name(), true);
       if (axes_const != nullptr && axes_const->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
         Initializer initializer{*axes_const, graph.ModelPath()};
