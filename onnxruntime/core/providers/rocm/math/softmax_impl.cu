@@ -51,12 +51,12 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, cons
     dim3 threads(warp_size, warps_per_block, 1);
     // Launch code would be more elegant if C++ supported FOR CONSTEXPR
     switch (log2_elements) {
-#define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                         \
-  case L2E:                                                                                      \
-    softmax_warp_forward<input_t, output_t, acc_t, L2E, is_log_softmax>                          \
-        <<<dim3(blocks), dim3(threads), 0, stream>>>(dst, src, batch_count,                      \
-                                                     softmax_elements_stride, softmax_elements); \
-    break;
+    #define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                         \
+      case L2E:                                                                                      \
+        softmax_warp_forward<input_t, output_t, acc_t, L2E, is_log_softmax>                          \
+            <<<dim3(blocks), dim3(threads), 0, stream>>>(dst, src, batch_count,                      \
+                                                        softmax_elements_stride, softmax_elements);  \
+        break;
       LAUNCH_SOFTMAX_WARP_FORWARD(0);   // 1
       LAUNCH_SOFTMAX_WARP_FORWARD(1);   // 2
       LAUNCH_SOFTMAX_WARP_FORWARD(2);   // 4
@@ -101,10 +101,10 @@ Status dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, 
       hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements,    \
       int softmax_elements_stride, int batch_count);                                   \
   template Status dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>( \
-      hipStream_t stream, output_t * output, const input_t* src, int softmax_elements, \
+      hipStream_t stream, output_t * output, const input_t* input, int softmax_elements, \
       int input_stride, int output_stride, int batch_count);                           \
   template Status dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(  \
-      hipStream_t stream, output_t * output, const input_t* src, int softmax_elements, \
+      hipStream_t stream, output_t * output, const input_t* input, int softmax_elements, \
       int input_stride, int output_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
