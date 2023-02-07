@@ -16,7 +16,7 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 {:toc}
 
 ## Define and register a custom operator
-A custom operator class inherits from `Ort::CustomOpBase` and provides implementations for methods that define the operator's characteristics and functionality. For example, the following snippet shows the class definition for a basic custom operator named "MyCustomOp" with 2 inputs and 1 output.
+A custom operator class inherits from `Ort::CustomOpBase` and provides implementations for member functions that define the operator's characteristics and functionality. For example, the following snippet shows the class definition for a basic custom operator named "MyCustomOp" with 2 inputs and 1 output.
 
 ```C++
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
@@ -44,13 +44,135 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 };
 ```
 
-Refer to the [OrtCustomOp struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h) or the [Ort::CustomOpBase struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h) definitions for a listing of all custom operator methods.
+Refer to the [OrtCustomOp struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h) or the [Ort::CustomOpBase struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h) definitions for a listing of all custom operator member functions.
 
-## Create a library of custom operators
-Custom operators can be defined in a shared library (e.g., a .dll on Windows or a .so on Linux), which is then registered with an ONNX Runtime session.
+A custom operator returns a custom kernel via its `CreateKernel` method. A kernel exposes a `Compute` method that is called during model inference to compute the operator's outputs. For example, the following snippet shows the class definition for a basic custom kernel that adds two tensors.
 
 ```C++
+struct MyCustomKernel {
+  MyCustomKernel(const OrtApi& api, const OrtKernelInfo* info) {}
+
+  void Compute(OrtKernelContext* context) {
+    // Setup inputs
+    Ort::KernelContext ctx(context);
+    Ort::ConstValue input_X = ctx.GetInput(0);
+    Ort::ConstValue input_Y = ctx.GetInput(1);
+    const float* X = input_X.GetTensorData<float>();
+    const float* Y = input_Y.GetTensorData<float>();
+
+    // Setup output, which is assumed to have the same dimensions as the inputs.
+    std::vector<int64_t> dimensions = input_X.GetTensorTypeAndShapeInfo().GetShape();
+
+    Ort::UnownedValue output = ctx.GetOutput(0, dimensions);
+    float* out = output.GetTensorMutableData<float>();
+
+    const size_t size = output.GetTensorTypeAndShapeInfo().GetElementCount();
+
+    // Do computation
+    for (size_t i = 0; i < size; i++) {
+      out[i] = X[i] + Y[i];
+    }
+  }
+};
 ```
+
+The following snippet shows how to use an `Ort::CustomOpDomain` to register a custom operator with an ONNX Runtime session.
+
+```C++
+const MyCustomOp my_custom_op;
+
+Ort::Env env;
+Ort::CustomOpDomain domain("my.customop.domain");
+domain.Add(&my_custom_op);  // Add a custom op instance to the domain.
+
+Ort::SessionOptions session_options;
+session_options.Add(domain);  // Add the domain to the session options.
+
+// Create a session.
+Ort::Session session(env, "my_model_with_custom_ops.onnx", session_options);
+```
+## Create a library of custom operators
+Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
+
+The following code snippets show how to write a shared library with two custom operators. Refer to the [full example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_library) for more details.
+
+```C++
+// custom_op_library.h
+
+#pragma once
+
+#include <onnxruntime_c_api.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+ORT_EXPORT OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api_base);
+
+#ifdef __cplusplus
+}
+#endif
+```
+
+```C++
+// custom_op_library.cc
+
+#include "custom_op_library.h"
+
+// Custom operator libraries are not typically linked with ONNX Runtime.
+// Therefore, must define ORT_API_MANUAL_INIT before including onnxruntime_cxx_api.h
+// to indicate that the OrtApi object will be initialized manually.
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
+
+#include <vector>
+#include <cmath>
+#include <mutex>
+
+// Define custom operators and kernels ...
+struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
+  // ...
+};
+
+struct MyOtherCustomOp : Ort::CustomOpBase<MyOtherCustomOp, MyOtherCustomKernel> {
+  // ...
+};
+
+// This function shows one way of keeping domains alive until the library is unloaded.
+static void AddOrtCustomOpDomainToContainer(Ort::CustomOpDomain&& domain) {
+  static std::vector<Ort::CustomOpDomain> ort_custom_op_domain_container;
+  static std::mutex ort_custom_op_domain_mutex;
+  std::lock_guard<std::mutex> lock(ort_custom_op_domain_mutex);
+  ort_custom_op_domain_container.push_back(std::move(domain));
+}
+
+// Called by ONNX Runtime to register the library's custom operators with the provided session options.
+OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtApiBase* api) {
+  Ort::InitApi(api->GetApi(ORT_API_VERSION));  // Manually initialize the OrtApi to enable use of C++ API classes and functions.
+
+  // Custom operators are static to ensure they remain valid until the library is unloaded.
+  static const MyCustomOp my_custom_op;
+  static const MyOtherCustomOp my_other_custom_op;
+
+  OrtStatus* result = nullptr;
+
+  try {
+    Ort::CustomOpDomain domain{c_OpDomain};
+    domain.Add(&c_CustomOpOne);
+    domain.Add(&c_CustomOpTwo);
+
+    Ort::UnownedSessionOptions session_options(options);
+    session_options.Add(domain);
+    AddOrtCustomOpDomainToContainer(std::move(domain));
+  } catch (const std::exception& e) {
+      Ort::Status status{e};
+      result = status.release();
+  }
+  return result;
+}
+```
+The shared library can then be registered with an ONNX Runtime session.
 
 ## Register a custom operator
 A new op can be registered with ONNX Runtime using the Custom Operator API in [onnxruntime_c_api](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h).
