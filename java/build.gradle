@@ -3,7 +3,7 @@ plugins {
 	id 'maven-publish'
 	id 'signing'
 	id 'jacoco'
-	id 'com.diffplug.spotless' version '6.11.0'
+	id "com.diffplug.spotless" version "6.13.0"
 }
 
 allprojects {
@@ -19,6 +19,7 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
+def enableTraining = System.properties['ENABLE_TRAINING']
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
 def cmakeNativeJniDir = "${cmakeJavaDir}/native-jni"
@@ -28,7 +29,8 @@ def cmakeBuildOutputDir = "${cmakeJavaDir}/build"
 def mavenUser = System.properties['mavenUser']
 def mavenPwd = System.properties['mavenPwd']
 
-def mavenArtifactId = (useCUDA != null || useROCM != null) ? project.name + "_gpu" : project.name
+def tmpArtifactId = enableTraining == null ? project.name : project.name + "-training"
+def mavenArtifactId = (useCUDA == null && useROCM == null) ? tmpArtifactId : tmpArtifactId + "_gpu"
 
 java {
 	sourceCompatibility = JavaVersion.VERSION_1_8
@@ -156,8 +158,8 @@ if (cmakeBuildDir != null) {
 }
 
 dependencies {
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.9.2'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.2'
 	testImplementation 'com.google.protobuf:protobuf-java:3.21.7'
 }
 
@@ -214,12 +216,12 @@ publishing {
 				}
 				organization {
 					name = 'Microsoft'
-					url = 'http://www.microsoft.com'
+					url = 'https://www.microsoft.com'
 				}
 				scm {
 					connection = 'scm:git:git://github.com:microsoft/onnxruntime.git'
 					developerConnection = 'scm:git:ssh://github.com/microsoft/onnxruntime.git'
-					url = 'http://github.com/microsoft/onnxruntime'
+					url = 'https://github.com/microsoft/onnxruntime'
 				}
 				developers {
 					developer {

@@ -159,12 +159,12 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_13);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
             "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
       }
-      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_TRAINING_API_VERSION_1);
+      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_14);
       trainingEnabled = ortTrainingApiHandle != 0L;
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();
