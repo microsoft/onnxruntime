@@ -7,10 +7,13 @@ from typing import Union
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_base import Fusion
+from fusion_utils import NumpyHelper
 from fusion_skiplayernorm import FusionSkipLayerNormalization
-from onnx import NodeProto
+from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
+
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -48,16 +51,94 @@ class FusionT5Attention(FusionAttention):
         return
 
 
-# It's much easier to export it with the custom op. TODO: revisit later
+# Attr("max_distance", "Max distance", AttributeProto::INT)
+# Attr("is_bidirectional", "Default value is 0.", AttributeProto::INT, static_cast<int64_t>(0))
+# Input(0, "bias_table", "2D input tensor with shape (num_buckets, num_heads), COL-major(See UT for example)", "T")
+# Input(1, "query_length", "The length of query. Self Attention requires query_length = key_length", "U")
+# Input(2, "key_length", "The length of key.", "U")
+# Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
 class FusionRelativePositionBiasBlock(Fusion):
     def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: bool):
-        super().__init__(model, "RelativePositionBias", "Add")
+        super().__init__(model, "RelativePositionBias", ["Add", "Slice"])
         self.max_distance = max_distance
         self.is_bidirectional = is_bidirectional
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # Not implemented yet
-        return
+        if node.op_type != "Add" or node.type != "Slice":
+            return
+
+        compute_bias_nodes = self.model.match_parent_path(
+            node,
+            ["Unsqueeze", "Transpose", "Gather", "Where"],
+            [0, 0, 0, 1]
+        )
+        if compute_bias_nodes is None:
+            return
+
+        gather = compute_bias_nodes[2]
+        where = compute_bias_nodes[-1]
+
+        compute_buckets_nodes = self.model.match_parent_path(
+            where,
+            ["Min", "ConstantOfShape", "Shape", "Add", "Cast", "Mul", "Div", "Log", "Div", "Cast", "Neg"],
+            [2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        if compute_buckets_nodes is None:
+            return
+
+        neg = compute_buckets_nodes[-1]
+
+        less_nodes = self.model.match_parent_path(
+            where,
+            ["Less"],
+            [0]
+        )
+        if less_nodes is None:
+            return
+
+        less = less_nodes[0]
+        if (less.input[0] != neg.output[0]):
+            return
+
+        range_nodes = self.model.match_parent_path(
+            neg,
+            ["Min", "ConstantOfShape", "Shape", "Sub", "Unsqueeze", "Range"],
+            [0, 1, 0, 0, 0, 0]
+        )
+        if range_nodes is None:
+            return
+        range = range_nodes[-1]
+
+        self.nodes_to_remove.extend(compute_bias_nodes)
+        self.nodes_to_remove.extend(compute_buckets_nodes)
+        self.nodes_to_remove.extend(less_nodes)
+        self.nodes_to_remove.extend(range_nodes)
+
+        table_weight_i = self.model.get_initializer(gather.input[0])
+        table_weight = NumpyHelper.to_array(table_weight_i)
+        table_weight_t = np.transpose(table_weight)
+        bias_table = helper.make_tensor(
+            name="bias_table_weight",
+            data_type=TensorProto.FLOAT,
+            dims=[np.shape(table_weight)],
+            vals=table_weight_t.flatten().tolist(),
+        )
+
+        self.model.add_initializer(bias_table, self.this_graph_name)
+        inputs = [bias_table.name, range.input[1], range.input[1]]
+        outputs = [node.output[0]]
+        rpb_node = helper.make_node(
+            "RelativePositionBias",
+            inputs=inputs,
+            outputs=outputs,
+            name=self.model.create_node_name("RelativePositionBias", name_prefix="RPB"),
+        )
+        rpb_node.domain = "com.microsoft"
+        rpb_node.attribute.extend([helper.make_attribute("max_distance", self.max_distance)])
+        rpb_node.attribute.extend([helper.make_attribute("is_bidirectional", self.is_bidirectional)])
+
+        self.nodes_to_add.append(rpb_node)
+        self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
 
 
 class FusionSkipSimplifiedLayerNormalization(FusionSkipLayerNormalization):
@@ -77,8 +158,7 @@ class T5OnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
-        # TODO: hardcode for now. double check later
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 32, True)
+        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128, True)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
