@@ -336,6 +336,14 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
     this->RegisterOp(SlowFull);
     this->RegisterOp(FastFull);
   }
+
+  // Re export for testing purpose
+  std::string Signature() {
+    return onnxruntime::test::TunableOp<VecAddParamsRecordLastRun>::Signature();
+  }
+
+  constexpr static int kSlowFullId = 0;
+  constexpr static int kFastFullId = 1;
 };
 
 TEST(TunableOp, SelectFast) {
@@ -539,5 +547,53 @@ TEST(TunableOp, HandleInplaceUpdate) {
 }
 
 }  // namespace tuning
+
+namespace tuning_context {
+
+TEST(TuningContext, TunableOpRespectTuningContext) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
+  int c{};
+  tuning::VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
+  std::string last_run;
+  params.last_run = &last_run;
+
+  tuning::TunableVecAddSelectFast op{};
+  auto* ctx = params.TuningContext();
+  auto& mgr = ctx->GetTuningResultsManager();
+  ctx->EnableTunableOp();
+
+  {
+    // Before TunableOp(...), there is no entry in it.
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0);
+
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(last_run, "FastFull");
+
+    // After TunableOp(...), the result entry is corretly written.
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1);
+    ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
+  }
+
+  last_run.clear();
+  mgr.Clear();
+  {
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0);
+
+    // TunableOp(...), respect the existing entry
+    mgr.Add(op.Signature(), params.Signature(), tuning::TunableVecAddSelectFast::kSlowFullId);
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(last_run, "SlowFull");
+  }
+#endif
+}
+
+}  // namespace tuning_context
+
 }  // namespace test
 }  // namespace onnxruntime

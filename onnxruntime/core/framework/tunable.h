@@ -182,6 +182,10 @@ class TunableOp {
     });
   }
 
+  std::string Signature() const {
+    return signature_;
+  }
+
  private:
   static void WarmUp(Op<ParamsT>& op, const ParamsT* param) {
     constexpr const int num_iter = 4;
@@ -208,10 +212,6 @@ class TunableOp {
     }
     ORT_THROW_IF_ERROR(status);
     return true;
-  }
-
-  std::string Signature() const {
-    return signature_;
   }
 
  protected:
