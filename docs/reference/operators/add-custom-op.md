@@ -44,7 +44,7 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 };
 ```
 
-Refer to the [OrtCustomOp struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h) or the [Ort::CustomOpBase struct](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h) definitions for a listing of all custom operator member functions.
+Refer to the [OrtCustomOp struct](https://onnxruntime.ai/docs/api/c/struct_ort_custom_op.html) or the [Ort::CustomOpBase struct](https://onnxruntime.ai/docs/api/c/struct_ort_1_1_custom_op_base.html) definitions for a listing of all custom operator member functions.
 
 A custom operator returns a custom kernel via its `CreateKernel` method. A kernel exposes a `Compute` method that is called during model inference to compute the operator's outputs. For example, the following snippet shows the class definition for a basic custom kernel that adds two tensors.
 
@@ -76,6 +76,11 @@ struct MyCustomKernel {
 };
 ```
 
+Refer to the API documentation for information on all available custom operator kernel APIs:
+- [C APIs for OrtKernelInfo and OrtKernelContext](https://onnxruntime.ai/docs/api/c/struct_ort_api.html)
+- [C++ APIs for Ort::KernelInfo](https://onnxruntime.ai/docs/api/c/struct_ort_1_1_kernel_info.html)
+- [C++ APIs for Ort::KernelContext](https://onnxruntime.ai/docs/api/c/struct_ort_1_1_kernel_context.html)
+
 The following snippet shows how to use an `Ort::CustomOpDomain` to register a custom operator with an ONNX Runtime session.
 
 ```C++
@@ -94,7 +99,7 @@ Ort::Session session(env, "my_model_with_custom_ops.onnx", session_options);
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
 
-The following code snippets show how to write a shared library with two custom operators. Refer to the [full example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_library) for more details.
+The following code snippets show how to write a shared library with two custom operators. Refer to a [complete example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_library) for more details.
 
 ```C++
 // custom_op_library.h
@@ -172,18 +177,18 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   return result;
 }
 ```
-The shared library can then be registered with an ONNX Runtime session.
+Once compiled, the custom operator shared library can then be registered with an ONNX Runtime session.
 
-## Register a custom operator
-A new op can be registered with ONNX Runtime using the Custom Operator API in [onnxruntime_c_api](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_c_api.h).
+```C++
+Ort::Env env;
+Ort::SessionOptions session_options;
 
-1. Create an OrtCustomOpDomain with the domain name used by the custom ops.
-2. Create an OrtCustomOp structure for each op and add them to the OrtCustomOpDomain with OrtCustomOpDomain_Add.
-3. Call OrtAddCustomOpDomain to add the custom domain of ops to the session options.
+session_options.RegisterCustomOpsLibrary(L"my_custom_op.dll");
 
+Ort::Session session(env, "my_model.onnx", session_options);
+```
 
-## Examples
-{: .no_toc}
+### Examples
 
 * [C++ helper API](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/test/shared_lib/test_inference.cc): custom ops `MyCustomOp` and `SliceCustomOp` use the [C++ helper API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h). The test file also demonstrates an option to  compile the custom ops into a shared library to be used to run a model via the C++ API.
 
@@ -211,6 +216,94 @@ When using CUDA custom ops, to ensure synchronization between ORT's CUDA kernels
 
 For example, see how the afore-mentioned `MyCustomOp` is being launched and how the Session using this custom op is created.
 
+## Wrapping an external inference runtime in a custom operator
+A custom operator can wrap an entire model that is then inferenced with an external API or runtime. This can facilitate the integration of external inference engines or APIs with ONNX Runtime.
+
+As an example, consider the following ONNX model with a custom operator named "OpenVINO_Wrapper". The "OpenVINO_Wrapper" node encapsulates an entire MNIST model in OpenVINO's native model format (XML and BIN data). The model data is serialized into the node's attributes and later retrieved by the custom operator's kernel to build an in-memory representation of the model and run inference with OpenVINO C++ APIs.
+
+<p align="center"><img width="50%" src="https://www.onnxruntime.ai/images/custom_op_wrapper.png" alt="ONNX model of a custom operator wrapping an OpenVINO MNIST model"/></p>
+
+The following code snippet shows how the custom operator is defined.
+
+```C++
+struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
+  explicit CustomOpOpenVINO(Ort::ConstSessionOptions session_options);
+
+  CustomOpOpenVINO(const CustomOpOpenVINO&) = delete;
+  CustomOpOpenVINO& operator=(const CustomOpOpenVINO&) = delete;
+
+  void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const;
+
+  constexpr const char* GetName() const noexcept {
+    return "OpenVINO_Wrapper";
+  }
+
+  constexpr const char* GetExecutionProviderType() const noexcept {
+    return "CPUExecutionProvider";
+  }
+
+  // IMPORTANT: In order to wrap a generic runtime-specific model, the custom operator
+  // must have a single non-homogeneous variadic input and output.
+
+  constexpr size_t GetInputTypeCount() const noexcept {
+    return 1;
+  }
+
+  constexpr size_t GetOutputTypeCount() const noexcept {
+    return 1;
+  }
+
+  constexpr ONNXTensorElementDataType GetInputType(size_t /* index */) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  }
+
+  constexpr ONNXTensorElementDataType GetOutputType(size_t /* index */) const noexcept {
+    return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  }
+
+  constexpr OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t /* index */) const noexcept {
+    return INPUT_OUTPUT_VARIADIC;
+  }
+
+  constexpr OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t /* index */) const noexcept {
+    return INPUT_OUTPUT_VARIADIC;
+  }
+
+  constexpr bool GetVariadicInputHomogeneity() const noexcept {
+    return false;  // heterogenous
+  }
+
+  constexpr bool GetVariadicOutputHomogeneity() const noexcept {
+    return false;  // heterogeneous
+  }
+
+  // The "device_type" is configurable at the session level.
+  std::vector<std::string> GetSessionConfigKeys() const { return {"device_type"}; }
+
+ private:
+  std::unordered_map<std::string, std::string> session_configs_;
+};
+```
+
+Note that the custom operator is defined to have a single variadic/heterogenous input and a single variadic/heterogeneous output. This is necessary to enable wrapping OpenVINO models with varying input and output types and shapes (not just an MNIST model). For more information on input and output characteristics, refer to the [OrtCustomOp struct documentation](https://onnxruntime.ai/docs/api/c/struct_ort_custom_op.html).
+
+Additionally, the custom operator declares "device_type" as a session configuration that can be set by the application. The following code snippet shows how to register and configure a custom operator library containing the aforementioned custom operator.
+
+```C++
+Ort::Env env;
+Ort::SessionOptions session_options;
+Ort::CustomOpConfigs custom_op_configs;
+
+// Create local session config entries for the custom op.
+custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+
+// Register custom op library and pass in the custom op configs (optional).
+session_options.RegisterCustomOpsLibrary("MyOpenVINOWrapper_Lib.so", custom_op_configs);
+
+Ort::Session session(env, "custom_op_mnist_ov_wrapper.onnx", session_options);
+```
+
+Refer to the [complete OpenVINO custom operator wrapper example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_openvino_wrapper_library) for more details. To create an ONNX model that wraps an external model or weights, refer to the [create_custom_op_wrapper.py tool](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/custom_op_wrapper/create_custom_op_wrapper.py).
 
 ## Contrib ops
 
