@@ -11,18 +11,15 @@
 #    huggingface-cli login
 #    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.12.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
 #    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/stable-diffusion-v1-5-fp32
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path stabilityai/stable-diffusion-2-1 --output_path $ONNX_ROOT/stable-diffusion-v2-1-fp32
-# Note that this script might not be compatible with older or newer version of diffusers/transformers. It is because fusion script need change accordingly when onnx graph is changed.
+# Note that this script might not be compatible with older or newer version of diffusers.
 
 # Then you can use this script to convert them to float16 like the following:
 #    python optimize_pipeline.py -i $ONNX_ROOT/stable-diffusion-v1-5-fp32 -o $ONNX_ROOT/stable-diffusion-v1-5-fp16 --float16
-#    python optimize_pipeline.py -i $ONNX_ROOT/stable-diffusion-v2-1-fp32 -o $ONNX_ROOT/stable-diffusion-v2-1-fp16 --float16
 # Or
-#    pip install -U onnxruntime-gpu >= 1.14
 #    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/stable-diffusion-v1-5-fp32 -o $ONNX_ROOT/stable-diffusion-v1-5-fp16 --float16
-#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/stable-diffusion-v2-1-fp32 -o $ONNX_ROOT/stable-diffusion-v2-1-fp16 --float16
-
-# Note that float16 model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
+#
+# Note that output model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
+# Stable diffusion 2.1 model will get black images using float16 Attention. It is a known issue that we are working on.
 
 import argparse
 import logging
@@ -40,7 +37,7 @@ from optimizer import optimize_model  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
-def optimize_stable_diffusion_onnx_pipeline(
+def optimize_sd_pipeline(
     source_dir: Path, target_dir: Path, overwrite: bool, use_external_data_format: bool, float16: bool
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
@@ -66,23 +63,18 @@ def optimize_stable_diffusion_onnx_pipeline(
                 raise RuntimeError(message)
             continue
 
-        num_heads = 0
-        hidden_size = 0
-
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"optimize {onnx_model_path}...")
 
         fusion_options = FusionOptions("unet")
-        # packed kv requires compute capacity >= 7.5 (like T4, A100, RTX 2060~4090. See https://developer.nvidia.com/cuda-gpus)
-        # Suggest to disable it if you are using older GPU like V100, RTX 1060/1070/1080, or using float32 model.
         fusion_options.enable_packed_kv = float16
 
         m = optimize_model(
             str(onnx_model_path),
             model_type="unet",
-            num_heads=num_heads,
-            hidden_size=hidden_size,
+            num_heads=0,  # will be deduced from graph
+            hidden_size=0,  # will be deduced from graph
             opt_level=0,
             optimization_options=fusion_options,
             use_gpu=False,
@@ -211,7 +203,7 @@ def main():
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
     args = parse_arguments()
     copy_extra_directory(Path(args.input), Path(args.output), args.overwrite)
-    optimize_stable_diffusion_onnx_pipeline(
+    optimize_sd_pipeline(
         Path(args.input), Path(args.output), args.overwrite, args.use_external_data_format, args.float16
     )
 
