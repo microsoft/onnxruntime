@@ -40,7 +40,7 @@ class TuningResultsManager {
   void Load(const std::unordered_map<std::string, KernelMap>& results_to_load);
   std::unordered_map<std::string, KernelMap> Dump() const;
 
-  void Merge(const std::string& op_signature, const KernelMap& kernel_map);
+  void DisjointMerge(const std::string& op_signature, const KernelMap& kernel_map);
 
   // Mainly for testing purpose
   void Clear();

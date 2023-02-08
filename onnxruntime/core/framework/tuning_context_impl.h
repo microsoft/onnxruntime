@@ -49,7 +49,7 @@ inline void AddImpl(const std::string& op_signature,
   auto it = kernel_map.find(params_signature);
   if (it != kernel_map.end()) {
     if (it->second != best_id) {
-      LOGS_DEFAULT(WARNING) << op_signature << "(" << params_signature << ") already have a best kernel "
+      LOGS_DEFAULT(WARNING) << op_signature << "(" << params_signature << ") already has a best kernel "
                             << "id=" << it->second << " selected, want to add a different best kernel id=" << best_id
                             << ", the new kernel id will be ignored.";
     }
@@ -75,7 +75,7 @@ std::unordered_map<std::string, KernelMap> TuningResultsManager::Dump() const {
   return results_;
 }
 
-void MergeImpl(
+void DisjointMergeImpl(
     const std::string& op_signature,
     const KernelMap& kernel_map,
     /*out*/ std::unordered_map<std::string, KernelMap>& results) {
@@ -93,13 +93,13 @@ void MergeImpl(
 void TuningResultsManager::Load(const std::unordered_map<std::string, KernelMap>& results_to_load) {
   std::scoped_lock l{lock_};
   for (const auto& [op_signature, kernel_map] : results_to_load) {
-    MergeImpl(op_signature, kernel_map, results_);
+    DisjointMergeImpl(op_signature, kernel_map, results_);
   }
 }
 
-void TuningResultsManager::Merge(const std::string& op_signature, const KernelMap& kernel_map) {
+void TuningResultsManager::DisjointMerge(const std::string& op_signature, const KernelMap& kernel_map) {
   std::scoped_lock l{lock_};
-  MergeImpl(op_signature, kernel_map, results_);
+  DisjointMergeImpl(op_signature, kernel_map, results_);
 }
 
 void TuningResultsManager::Clear() {

@@ -114,7 +114,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   bool use_ep_level_unified_stream_ = false;
 
-  rocm::tunable::RocmTuningContext tuning_context_;
+  // the tuning context might be altered when calling into a TunableOp
+  mutable rocm::tunable::RocmTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:

@@ -125,7 +125,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   bool use_ep_level_unified_stream_ = false;
 
-  cuda::tunable::CudaTuningContext tuning_context_;
+  // the tuning context might be altered when calling into a TunableOp
+  mutable cuda::tunable::CudaTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:
