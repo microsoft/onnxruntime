@@ -10,5 +10,6 @@ packaging==23.0
 protobuf==3.20.3
 psutil==5.9.4
 sympy==1.11.1
---extra-index-url https://download.pytorch.org/whl/cu117
-torch==1.13.1+cu117
+#Tested with PyTorch 1.13.1+cu117 (see pytorch.org for more download options).
+#--extra-index-url https://download.pytorch.org/whl/cu117
+#torch==1.13.1+cu117
