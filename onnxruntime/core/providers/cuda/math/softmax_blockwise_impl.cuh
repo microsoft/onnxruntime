@@ -103,7 +103,6 @@ __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
   // First warp will perform per-warp reductions for the remaining warps
   if (threadIdx.x < GPU_WARP_SIZE) {
     int warps_per_block = blockDim.x / GPU_WARP_SIZE;
-    #pragma unroll
     for (int i = 0; i < warps_per_block; ++i) {
       warpVal = r(warpVal, smem[i * GPU_WARP_SIZE + threadIdx.x]);
     }
@@ -116,6 +115,7 @@ __device__ __forceinline__ AccumT blockReduce(AccumT* smem, AccumT val,
   AccumT blockVal = defaultVal;
 
   if (threadIdx.x == 0) {
+    #pragma unroll
     for (int i = 0; i < GPU_WARP_SIZE; ++i) {
       blockVal = r(blockVal, smem[i]);
     }
