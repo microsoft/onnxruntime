@@ -221,7 +221,7 @@ A custom operator can wrap an entire model that is then inferenced with an exter
 
 As an example, consider the following ONNX model with a custom operator named "OpenVINO_Wrapper". The "OpenVINO_Wrapper" node encapsulates an entire MNIST model in OpenVINO's native model format (XML and BIN data). The model data is serialized into the node's attributes and later retrieved by the custom operator's kernel to build an in-memory representation of the model and run inference with OpenVINO C++ APIs.
 
-<p align="center"><img width="50%" src="/images/custom_op_wrapper.png" alt="ONNX model of a custom operator wrapping an OpenVINO MNIST model"/></p>
+<p align="center"><img width="50%" src="../../../images/custom_op_wrapper.png" alt="ONNX model of a custom operator wrapping an OpenVINO MNIST model"/></p>
 
 The following code snippet shows how the custom operator is defined.
 
