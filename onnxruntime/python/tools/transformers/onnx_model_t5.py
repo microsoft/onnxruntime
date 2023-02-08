@@ -64,7 +64,7 @@ class FusionRelativePositionBiasBlock(Fusion):
         self.is_bidirectional = is_bidirectional
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        if node.op_type != "Add" or node.type != "Slice":
+        if node.op_type != "Add" and node.op_type != "Slice":
             return
 
         compute_bias_nodes = self.model.match_parent_path(
@@ -77,6 +77,7 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         gather = compute_bias_nodes[2]
         where = compute_bias_nodes[-1]
+        unsqueeze = compute_bias_nodes[0]
 
         compute_buckets_nodes = self.model.match_parent_path(
             where,
@@ -120,13 +121,13 @@ class FusionRelativePositionBiasBlock(Fusion):
         bias_table = helper.make_tensor(
             name="bias_table_weight",
             data_type=TensorProto.FLOAT,
-            dims=[np.shape(table_weight)],
+            dims=[np.shape(table_weight)[0], np.shape(table_weight)[1]],
             vals=table_weight_t.flatten().tolist(),
         )
 
         self.model.add_initializer(bias_table, self.this_graph_name)
         inputs = [bias_table.name, range.input[1], range.input[1]]
-        outputs = [node.output[0]]
+        outputs = [unsqueeze.output[0]]
         rpb_node = helper.make_node(
             "RelativePositionBias",
             inputs=inputs,
