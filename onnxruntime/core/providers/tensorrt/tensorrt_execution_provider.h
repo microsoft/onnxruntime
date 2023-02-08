@@ -30,6 +30,7 @@ static const std::string kDecryptionLibPath = "ORT_TENSORRT_ENGINE_DECRYPTION_LI
 static const std::string kForceSequentialEngineBuild = "ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD";
 static const std::string kContextMemorySharingEnable = "ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE";
 static const std::string kLayerNormFP32Fallback = "ORT_TENSORRT_LAYER_NORM_FP32_FALLBACK";
+static const std::string kSideloadEngine= "ORT_TENSORRT_SIDELOAD_ENGINE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -114,6 +115,7 @@ struct TensorrtFuncState {
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption)(const char*, char*, size_t) = nullptr;
+  bool sideload_engine;//slx
 };
 
 // Logical device representation.
@@ -174,6 +176,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   IAllocatorUniquePtr<void> context_memory_ = nullptr;
   mutable char model_path_[4096] = {};  // Reserved for max path length
   bool engine_decryption_enable_ = false;
+  bool sideload_engine_ = false;//slx
   int (*engine_decryption_)(const char*, char*, size_t*) = nullptr;
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
 

@@ -70,6 +70,7 @@ struct Tensorrt_Provider : Provider {
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
+    info.sideload_engine = options.trt_sideload_engine != 0;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -137,6 +138,7 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
     trt_options.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
     trt_options.trt_layer_norm_fp32_fallback = internal_options.layer_norm_fp32_fallback;
+    trt_options.trt_sideload_engine = internal_options.sideload_engine;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {
