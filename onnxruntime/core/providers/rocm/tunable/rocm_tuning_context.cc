@@ -72,7 +72,8 @@ std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
   return oss.str();
 }
 
-RocmTuningContext::RocmTuningContext(ROCMExecutionProvider* ep, TunableOpInfo* info) : info_(info), validator_(ep) {}
+RocmTuningContext::RocmTuningContext(ROCMExecutionProvider* ep, TunableOpInfo* info)
+    : ITuningContext(ep), info_(info), validator_(ep) {}
 
 void RocmTuningContext::EnableTunableOp() {
   LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";

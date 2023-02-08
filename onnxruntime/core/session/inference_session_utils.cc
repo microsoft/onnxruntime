@@ -103,6 +103,13 @@ static Status SetEnableProfiling(SessionOptions& session_options,
   return Status::OK();
 }
 
+// This function is called by nlohmann/json
+void from_json(const json& j, TuningResults& trs) {
+  j.at("ep").get_to(trs.ep);
+  j.at("results").get_to(trs.results);
+  j.at("validators").get_to(trs.validators);
+}
+
 //---------------------------------------------------
 //--- end of session options related helpers ---
 //---------------------------------------------------
@@ -225,6 +232,29 @@ Status JsonConfigParser::ParseSessionOptionsFromModelProto(SessionOptions& sessi
 Status JsonConfigParser::ParseRunOptionsFromModelProto(RunOptions& /*run_options*/) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Parsing RunOptions from ModelProto is not supported yet");
+}
+
+Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& metadata,
+                                           std::vector<TuningResults>& results) {
+  results.clear();
+  auto it = metadata.custom_metadata_map.find(kTuningResultsKeys);
+  if (it == metadata.custom_metadata_map.end()) {
+    return Status::OK();
+  }
+
+  LOGS_DEFAULT(INFO) << "Found tuning results in the model file to be used while running the model";
+
+  ORT_TRY {
+    auto parsed_tuning_results_json = json::parse(it->second);
+    results = parsed_tuning_results_json.get<std::vector<TuningResults>>();
+  }
+  ORT_CATCH(const std::exception& e) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, FAIL,
+        "Tuning results stored in the model file cannot be parsed. Error message: ", e.what(), ". Ignoring...");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace inference_session_utils

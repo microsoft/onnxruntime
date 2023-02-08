@@ -32,6 +32,8 @@ class TestTuningResultsValidator : public TuningResultsValidator {
 
 class TestTuningContext : public ITuningContext {
  public:
+  using ITuningContext::ITuningContext;
+
   void EnableTunableOp() override { tuning_enabled_ = true; }
   void DisableTunableOp() override { tuning_enabled_ = false; }
   bool IsTunableOpEnabled() const override { return tuning_enabled_; }
@@ -41,6 +43,8 @@ class TestTuningContext : public ITuningContext {
 
   const TuningResultsValidator& GetTuningResultsValidator() const override { return validator_; }
 
+  void ClearCache() { manager_.Clear(); }
+
  private:
   bool tuning_enabled_{false};
   TuningResultsManager manager_{};
@@ -49,7 +53,7 @@ class TestTuningContext : public ITuningContext {
 
 class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
-  TestTuningContext tuning_ctx_{};
+  TestTuningContext tuning_ctx_{this};
 
  public:
   TestEP() : IExecutionProvider{kEPType, true} {}
@@ -58,6 +62,7 @@ class TestEP : public IExecutionProvider {
     return const_cast<TestTuningContext*>(&tuning_ctx_);
   }
 
+  void ClearCache() { tuning_ctx_.ClearCache(); }
 };
 
 class TestTimer : public ITimer<StreamT> {

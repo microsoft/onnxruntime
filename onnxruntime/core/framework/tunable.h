@@ -136,12 +136,20 @@ class TunableOp {
     ITuningContext* ctx = params->TuningContext();
     if (ctx->IsTunableOpEnabled()) {
       auto& mgr = ctx->GetTuningResultsManager();
-      id = mgr.Lookup(Signature(), params->Signature());
+      auto op_sig = Signature();
+      auto params_sig = params->Signature();
+      id = mgr.Lookup(op_sig, params_sig);
+      if (id > static_cast<int>(ops_.size())) {
+        LOGS_DEFAULT(FATAL) << "Invalid TunableOp kernel id for " << op_sig
+                            << ", id:" << id << ", registered op:" << ops_.size();
+        mgr.Delete(op_sig, params_sig);
+        id = -1;
+      }
       if (id < 0) {
         auto maybe_proxy_params = PreTuning(params);
         id = FindFastest(maybe_proxy_params);
         PostTuning(maybe_proxy_params);
-        mgr.Add(Signature(), params->Signature(), id);
+        mgr.Add(op_sig, params_sig, id);
       }
     }
     ORT_RETURN_IF_ERROR(ops_[id](params));

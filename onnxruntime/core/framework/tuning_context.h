@@ -17,6 +17,7 @@ class TuningResultsValidator;
 
 class ITuningContext {
  public:
+  explicit ITuningContext(IExecutionProvider* ep) : ep_(ep) {}
   virtual ~ITuningContext() = default;
 
   virtual void EnableTunableOp() = 0;
@@ -27,6 +28,12 @@ class ITuningContext {
   virtual const TuningResultsManager& GetTuningResultsManager() const = 0;
 
   virtual const TuningResultsValidator& GetTuningResultsValidator() const = 0;
+
+  virtual TuningResults SaveTuningResults() const;
+  virtual Status LoadTuningResults(const TuningResults& tr);
+
+ protected:
+  IExecutionProvider* ep_;
 };
 
 class TuningResultsManager {
@@ -38,6 +45,7 @@ class TuningResultsManager {
   int Lookup(const std::string& op_signature, const std::string& params_signature) const;
 
   void Add(const std::string& op_signature, const std::string& params_signature, int best_id);
+  void Delete(const std::string& op_signature, const std::string& params_signature);
 
   void Load(const std::unordered_map<std::string, KernelMap>& results_to_load);
   std::unordered_map<std::string, KernelMap> Dump() const;

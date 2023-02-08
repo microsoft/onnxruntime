@@ -21,6 +21,22 @@
 
 namespace onnxruntime {
 
+TuningResults ITuningContext::SaveTuningResults() const {
+  TuningResults tr;
+  tr.ep = ep_->Type();
+  tr.validators = GetTuningResultsValidator().GetAllValidators();
+  tr.results = GetTuningResultsManager().Dump();
+  return tr;
+}
+
+Status ITuningContext::LoadTuningResults(const TuningResults& tr) {
+  ORT_RETURN_IF(tr.ep != ep_->Type(), "EP mismatch");
+  LOGS_DEFAULT(VERBOSE) << "Loading tuning results for " << tr.ep;
+  ORT_RETURN_IF_ERROR(GetTuningResultsValidator().ValidateAll(tr.validators));
+  GetTuningResultsManager().Load(tr.results);
+  return Status::OK();
+}
+
 KernelMap TuningResultsManager::Lookup(const std::string& op_signature) const {
   std::scoped_lock l{lock_};
   auto it = results_.find(op_signature);
@@ -74,6 +90,22 @@ void TuningResultsManager::Add(const std::string& op_signature, const std::strin
   AddImpl(op_signature, params_signature, best_id, it->second);
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void TuningResultsManager::Delete(const std::string& op_signature, const std::string& params_signature) {
+  std::scoped_lock l{lock_};
+
+  auto it = results_.find(op_signature);
+  if (it == results_.end()) {
+    return;
+  }
+
+  auto it2 = it->second.find(params_signature);
+  if (it2 == it->second.end()) {
+    return;
+  }
+  it->second.erase(it2);
+}
+
 std::unordered_map<std::string, KernelMap> TuningResultsManager::Dump() const {
   std::scoped_lock l{lock_};
   return results_;
@@ -95,6 +127,11 @@ void DisjointMergeImpl(
 }
 
 void TuningResultsManager::Load(const std::unordered_map<std::string, KernelMap>& results_to_load) {
+  for(const auto& [op_sig, kernel_map]: results_to_load) {
+    for(const auto& [param_sig, kernel_id] : kernel_map) {
+      LOGS_DEFAULT(VERBOSE) << op_sig << " " << param_sig << " " << kernel_id;
+    }
+  }
   std::scoped_lock l{lock_};
   for (const auto& [op_signature, kernel_map] : results_to_load) {
     DisjointMergeImpl(op_signature, kernel_map, results_);
