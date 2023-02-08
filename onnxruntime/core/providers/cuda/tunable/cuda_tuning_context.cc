@@ -14,13 +14,13 @@ namespace onnxruntime {
 namespace cuda {
 namespace tunable {
 
-std::string GetCudaVersion() {
+static std::string GetCudaVersion() {
   int version;
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&version));
   return std::to_string(version);
 }
 
-Status ValidateCudaVersion(const std::string& value) {
+static Status ValidateCudaVersion(const std::string& value) {
   auto current = GetCudaVersion();
   ORT_RETURN_IF(current != value, "CUDA runtime version mismatch: tuning results produced with CUDA ", value,
                 ", onnxruntime currently run with CUDA ", current);

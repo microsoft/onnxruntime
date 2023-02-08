@@ -2198,7 +2198,7 @@ std::vector<TuningResults> InferenceSession::GetTuningResults() const {
   for (const auto& provider : execution_providers_) {
     const auto* tuning_ctx = provider->GetTuningContext();
     if (tuning_ctx != nullptr) {
-      ret.emplace_back(tuning_ctx->SaveTuningResults());
+      ret.emplace_back(tuning_ctx->GetTuningResults());
     }
   }
   return ret;

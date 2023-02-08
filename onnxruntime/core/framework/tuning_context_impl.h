@@ -21,7 +21,7 @@
 
 namespace onnxruntime {
 
-TuningResults ITuningContext::SaveTuningResults() const {
+TuningResults ITuningContext::GetTuningResults() const {
   TuningResults tr;
   tr.ep = ep_->Type();
   tr.validators = GetTuningResultsValidator().GetAllValidators();
@@ -76,6 +76,7 @@ inline void AddImpl(const std::string& op_signature,
     return;
   }
 
+  LOGS_DEFAULT(VERBOSE) << op_signature << "(" << params_signature << ") -> " << best_id;
   kernel_map[params_signature] = best_id;
 }
 
@@ -103,6 +104,8 @@ void TuningResultsManager::Delete(const std::string& op_signature, const std::st
   if (it2 == it->second.end()) {
     return;
   }
+
+  LOGS_DEFAULT(VERBOSE) << op_signature << "(" << params_signature << ")";
   it->second.erase(it2);
 }
 
@@ -117,6 +120,9 @@ void DisjointMergeImpl(
     /*out*/ std::unordered_map<std::string, KernelMap>& results) {
   auto it = results.find(op_signature);
   if (it == results.end()) {
+    for(const auto& [param_sig, kernel_id] : kernel_map) {
+      LOGS_DEFAULT(VERBOSE) << op_signature << "(" << param_sig << ") -> " << kernel_id;
+    }
     results[op_signature] = kernel_map;
     return;
   }
@@ -127,11 +133,6 @@ void DisjointMergeImpl(
 }
 
 void TuningResultsManager::Load(const std::unordered_map<std::string, KernelMap>& results_to_load) {
-  for(const auto& [op_sig, kernel_map]: results_to_load) {
-    for(const auto& [param_sig, kernel_id] : kernel_map) {
-      LOGS_DEFAULT(VERBOSE) << op_sig << " " << param_sig << " " << kernel_id;
-    }
-  }
   std::scoped_lock l{lock_};
   for (const auto& [op_signature, kernel_map] : results_to_load) {
     DisjointMergeImpl(op_signature, kernel_map, results_);
@@ -147,14 +148,12 @@ void TuningResultsManager::Clear() {
   results_ = {};
 }
 
-Status CheckMandatoryKeys(
+static Status CheckMandatoryKeys(
     const TuningResultsValidator::GetValidateFuncs& gv_funcs,
     const std::unordered_map<std::string, std::string>& to_check) {
-  constexpr const std::array mandatory_keys{"ORT_VERSION", "ORT_GIT_COMMIT", "ORT_BUILD_CONFIG"};
-
   bool passed = true;
   std::ostringstream oss;
-  for (const auto& k : mandatory_keys) {
+  for (const auto& k : TuningResultsValidator::mandatory_keys) {
     if (gv_funcs.find(k) == gv_funcs.end()) {
       passed = false;
       oss << "key=\"" << k << "\" is not registered for Get and Validate. ";
@@ -169,7 +168,7 @@ Status CheckMandatoryKeys(
   return Status::OK();
 }
 
-Status CheckKeysMatching(
+static Status CheckKeysMatching(
     const TuningResultsValidator::GetValidateFuncs& gv_funcs,
     const std::unordered_map<std::string, std::string>& to_check) {
   auto get_keys = [](const auto& it) -> std::string { return it.first; };

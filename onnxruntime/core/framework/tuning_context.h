@@ -29,7 +29,7 @@ class ITuningContext {
 
   virtual const TuningResultsValidator& GetTuningResultsValidator() const = 0;
 
-  virtual TuningResults SaveTuningResults() const;
+  virtual TuningResults GetTuningResults() const;
   virtual Status LoadTuningResults(const TuningResults& tr);
 
  protected:
@@ -82,6 +82,9 @@ class TuningResultsValidator {
 
   virtual std::string GetOrtBuildConfig() const;
   virtual Status ValidateOrtBuildConfig(const std::string& value) const;
+
+ public:
+  static constexpr const std::array mandatory_keys{"ORT_VERSION", "ORT_GIT_COMMIT", "ORT_BUILD_CONFIG"};
 
  private:
   GetValidateFuncs validators_;

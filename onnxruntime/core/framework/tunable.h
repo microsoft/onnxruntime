@@ -140,7 +140,7 @@ class TunableOp {
       auto params_sig = params->Signature();
       id = mgr.Lookup(op_sig, params_sig);
       if (id > static_cast<int>(ops_.size())) {
-        LOGS_DEFAULT(FATAL) << "Invalid TunableOp kernel id for " << op_sig
+        LOGS_DEFAULT(ERROR) << "Invalid TunableOp kernel id for " << op_sig
                             << ", id:" << id << ", registered op:" << ops_.size();
         mgr.Delete(op_sig, params_sig);
         id = -1;
