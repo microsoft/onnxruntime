@@ -1888,14 +1888,26 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
   const std::vector<std::unique_ptr<api::NodeRef>> nodes = ctx.graph.Nodes();
 
   std::unordered_set<std::string> outputs_leading_to_transpose;
+  static const std::vector<int64_t> NCHW2NHWC{0, 2, 3, 1};
+  static const std::vector<int64_t> NHWC2NCHW{0, 3, 1, 2};
 
   // First iterate over sorted nodes in reverse order to find which outputs have paths through supported ops to
   // transpose nodes. We pull push transposes towards these outputs.
   for (size_t i = 0; i < nodes.size(); ++i) {
     api::NodeRef& node = *nodes[nodes.size() - i - 1];
     if (node.IsOp("Transpose")) {
-      outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
-      continue;
+      std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(node);
+      // 1st round with OPTIMIZE_TRANSPOSE mode, try to optimize all Transpose nodes
+      // 2nd round with OPTIMIZE_LAYOUT_TRANSFORM mode trigger optimization if there are layout sensitive nodes
+      // and new Transpose nodes (channel first to channel last, vice verse) inserted.
+      // It should foucs on places not covered by the 1st round, the Transpose with NCHW->NHWC or NHWC->NCHW
+      if (perm != std::nullopt && 
+          (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE ||
+           (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
+            (perm.value() == NCHW2NHWC || perm.value() == NHWC2NCHW)))) {
+        outputs_leading_to_transpose.insert(std::string(node.Inputs()[0]));
+        continue;
+      }
     }
 
     auto outputs = node.Outputs();
@@ -1954,7 +1966,10 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
       std::unique_ptr<api::NodeRef> transpose = ctx.graph.GetNodeProducingOutput(inp);
       if (transpose != nullptr && transpose->IsOp("Transpose")) {
         std::optional<std::vector<int64_t>> perm = GetPermAttrIfValid(*transpose);
-        if (perm != std::nullopt) {
+        if (perm != std::nullopt &&
+            (ctx.mode == OptimizerMode::OPTIMIZE_TRANSPOSE ||
+             (ctx.mode == OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM &&
+              (perm.value() == NCHW2NHWC || perm.value() == NHWC2NCHW)))) {
           if (ProcessTranspose(ctx, *transpose, node, *perm, j, outputs_leading_to_transpose)) {
             changed = true;
             // Subsequent inputs may have changed and node may have been removed.
