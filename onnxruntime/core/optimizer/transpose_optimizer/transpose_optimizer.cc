@@ -1041,6 +1041,14 @@ static bool HandlePad(HandlerArgs& args) {
 constexpr HandlerInfo pad_handler = {&FirstInput, &HandlePad};
 
 static bool HandleReduceOp(HandlerArgs& args) {
+  // TODO: Temporarily disable this for opset 18
+  auto op_type = args.node.OpType();
+  if (args.ctx.opset == 18 &&
+      (op_type == "ReduceMean" || op_type == "ReduceMin" || op_type == "ReduceMax" || op_type == "ReduceProd")) {
+    // TODO should we log something here?
+    return false;
+  }
+
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
 
   std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
