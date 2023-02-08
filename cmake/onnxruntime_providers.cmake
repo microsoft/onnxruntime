@@ -689,9 +689,10 @@ if (onnxruntime_USE_TENSORRT)
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
       target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
     endif()
-    include_directories(${TENSORRT_INCLUDE_DIR})
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
+
+  include_directories(${TENSORRT_INCLUDE_DIR})
 
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
