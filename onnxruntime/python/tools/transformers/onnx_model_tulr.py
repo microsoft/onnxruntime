@@ -15,7 +15,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#python optimizer.py --input /home/wy/Turing/tulr/model.onnx --output /home/wy/Turing/tulr/opt/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format
+#python optimizer.py --input /home/wy/Turing/tulr/model.onnx --output /home/wy/Turing/tulr/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
 
 class FusionTulrAttention(FusionAttention):
     """
