@@ -383,6 +383,11 @@ if (onnxruntime_USE_CUDA)
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
       )
     endif()
+    if (NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+      )
+    endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
@@ -507,14 +512,15 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
-    if(onnxruntime_USE_MPI)
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    endif()
+  endif()
 
-    if (onnxruntime_USE_NCCL)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
-    endif()
+  if(onnxruntime_USE_MPI)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  endif()
+
+  if (onnxruntime_USE_NCCL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
   endif()
 
   if (WIN32)

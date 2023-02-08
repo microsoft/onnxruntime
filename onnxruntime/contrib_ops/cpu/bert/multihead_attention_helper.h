@@ -17,6 +17,7 @@ Status CheckInputs(const T* query,
                    const T* value,
                    const T* bias,
                    const T* key_padding_mask,
+                   const T* relative_position_bias,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
@@ -26,6 +27,7 @@ Status CheckInputs(const T* query,
   //     value            (V)       : (B, L, D_v)
   //     bias             (Q/K/V)   : (D + D + D_v)
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
+  //     relative_position_bias     : (B, 1, S, L)
   // When packed kv is used:
   //     key              (K)       : (B, L, N, 2, H)
   //     value            (V)       : None
@@ -118,6 +120,36 @@ Status CheckInputs(const T* query,
                              "Input 'key' and 'value' shall have same same dim 1 (kv_sequence_length)");
     }
     v_hidden_size = static_cast<int>(value_dims[2]);
+  }
+
+  if (relative_position_bias != nullptr) {
+    const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
+
+    if (relative_position_bias_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' is expected to have 4 dimensions, got ",
+                             relative_position_bias_dims.size());
+    }
+    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ",
+                             relative_position_bias_dims[0]);
+    }
+    if (relative_position_bias_dims[1] != num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
+                             relative_position_bias_dims[1]);
+    }
+    if (relative_position_bias_dims[2] != sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
+                             relative_position_bias_dims[2]);
+    }
+    if (relative_position_bias_dims[3] != kv_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
+                             relative_position_bias_dims[3]);
+    }
   }
 
   if (parameters != nullptr) {

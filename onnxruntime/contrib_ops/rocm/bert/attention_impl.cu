@@ -89,7 +89,7 @@ Status QkvToContext(
     bool is_unidirectional,
     int past_sequence_length,
     const T* past,
-    const T* extra_add_qk,
+    const T* relative_position_bias,
     T* present,
     bool use_persistent_softmax) {
   const int all_sequence_length = past_sequence_length + sequence_length;
@@ -158,7 +158,7 @@ Status QkvToContext(
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place if persistent softmax is selected.
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                      mask_index, nullptr, extra_add_qk, scratch1, scratch2,
+                                      mask_index, nullptr, relative_position_bias, scratch1, scratch2,
                                       is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
                                       use_persistent_softmax, persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
@@ -166,10 +166,10 @@ Status QkvToContext(
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, mask_start, extra_add_qk, scratch1, scratch2, is_unidirectional));
+                                     mask_index, mask_start, relative_position_bias, scratch1, scratch2, is_unidirectional));
   } else {  // no mask
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                           extra_add_qk, scratch1, scratch2, is_unidirectional));
+                           relative_position_bias, scratch1, scratch2, is_unidirectional));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH
@@ -206,7 +206,7 @@ Status LaunchAttentionKernel(
     gsl::span<const int64_t> mask_index_dims,
     const float mask_filter_value,
     const void* past,
-    const void* extra_add_qk,
+    const void* relative_position_bias,
     void* workspace,
     void* output,
     void* present) {
@@ -225,7 +225,7 @@ Status LaunchAttentionKernel(
         is_unidirectional,
         past_sequence_length,
         reinterpret_cast<const __half*>(past),
-        reinterpret_cast<const __half*>(extra_add_qk),
+        reinterpret_cast<const __half*>(relative_position_bias),
         reinterpret_cast<__half*>(present),
         use_persistent_softmax);
   } else {
@@ -240,7 +240,7 @@ Status LaunchAttentionKernel(
         is_unidirectional,
         past_sequence_length,
         reinterpret_cast<const float*>(past),
-        reinterpret_cast<const float*>(extra_add_qk),
+        reinterpret_cast<const float*>(relative_position_bias),
         reinterpret_cast<float*>(present),
         use_persistent_softmax);
   }
