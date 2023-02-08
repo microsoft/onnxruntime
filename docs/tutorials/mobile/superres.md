@@ -62,6 +62,16 @@ To build the app, step by step, follow the following sections.
 
 Create a new project for Phone and Tablet in Android studio and select the blank template. Call the application `super_resolution` or similar.
 
+#### Dependencies
+
+Add the following dependencies to the app `build.gradle`:
+
+```gradle
+implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
+// TODO: update with released version aar package when available
+implementation files('libs/onnxruntime-extensions-android-0.6.0.aar')
+```
+
 #### Project resources
 
 1. Add the model file as a raw resource
