@@ -282,7 +282,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "28cf67e5b64c704cad993c71f29a24e781bee544",
+          "commitHash": "f412df7a2b64421e1f1d61fde6055a6ea288e8f5",
           "repositoryUrl": "https://github.com/microsoft/mimalloc.git"
         },
         "comments": "mimalloc"
@@ -406,16 +406,6 @@
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "6f7ffeb18f99796233b958aaaf14ec7bd4fb64b2",
-          "repositoryUrl": "https://github.com/microsoft/vcpkg.git"
-        },
-        "comments": "vcpkg"
       }
     },
     {
