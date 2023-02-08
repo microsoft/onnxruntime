@@ -5,7 +5,7 @@ include(ExternalProject)
 
 ExternalProject_Add(tbb
                     GIT_REPOSITORY https://github.com/RandySheriffH/octopus.git
-                    GIT_TAG main
+                    GIT_TAG TunePolling
                     SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/_deps/oct-src
                     CONFIGURE_COMMAND ""
                     BUILD_COMMAND ""
