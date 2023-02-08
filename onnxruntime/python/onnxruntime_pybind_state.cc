@@ -1343,8 +1343,6 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
-      .def_readwrite("synchronize_execution_providers", &RunOptions::synchronize_execution_providers,
-                     R"pbdoc(Synchronize execution providers after executing session.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
