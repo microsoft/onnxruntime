@@ -84,7 +84,7 @@ class WindowsEnv : public Env {
   const Telemetry& GetTelemetryProvider() const override;
   std::string GetEnvironmentVar(const std::string& var_name) const override;
   ProcessorInfo GetProcessorAffinityMask(int global_processor_id) const;
-
+  void InitThread(int index, void* thread_options) override;
  protected:
   /*
   * "cores_" host all physical cores dicoverred in a windows system.

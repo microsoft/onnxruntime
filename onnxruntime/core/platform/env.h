@@ -264,6 +264,8 @@ class Env {
   // Returns empty string if there is no such environment variable available
   virtual std::string GetEnvironmentVar(const std::string& var_name) const = 0;
 
+  virtual void InitThread(int /*index*/, void* /*thread_options*/){};
+
  protected:
   Env();
 

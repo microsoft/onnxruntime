@@ -186,7 +186,7 @@ class WindowsThread : public EnvThread {
             mask = 0;
             break;
           }
-        }  //for
+        }  // for
         if (group_id > -1 && mask) {
           GROUP_AFFINITY thread_affinity = {};
           thread_affinity.Group = static_cast<WORD>(group_id);
@@ -832,7 +832,7 @@ void WindowsEnv::InitializeCpuInfo() {
     auto processor_info = reinterpret_cast<const SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX*>(iter);
     auto size = processor_info->Size;
 
-    //Discoverred a phyical core and it belongs exclusively to a single group
+    // Discoverred a phyical core and it belongs exclusively to a single group
     if (processor_info->Relationship == RelationProcessorCore &&
         processor_info->Processor.GroupCount == 1) {
       log_stream << std::endl
@@ -846,10 +846,10 @@ void WindowsEnv::InitializeCpuInfo() {
           log_stream << global_processor_id + 1 << " ";
           core_global_proc_ids.push_back(global_processor_id);
           /*
-          * Build up a map between global processor id and local processor id.
-          * The map helps to bridge between ort API and windows affinity API -
-          * we need local processor id to build an affinity mask for a particular group.
-          */
+           * Build up a map between global processor id and local processor id.
+           * The map helps to bridge between ort API and windows affinity API -
+           * we need local processor id to build an affinity mask for a particular group.
+           */
           global_processor_info_map_.insert_or_assign(global_processor_id,
                                                       ProcessorInfo{static_cast<int>(group_mask.Group),
                                                                     logical_proessor_id});
@@ -866,4 +866,58 @@ void WindowsEnv::InitializeCpuInfo() {
     LOGS_DEFAULT(VERBOSE) << log_stream.str();
   }
 }
+
+void WindowsEnv::InitThread(int index, void* thread_options) {
+  ThreadOptions* opt = reinterpret_cast<ThreadOptions*>(thread_options);
+  if (index < opt->affinities.size()) {
+    int group_id = -1;
+    KAFFINITY mask = 0;
+    constexpr KAFFINITY bit = 1;
+    const WindowsEnv& env = WindowsEnv::Instance();
+    for (auto global_processor_id : opt->affinities[index]) {
+      auto processor_info = env.GetProcessorAffinityMask(global_processor_id);
+      if (processor_info.local_processor_id > -1 &&
+          processor_info.local_processor_id < sizeof(KAFFINITY) * CHAR_BIT) {
+        mask |= bit << processor_info.local_processor_id;
+      } else {
+        // Logical processor id starts from 0 internally, but in ort API, it starts from 1,
+        // that's why id need to increase by 1 when logging.
+        LOGS_DEFAULT(ERROR) << "Cannot set affinity for thread " << GetCurrentThreadId()
+                            << ", processor " << global_processor_id + 1 << " does not exist";
+        group_id = -1;
+        mask = 0;
+        break;
+      }
+      if (group_id == -1) {
+        group_id = processor_info.group_id;
+      } else if (group_id != processor_info.group_id) {
+        LOGS_DEFAULT(ERROR) << "Cannot set cross-group affinity for thread "
+                            << GetCurrentThreadId() << ", first on group "
+                            << group_id << ", then on " << processor_info.group_id;
+        group_id = -1;
+        mask = 0;
+        break;
+      }
+    }  // for
+    if (group_id > -1 && mask) {
+      GROUP_AFFINITY thread_affinity = {};
+      thread_affinity.Group = static_cast<WORD>(group_id);
+      thread_affinity.Mask = mask;
+      if (SetThreadGroupAffinity(GetCurrentThread(), &thread_affinity, nullptr)) {
+        LOGS_DEFAULT(VERBOSE) << "SetThreadAffinityMask done for thread: " << GetCurrentThreadId()
+                              << ", group_id: " << thread_affinity.Group
+                              << ", mask: " << thread_affinity.Mask;
+      } else {
+        const auto error_code = GetLastError();
+        LOGS_DEFAULT(ERROR) << "SetThreadAffinityMask failed for thread: " << GetCurrentThreadId()
+                            << ", index: " << index
+                            << ", mask: " << mask
+                            << ", error code: " << error_code
+                            << ", error msg: " << std::system_category().message(error_code)
+                            << ". Specify the number of threads explicitly so the affinity is not set.";
+      }
+    }
+  }
+}
+
 }  // namespace onnxruntime

@@ -227,6 +227,8 @@ class ThreadPool {
 //#endif
   void* impl_ = nullptr;
   int dop_ = 1;
+
+  ThreadOptions thread_options_;
 };
 
 #else
