@@ -1228,7 +1228,7 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        for config in args.config:
+        for config in configs:
             onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
 
             if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
