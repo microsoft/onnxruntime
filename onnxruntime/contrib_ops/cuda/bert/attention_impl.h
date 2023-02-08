@@ -41,7 +41,7 @@ struct AttentionData {
   const int* mask_index;
   gsl::span<const int64_t> mask_index_dims;
   const T* past;
-  const T* extra_add_qk;
+  const T* relative_position_bias;
 
   T* workspace;
   T* output;
