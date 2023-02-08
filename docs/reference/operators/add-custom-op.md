@@ -18,7 +18,7 @@ ONNX Runtime provides options to run custom operators that are not official ONNX
 ## Define and register a custom operator
 A custom operator class inherits from `Ort::CustomOpBase` and provides implementations for member functions that define the operator's characteristics and functionality. For example, the following snippet shows the class definition for a basic custom operator named "MyCustomOp" with 2 inputs and 1 output.
 
-```C++
+```c++
 struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
     return std::make_unique<MyCustomKernel>(api, info).release();
@@ -48,7 +48,7 @@ Refer to the [OrtCustomOp struct](https://onnxruntime.ai/docs/api/c/struct_ort_c
 
 A custom operator returns a custom kernel via its `CreateKernel` method. A kernel exposes a `Compute` method that is called during model inference to compute the operator's outputs. For example, the following snippet shows the class definition for a basic custom kernel that adds two tensors.
 
-```C++
+```c++
 struct MyCustomKernel {
   MyCustomKernel(const OrtApi& api, const OrtKernelInfo* info) {}
 
@@ -83,7 +83,7 @@ Refer to the API documentation for information on all available custom operator 
 
 The following snippet shows how to use an `Ort::CustomOpDomain` to register a custom operator with an ONNX Runtime session.
 
-```C++
+```c++
 const MyCustomOp my_custom_op;
 
 Ort::Env env;
@@ -101,7 +101,7 @@ Custom operators can be defined in a separate shared library (e.g., a .dll on Wi
 
 The following code snippets show how to write a shared library with two custom operators. Refer to a [complete example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_library) for more details.
 
-```C++
+```c++
 // custom_op_library.h
 
 #pragma once
@@ -119,7 +119,7 @@ ORT_EXPORT OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options,
 #endif
 ```
 
-```C++
+```c++
 // custom_op_library.cc
 
 #include "custom_op_library.h"
@@ -179,7 +179,7 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
 ```
 Once compiled, the custom operator shared library can then be registered with an ONNX Runtime session.
 
-```C++
+```c++
 Ort::Env env;
 Ort::SessionOptions session_options;
 
@@ -225,7 +225,7 @@ As an example, consider the following ONNX model with a custom operator named "O
 
 The following code snippet shows how the custom operator is defined.
 
-```C++
+```c++
 struct CustomOpOpenVINO : Ort::CustomOpBase<CustomOpOpenVINO, KernelOpenVINO> {
   explicit CustomOpOpenVINO(Ort::ConstSessionOptions session_options);
 
@@ -289,7 +289,7 @@ Note that the custom operator is defined to have a single variadic/heterogenous 
 
 Additionally, the custom operator declares "device_type" as a session configuration that can be set by the application. The following code snippet shows how to register and configure a custom operator library containing the aforementioned custom operator.
 
-```C++
+```c++
 Ort::Env env;
 Ort::SessionOptions session_options;
 Ort::CustomOpConfigs custom_op_configs;
