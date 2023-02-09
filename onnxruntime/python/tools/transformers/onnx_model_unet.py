@@ -18,7 +18,6 @@ from onnx_model_bert import BertOnnxModel
 
 logger = getLogger(__name__)
 
-
 class UnetOnnxModel(BertOnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         """Initialize UNet ONNX Model.
@@ -36,7 +35,6 @@ class UnetOnnxModel(BertOnnxModel):
         self.remove_useless_div()
 
     def postprocess(self):
-        self.merge_sequential_transpose()
         self.prune_graph()
         self.remove_unused_constant()
 
@@ -54,14 +52,14 @@ class UnetOnnxModel(BertOnnxModel):
 
         if nodes_to_remove:
             self.remove_nodes(nodes_to_remove)
-            logger.info("Removed %d useless Div (by 1) nodes", len(nodes_to_remove))
+            logger.info("Removed %d Div nodes", len(nodes_to_remove))
 
     def convert_conv_to_nhwc(self):
         # Do not update weight here since save external data has a bug
         conv_to_nhwc_conv = FusionNhwcConv(self, update_weight=False)
         conv_to_nhwc_conv.apply()
 
-    def merge_sequential_transpose(self):
+    def merge_adjacent_transpose(self):
         fusion_transpose = FusionTranspose(self)
         fusion_transpose.apply()
 
@@ -141,6 +139,8 @@ class UnetOnnxModel(BertOnnxModel):
         if options is not None and options.enable_gelu_approximation:
             self.gelu_approximation()
 
+        self.merge_adjacent_transpose()
+
         self.postprocess()
 
         logger.info(f"opset version: {self.get_opset_version()}")
@@ -153,8 +153,6 @@ class UnetOnnxModel(BertOnnxModel):
         ops = [
             "Attention",
             "MultiHeadAttention",
-            "Gelu",
-            "FastGelu",
             "LayerNormalization",
             "SkipLayerNormalization",
             "BiasSplitGelu",

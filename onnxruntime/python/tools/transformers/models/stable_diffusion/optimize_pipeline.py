@@ -10,35 +10,50 @@
 #    pip install -r requirements.txt
 #    huggingface-cli login
 #    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.12.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/stable-diffusion-v1-5-fp32
+#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/sd-v1-5
+#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path stabilityai/stable-diffusion-2-1 --output_path $ONNX_ROOT/sd-v2-1
 # Note that this script might not be compatible with older or newer version of diffusers.
 
 # Then you can use this script to convert them to float16 like the following:
-#    python optimize_pipeline.py -i $ONNX_ROOT/stable-diffusion-v1-5-fp32 -o $ONNX_ROOT/stable-diffusion-v1-5-fp16 --float16
+#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
 # Or
-#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/stable-diffusion-v1-5-fp32 -o $ONNX_ROOT/stable-diffusion-v1-5-fp16 --float16
+#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
 #
 # Note that output model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
-# Stable diffusion 2.1 model will get black images using float16 Attention. It is a known issue that we are working on.
+#
+# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force it in float32:
+#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v2-1 -o $ONNX_ROOT/sd-v2-1-fp16 --float16 --force_fp32_ops Attention
+
 
 import argparse
 import logging
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
+from typing import List
 
 import coloredlogs
+import onnx
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from fusion_options import FusionOptions
-from optimizer import optimize_model  # noqa: E402
+from onnx_model_unet import UnetOnnxModel
+from optimizer import optimize_by_onnxruntime, optimize_model
 
 logger = logging.getLogger(__name__)
 
 
 def optimize_sd_pipeline(
-    source_dir: Path, target_dir: Path, overwrite: bool, use_external_data_format: bool, float16: bool
+    source_dir: Path,
+    target_dir: Path,
+    overwrite: bool,
+    use_external_data_format: bool,
+    float16: bool,
+    force_fp32_ops: List[str],
+    force_fp32_modules: List[str],
+    enable_runtime_optimization: bool,
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
 
@@ -48,6 +63,9 @@ def optimize_sd_pipeline(
         overwrite (bool): Overwrite files if exists.
         use_external_data_format (bool): save onnx model to two files: one for onnx graph, another for weights
         float16 (bool): use half precision
+        force_fp32_ops(List[str]): names of operators that are forced to run in float32.
+        force_fp32_modules(List[str]): names of modules that are forced to run in float32.
+        enable_runtime_optimization(bool): run graph optimization using Onnx Runtime.
 
     Raises:
         RuntimeError: input onnx model does not exist
@@ -59,13 +77,24 @@ def optimize_sd_pipeline(
 
         if not os.path.exists(onnx_model_path):
             message = f"input onnx model does not exist: {onnx_model_path}."
-            if name not in ["safety_checker", "feature_extractor"]:
+            if name not in ["safety_checker"]:
                 raise RuntimeError(message)
             continue
 
+        # Prepare output directory
+        optimized_model_path = target_dir / name / "model.onnx"
+        output_dir = optimized_model_path.parent
+        if optimized_model_path.exists():
+            if not overwrite:
+                raise RuntimeError(f"output onnx model path existed: {optimized_model_path}")
+
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
-        logger.info(f"optimize {onnx_model_path}...")
+        logger.info(f"Optimize {onnx_model_path}...")
 
         fusion_options = FusionOptions("unet")
         fusion_options.enable_packed_kv = float16
@@ -77,25 +106,37 @@ def optimize_sd_pipeline(
             hidden_size=0,  # will be deduced from graph
             opt_level=0,
             optimization_options=fusion_options,
-            use_gpu=False,
+            use_gpu=True,
         )
 
-        if float16:
-            logger.info("convert %s to float16 ...", name)
-            m.convert_float_to_float16(op_block_list=["RandomNormalLike", "Resize", "GroupNorm"])
+        if float16 and (force_fp32_modules is None or name not in force_fp32_modules):
+            logger.info("Convert %s to float16 ...", name)
+            op_block_list = ["RandomNormalLike"]
+            m.convert_float_to_float16(
+                op_block_list=op_block_list + force_fp32_ops if force_fp32_ops else op_block_list
+            )
 
-        optimized_model_path = target_dir / name / "model.onnx"
-        output_dir = optimized_model_path.parent
-        if optimized_model_path.exists():
-            if not overwrite:
-                raise RuntimeError(f"output onnx model path existed: {optimized_model_path}")
+        if enable_runtime_optimization and (float16 or (name not in ["unet"])):
+            # Use this step to see the final graph that executed by Onnx Runtime.
+            # Note that ORT cannot save model larger than 2GB so we exclude unet float32 model.
+            # This step is optional since it has no impact on performance except model loading time.
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                # Save to a temporary file so that we can load it with Onnx Runtime.
+                logger.info("Saving a temporary model to run OnnxRuntime graph optimizations...")
+                tmp_model_path = Path(tmp_dir) / "model.onnx"
+                m.save_model_to_file(str(tmp_model_path))
+                ort_optimized_model_path = tmp_model_path
+                optimize_by_onnxruntime(
+                    str(tmp_model_path), use_gpu=True, optimized_model_path=str(ort_optimized_model_path)
+                )
+                model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
+                m = UnetOnnxModel(model)
 
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
+        m.get_operator_statistics()
+        m.get_fused_operator_statistics()
         m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data_format)
-        logger.info("%s => %s", onnx_model_path, optimized_model_path)
+        logger.info("%s is optimized", name)
+        logger.info("*" * 20)
 
 
 def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
@@ -117,7 +158,7 @@ def copy_extra_directory(source_dir: Path, target_dir: Path, overwrite: bool):
 
         if not os.path.exists(source_path):
             message = f"source path does not exist: {source_path}"
-            if name not in ["safety_checker", "feature_extractor"]:
+            if name not in ["feature_extractor"]:
                 raise RuntimeError(message)
             continue
 
@@ -178,6 +219,31 @@ def parse_arguments():
     parser.set_defaults(float16=False)
 
     parser.add_argument(
+        "--force_fp32_ops",
+        required=False,
+        nargs="+",
+        type=str,
+        help="Force given operators (like Attention or MultiHeadAttention) to run in float32 and do not convert them to float16.",
+    )
+
+    parser.add_argument(
+        "--force_fp32_modules",
+        required=False,
+        nargs="+",
+        choices=["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"],
+        type=str,
+        help="Force given components (unet, vae_encoder, vae_decoder, text_encoder, safety_checker) to run in float32 and do not convert them to float16.",
+    )
+
+    parser.add_argument(
+        "--inspect",
+        required=False,
+        action="store_true",
+        help="Inspect the optimized graph from Onnx Runtime for debugging purpose. This option has no impact on model performance.",
+    )
+    parser.set_defaults(inspect=False)
+
+    parser.add_argument(
         "--overwrite",
         required=False,
         action="store_true",
@@ -204,7 +270,14 @@ def main():
     args = parse_arguments()
     copy_extra_directory(Path(args.input), Path(args.output), args.overwrite)
     optimize_sd_pipeline(
-        Path(args.input), Path(args.output), args.overwrite, args.use_external_data_format, args.float16
+        Path(args.input),
+        Path(args.output),
+        args.overwrite,
+        args.use_external_data_format,
+        args.float16,
+        args.force_fp32_ops,
+        args.force_fp32_modules,
+        args.inspect,
     )
 
 

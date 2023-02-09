@@ -446,10 +446,11 @@ def main():
 
     optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
-    if optimizer.is_fully_optimized():
-        logger.info("The model has been fully optimized.")
-    else:
-        logger.info("The model has been optimized.")
+    if args.model_type in ["bert", "gpt2"]:
+        if optimizer.is_fully_optimized():
+            logger.info("The model has been fully optimized.")
+        else:
+            logger.info("The model has been optimized.")
 
 
 if __name__ == "__main__":
