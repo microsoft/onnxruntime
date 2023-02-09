@@ -58,7 +58,7 @@ class FusionRelativePositionBiasBlock(Fusion):
         self.is_bidirectional = False
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        # TODO: optimization opportunity: Only last dimension of relative_position_bias is used in decoder.
+        # TODO: Optimization opportunity: only last dimension of relative_position_bias is used in decoder.
         # Cuda kernel can be optimized to only compute last dimension.
         if node.op_type != "Add" and node.op_type != "Slice":
             return
@@ -158,6 +158,8 @@ class T5OnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
+        # TODO: consider retrive max_distance from model.
+        # math.log(max_distance / (num_buckets // 2))
         self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 
     def fuse_attention(self):
@@ -168,5 +170,6 @@ class T5OnnxModel(BertOnnxModel):
 
     def postprocess(self):
         self.rpb_fusion.apply()
+        # TODO: remove get_extended_attention_mask() since it generates all zeros.
         self.clean_graph()
         self.prune_graph()
