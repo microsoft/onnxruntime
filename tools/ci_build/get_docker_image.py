@@ -103,7 +103,7 @@ def main():
             "error",
             "buildx",
             "build",
-            "--push",
+            "--output=type=registry",
             "--tag",
             full_image_name,
             "--cache-from",
