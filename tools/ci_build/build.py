@@ -1249,7 +1249,7 @@ def generate_build_tree(
                 run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}" ]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.fuzz_testing:
         if not (
