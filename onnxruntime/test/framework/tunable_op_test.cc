@@ -20,9 +20,25 @@ namespace {
 // test on CPU and it does not use stream
 using StreamT = void*;
 
+constexpr static const char* kTestKey = "THE_TEST_KEY";
+constexpr static const char* kValidTestValue = "THE_VALID_TEST_VALUE";
+constexpr static const char* kInvalidTestValue = "A_INVALID_TEST_VALUE";
+
+static std::string GetTestValue() {
+  return kValidTestValue;
+}
+
+static Status ValidateTestValue(const std::string& value) {
+  auto current = GetTestValue();
+  ORT_RETURN_IF(current != value, "Only ", kValidTestValue, " is valid for key ", kTestKey);
+  return Status::OK();
+}
+
 class TestTuningResultsValidator : public TuningResultsValidator {
  public:
-  TestTuningResultsValidator() = default;
+  TestTuningResultsValidator() {
+    RegisterValidator(kTestKey, GetTestValue, ValidateTestValue);
+  };
 
  protected:
   std::string GetOrtBuildConfig() const override {
@@ -602,12 +618,59 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
   {
     ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
 
-    // TunableOp(...), respect the existing entry
+    // TunableOp(...), respect the existing entry (manually loaded) if id in bound
     mgr.Add(op.Signature(), params.Signature(), tuning::TunableVecAddSelectFast::kSlowFullId);
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(last_run, "SlowFull");
   }
+
+  last_run.clear();
+  mgr.Clear();
+  {
+    // TunableOp(...), must not respect the existing entry if id not in bound
+    // manually create an out of bound id
+    mgr.Add(op.Signature(), params.Signature(), 1000000);
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK()) << "TunableOp should recover from an out of bound id";
+    ASSERT_EQ(last_run, "FastFull");
+    ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
+  }
+#endif
+}
+
+TEST(TuningContext, GetAndLoadTuningResults) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
+  int c{};
+  tuning::VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
+  std::string last_run;
+  params.last_run = &last_run;
+
+  tuning::TunableVecAddSelectFast op{};
+  auto* ctx = params.TuningContext();
+  ctx->EnableTunableOp();
+
+  auto status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "FastFull");
+
+  auto trs = ctx->GetTuningResults();
+  ASSERT_EQ(trs.ep, "TestEP");
+
+  ASSERT_EQ(trs.validators.size(), TestTuningResultsValidator::mandatory_keys.size() + 1);
+  for (const auto& key : TestTuningResultsValidator::mandatory_keys) {
+    ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(key)));
+  }
+  ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(kTestKey)));
+
+  ASSERT_EQ(trs.results.size(), 1);
+  ASSERT_THAT(trs.results, ::testing::Contains(::testing::Key(op.Signature())));
+  ASSERT_THAT(trs.results[op.Signature()], ::testing::Contains(::testing::Key(params.Signature())));
+  ASSERT_EQ(trs.results[op.Signature()][params.Signature()], tuning::TunableVecAddSelectFast::kFastFullId);
 #endif
 }
 
