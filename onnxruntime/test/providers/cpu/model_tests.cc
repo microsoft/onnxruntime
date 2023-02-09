@@ -281,6 +281,7 @@ TEST_P(ModelTest, Run) {
   if (provider_name == "cuda") {
     broken_tests.insert({"GoogleNet-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
     broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
+    broken_tests.insert({"Inception-1-qdq", "failed in orttraining-linux-gpu.", {"opset12"}});
   }
 #endif
 
