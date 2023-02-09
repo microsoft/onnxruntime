@@ -113,7 +113,7 @@ class FusionRelativePositionBiasBlock(Fusion):
         table_weight = NumpyHelper.to_array(table_weight_i)
         table_weight_t = np.transpose(table_weight)
         bias_table = helper.make_tensor(
-            name=node_name_prefix + "bias_table_weight",
+            name=self.model.create_node_name("bias_table_weight", name_prefix=node_name_prefix),
             data_type=TensorProto.FLOAT,
             dims=[np.shape(table_weight)[0], np.shape(table_weight)[1]],
             vals=table_weight_t.flatten().tolist(),
@@ -163,8 +163,66 @@ class T5OnnxModel(BertOnnxModel):
     def fuse_skip_layer_norm(self):
         self.skip_layer_norm_fusion.apply()
 
+    # Remove get_extended_attention_mask() since it generates all zeros.
+    def remove_extended_mask_decoder_init(self):
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Add":
+                extended_mask_nodes = self.match_parent_path(
+                    node,
+                    ["Mul", "Sub", "Mul", "Unsqueeze", "Cast", "LessOrEqual", "Tile", "Concat", "Unsqueeze", "Gather", "Shape"],
+                    [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]
+                )
+                if extended_mask_nodes is None:
+                    continue
+
+                rpb_nodes = self.match_parent_path(
+                    node,
+                    ["RelativePositionBias"],
+                    [0]
+                )
+                if rpb_nodes is None:
+                    continue
+
+                rpb_node = rpb_nodes[0]
+                rpb_node.output[0] = node.output[0]
+
+                nodes_to_remove.extend(extended_mask_nodes)
+                nodes_to_remove.append(node)
+                self.remove_nodes(nodes_to_remove)
+
+    def remove_extended_mask_decoder(self):
+        nodes_to_remove = []
+        for node in self.nodes():
+            if node.op_type == "Add":
+                extended_mask_nodes = self.match_parent_path(
+                    node,
+                    ["Mul", "Sub", "Mul", "Unsqueeze", "Concat", "Cast", "LessOrEqual", "Tile", "Concat", "Unsqueeze", "Gather", "Shape"],
+                    [1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0]
+                )
+                if extended_mask_nodes is None:
+                    continue
+
+                rpb_nodes = self.match_parent_path(
+                    node,
+                    ["Slice", "RelativePositionBias"],
+                    [0, 0]
+                )
+                if rpb_nodes is None:
+                    continue
+
+                rpb_node = rpb_nodes[0]
+                rpb_node.output[0] = node.output[0]
+
+                nodes_to_remove.extend(extended_mask_nodes)
+                nodes_to_remove.append(node)
+                self.remove_nodes(nodes_to_remove)
+
+
     def postprocess(self):
         self.rpb_fusion.apply()
-        # TODO: remove get_extended_attention_mask() since it generates all zeros.
-        self.clean_graph()
+        # remove get_extended_attention_mask() since it generates all zeros.
+        self.remove_extended_mask_decoder_init()
+        self.remove_extended_mask_decoder()
+
         self.prune_graph()
