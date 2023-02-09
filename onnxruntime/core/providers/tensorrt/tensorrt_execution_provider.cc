@@ -1972,6 +1972,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       std::cout << "2: input_binding_names.size(): " << input_binding_names.size() << ", output_binding_names.size(): " << output_binding_names.size() << std::endl;//slx
 
       // Set input shapes and assign input buffers
+      std::vector<void*> buffers(total_bindings);
       std::vector<IAllocatorUniquePtr<void>> scratch_buffers;
       for (size_t i = 0, end = input_binding_names.size(); i < end; ++i) {
         const std::string& input_name = input_binding_names[i];
