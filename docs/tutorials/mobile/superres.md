@@ -7,10 +7,17 @@ nav_order: 3
 ---
 
 # Machine learning mobile application to improve image resolution
+{: .no_toc }
 
 Learn how to build an application to improve image resolution using ONNX Runtime Mobile, with a model that includes pre and post processing.
 
 You can use this tutorial to build the application for Android or iOS.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Prepare the model
 
