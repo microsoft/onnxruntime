@@ -202,6 +202,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "GroupNorm": self._infer_GroupNorm,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "NhwcConv": self._infer_NhwcConv,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -438,6 +439,7 @@ class SymbolicShapeInference:
             "MultiHeadAttention",
             "GroupNorm",
             "BiasSplitGelu",
+            "NhwcConv",
         ]
 
         if not skip_infer:
@@ -619,13 +621,13 @@ class SymbolicShapeInference:
     def _new_symbolic_shape(self, rank, node, out_idx=0):
         return [self._new_symbolic_dim_from_output(node, out_idx, i) for i in range(rank)]
 
-    def _compute_conv_pool_shape(self, node):
+    def _compute_conv_pool_shape(self, node, channels_last=False):
         sympy_shape = self._get_sympy_shape(node, 0)
         if len(node.input) > 1:
             W_shape = self._get_sympy_shape(node, 1)
             rank = len(W_shape) - 2  # number of spatial axes
-            kernel_shape = W_shape[-rank:]
-            sympy_shape[1] = W_shape[0]
+            kernel_shape = W_shape[-rank - 1 : -1] if channels_last else W_shape[-rank:]
+            sympy_shape[3 if channels_last else 1] = W_shape[0]
         else:
             W_shape = None
             kernel_shape = get_attribute(node, "kernel_shape")
@@ -634,13 +636,17 @@ class SymbolicShapeInference:
         assert len(sympy_shape) == rank + 2
 
         # only need to symbolic shape inference if input has symbolic dims in spatial axes
-        is_symbolic_dims = [not is_literal(i) for i in sympy_shape[-rank:]]
+        spatial_shape = sympy_shape[-rank - 1 : -1] if channels_last else sympy_shape[-rank:]
+        is_symbolic_dims = [not is_literal(i) for i in spatial_shape]
 
         if not any(is_symbolic_dims):
             shape = get_shape_from_value_info(self.known_vi_[node.output[0]])
             if len(shape) > 0:
                 assert len(sympy_shape) == len(shape)
-                sympy_shape[-rank:] = [sympy.Integer(d) for d in shape[-rank:]]
+                if channels_last:
+                    sympy_shape[-rank - 1 : -1] = [sympy.Integer(d) for d in shape[-rank - 1 : -1]]
+                else:
+                    sympy_shape[-rank:] = [sympy.Integer(d) for d in shape[-rank:]]
                 return sympy_shape
 
         dilations = get_attribute(node, "dilations", [1] * rank)
@@ -671,7 +677,7 @@ class SymbolicShapeInference:
 
         ceil_mode = get_attribute(node, "ceil_mode", 0)
         for i in range(rank):
-            effective_input_size = sympy_shape[-rank + i]
+            effective_input_size = sympy_shape[-rank + i + (-1 if channels_last else 0)]
             if len(total_pads) > 0:
                 effective_input_size = effective_input_size + total_pads[i]
             if ceil_mode:
@@ -680,7 +686,7 @@ class SymbolicShapeInference:
                 )
             else:
                 strided_kernel_positions = (effective_input_size - effective_kernel_shape[i]) // strides[i]
-            sympy_shape[-rank + i] = strided_kernel_positions + 1
+            sympy_shape[-rank + i + (-1 if channels_last else 0)] = strided_kernel_positions + 1
         return sympy_shape
 
     def _check_merged_dims(self, dims, allow_broadcast=True):
@@ -910,6 +916,18 @@ class SymbolicShapeInference:
             helper.make_tensor_value_info(
                 node.output[0],
                 vi.type.tensor_type.elem_type,
+                get_shape_from_sympy_shape(sympy_shape),
+            )
+        )
+
+    def _infer_NhwcConv(self, node):
+        sympy_shape = self._compute_conv_pool_shape(node, channels_last=True)
+        self._update_computed_dims(sympy_shape)
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(
+                node.output[0],
+                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                 get_shape_from_sympy_shape(sympy_shape),
             )
         )
@@ -2455,6 +2473,7 @@ class SymbolicShapeInference:
             all_shapes_inferred = symbolic_shape_inference._infer_impl()
         symbolic_shape_inference._update_output_from_vi()
         if not all_shapes_inferred:
+            onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
             raise Exception("Incomplete symbolic shape inference")
         return symbolic_shape_inference.out_mp_
 

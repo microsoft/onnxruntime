@@ -62,7 +62,7 @@ def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_saf
     return pipe
 
 
-def get_torch_pipeline(model_name: str, disable_channels_last: bool, disable_safety_checker: bool):
+def get_torch_pipeline(model_name: str, disable_safety_checker: bool):
     from diffusers import StableDiffusionPipeline
     from torch import channels_last, float16
 
@@ -70,8 +70,7 @@ def get_torch_pipeline(model_name: str, disable_channels_last: bool, disable_saf
         model_name, torch_dtype=float16, revision="fp16", use_auth_token=True
     ).to("cuda")
 
-    if not disable_channels_last:
-        pipe.unet.to(memory_format=channels_last)  # in-place operation
+    pipe.unet.to(memory_format=channels_last)  # in-place operation
 
     if disable_safety_checker:
         pipe.safety_checker = None
@@ -144,7 +143,7 @@ def run_ort(model_name: str, directory: str, provider: str, batch_size: int, dis
     run_ort_pipeline(pipe, batch_size, image_filename_prefix)
 
 
-def run_torch(model_name: str, batch_size: int, disable_channels_last: bool, disable_safety_checker: bool):
+def run_torch(model_name: str, batch_size: int, disable_safety_checker: bool):
     import torch
 
     torch.backends.cudnn.enabled = True
@@ -154,13 +153,11 @@ def run_torch(model_name: str, batch_size: int, disable_channels_last: bool, dis
     torch.set_grad_enabled(False)
 
     load_start = time.time()
-    pipe = get_torch_pipeline(model_name, disable_channels_last, disable_safety_checker)
+    pipe = get_torch_pipeline(model_name, disable_safety_checker)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
-    image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker) + (
-        "" if disable_channels_last else "_channels_last"
-    )
+    image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker)
     with torch.inference_mode():
         run_torch_pipeline(pipe, batch_size, image_filename_prefix)
 
@@ -197,15 +194,6 @@ def parse_arguments():
     )
 
     parser.add_argument(
-        "-c",
-        "--disable_channels_last",
-        required=False,
-        action="store_true",
-        help="Disable channels last for torch. It will be ignored for onnxruntime engine",
-    )
-    parser.set_defaults(disable_channels_last=False)
-
-    parser.add_argument(
         "--enable_safety_checker",
         required=False,
         action="store_true",
@@ -237,7 +225,7 @@ def main():
         provider = "CUDAExecutionProvider"  # TODO: use ["CUDAExecutionProvider", "CPUExecutionProvider"] in diffuers
         run_ort(sd_model, args.pipeline, provider, args.batch_size, not args.enable_safety_checker)
     else:
-        run_torch(sd_model, args.batch_size, args.disable_channels_last, not args.enable_safety_checker)
+        run_torch(sd_model, args.batch_size, not args.enable_safety_checker)
 
 
 if __name__ == "__main__":
