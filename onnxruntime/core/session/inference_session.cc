@@ -1551,14 +1551,12 @@ common::Status InferenceSession::Initialize() {
   }
 
   std::vector<TuningResults> tuning_results;
-  ORT_RETURN_IF_ERROR(inference_session_utils::ParseTuningResultsFromModelMetadata(model_metadata_, tuning_results));
-  if(!tuning_results.empty()) {
+  bool found_tuning_results = false;
+  ORT_RETURN_IF_ERROR(inference_session_utils::ParseTuningResultsFromModelMetadata(
+      model_metadata_, tuning_results, found_tuning_results));
+  if (found_tuning_results) {
     ORT_RETURN_IF_ERROR(SetTuningResults(tuning_results));
   }
-  else {
-    LOGS(*session_logger_, WARNING) << "Got empty tuning results.";
-  }
-
 
   return status;
 }
@@ -2212,24 +2210,24 @@ Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs,
     auto* provider = execution_providers_.Get(tr.ep);
     if (provider == nullptr) {
       msg = MakeString("Cannot find execution provider ", tr.ep);
-      LOGS(*session_logger_, WARNING) << msg;
       ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
       continue;
     }
 
     auto* tuning_ctx = provider->GetTuningContext();
     if (tuning_ctx == nullptr) {
       msg = MakeString("Invalid TuningResults (index=", i, "). ", tr.ep, " does not support TunableOp.");
-      LOGS(*session_logger_, WARNING) << msg;
       ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
       continue;
     }
 
     auto status = tuning_ctx->LoadTuningResults(tr);
     if (!status.IsOK()) {
       msg = MakeString("Failed to load TuningResults (index=", i, "). Reason: ", status.ErrorMessage());
-      LOGS(*session_logger_, WARNING) << msg;
       ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
     }
   }
   return Status::OK();

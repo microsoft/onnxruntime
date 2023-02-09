@@ -59,7 +59,8 @@ class JsonConfigParser {
 };
 
 Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& metadata,
-                                           std::vector<TuningResults>& results);
+                                           /*out*/ std::vector<TuningResults>& results,
+                                           /*out*/ bool& key_found);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

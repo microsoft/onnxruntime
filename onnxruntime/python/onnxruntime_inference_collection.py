@@ -289,7 +289,7 @@ class Session:
     def get_tuning_results(self):
         return self._sess.get_tuning_results()
 
-    def set_tuning_results(self, results, error_on_invalid=False):
+    def set_tuning_results(self, results, *, error_on_invalid=False):
         return self._sess.set_tuning_results(results, error_on_invalid)
 
     def run_with_ortvaluevector(self, run_options, feed_names, feeds, fetch_names, fetches, fetch_devices):
