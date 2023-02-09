@@ -442,20 +442,6 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
-# onnxruntime-extensions
-if (onnxruntime_USE_EXTENSIONS)
-  if (NOT onnxruntime_EXTENSIONS_OVERRIDDEN)
-    FetchContent_Declare(
-      extensions
-      URL ${DEP_URL_extensions}
-      URL_HASH SHA1=${DEP_SHA1_extensions}
-    )
-    onnxruntime_fetchcontent_makeavailable(extensions)
-  else ()
-      include(extensions)
-  endif()
-endif()
-
 message("Finished fetching external dependencies")
 
 
