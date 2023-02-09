@@ -43,7 +43,7 @@ Now it's time to write the application code.
 
 ### Pre-requisites
 
-* Android Studio Dolphin | 2021.3.1 Patch + (installed on Mac/Windows/Linux)
+* Android Studio Dolphin 2021.3.1 Patch + (installed on Mac/Windows/Linux)
 * Android SDK 29+
 * Android NDK r22+
 * An Android device or an Android Emulator
