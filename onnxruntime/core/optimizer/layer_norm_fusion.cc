@@ -473,7 +473,7 @@ Scale --------|
 */
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
-  std::cout << "Entering SimplifiedLayerNormFusion" << std:endl;
+  std::cout << "Entering SimplifiedLayerNormFusion" << std::endl;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
@@ -491,7 +491,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         !IsSupportedDataType(pow_node)) {
       continue;
     }
-    std::cout << "Adding pow_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding pow_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(pow_node);
 
     const Node* p_reduce_mean = nullptr;
@@ -507,7 +507,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         reduce_mean_node.GetInputEdgesCount() == 0) {
       continue;
     }
-    std::cout << "Adding reduce_mean_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding reduce_mean_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(reduce_mean_node);
 
     const Node* p_add = graph_utils::FirstChildByType(reduce_mean_node, "Add");
@@ -520,7 +520,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         !optimizer_utils::CheckOutputEdges(graph, add_node, 1) || !IsSupportedDataType(add_node)) {
       continue;
     }
-    std::cout << "Adding add_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding add_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(add_node);
 
     const Node* p_sqrt = graph_utils::FirstChildByType(add_node, "Sqrt");
@@ -535,7 +535,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         sqrt_node.GetInputEdgesCount() == 0) {
       continue;
     }
-    std::cout << "Adding sqrt_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding sqrt_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(sqrt_node);
 
     const Node* p_div = graph_utils::FirstChildByType(sqrt_node, "Div");
@@ -548,7 +548,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         !optimizer_utils::CheckOutputEdges(graph, div_node, 1) || !IsSupportedDataType(div_node)) {
       continue;
     }
-    std::cout << "Adding div_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding div_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(div_node);
 
     // Check Div and Pow has same input, and if this input is a Cast, we can also remove it.
@@ -579,7 +579,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
-        std::cout << "Inserting pow_input_node(s) to nodes_to_remove" << std:endl;
+        std::cout << "Inserting pow_input_node(s) to nodes_to_remove" << std::endl;
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
         has_leading_cast = true;
       }
@@ -590,7 +590,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
-      std::cout << "Adding *next_node to nodes_to_remove" << std:endl;
+      std::cout << "Adding *next_node to nodes_to_remove" << std::endl;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
