@@ -156,14 +156,13 @@ class TestOpSoftmax(unittest.TestCase):
         softmax_cnt = 0
         qnode_zeropoints = []
         for node in result_model.graph.node:
-            match node.op_type:
-                case "QuantizeLinear":
-                    qnode_cnt +=1
-                    qnode_zeropoints.append(node.input[2])
-                case "DequantizeLinear":
-                    dqnode_cnt += 1
-                case "Softmax":
-                    softmax_cnt += 1
+            if node.op_type == "QuantizeLinear":
+                qnode_cnt +=1
+                qnode_zeropoints.append(node.input[2])
+            elif node.op_type == "DequantizeLinear":
+                dqnode_cnt += 1
+            elif node.op_type == "Softmax":
+                softmax_cnt += 1
         self.assertEqual(3, qnode_cnt, "Expected 3 QuantizeLinear nodes, found {}".format(qnode_cnt))
         self.assertEqual(4, dqnode_cnt, "Expected 4 DequantizeLinear nodes, found {}".format(dqnode_cnt))
         self.assertEqual(1, softmax_cnt, "Expected 1 Softmax node, found {}".format(softmax_cnt))
