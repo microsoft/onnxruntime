@@ -58,10 +58,11 @@ class FusionT5Attention(FusionAttention):
 # Input(2, "key_length", "The length of key.", "U")
 # Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
 class FusionRelativePositionBiasBlock(Fusion):
-    def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: bool):
+    def __init__(self, model: OnnxModel, max_distance: int):
         super().__init__(model, "RelativePositionBias", ["Add", "Slice"])
         self.max_distance = max_distance
-        self.is_bidirectional = is_bidirectional
+        # bidirectional=(not self.is_decoder)
+        self.is_bidirectional = False
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         if node.op_type != "Add" and node.op_type != "Slice":
@@ -159,7 +160,7 @@ class T5OnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128, True)
+        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
