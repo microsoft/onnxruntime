@@ -600,7 +600,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() || !IsSupportedDataType(mul_node)) {
       continue;
     }
-    std::cout << "Adding mul_node to nodes_to_remove" << std:endl;
+    std::cout << "Adding mul_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(mul_node);
 
     // get axes attributes
