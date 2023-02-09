@@ -80,6 +80,13 @@ Model::Model(const std::string& graph_name,
   }
 
   for (const auto& [domain, version] : *p_domain_to_version) {
+#ifndef ENABLE_TRAINING_CORE
+    // Do not add training opsets in a non training build.
+    if (domain == ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN ||
+        domain == ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN) {
+      continue;
+    }
+#endif
     model_load_utils::ValidateOpsetForDomain(domain_to_version_static, logger, allow_released_opsets_only_final,
                                              domain, version);
     const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
@@ -203,6 +210,13 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
                         : schema_registry->GetLatestOpsetVersions(false);
   for (const auto& [domain, version] : domain_map) {
     if (domain_to_version.find(domain) == domain_to_version.end()) {
+#ifndef ENABLE_TRAINING_CORE
+      // Do not add training opsets in a non training build.
+      if (domain == ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN ||
+          domain == ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN) {
+        continue;
+      }
+#endif
       domain_to_version[domain] = version;
       const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model_proto_.add_opset_import()};
       opset_id_proto->set_domain(domain);
