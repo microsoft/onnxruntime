@@ -170,17 +170,25 @@ class T5OnnxModel(BertOnnxModel):
             if node.op_type == "Add":
                 extended_mask_nodes = self.match_parent_path(
                     node,
-                    ["Mul", "Sub", "Mul", "Unsqueeze", "Cast", "LessOrEqual", "Tile", "Concat", "Unsqueeze", "Gather", "Shape"],
-                    [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0]
+                    [
+                        "Mul",
+                        "Sub",
+                        "Mul",
+                        "Unsqueeze",
+                        "Cast",
+                        "LessOrEqual",
+                        "Tile",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                    ],
+                    [1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0],
                 )
                 if extended_mask_nodes is None:
                     continue
 
-                rpb_nodes = self.match_parent_path(
-                    node,
-                    ["RelativePositionBias"],
-                    [0]
-                )
+                rpb_nodes = self.match_parent_path(node, ["RelativePositionBias"], [0])
                 if rpb_nodes is None:
                     continue
 
@@ -197,17 +205,26 @@ class T5OnnxModel(BertOnnxModel):
             if node.op_type == "Add":
                 extended_mask_nodes = self.match_parent_path(
                     node,
-                    ["Mul", "Sub", "Mul", "Unsqueeze", "Concat", "Cast", "LessOrEqual", "Tile", "Concat", "Unsqueeze", "Gather", "Shape"],
-                    [1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0]
+                    [
+                        "Mul",
+                        "Sub",
+                        "Mul",
+                        "Unsqueeze",
+                        "Concat",
+                        "Cast",
+                        "LessOrEqual",
+                        "Tile",
+                        "Concat",
+                        "Unsqueeze",
+                        "Gather",
+                        "Shape",
+                    ],
+                    [1, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0],
                 )
                 if extended_mask_nodes is None:
                     continue
 
-                rpb_nodes = self.match_parent_path(
-                    node,
-                    ["Slice", "RelativePositionBias"],
-                    [0, 0]
-                )
+                rpb_nodes = self.match_parent_path(node, ["Slice", "RelativePositionBias"], [0, 0])
                 if rpb_nodes is None:
                     continue
 
@@ -217,7 +234,6 @@ class T5OnnxModel(BertOnnxModel):
                 nodes_to_remove.extend(extended_mask_nodes)
                 nodes_to_remove.append(node)
                 self.remove_nodes(nodes_to_remove)
-
 
     def postprocess(self):
         self.rpb_fusion.apply()
