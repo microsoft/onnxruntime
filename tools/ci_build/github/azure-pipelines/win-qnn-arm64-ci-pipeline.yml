@@ -10,7 +10,7 @@ jobs:
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
-  timeoutInMinutes: 150
+  timeoutInMinutes: 200
   workspace:
     clean: all
   steps:
@@ -23,6 +23,10 @@ jobs:
       DIR $(Agent.ToolsDirectory)\Python\3.11.0
       DIR $(Agent.ToolsDirectory)\Python\3.11.0\arm64
     displayName: Copy python 3.11.0 version to agent tools directory
+
+  - script: |
+      DIR C:\data\qnnsdk
+    displayName: Check available QNN SDKs
 
   - task: UsePythonVersion@0
     inputs:
