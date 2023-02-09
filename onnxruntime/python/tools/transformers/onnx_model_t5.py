@@ -50,6 +50,7 @@ class FusionT5Attention(FusionAttention):
         # Not implemented yet
         return
 
+
 class FusionRelativePositionBiasBlock(Fusion):
     def __init__(self, model: OnnxModel, max_distance: int):
         super().__init__(model, "RelativePositionBias", ["Add", "Slice"])
@@ -64,15 +65,11 @@ class FusionRelativePositionBiasBlock(Fusion):
             return
 
         compute_bias_nodes = self.model.match_parent_path(
-            node,
-            ["Unsqueeze", "Transpose", "Gather", "Where"],
-            [0, 0, 0, 1]
+            node, ["Unsqueeze", "Transpose", "Gather", "Where"], [0, 0, 0, 1]
         )
         if compute_bias_nodes is None:
             compute_bias_nodes = self.model.match_parent_path(
-                node,
-                ["Unsqueeze", "Transpose", "Gather", "Add", "Where"],
-                [0, 0, 0, 1, 1]
+                node, ["Unsqueeze", "Transpose", "Gather", "Add", "Where"], [0, 0, 0, 1, 1]
             )
             if compute_bias_nodes is None:
                 return
@@ -94,13 +91,11 @@ class FusionRelativePositionBiasBlock(Fusion):
         range_nodes = self.model.match_parent_path(
             div,
             ["Cast", "Neg", "Min", "ConstantOfShape", "Shape", "Sub", "Unsqueeze", "Range"],
-            [0, 0, 0, 1, 0, 0, 0, 0]
+            [0, 0, 0, 1, 0, 0, 0, 0],
         )
         if range_nodes is None:
             range_nodes = self.model.match_parent_path(
-                div,
-                ["Cast", "Abs", "Sub", "Unsqueeze", "Range"],
-                [0, 0, 0, 0, 0]
+                div, ["Cast", "Abs", "Sub", "Unsqueeze", "Range"], [0, 0, 0, 0, 0]
             )
             self.is_bidirectional = True
             if range_nodes is None:
