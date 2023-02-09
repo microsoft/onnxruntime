@@ -451,8 +451,9 @@ if (onnxruntime_USE_EXTENSIONS)
       URL_HASH SHA1=${DEP_SHA1_extensions}
     )
     onnxruntime_fetchcontent_makeavailable(extensions)
+  else ()
+      include(extensions)
   endif()
-  include(extensions)
 endif()
 
 message("Finished fetching external dependencies")

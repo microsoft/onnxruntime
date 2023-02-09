@@ -1234,6 +1234,7 @@ def generate_build_tree(
             if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
                 # use absolute path here because onnxruntime-extensions is outside onnxruntime
                 onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+                cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
                 print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
             else:
                 print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
@@ -1248,7 +1249,7 @@ def generate_build_tree(
                 run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}" ]
 
     if args.fuzz_testing:
         if not (
