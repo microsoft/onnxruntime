@@ -157,7 +157,7 @@ class TestOpSoftmax(unittest.TestCase):
         qnode_zeropoints = []
         for node in result_model.graph.node:
             if node.op_type == "QuantizeLinear":
-                qnode_cnt +=1
+                qnode_cnt += 1
                 qnode_zeropoints.append(node.input[2])
             elif node.op_type == "DequantizeLinear":
                 dqnode_cnt += 1
@@ -170,7 +170,11 @@ class TestOpSoftmax(unittest.TestCase):
             for tensor in result_model.graph.initializer:
                 if tensor.name in qnode_zeropoints:
                     np_value = numpy_helper.to_array(tensor)
-                    self.assertEqual(0, np_value, "QuantizeLinear node zero point value must be 0, found {} instead!".format(np_value))
+                    self.assertEqual(
+                        0,
+                        np_value,
+                        "QuantizeLinear node zero point value must be 0, found {} instead!".format(np_value),
+                    )
 
         qnode_io_qtypes = {
             "QuantizeLinear": [
