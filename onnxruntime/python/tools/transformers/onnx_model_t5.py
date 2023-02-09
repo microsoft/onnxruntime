@@ -5,6 +5,7 @@
 import logging
 from typing import Union
 
+import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_base import Fusion
 from fusion_skiplayernorm import FusionSkipLayerNormalization
@@ -12,8 +13,6 @@ from fusion_utils import NumpyHelper
 from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
-
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
