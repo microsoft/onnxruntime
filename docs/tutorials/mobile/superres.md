@@ -7,10 +7,17 @@ nav_order: 3
 ---
 
 # Machine learning mobile application to improve image resolution
+{: .no_toc }
 
 Learn how to build an application to improve image resolution using ONNX Runtime Mobile, with a model that includes pre and post processing.
 
 You can use this tutorial to build the application for Android or iOS.
+
+## Contents
+{: .no_toc }
+
+* TOC placeholder
+{:toc}
 
 ## Prepare the model
 
@@ -284,6 +291,314 @@ Within Android studio:
 * Run -> app
 
 The app runs in the device emulator. Connect to your Android device to run the app on device.
+
+## iOS app
+
+### Pre-requisites
+
+* Install Xcode 13.0 and above (preferably latest version)
+* A valid Apple Developer ID
+* An iOS device or iOS simulator
+* Xcode command line tools `xcode-select --install`
+* CocoaPods `sudo gem install cocoapods`
+
+### Sample code
+
+You can find full [source code for the iOS super resolution app](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/super_resolution/ios) in GitHub.
+
+To run the app from source code:
+
+1. Clone the onnxruntime-inference-examples repo
+
+   ```bash
+   git clone https://github.com/microsoft/onnxruntime-inference-examples
+   cd onnxruntime-inference-examples/mobile/examples/super_resolution/ios
+   ```
+
+2. Install required pod files
+
+   ```bash
+   pod install
+   ```
+
+3. Open the generated `ORTSuperResolution.xcworkspace` file in XCode
+
+   Select your development team
+
+4. Run the application
+
+   Connect your iOS device or simulator, build and run the app
+
+   Click the `Perform Super Resolution` button to see the app in action
+
+To develop the app, step by step, follow the following sections.
+
+### Code from scratch
+
+#### Create project
+
+Create a new project in XCode
+
+#### Dependencies
+
+Install the following pods:
+
+```bash
+  # Pods for OrtSuperResolution
+  pod 'onnxruntime-c'
+  
+  # Pre-release version pods
+  pod 'onnxruntime-extensions-c', '0.5.0-dev+261962.e3663fb'
+```
+
+#### Project resources
+
+1. Add the model file to the project
+
+   Copy the model file generated at the beginning of this tutorial into the root of the project folder.
+
+2. Add the test image as an asset
+
+   Copy the image that you want to run super resolution on into the root of the project folder.
+
+#### Main app
+
+Create a file called `ORTSuperResolutionApp.swift` and add the following code:
+
+```swift
+import SwiftUI
+
+@main
+struct ORTSuperResolutionApp: App {
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+        }
+    }
+}
+```
+
+#### Content view
+
+Create a file called `ContentView.swift` and add the following code:
+
+```swift
+import SwiftUI
+
+struct ContentView: View {
+    @State private var performSuperRes = false
+    
+    func runOrtSuperResolution() -> UIImage? {
+        do {
+            let outputImage = try ORTSuperResolutionPerformer.performSuperResolution()
+            return outputImage
+        } catch let error as NSError {
+            print("Error: \(error.localizedDescription)")
+            return nil
+        }
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack {
+                VStack {
+                    Text("ORTSuperResolution").font(.title).bold()
+                        .frame(width: 400, height: 80)
+                        .border(Color.purple, width: 4)
+                        .background(Color.purple)
+                    
+                    Text("Input low resolution image: ").frame(width: 350, height: 40, alignment:.leading)
+                    
+                    Image("cat_224x224").frame(width: 250, height: 250)
+                    
+                    Button("Perform Super Resolution") {
+                        performSuperRes.toggle()
+                    }
+                    
+                    if performSuperRes {
+                        Text("Output high resolution image: ").frame(width: 350, height: 40, alignment:.leading)
+                        
+                        if let outputImage = runOrtSuperResolution() {
+                            Image(uiImage: outputImage)
+                        } else {
+                            Text("Unable to perform super resolution. ").frame(width: 350, height: 40, alignment:.leading)
+                        }
+                    }
+                    Spacer()
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
+}
+```
+
+#### Swift / Objective C bridging header
+
+Create a file called `ORTSuperResolution-Bridging-Header.h` and add the following import statement:
+
+```objectivec
+#import "ORTSuperResolutionPerformer.h"
+```
+
+#### Super resolution code 
+
+1. Create a file called `ORTSuperResolutionPerformer.h` and add the following code:
+
+   ```objectivec
+   #ifndef ORTSuperResolutionPerformer_h
+   #define ORTSuperResolutionPerformer_h
+
+   #import <Foundation/Foundation.h>
+   #import <UIKit/UIKit.h>
+
+   NS_ASSUME_NONNULL_BEGIN
+
+   @interface ORTSuperResolutionPerformer : NSObject
+
+   + (nullable UIImage*)performSuperResolutionWithError:(NSError**)error;
+
+   @end
+
+   NS_ASSUME_NONNULL_END
+
+   #endif
+   ```
+
+2. Create a file called `ORTSuperResolutionPerformer.mm` and add the following code:
+
+    ```objectivec
+    #import "ORTSuperResolutionPerformer.h"
+    #import <Foundation/Foundation.h>
+    #import <UIKit/UIKit.h>
+
+    #include <array>
+    #include <cstdint>
+    #include <stdexcept>
+    #include <string>
+    #include <vector>
+
+    #include <onnxruntime_cxx_api.h>
+    #include <onnxruntime_extensions.h>
+
+
+    @implementation ORTSuperResolutionPerformer
+
+    + (nullable UIImage*)performSuperResolutionWithError:(NSError **)error {
+        
+        UIImage* output_image = nil;
+        
+        try {
+            
+            // Register custom ops
+            
+            const auto ort_log_level = ORT_LOGGING_LEVEL_INFO;
+            auto ort_env = Ort::Env(ort_log_level, "ORTSuperResolution");
+            auto session_options = Ort::SessionOptions();
+            
+            if (RegisterCustomOps(session_options, OrtGetApiBase()) != nullptr) {
+                throw std::runtime_error("RegisterCustomOps failed");
+            }
+            
+            // Step 1: Load model
+            
+            NSString *model_path = [NSBundle.mainBundle pathForResource:@"pt_super_resolution_with_pre_post_processing_opset16"
+                                                                ofType:@"onnx"];
+            if (model_path == nullptr) {
+                throw std::runtime_error("Failed to get model path");
+            }
+            
+            // Step 2: Create Ort Inference Session
+            
+            auto sess = Ort::Session(ort_env, [model_path UTF8String], session_options);
+            
+            // Read input image
+            
+            // note: need to set Xcode settings to prevent it from messing with PNG files:
+            // in "Build Settings":
+            // - set "Compress PNG Files" to "No"
+            // - set "Remove Text Metadata From PNG Files" to "No"
+            NSString *input_image_path =
+            [NSBundle.mainBundle pathForResource:@"cat_224x224" ofType:@"png"];
+            if (input_image_path == nullptr) {
+                throw std::runtime_error("Failed to get image path");
+            }
+            
+            // Step 3: Prepare input tensors and input/output names
+            
+            NSMutableData *input_data =
+            [NSMutableData dataWithContentsOfFile:input_image_path];
+            const int64_t input_data_length = input_data.length;
+            const auto memoryInfo =
+            Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+            
+            const auto input_tensor = Ort::Value::CreateTensor(memoryInfo, [input_data mutableBytes], input_data_length,
+                                                            &input_data_length, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8);
+            
+            constexpr auto input_names = std::array{"image"};
+            constexpr auto output_names = std::array{"image_out"};
+            
+            // Step 4: Call inference session run
+            
+            const auto outputs = sess.Run(Ort::RunOptions(), input_names.data(),
+                                        &input_tensor, 1, output_names.data(), 1);
+            if (outputs.size() != 1) {
+                throw std::runtime_error("Unexpected number of outputs");
+            }
+            
+            // Step 5: Analyze model outputs
+            
+            const auto &output_tensor = outputs.front();
+            const auto output_type_and_shape_info = output_tensor.GetTensorTypeAndShapeInfo();
+            const auto output_shape = output_type_and_shape_info.GetShape();
+            
+            if (const auto output_element_type =
+                output_type_and_shape_info.GetElementType();
+                output_element_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) {
+                throw std::runtime_error("Unexpected output element type");
+            }
+            
+            const uint8_t *output_data_raw = output_tensor.GetTensorData<uint8_t>();
+            
+            // Step 6: Convert raw bytes into NSData and return as displayable UIImage
+            
+            NSData *output_data = [NSData dataWithBytes:output_data_raw length:(output_shape[0])];
+            output_image = [UIImage imageWithData:output_data];
+            
+        } catch (std::exception &e) {
+            NSLog(@"%s error: %s", __FUNCTION__, e.what());
+            
+            static NSString *const kErrorDomain = @"ORTSuperResolution";
+            constexpr NSInteger kErrorCode = 0;
+            if (error) {
+                NSString *description =
+                [NSString stringWithCString:e.what() encoding:NSASCIIStringEncoding];
+                *error =
+                [NSError errorWithDomain:kErrorDomain
+                                    code:kErrorCode
+                                userInfo:@{NSLocalizedDescriptionKey : description}];
+            }
+            return nullptr;
+        }
+        
+        if (error) {
+            *error = nullptr;
+        }
+        return output_image;
+    }
+
+    @end
+    ```
+
+### Build and run the app
+
+In XCode, select the triangle build icon to build and run the app!
 
 ## Resources
 
