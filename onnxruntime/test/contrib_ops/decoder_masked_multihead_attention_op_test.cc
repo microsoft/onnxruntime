@@ -60,7 +60,7 @@ namespace test {
             for (int i = 0; i < sequence_length; ++i) {
                 for (int j = 0; j < 3 * hidden_size; ++j) {
 
-                    int sum = 0;
+                    T sum = 0;
 
                     for (int k = 0; k < hidden_size; ++k) {
                         sum += input[b * sequence_length * hidden_size + i * hidden_size + k] * weights[k * 3 * hidden_size + j];
@@ -115,7 +115,7 @@ namespace test {
     template <typename T>
     static std::vector<T> MergeReorderedKCacheWithK(std::vector<T>& ordered_k_cache,
         float* k,
-        int batch_size, int num_heads, int sequence_length,
+        int batch_size, int num_heads, int past_sequence_length,
         int head_size, int max_sequence_length) {
 
         std::vector<T> merged = ordered_k_cache;
@@ -124,7 +124,7 @@ namespace test {
         int num_iter = head_size / num_inner_elements;
 
         int num_elements = batch_size * num_heads * 1 * head_size;
-        int iter = sequence_length * num_inner_elements;
+        int iter = past_sequence_length * num_inner_elements;
 
         while (num_elements > 0) {
 
@@ -140,6 +140,41 @@ namespace test {
         return merged;
     }
 
+    template<typename T>
+    static std::vector<float> MergePastWithPresent(std::vector<T>& past, float* k, 
+                                                   int num_batch, int num_heads, int past_sequence_length, int head_size) {
+        std::vector<T> merged = past;
+
+        int num_elements = num_batch * num_heads * head_size;
+       
+
+
+    }
+
+    template<typename T>
+    void QK_Transpose(float* q_matrix, float* k_matrix, int batch_size, int hidden_size,
+        int sequence_length, int total_sequence_length, /*out*/ std::vector<T>& qk_transpose) {
+        if (sequence_length == 1) {
+            throw std::exception("Not supported");
+        }
+
+        qk_transpose.resize(batch_size * 1 * total_sequence_length, 0);
+
+        for (int b = 0; b < batch_size; ++b) {
+            for (int i = 0; i < sequence_length; ++i) {
+                for (int j = 0; j < total_sequence_length; ++j) {
+                    T sum = 0;
+                    
+                    for (int k = 0; k < hidden_size; ++k) {
+                        sum += q_matrix[b * hidden_size + k] * k_matrix[b * total_sequence_length * hidden_size + j * hidden_size + k];
+                    }
+
+                    qk_transpose[b * total_sequence_length + j] = sum;
+                }
+
+            }
+        }
+    }
     TEST(AttentionTest, Test) {
         int batch_size = 1;
         int sequence_length = 1;
@@ -175,9 +210,12 @@ namespace test {
         std::vector<int64_t> past_dims = { 2, batch_size, number_of_heads, max_sequence_length, head_size };
         int past_present_size = 2 * batch_size * number_of_heads * max_sequence_length * head_size;
 
-        auto reordered_k_cache = ReorderKCache(CreateRandom<float>(past_present_size), batch_size,
+        auto kv_cache = CreateRandom<float>(past_present_size);
+
+        auto reordered_kv_cache = ReorderKCache(kv_cache, batch_size,
             number_of_heads, past_sequence_length, head_size, max_sequence_length);
-        tester.AddInput<float>("past", past_dims, reordered_k_cache);
+        
+        tester.AddInput<float>("past", past_dims, reordered_kv_cache);
 
 
         // DEBUG
@@ -200,7 +238,8 @@ namespace test {
         // Output
         tester.AddOutput<float>("output", output_dims, CreateValues<float>(batch_size * sequence_length * hidden_size, 0));
 
-        auto present = MergeReorderedKCacheWithK(reordered_k_cache, qkv.data() + hidden_size, batch_size, number_of_heads, past_sequence_length, head_size, max_sequence_length);
+        auto present = MergeReorderedKCacheWithK(reordered_kv_cache, qkv.data() + hidden_size, batch_size, 
+                      number_of_heads, past_sequence_length, head_size, max_sequence_length);
         tester.AddOutput<float>("present", past_dims, present);
         
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;

@@ -30,16 +30,15 @@ namespace cuda {
         static_assert(head_size % THREADS_PER_VALUE == 0, "");
 
         // The size of a warp.
-        //constexpr int WARP_SIZE = 32;
+        constexpr int WARP_SIZE = 32;
 
         // The number of warps in a threadblock.
-        //constexpr int WARPS_PER_BLOCK = THREADS_PER_BLOCK / WARP_SIZE;
+        constexpr int WARPS_PER_BLOCK = THREADS_PER_BLOCK / WARP_SIZE;
 
-        // Use smem_size_in_bytes (above) to determine the amount of shared memory.
-        //extern __shared__ char smem_[];
+        extern __shared__ char smem_[];
 
         // The shared memory for the Q*K^T values and partial logits in softmax.
-        //float* qk_smem = reinterpret_cast<float*>(smem_);
+        float* qk_smem = reinterpret_cast<float*>(smem_);
 
         // The shared memory for the logits. For FP32, that's the same buffer as qk_smem.
         //char* logits_smem_ = smem_;
@@ -60,7 +59,7 @@ namespace cuda {
         //T* out_smem = reinterpret_cast<T*>(smem_);
 
         // The shared memory buffers for the block-wide reductions. One for max, one for sum.
-        //__shared__ float red_smem[WARPS_PER_BLOCK * 2];
+        __shared__ float red_smem[WARPS_PER_BLOCK * 2];
 
         // A vector of Q or K elements for the current timestep.
         using Qk_vec_k = typename Qk_vec_k_<T, head_size>::Type;  // with kernel-used precision
@@ -110,9 +109,9 @@ namespace cuda {
         const int tidx = threadIdx.x;
 
         // While doing the product Q*K^T for the different keys we track the max.
-        //float qk_max = -FLT_MAX;
+        float qk_max = -FLT_MAX;
 
-        //float qk = 0.0F;
+        float qk = 0.0F;
 
         int qkv_base_offset = bi * (3 * params.hidden_size) + hi * head_size;
 
@@ -168,30 +167,16 @@ namespace cuda {
         q = add_vec(q, q_bias);
         k = add_vec(k, k_bias);
 
-        // DEBUG
         if (!is_masked) {
             // Store the Q values to shared memory.
-            (void*)(q_smem);
-            //*reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
- 
-
-            *reinterpret_cast<Qk_vec_k*>(params_q) = q;
-            *reinterpret_cast<Qk_vec_k*>(params_k) = k;
-
-        }
-
-        T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
-
-        if (!is_masked) {
-            // Store the Q values to shared memory.
-            //*reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
+            *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
 
             // Write the K values to the global memory cache.
-            //
             // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
             // system. We designed it this way as it allows much better memory loads (and there are many
             // more loads) + the stores are really "write and forget" since we won't need the ack before
             // the end of the kernel. There's plenty of time for the transactions to complete.
+            T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
             // The 16B chunk written by the thread.
             int co = tidx / QK_VECS_IN_16B;
@@ -205,9 +190,7 @@ namespace cuda {
 
             // Trigger the stores to global memory.
             *reinterpret_cast<Qk_vec_m*>(&params_k_cache[offset]) = vec_conversion<Qk_vec_m, Qk_vec_k>(k);
-        }
 
-            /*
             // Compute \sum_i Q[i] * K^T[i] for the current timestep.
             using Qk_vec_acum = Qk_vec_k;
             qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
@@ -227,17 +210,21 @@ namespace cuda {
 
         const float inv_sqrt_dh = 1.f / (sqrtf(static_cast<float>(head_size)));
 
+        float f = qk_max * qk_smem[0];
+
         // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
         if (tidx == 0) {
             // Normalize qk.
             qk *= inv_sqrt_dh;
             qk_max = qk;
             qk_smem[params.total_sequence_length] = qk;
+
         }
 
         // Make sure the data is in shared memory.
         __syncthreads();
 
+        /*
         // The type of queries and keys for the math in the Q*K^T product.
         using K_vec_k = typename K_vec_k_<T, THREADS_PER_KEY>::Type;
         using K_vec_m = typename K_vec_m_<T, THREADS_PER_KEY>::Type;
