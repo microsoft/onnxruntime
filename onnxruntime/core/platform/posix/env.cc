@@ -587,6 +587,21 @@ class PosixEnv : public Env {
     return val == NULL ? std::string() : std::string(val);
   }
 
+  void InitThread(int index, void* thread_options) {
+    ThreadOptions* opt = reinterpret_cast<ThreadOptions*>(thread_options);
+    if (index < static_cast<int>(opt->affinities.size())) {
+      cpu_set_t cpuset;
+      CPU_ZERO(&cpuset);
+      for (auto id: opt->affinities[index]) {
+        CPU_SET(id, &cpuset);      
+      }
+      auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+      if (ret) {
+	LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed"; 
+      }
+    } 
+  }
+
  private:
   Telemetry telemetry_provider_;
 #ifdef ORT_USE_CPUINFO
