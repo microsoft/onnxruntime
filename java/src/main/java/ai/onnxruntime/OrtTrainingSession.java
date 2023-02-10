@@ -151,7 +151,7 @@ public final class OrtTrainingSession implements AutoCloseable {
                         allocator.handle))));
   }
 
-  /**
+  /*
    * \brief Create a training session that can be used to begin or resume training.
    *
    * <p>This function creates a training session based on the env and session options provided that
@@ -184,24 +184,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       String trainPath,
       String evalPath,
       String optimizerPath);
-
-  /** Checks if the OrtTrainingSession is closed, if so throws {@link IllegalStateException}. */
-  private void checkClosed() {
-    if (closed) {
-      throw new IllegalStateException("Trying to use a closed OrtTrainingSession");
-    }
-  }
-
-  @Override
-  public void close() {
-    if (!closed) {
-      closeSession(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
-      checkpoint.close();
-      closed = true;
-    } else {
-      throw new IllegalStateException("Trying to close an already closed OrtSession.");
-    }
-  }
 
   /**
    * Returns an ordered set of the train model input names.
@@ -239,6 +221,24 @@ public final class OrtTrainingSession implements AutoCloseable {
     return evalOutputNames;
   }
 
+  /** Checks if the OrtTrainingSession is closed, if so throws {@link IllegalStateException}. */
+  private void checkClosed() {
+    if (closed) {
+      throw new IllegalStateException("Trying to use a closed OrtTrainingSession");
+    }
+  }
+
+  @Override
+  public void close() {
+    if (!closed) {
+      closeSession(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+      checkpoint.close();
+      closed = true;
+    } else {
+      throw new IllegalStateException("Trying to close an already closed OrtSession.");
+    }
+  }
+
   private native void closeSession(long trainingHandle, long nativeHandle);
 
   /**
@@ -259,7 +259,7 @@ public final class OrtTrainingSession implements AutoCloseable {
         saveOptimizer);
   }
 
-  /**
+  /*
    * \brief Save the training session states to a checkpoint directory on disk.
    *
    * <p>This function retrieves the training session states from the training session and serializes
@@ -279,7 +279,7 @@ public final class OrtTrainingSession implements AutoCloseable {
       long apiHandle, long trainingHandle, long nativeHandle, String path, boolean saveOptimizer)
       throws OrtException;
 
-  /**
+  /*
    * \brief Retrieves the number of user outputs in the training model.
    *
    * <p>This function returns the number of outputs of the training model so that the user can
@@ -302,7 +302,7 @@ public final class OrtTrainingSession implements AutoCloseable {
       long apiHandle, long trainingApiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
-  /**
+  /*
    * \brief Retrieves the number of user outputs in the eval model.
    *
    * <p>This function returns the number of outputs of the eval model so that the user can allocate
@@ -326,20 +326,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       throws OrtException;
 
   /**
-   * \brief Reset the training model gradients to zero lazily.
-   *
-   * <p>This function sets the internal state of the training session such that the training model
-   * gradients will be reset just before the new gradients are computed on the next invocation of
-   * TrainStep.
-   *
-   * <p>\param[in] session The training session which has working knowledge of the eval model.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(ResetGrad, _Inout_ OrtTrainingSession* session);
-   */
-
-  /**
    * Ensures the gradients are reset to zero before the next call to {@link #trainStep}.
    *
    * <p>Note this is a lazy call, the gradients are cleared as part of running the next {@link
@@ -352,6 +338,19 @@ public final class OrtTrainingSession implements AutoCloseable {
     lazyResetGrad(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
   }
 
+  /*
+   * \brief Reset the training model gradients to zero lazily.
+   *
+   * <p>This function sets the internal state of the training session such that the training model
+   * gradients will be reset just before the new gradients are computed on the next invocation of
+   * TrainStep.
+   *
+   * <p>\param[in] session The training session which has working knowledge of the eval model.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(ResetGrad, _Inout_ OrtTrainingSession* session);
+   */
   private native void lazyResetGrad(long apiHandle, long trainingHandle, long nativeHandle)
       throws OrtException;
 
@@ -657,6 +656,21 @@ public final class OrtTrainingSession implements AutoCloseable {
       throws OrtException;
 
   /**
+   * Sets the learning rate for the training session.
+   *
+   * <p>Should be used only when there is no learning rate scheduler in the session. Not used to set
+   * the initial learning rate for LR schedulers.
+   *
+   * @param learningRate The learning rate.
+   * @throws OrtException If the call failed.
+   */
+  public void setLearningRate(float learningRate) throws OrtException {
+    checkClosed();
+    setLearningRate(
+        OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, learningRate);
+  }
+
+  /*
    * \brief Sets the learning rate for this training session.
    *
    * <p>This function allows users to set the learning rate for the training session. The current
@@ -676,39 +690,9 @@ public final class OrtTrainingSession implements AutoCloseable {
    * <p>ORT_API2_STATUS(SetLearningRate, _Inout_ OrtTrainingSession* sess, _In_ float
    * learning_rate);
    */
-
-  /**
-   * Sets the learning rate for the training session.
-   *
-   * <p>Should be used only when there is no learning rate scheduler in the session. Not used to set
-   * the initial learning rate for LR schedulers.
-   *
-   * @param learningRate The learning rate.
-   * @throws OrtException If the call failed.
-   */
-  public void setLearningRate(float learningRate) throws OrtException {
-    checkClosed();
-    setLearningRate(
-        OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, learningRate);
-  }
-
   private native void setLearningRate(
       long apiHandle, long trainingApiHandle, long nativeHandle, float learningRate)
       throws OrtException;
-
-  /**
-   * \brief Gets the current learning rate for this training session.
-   *
-   * <p>This function allows users to get the learning rate for the training session. The current
-   * learning rate is maintained by the training session
-   *
-   * <p>\param[in] sess The training session on which the learning rate needs to be set.
-   *
-   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * <p>ORT_API2_STATUS(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float*
-   * learning_rate);
-   */
 
   /**
    * Gets the current learning rate for this training session.
@@ -722,25 +706,20 @@ public final class OrtTrainingSession implements AutoCloseable {
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
   }
 
-  private native float getLearningRate(long apiHandle, long trainingApiHandle, long nativeHandle);
-
-  /**
-   * \brief Performs the weight updates for the trainable parameters using the optimizer model.
+  /*
+   * \brief Gets the current learning rate for this training session.
    *
-   * <p>This function performs the weight update step that updates the trainable parameters such
-   * that they take a step in the direction of their gradients. The optimizer step is performed
-   * based on the optimizer model that was provided to the training session. The updated parameters
-   * are stored inside the training session so that they can be used by the next TrainStep function
-   * call.
+   * <p>This function allows users to get the learning rate for the training session. The current
+   * learning rate is maintained by the training session
    *
-   * <p>\param[in] sess The training session which has working knowledge of the optimizer model.
-   * \param[in] run_options Run options for this eval step.
+   * <p>\param[in] sess The training session on which the learning rate needs to be set.
    *
    * <p>\snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * <p>ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const
-   * OrtRunOptions* run_options);
+   * <p>ORT_API2_STATUS(GetLearningRate, _Inout_ OrtTrainingSession* sess, _Out_ float*
+   * learning_rate);
    */
+  private native float getLearningRate(long apiHandle, long trainingApiHandle, long nativeHandle);
 
   /**
    * Applies the gradient updates to the trainable parameters using the optimizer model.
@@ -766,26 +745,26 @@ public final class OrtTrainingSession implements AutoCloseable {
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, runOptionsHandle);
   }
 
-  private native void optimizerStep(
-      long apiHandle, long trainingApiHandle, long nativeHandle, long runOptionsHandle)
-      throws OrtException;
-
-  /**
-   * \brief Registers the use of the Linear learning rate scheduler for the training session.
+  /*
+   * \brief Performs the weight updates for the trainable parameters using the optimizer model.
    *
-   * <p>Register a Linear learning rate scheduler with the given learning rate scheduler parameters.
-   * Specify the initial learning rate that should be used with this learning rate scheduler and
-   * training session.
+   * <p>This function performs the weight update step that updates the trainable parameters such
+   * that they take a step in the direction of their gradients. The optimizer step is performed
+   * based on the optimizer model that was provided to the training session. The updated parameters
+   * are stored inside the training session so that they can be used by the next TrainStep function
+   * call.
    *
-   * <p>\param[in] sess The training session that should use the linear learning rate scheduler.
-   * \param[in] warmup_step_count Warmup steps for LR warmup. \param[in] total_step_count Total step
-   * count. \param[in] initial_lr The initial learning rate to be used by the training session.
+   * <p>\param[in] sess The training session which has working knowledge of the optimizer model.
+   * \param[in] run_options Run options for this eval step.
    *
    * <p>\snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * <p>ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const
-   * int64_t warmup_step_count, _In_ const int64_t total_step_count, _In_ const float initial_lr);
+   * <p>ORT_API2_STATUS(OptimizerStep, _Inout_ OrtTrainingSession* sess, _In_opt_ const
+   * OrtRunOptions* run_options);
    */
+  private native void optimizerStep(
+      long apiHandle, long trainingApiHandle, long nativeHandle, long runOptionsHandle)
+      throws OrtException;
 
   /**
    * Registers a linear learning rate scheduler with linear warmup.
@@ -807,6 +786,22 @@ public final class OrtTrainingSession implements AutoCloseable {
         initialLearningRate);
   }
 
+  /*
+   * \brief Registers the use of the Linear learning rate scheduler for the training session.
+   *
+   * <p>Register a Linear learning rate scheduler with the given learning rate scheduler parameters.
+   * Specify the initial learning rate that should be used with this learning rate scheduler and
+   * training session.
+   *
+   * <p>\param[in] sess The training session that should use the linear learning rate scheduler.
+   * \param[in] warmup_step_count Warmup steps for LR warmup. \param[in] total_step_count Total step
+   * count. \param[in] initial_lr The initial learning rate to be used by the training session.
+   *
+   * <p>\snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * <p>ORT_API2_STATUS(RegisterLinearLRScheduler, _Inout_ OrtTrainingSession* sess, _In_ const
+   * int64_t warmup_step_count, _In_ const int64_t total_step_count, _In_ const float initial_lr);
+   */
   private native void registerLinearLRScheduler(
       long apiHandle,
       long trainingApiHandle,
@@ -816,7 +811,18 @@ public final class OrtTrainingSession implements AutoCloseable {
       float initialLearningRate)
       throws OrtException;
 
+
   /**
+   * Updates the learning rate based on the registered learning rate scheduler.
+   *
+   * @throws OrtException If the native call failed.
+   */
+  public void schedulerStep() throws OrtException {
+    checkClosed();
+    schedulerStep(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
+  }
+
+  /*
    * \brief Update the learning rate based on the registered learing rate scheduler.
    *
    * <p>Takes a scheduler step that updates the learning rate that is being used by the training
@@ -831,17 +837,6 @@ public final class OrtTrainingSession implements AutoCloseable {
    *
    * <p>ORT_API2_STATUS(SchedulerStep, _Inout_ OrtTrainingSession* sess);
    */
-
-  /**
-   * Updates the learning rate based on the registered learning rate scheduler.
-   *
-   * @throws OrtException If the native call failed.
-   */
-  public void schedulerStep() throws OrtException {
-    checkClosed();
-    schedulerStep(OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle);
-  }
-
   private native void schedulerStep(long apiHandle, long trainingApiHandle, long nativeHandle)
       throws OrtException;
 
@@ -946,7 +941,7 @@ public final class OrtTrainingSession implements AutoCloseable {
       close(OnnxRuntime.ortTrainingApiHandle, nativeHandle);
     }
 
-    /**
+    /*
      * \brief Load a checkpoint state from directory on disk into checkpoint_state.
      *
      * <p>This function will parse a checkpoint directory, pull relevant files and load the training
