@@ -106,27 +106,41 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    import java.util.concurrent.Executors
    ```
 
-2. Add the class variables for the main activity class
+2. Create the main activity class and add the class variables
 
    ```kotlin
-   private var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
-   private var outputImage: ImageView? = null
-   private var superResolutionButton: Button? = null
+   class MainActivity : AppCompatActivity() {
+       private var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
+       private lateinit var ortSession: OrtSession
+       private var outputImage: ImageView? = null
+       private var superResolutionButton: Button? = null
+
+       ...
+   }
    ```
 
 3. Add the onCreate method
 
+   This is where we initialize the ONNX Runtime session. A session holds a reference to the model used to perform inference in the application. It also takes a session options parameter, which is where you can specify different execution providers (hardware accelerators such as NNAPI). In this case, we default to running on CPU. We do however register the custom op library where the image encoding and decoding operators at the input and output of the model are found.
+
    ```kotlin
-   override fun onCreate(savedInstanceState: Bundle?) {
-       super.onCreate(savedInstanceState)
-       setContentView(R.layout.activity_main)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-       outputImage = findViewById(R.id.imageView2);
-       superResolutionButton = findViewById(R.id.super_resolution_button)
+        outputImage = findViewById(R.id.imageView2);
+        superResolutionButton = findViewById(R.id.super_resolution_button)
 
-       superResolutionButton?.setOnClickListener {
-           performSuperResolution()
-               Toast.makeText(baseContext, "Super resolution performed!", Toast.LENGTH_SHORT).show()
+        // Initialize Ort Session and register the onnxruntime extensions package that contains the custom operators.
+        // Note: These are used to decode the input image into the format the original model requires,
+        // and to encode the model output into png format
+        val sessionOptions: OrtSession.SessionOptions = OrtSession.SessionOptions()
+        sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath())
+        ortSession = ortEnv.createSession(readModel(), sessionOptions)
+
+        superResolutionButton?.setOnClickListener {
+            performSuperResolution(ortSession)
+            Toast.makeText(baseContext, "Super resolution performed!", Toast.LENGTH_SHORT).show()
         }
     }
    ```
@@ -134,23 +148,24 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
 4. Add the onDestroy method
 
    ```kotlin
-   override fun onDestroy() {
-       super.onDestroy()
-       ortEnv.close()
-   }
+    override fun onDestroy() {
+        super.onDestroy()
+        ortEnv.close()
+        ortSession.close()
+    }
+
    ```
 
 5. Add the updateUI method
 
    ```kotlin
-   private fun updateUI(result: Result) {
-   outputImage?.setImageBitmap(result.outputBitmap)
-   }
-   ```
+    private fun updateUI(result: Result) {
+        outputImage?.setImageBitmap(result.outputBitmap)
+    }   ```
 
 6. Add the readModel method
 
-   This method reads the ORT format model from the resources folder.
+   This method reads the ONNX model from the resources folder.
 
    ```kotlin
    private fun readModel(): ByteArray {
@@ -159,7 +174,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    }   
    ```
 
-7. Add the readInputImage method
+7. Add a method to read the input image
 
    This method reads a test image from the assets folder. Currently it reads a fixed image built into the application. The sample will soon be extended to read the image directly from the camera or the camera roll.
 
@@ -169,31 +184,19 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    }   
    ```
 
-8. Add a method to create the ONNX Runtime session
-
-   A session holds a reference to the model used to perform inference in the application. It also takes a session options parameter, which is where you can specify different execution providers (hardware accelerators such as NNAPI). In this case, we default to running on CPU. We do however register the custom op library where the image encoding and decoding operators at the input and output of the model are found.
-
-   ```kotlin
-   private fun createOrtSession(): OrtSession {
-       val sessionOptions: OrtSession.SessionOptions = OrtSession.SessionOptions()
-       sessionOptions.registerCustomOpLibrary(OrtxPackage.getLibraryPath())
-       return ortEnv.createSession(readModel(), sessionOptions)
-   }
-   ```
-
-9. Add the method to perform inference
+8. Add the method to perform inference
 
    This method is calls the heart of the application: `SuperResPerformer.upscale()`, which is the method that runs inference on the model. The code for this is shown in the next section.
 
    ```kotlin
-   private fun performSuperResolution() {
-       var superResPerformer = SuperResPerformer(createOrtSession())
-       var result = superResPerformer.upscale(readInputImage(), ortEnv)
-       updateUI(result);
-   }   
+    private fun performSuperResolution(ortSession: OrtSession) {
+        var superResPerformer = SuperResPerformer()
+        var result = superResPerformer.upscale(readInputImage(), ortEnv, ortSession)
+        updateUI(result);
+    }   
    ```
 
-10. Add the TAG object
+9. Add the TAG object
 
    ```kotlin
    companion object {
@@ -250,25 +253,18 @@ Create a file called `SuperResPerformer.kt` and add the following snippets of co
            // Step 2: get the shape of the byte array and make ort tensor
            val shape = longArrayOf(rawImageBytes.size.toLong())
 
-           ortEnv.use {
-               val inputTensor = OnnxTensor.createTensor(
-                   ortEnv,
-                   ByteBuffer.wrap(rawImageBytes),
-                   shape,
-                   OnnxJavaType.UINT8
-               )
-               inputTensor.use {
-                   // Step 3: call ort inferenceSession run
-                   val output = ortSession.run(Collections.singletonMap("image", inputTensor))
+           inputTensor.use {
+               // Step 3: call ort inferenceSession run
+               val output = ortSession.run(Collections.singletonMap("image", inputTensor))
 
-                   // Step 4: output analysis
-                   output.use {
-                       val rawOutput = (output?.get(0)?.value) as ByteArray
-                       val outputImageBitmap = byteArrayToBitmap(rawOutput)
+               // Step 4: output analysis
+               output.use {
+                   val rawOutput = (output?.get(0)?.value) as ByteArray
+                   val outputImageBitmap =
+                       byteArrayToBitmap(rawOutput)
 
-                       // Step 5: set output result
-                       result.outputBitmap = outputImageBitmap
-                   }
+                   // Step 5: set output result
+                   result.outputBitmap = outputImageBitmap
                }
            }
            return result
@@ -276,10 +272,6 @@ Create a file called `SuperResPerformer.kt` and add the following snippets of co
 
        private fun byteArrayToBitmap(data: ByteArray): Bitmap {
            return BitmapFactory.decodeByteArray(data, 0, data.size)
-       }
-
-       protected fun finalize() {
-           ortSession.close()
        }
    }
    ```
