@@ -271,8 +271,8 @@ public final class OrtEnvironment implements AutoCloseable {
    *
    * @param checkpointPath Path to the checkpoint folder.
    * @param trainPath Path to the training model.
-   * @param evalPath Path to the evaluation model.
-   * @param optimizerPath Path to the optimizer model.
+   * @param evalPath Path to the evaluation model. Null signifies there is no eval model.
+   * @param optimizerPath Path to the optimizer model. Null signifies there is no optimizer model.
    * @return An {@link OrtTrainingSession} with the specified model loaded.
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
    */
@@ -289,8 +289,8 @@ public final class OrtEnvironment implements AutoCloseable {
    *
    * @param checkpointPath Path to the checkpoint folder.
    * @param trainPath Path to the training model.
-   * @param evalPath Path to the evaluation model.
-   * @param optimizerPath Path to the optimizer model.
+   * @param evalPath Path to the evaluation model. Null signifies there is no eval model.
+   * @param optimizerPath Path to the optimizer model. Null signifies there is no optimizer model.
    * @param options The session options.
    * @return An {@link OrtTrainingSession} with the specified model.
    * @throws OrtException If the model failed to load, wasn't compatible or caused an error.
@@ -328,8 +328,6 @@ public final class OrtEnvironment implements AutoCloseable {
       throws OrtException {
     if (OnnxRuntime.trainingEnabled) {
       Objects.requireNonNull(trainPath, "train path must not be null");
-      Objects.requireNonNull(evalPath, "eval path must not be null");
-      Objects.requireNonNull(optimizerPath, "optimizer path must not be null");
       OrtCheckpointState checkpointState = OrtCheckpointState.loadCheckpoint(checkpointPath);
       return new OrtTrainingSession(
           this, allocator, options, checkpointState, trainPath, evalPath, optimizerPath);

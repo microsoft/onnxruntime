@@ -811,7 +811,6 @@ public final class OrtTrainingSession implements AutoCloseable {
       float initialLearningRate)
       throws OrtException;
 
-
   /**
    * Updates the learning rate based on the registered learning rate scheduler.
    *

@@ -10,6 +10,22 @@
 #include "onnxruntime_training_c_api.h"
 #include "ai_onnxruntime_OrtTrainingSession.h"
 
+#ifdef _WIN32
+wchar_t* copyAndPad(JNIEnv * jniEnv, jstring javaStr) {
+  // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
+  const jchar* charArr = (*jniEnv)->GetStringChars(jniEnv, javaStr, NULL);
+  size_t strLength = (*jniEnv)->GetStringLength(jniEnv, javaStr);
+  wchar_t* outputStr = (wchar_t*)calloc(strLength + 1, sizeof(wchar_t));
+  if (outputStr != NULL) {
+    wcsncpy_s(outputStr, outputStrLength + 1, (const wchar_t*)charArr, strLength);
+  } else {
+    throwOrtException(jniEnv, 1, "Not enough memory");
+  }
+  (*jniEnv)->ReleaseStringChars(jniEnv, javaStr, charArr);
+  return outputStr;
+}
+#endif
+
 /*
  * Class:     ai_onnxruntime_OrtTrainingSession
  * Method:    createTrainingSession
@@ -20,69 +36,64 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
      jlong envHandle, jlong optionsHandle, jlong checkpointHandle,
      jstring trainPath, jstring evalPath, jstring  optimizerPath) {
   (void) clazz; // Required JNI parameters not needed by functions which don't need to access their host class.
+
+  // evalPath and optimizerPath could be NULL, as that is used to signal that those models
+  // should not be loaded, which induces some juggling to avoid calling JNI methods with a NULL
+  // pointer. trainPath cannot be null, as in that case a Java exception is thrown before this
+  // method is called.
+
   const OrtApi* api = (const OrtApi*) apiHandle;
   const OrtTrainingApi* trainApi = (const OrtTrainingApi*) trainApiHandle;
   const OrtEnv* env = (const OrtEnv*) envHandle;
   const OrtSessionOptions* options = (const OrtSessionOptions*) optionsHandle;
   OrtCheckpointState* checkpoint = (OrtCheckpointState*) checkpointHandle;
 
-  jsize evalLength = (*jniEnv)->GetStringLength(jniEnv, evalPath);
-  jsize optimizerLength = (*jniEnv)->GetStringLength(jniEnv, optimizerPath);
   OrtTrainingSession* session = NULL;
 
 #ifdef _WIN32
   // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
-  const jchar* trainJavaStr = (*jniEnv)->GetStringChars(jniEnv, trainPath, NULL);
-  size_t trainStrLength = (*jniEnv)->GetStringLength(jniEnv, trainPath);
-  wchar_t* trainStr = (wchar_t*)calloc(trainStrLength + 1, sizeof(wchar_t));
+  wchar_t* trainStr = copyAndPad(jniEnv, trainPath);
   if (trainStr == NULL) {
-    (*jniEnv)->ReleaseStringChars(jniEnv, trainPath, trainJavaStr);
-    throwOrtException(jniEnv, 1, "Not enough memory");
-    return (jlong) session;
+    // nothing to cleanup, return zero as exception has been thrown in Java
+    return 0L;
   }
-  const jchar* evalJavaStr = (*jniEnv)->GetStringChars(jniEnv, evalPath, NULL);
-  size_t evalStrLength = (*jniEnv)->GetStringLength(jniEnv, evalPath);
-  wchar_t* evalStr = (wchar_t*)calloc(evalStrLength + 1, sizeof(wchar_t));
-  if (evalStr == NULL) {
-    (*jniEnv)->ReleaseStringChars(jniEnv, trainPath, trainJavaStr);
-    (*jniEnv)->ReleaseStringChars(jniEnv, evalPath, evalJavaStr);
-    free(trainStr);
-    throwOrtException(jniEnv, 1, "Not enough memory");
-    return (jlong) session;
+  wchar_t* evalStr = NULL;
+  if (evalPath != NULL) {
+    evalStr = copyAndPad(jniEnv, evalPath);
+    if (evalStr == NULL) {
+      // exception has been thrown in Java, go to cleanup and return null.
+      goto cleanupTrain;
+    }
   }
-  const jchar* optimizerJavaStr = (*jniEnv)->GetStringChars(jniEnv, optimizerPath, NULL);
-  size_t optimizerStrLength = (*jniEnv)->GetStringLength(jniEnv, optimizerPath);
-  wchar_t* optimizerStr = (wchar_t*)calloc(optimizerStrLength + 1, sizeof(wchar_t));
-  if (optimizerStr == NULL) {
-    (*jniEnv)->ReleaseStringChars(jniEnv, trainPath, trainJavaStr);
-    (*jniEnv)->ReleaseStringChars(jniEnv, evalPath, evalJavaStr);
-    (*jniEnv)->ReleaseStringChars(jniEnv, optimizerPath, optimizerJavaStr);
-    free(trainStr);
-    free(evalStr);
-    throwOrtException(jniEnv, 1, "Not enough memory");
-    return (jlong) session;
+  wchar_t* optimizerStr;
+  if (optimizerPath == NULL) {
+    optimizerStr = copyAndPad(jniEnv, optimizerPath);
+    if (optimizerStr == NULL) {
+      // exception has been thrown in Java, go to cleanup and return null.
+      goto cleanupEval;
+    }
   }
-  wcsncpy_s(trainStr, trainStrLength + 1, (const wchar_t*)trainJavaStr, trainStrLength);
-  wcsncpy_s(evalStr, evalStrLength + 1, (const wchar_t*)evalJavaStr, evalStrLength);
-  wcsncpy_s(optimizerStr, optimizerStrLength + 1, (const wchar_t*)optimizerJavaStr, optimizerStrLength);
-  (*jniEnv)->ReleaseStringChars(jniEnv, trainPath, trainJavaStr);
-  (*jniEnv)->ReleaseStringChars(jniEnv, evalPath, evalJavaStr);
-  (*jniEnv)->ReleaseStringChars(jniEnv, optimizerPath, optimizerJavaStr);
   checkOrtStatus(jniEnv, api, trainApi->CreateTrainingSession(env, options, checkpoint, trainStr, evalStr, optimizerStr, &session));
+  if (optimizerStr != NULL) {
+    free(optimizerStr);
+  }
+cleanupEval:
+  if (evalStr != NULL) {
+    free(evalStr);
+  }
+cleanupTrain:
   free(trainStr);
-  free(evalStr);
-  free(optimizerStr);
 #else
   // GetStringUTFChars is null terminated, so can be used directly
   const char* trainStr = (*jniEnv)->GetStringUTFChars(jniEnv, trainPath, NULL);
-  const char* evalStr = evalLength == 0 ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, evalPath, NULL);
-  const char* optimizerStr = optimizerLength == 0 ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, optimizerPath, NULL);
+  const char* evalStr = evalPath == NULL ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, evalPath, NULL);
+  const char* optimizerStr = optimizerPath == NULL ? NULL : (*jniEnv)->GetStringUTFChars(jniEnv, optimizerPath, NULL);
   checkOrtStatus(jniEnv, api, trainApi->CreateTrainingSession(env, options, checkpoint, trainStr, evalStr, optimizerStr, &session));
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, trainPath, trainStr);
-  if (evalLength != 0) {
+  if (evalPath != NULL) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, evalPath, evalStr);
   }
-  if (optimizerLength != 0) {
+  if (optimizerPath != NULL) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, optimizerPath, optimizerStr);
   }
 #endif
@@ -701,11 +712,14 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInfe
   // prep output names array
   const char** outputNames = malloc(sizeof(char*) * numOutputs);
   if (outputNames == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
     return;
   }
   jobject* javaOutputStrings = malloc(sizeof(jobject) * numOutputs);
   if (javaOutputStrings == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
     free(outputNames);
+    return;
   }
   // Extract the names of the output values.
   for (int i = 0; i < numOutputs; i++) {
