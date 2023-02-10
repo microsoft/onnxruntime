@@ -41,11 +41,10 @@ steps:
     parameters:
       Steps:
       - script: |
-          mkdir -vp ~/.docker/cli-plugins/
-          curl --silent -L "https://github.com/docker/buildx/releases/download/v0.10.2/buildx-v0.10.2.linux-arm-v6" > ~/.docker/cli-plugins/docker-buildx
-          chmod a+x ~/.docker/cli-plugins/docker-buildx
-          export PATH=~/.docker/cli-plugins/:${PATH}
-          ls ~/.docker/cli-plugins/
+          mkdir -vp ~/.docker/cli-plugins/docker-buildx
+          curl --silent -L "https://github.com/docker/buildx/releases/download/v0.10.2/buildx-v0.10.2.linux-arm-v6"
+          chmod a+x buildx-v0.10.2.linux-arm-v6
+          mv buildx-v0.10.2.linux-arm-v6 ~/.docker/cli-plugins/docker-buildx
           ${{ parameters.ScriptName }} \
             --dockerfile "${{ parameters.Dockerfile }}" \
             --context "${{ parameters.Context }}" \
