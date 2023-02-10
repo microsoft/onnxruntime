@@ -132,7 +132,7 @@ the optimization to guarantee exactly same compute with baseline (for example Py
 debugging). Disable it with following command:
 
 	```bash
-	export ORTMODULE_ENABLE_DATA_OBSERVER=0
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
 	```
 
 #### ORTMODULE_ENABLE_DATA_OBSERVER
