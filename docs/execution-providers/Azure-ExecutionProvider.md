@@ -8,10 +8,10 @@ nav_order: 11
 # Azure Execution Provider (Preview)
 
 The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference. The endpoint must be deployed beforehand.
-To consume the endpoint, a model of same inputs and outputs must be first loaded locally.
+To consume the endpoint, a model with same inputs and outputs must be first loaded locally.
 
 One use case for Azure Execution Provider is for small-big models. E.g. A smaller model can be deployed on edge devices for faster inference,
-while a bigger model deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
+while a bigger model can be deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
