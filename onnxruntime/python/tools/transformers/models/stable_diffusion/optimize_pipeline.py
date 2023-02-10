@@ -22,7 +22,7 @@
 # Note that output model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
 #
 # Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force it in float32:
-#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v2-1 -o $ONNX_ROOT/sd-v2-1-fp16 --float16 --force_fp32_ops Attention
+#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v2-1 -o $ONNX_ROOT/sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
 
 
 import argparse
@@ -54,7 +54,6 @@ def optimize_sd_pipeline(
     use_external_data_format: bool,
     float16: bool,
     force_fp32_ops: List[str],
-    force_fp32_modules: List[str],
     enable_runtime_optimization: bool,
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
@@ -65,8 +64,7 @@ def optimize_sd_pipeline(
         overwrite (bool): Overwrite files if exists.
         use_external_data_format (bool): save onnx model to two files: one for onnx graph, another for weights
         float16 (bool): use half precision
-        force_fp32_ops(List[str]): names of operators that are forced to run in float32.
-        force_fp32_modules(List[str]): names of modules that are forced to run in float32.
+        force_fp32_ops(List[str]): operators that are forced to run in float32.
         enable_runtime_optimization(bool): run graph optimization using Onnx Runtime.
 
     Raises:
@@ -86,6 +84,24 @@ def optimize_sd_pipeline(
         "vae": VaeOnnxModel,
         "clip": ClipOnnxModel,
     }
+
+    force_fp32_operators = {
+        "unet": [],
+        "vae_encoder": [],
+        "vae_decoder": [],
+        "text_encoder": [],
+        "safety_checker": [],
+    }
+
+    if force_fp32_ops:
+        for op in force_fp32_ops:
+            parts = op.split(":")
+            if len(parts) == 2 and parts[0] in force_fp32_operators and (parts[1] and parts[1][0].isupper()):
+                force_fp32_operators[parts[0]].append(parts[1])
+            else:
+                raise ValueError(
+                    f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {op}"
+                )
 
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
@@ -124,11 +140,12 @@ def optimize_sd_pipeline(
             use_gpu=True,
         )
 
-        if float16 and (force_fp32_modules is None or name not in force_fp32_modules):
+        if float16:
             logger.info("Convert %s to float16 ...", name)
             op_block_list = ["RandomNormalLike"]
             m.convert_float_to_float16(
-                keep_io_types=False, op_block_list=op_block_list + force_fp32_ops if force_fp32_ops else op_block_list
+                keep_io_types=False,
+                op_block_list=op_block_list + force_fp32_operators[name],
             )
 
         if enable_runtime_optimization and (float16 or (name not in ["unet"])):
@@ -238,16 +255,7 @@ def parse_arguments():
         required=False,
         nargs="+",
         type=str,
-        help="Force given operators (like Attention or MultiHeadAttention) to run in float32 and do not convert them to float16.",
-    )
-
-    parser.add_argument(
-        "--force_fp32_modules",
-        required=False,
-        nargs="+",
-        choices=["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"],
-        type=str,
-        help="Force given components (unet, vae_encoder, vae_decoder, text_encoder, safety_checker) to run in float32 and do not convert them to float16.",
+        help="Force given operators (like unet:Attention) to run in float32. It is case sensitive!",
     )
 
     parser.add_argument(
@@ -283,6 +291,7 @@ def parse_arguments():
 def main():
     coloredlogs.install(fmt="%(funcName)20s: %(message)s")
     args = parse_arguments()
+    logger.info("Arguments: %s", str(args))
     copy_extra_directory(Path(args.input), Path(args.output), args.overwrite)
     optimize_sd_pipeline(
         Path(args.input),
@@ -291,7 +300,6 @@ def main():
         args.use_external_data_format,
         args.float16,
         args.force_fp32_ops,
-        args.force_fp32_modules,
         args.inspect,
     )
 

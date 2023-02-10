@@ -42,28 +42,28 @@ class FusionAttentionVae(Fusion):
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         value = self.model.get_constant_value(concat.input[2])
-        if not (isinstance(value, np.ndarray) and len(value) == 1):
+        if not (isinstance(value, np.ndarray) and value.size == 1):
             return self.num_heads, self.hidden_size  # Fall back to user specified value
         num_heads = int(value)
         if num_heads <= 0:
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        i, bias = self.model.get_constant_input(add_q)
+        _, bias = self.model.get_constant_input(add_q)
         if (bias is None) or (not isinstance(bias, np.ndarray)) or bias.ndim != 1:
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        hidden_size = len(bias)
+        hidden_size = bias.shape[0]
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                logger.warning(
+                    "Detected number of attention heads is %d. Ignore --num_heads %d", num_heads, self.num_heads
+                )
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
-                logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
-                )
+                logger.warning("Detected hidden size is %d. Ignore --hidden_size %d", hidden_size, self.hidden_size)
                 self.hidden_size_warning = False  # Do not show the warning more than once
 
         return num_heads, hidden_size
@@ -78,8 +78,8 @@ class FusionAttentionVae(Fusion):
         v_add: NodeProto,
         num_heads: int,
         hidden_size: int,
-        input: str,
-        output: str,
+        input_name: str,
+        output_name: str,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -92,13 +92,13 @@ class FusionAttentionVae(Fusion):
             v_add (NodeProto): Add bias node in fully connection for V
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
-            input (str): input name
-            output (str): output name
+            input_name (str): input name
+            output_name (str): output name
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
-        if q_matmul.input[0] != input or k_matmul.input[0] != input or v_matmul.input[0] != input:
+        if q_matmul.input[0] != input_name or k_matmul.input[0] != input_name or v_matmul.input[0] != input_name:
             logger.debug(
                 "For self attention, input hidden state for q and k/v shall be same. Got %s, %s, %s",
                 q_matmul.input[0],
@@ -193,7 +193,7 @@ class FusionAttentionVae(Fusion):
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [
-            input,
+            input_name,
             attention_node_name + "_qkv_weight",
             attention_node_name + "_qkv_bias",
         ]
@@ -201,7 +201,7 @@ class FusionAttentionVae(Fusion):
         attention_node = helper.make_node(
             "Attention",
             inputs=attention_inputs,
-            outputs=[output],
+            outputs=[output_name],
             name=attention_node_name,
         )
         attention_node.domain = "com.microsoft"
@@ -290,8 +290,8 @@ class FusionAttentionVae(Fusion):
             add_v,
             q_num_heads,
             q_hidden_size,
-            input=matmul_q.input[0],
-            output=attention_last_node.output[0],
+            matmul_q.input[0],
+            attention_last_node.output[0],
         )
         if new_node is None:
             return
