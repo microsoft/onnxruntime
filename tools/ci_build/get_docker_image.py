@@ -103,7 +103,7 @@ def main():
         )
         run(
             args.docker_path,
-            "build",
+            "buildx build",
             "--push",
             "--tag",
             full_image_name,
