@@ -168,7 +168,8 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    ```kotlin
     private fun updateUI(result: Result) {
         outputImage?.setImageBitmap(result.outputBitmap)
-    }   ```
+    }
+    ```
 
 6. Add the readModel method
 
