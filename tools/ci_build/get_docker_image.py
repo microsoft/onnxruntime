@@ -105,7 +105,6 @@ def main():
             args.docker_path,
             "buildx",
             "build",
-            "--push",
             "--tag",
             full_image_name,
             "--cache-from",
