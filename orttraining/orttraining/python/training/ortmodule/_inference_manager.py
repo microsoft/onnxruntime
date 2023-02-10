@@ -10,7 +10,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _data_observer, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
@@ -134,6 +134,7 @@ class InferenceManager(GraphExecutionManager):
                     inputs,
                     kwargs,
                     self._device,
+                    self._data_observer,
                 ),
             )
 
@@ -164,6 +165,10 @@ class InferenceManager(GraphExecutionManager):
                 self._debug_options.save_onnx_models.name_prefix,
                 self._export_mode,
             )
+
+        self._data_observer.initialize_embedding_padding_inspector(
+            self._onnx_models.optimized_model, self._graph_info.user_input_names
+        )
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""

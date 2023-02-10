@@ -11,7 +11,7 @@ import torch
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import get_ort_device_type
 
-from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _data_observer, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
@@ -262,6 +262,7 @@ class TrainingManager(GraphExecutionManager):
                         inputs,
                         kwargs,
                         self._device,
+                        self._data_observer,
                     )
                 ),
             )
@@ -315,6 +316,11 @@ class TrainingManager(GraphExecutionManager):
                 initializer_index += 1
             else:
                 self._gradient_map.append(-1)
+
+        # Set up data sparsity inspection.
+        self._data_observer.initialize_embedding_padding_inspector(
+            self._onnx_models.optimized_pre_grad_model, self._graph_info.user_input_names
+        )
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""
