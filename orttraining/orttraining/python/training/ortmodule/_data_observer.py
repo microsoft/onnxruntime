@@ -12,8 +12,7 @@ import torch
 
 
 class DataObserver(object):
-    """Configurable data observer for ORTModule.
-    """
+    """Configurable data observer for ORTModule."""
 
     def __init__(self, log_steps=1):
         self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_DATA_OBSERVER", 0, warn=True) == 1

@@ -161,8 +161,9 @@ class _InputInfo(object):
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device,
-                                        data_observer):
+def _combine_input_buffers_initializers(
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, data_observer
+):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
