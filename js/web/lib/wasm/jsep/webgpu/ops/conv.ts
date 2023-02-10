@@ -170,8 +170,6 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
        (attributes.autoPad === 'SAME_UPPER' || attributes.autoPad === 'SAME_LOWER' ||
         attributes.autoPad === 'VALID'))) {
     // return conv2dByMatMul({x, filter, convInfo, backend, bias, activation, preluActivationWeights, leakyreluAlpha});
-    // eslint-disable-next-line no-console
-    console.log('[_CONV_]conv2dByMatMul');
     context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
     return 0;
   }
@@ -186,8 +184,6 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
   // if (workgroupsBy32x32 <= thresholdToIncreaseWorkgroups) {
   //   // return conv2dWithIm2Col({x, filter, convInfo, backend, bias, preluActivationWeights, leakyreluAlpha,
   //   // activation});
-  //   //  eslint-disable-next-line no-console
-  //   console.log('[_CONV_]conv2dWithIm2Col');
   //   context.compute(createGroupedConvProgramInfoLoader(context.inputs, adjustedAttributes));
   //   return 0;
   // }
@@ -205,8 +201,6 @@ const conv2d = (context: ComputeContext, attributes: ConvAttributes): number => 
   //     inputs.push(context.inputs[2]);
   //   }
   // }
-  // eslint-disable-next-line no-console
-  // console.log('[_CONV_]Conv2DMMProgram');
 
   // STEP.1: transpose weight
   const transposedWeight = (context.customData.wT as TensorView | undefined) ??
