@@ -360,7 +360,11 @@ class PlannerImpl {
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
-            if (1 == UseCount(original)) {
+            if (node.OpType() == "DecoderMaskedSelfAttention") {
+                *reusable_input = input_arg_index;  // or original; both should be okay
+                return true;
+            }
+            else if (1 == UseCount(original)) {
               if (SameSize(*p_input_arg, *p_output_arg)) {
                 // we can reuse this input since it is its last use and permitted for in-place update
                 *reusable_input = input_arg_index;  // or original; both should be okay
@@ -1413,6 +1417,11 @@ class PlannerImpl {
                 Reuse(input_index, current, AllocKind::kShare);
               }
             }
+          }
+
+          if (pnode->OpType() == "DecoderMaskedSelfAttention" && FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
+              Reuse(reused, current, AllocKind::kReuse);
+              ort_value_info_[current].is_inplace_reuse = true;
           }
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {

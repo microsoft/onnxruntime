@@ -226,6 +226,10 @@ struct TensorCheck<double> {
       } else {
         if (!has_abs_err && !has_rel_err) {
           // the default for existing tests
+            if (expected[i] != output[i]) {
+                float a = 2.f;
+                (void)(a);
+            }
           ASSERT_NEAR(expected[i], output[i], threshold)
               << "i:" << i << ", provider_type: " << provider_type;
         } else {
@@ -284,6 +288,11 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
       ASSERT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
+          if (expected[i] != output[i]) {
+              float a = 2.f;
+              (void)(a);
+          }
+
         // the default for existing tests
         ASSERT_NEAR(expected[i], output[i], threshold)
             << "i:" << i << ", provider_type: " << provider_type;
