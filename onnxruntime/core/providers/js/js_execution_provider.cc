@@ -15,7 +15,6 @@
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "allocator.h"
 #include "data_transfer.h"
-#include "js_kernel_lookup.h"
 
 namespace onnxruntime {
 
@@ -305,11 +304,6 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-
-#ifndef NDEBUG
-  printf("JsExecutionProvider::RegisterAllocator() \n");
-#endif
-
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   auto cpu_input_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
   if (!cpu_input_alloc) {
@@ -355,40 +349,7 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& kernel_lookup) const {
-
-  auto lookup = JsKernelLookup{kernel_lookup};
-  auto list = IExecutionProvider::GetCapability(graph, lookup);
-#ifndef NDEBUG
-  printf("JsExecutionProvider::GetCapability() results:\n");
-
-  for (size_t i = 0; i < list.size(); i++) {
-    auto &nodes = list[i]->sub_graph->nodes;
-    printf("  subgraph %zu: %zu node(s)\n", i, list[i]->sub_graph->nodes.size());
-    for (size_t j = 0; j < nodes.size(); j++) {
-      auto node_index = nodes[j];
-      auto *node = graph.GetNode(node_index);
-      auto *kernel_info = lookup.LookUpKernel(*node);
-
-      (void)(node_index);
-      (void)(node);
-      (void)(kernel_info);
-      printf("    node[%zu]: [%s][%s][%s]\n", node_index, node->Domain().c_str(), node->OpType().c_str(), node->Name().c_str());
-
-      // if (node->OpType() == "Clip" && node->InputDefs().size() == 3) {
-      //   printf("Clip node: [%s] %s, %s\n", node->Name().c_str(), node->InputDefs()[1]->Name().c_str(), node->InputDefs()[2]->Name().c_str());
-      //   if (!graph.IsConstantInitializer(node->InputDefs()[1]->Name(), true) ||
-      //       !graph.IsConstantInitializer(node->InputDefs()[2]->Name(), true)) {
-      //     printf("--erasing\n");
-      //     nodes.erase(nodes.begin() + j);
-      //     j--;
-      //     continue;
-      //   }
-      // }
-    }
-  }
-#endif
-
-  return list;
+  return IExecutionProvider::GetCapability(graph, kernel_lookup);
 }
 
 std::shared_ptr<KernelRegistry> JsExecutionProvider::GetKernelRegistry() const {
