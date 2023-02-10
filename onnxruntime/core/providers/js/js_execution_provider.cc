@@ -338,7 +338,7 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
     if (!custom_alloc) {
       AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
         return std::make_unique<js::JsCustomAllocator>();
-      });
+      }, 0, false);
       custom_alloc = CreateAllocator(customAllocatorCreationInfo);
       allocator_manager.InsertAllocator(custom_alloc);
     }
