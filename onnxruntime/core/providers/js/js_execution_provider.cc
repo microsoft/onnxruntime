@@ -310,23 +310,46 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
   printf("JsExecutionProvider::RegisterAllocator() \n");
 #endif
 
-  AllocatorCreationInfo cpuInputAllocatorCreationInfo([&](int) {
-    return std::make_unique<js::JsCPUInputAllocator>();
-  });
-  InsertAllocator(CreateAllocator(cpuInputAllocatorCreationInfo));
+  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+  auto cpu_input_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  if (!cpu_input_alloc) {
+    cpu_input_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
+    if (!cpu_input_alloc) {
+      AllocatorCreationInfo cpuInputAllocatorCreationInfo([&](int) {
+        return std::make_unique<js::JsCPUInputAllocator>();
+      });
+      cpu_input_alloc = CreateAllocator(cpuInputAllocatorCreationInfo);
+      allocator_manager.InsertAllocator(cpu_input_alloc);
+    }
+    InsertAllocator(cpu_input_alloc);
+  }
 
-  AllocatorCreationInfo cpuOutputAllocatorCreationInfo([&](int) {
-    return std::make_unique<js::JsCPUOutputAllocator>();
-  });
-  InsertAllocator(CreateAllocator(cpuOutputAllocatorCreationInfo));
+  auto cpu_output_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUOutput);
+  if (!cpu_output_alloc) {
+    cpu_output_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, cpu_device);
+    if (!cpu_output_alloc) {
+      AllocatorCreationInfo cpuOutputAllocatorCreationInfo([&](int) {
+        return std::make_unique<js::JsCPUOutputAllocator>();
+      });
+      cpu_output_alloc = CreateAllocator(cpuOutputAllocatorCreationInfo);
+      allocator_manager.InsertAllocator(cpu_output_alloc);
+    }
+    InsertAllocator(cpu_output_alloc);
+  }
 
-  // use_arena might have some issue, for this to work need to change
-  // https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/core/framework/execution_frame.cc#L507
-  AllocatorCreationInfo memory_info(
-      [&](int) { return std::make_unique<js::JsCustomAllocator>(); }, 0, false);
-
-  AllocatorPtr allocator = CreateAllocator(memory_info);
-  InsertAllocator(allocator);
+  OrtDevice custom_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0};
+  auto custom_alloc = GetAllocator(custom_device.Id(), OrtMemTypeDefault);
+  if (!custom_alloc) {
+    custom_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, custom_device);
+    if (!custom_alloc) {
+      AllocatorCreationInfo customAllocatorCreationInfo([&](int) {
+        return std::make_unique<js::JsCustomAllocator>();
+      });
+      custom_alloc = CreateAllocator(customAllocatorCreationInfo);
+      allocator_manager.InsertAllocator(custom_alloc);
+    }
+    InsertAllocator(custom_alloc);
+  }
 }
 
 std::vector<std::unique_ptr<ComputeCapability>> JsExecutionProvider::GetCapability(
