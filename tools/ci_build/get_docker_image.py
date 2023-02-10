@@ -98,6 +98,18 @@ def main():
         )
     if use_container_registry:
         run(
+            "git clone https://github.com/docker/buildx.git",
+            "&&",
+            "cd buildx"
+        )
+
+        run(
+            "make install",
+        )
+
+        run("../")
+
+        run(
             args.docker_path,
             "--log-level",
             "error",
