@@ -11,10 +11,10 @@ namespace onnxruntime {
 namespace rocm {
 
 template <typename InputT, typename OutputT>
-struct SoftmaxParams : onnxruntime::rocm::tunable::OpParams {
-  SoftmaxParams(hipStream_t stream, OutputT* output, const InputT* input, int softmax_elements,
-                int input_stride, int output_stride, int batch_count, bool is_log_softmax)
-      : OpParams(stream), output(output), input(input), softmax_elements(softmax_elements), input_stride(input_stride), output_stride(output_stride), batch_count(batch_count), is_log_softmax(is_log_softmax) {}
+struct SoftmaxParams : tunable::OpParams {
+  SoftmaxParams(tunable::RocmTuningContext* tuning_ctx, hipStream_t stream, OutputT* output, const InputT* input,
+                int softmax_elements, int input_stride, int output_stride, int batch_count, bool is_log_softmax)
+      : OpParams(tuning_ctx, stream), output(output), input(input), softmax_elements(softmax_elements), input_stride(input_stride), output_stride(output_stride), batch_count(batch_count), is_log_softmax(is_log_softmax) {}
 
   std::string Signature() const override {
     std::string sig = std::to_string(batch_count) + "_" + std::to_string(softmax_elements);

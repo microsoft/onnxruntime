@@ -26,7 +26,7 @@ class SoftmaxBlockwise : public IKernelExplorer {
  public:
   SoftmaxBlockwise(DeviceArray& output, DeviceArray& input, int softmax_elements,
                    int input_stride, int output_stride, int batch_count, bool is_log_softmax)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
     type_string_ = "SoftmaxBlockwise_" + std::to_string(VecSize);
   }
@@ -55,7 +55,7 @@ class SoftmaxBlockwiseStaticSelection : public IKernelExplorer {
  public:
   SoftmaxBlockwiseStaticSelection(DeviceArray& output, DeviceArray& input, int softmax_elements,
                                   int input_stride, int output_stride, int batch_count, bool is_log_softmax)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {}
 
   void Run() override {
@@ -80,9 +80,9 @@ class SoftmaxTunable : public IKernelExplorer {
  public:
   SoftmaxTunable(DeviceArray& output, DeviceArray& input, int softmax_elements,
                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   void Run() override {
@@ -109,7 +109,7 @@ class CKSoftmax : public IKernelExplorer {
  public:
   CKSoftmax(DeviceArray& output, DeviceArray& input, int softmax_elements,
             int input_stride, int output_stride, int batch_count, bool is_log_softmax)
-      : params_(this->Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
                 softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {
     for (auto&& [type_string, op] : rocm::GetCKSoftmaxTypeStringAndOps<T, T, rocm::AccumulationType_t<T>>()) {
       type_strings_.emplace_back(std::move(type_string));
