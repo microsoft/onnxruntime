@@ -6,6 +6,7 @@ use std::{
     io::{self, Read, Write},
     path::{Path, PathBuf},
     str::FromStr,
+    process
 };
 
 /// ONNX Runtime version
@@ -420,7 +421,9 @@ fn prepare_libort_dir_compiled() -> PathBuf {
     let mut config = cmake::Config::new("../../cmake");
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
-
+    config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+    // config.define("INCLUDE_DIRECTORIES", "/opt/homebrew/opt/flatbuffers/include");
+    config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include");
     if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
         config.define("onnxruntime_USE_CUDA", "ON");
     }

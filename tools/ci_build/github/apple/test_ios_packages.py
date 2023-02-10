@@ -125,6 +125,7 @@ def _test_ios_packages(args):
                     "ios_package_test",
                     "-destination",
                     "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                    # "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
                 ],
                 shell=False,
                 check=True,

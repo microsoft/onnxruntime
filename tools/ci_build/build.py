@@ -1641,7 +1641,7 @@ def run_ios_tests(args, source_dir, config, cwd):
                 "-scheme",
                 xc_test_scheme,
                 "-destination",
-                "platform=iOS Simulator,OS=latest,name=iPhone SE (2nd generation)",
+                "platform=iOS Simulator,OS=latest,name=iPad Air (5th generation)",
             ],
             cwd=cwd,
         )
