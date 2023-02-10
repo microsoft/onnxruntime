@@ -166,9 +166,7 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
-        self._data_observer.initialize_embedding_padding_inspector(
-            self._onnx_models.optimized_model, self._graph_info.user_input_names
-        )
+        self._data_observer.initialize(self._onnx_models.optimized_model, self._graph_info.user_input_names)
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""

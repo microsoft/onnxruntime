@@ -14,19 +14,29 @@ import torch
 class DataObserver(object):
     """Configurable data observer for ORTModule."""
 
-    def __init__(self, log_steps=1):
+    def __init__(self, log_steps=10):
         self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_DATA_OBSERVER", 0, warn=True) == 1
         self._embedding_graph_input_to_padding_idx_map = {}
-        self._embedding_stats = []
+        self._loss_label_graph_input_to_ignore_idx_map = {}
+        self._stats = []
 
-        self._loss_label_graph_input_to_padding_idx_map = {}
-        self._loss_label_stats = []
-
-        self._last_step = -1
-        self._current_step = -1
+        self._last_step = 0
+        self._current_step = 0
         self._log_steps = log_steps
 
-    def initialize_embedding_padding_inspector(self, model, user_input_names):
+        self._tensor_to_node_map = {}
+
+    def initialize(self, model, user_input_names):
+        """Initialize data observer."""
+        self._tensor_to_node_map.clear()
+        for node in model.graph.node:
+            for output_name in node.output:
+                self._tensor_to_node_map[output_name] = node
+
+        self._initialize_embedding_padding_inspector(model, user_input_names)
+        self._initialize_loss_label_padding_inspector(model, user_input_names)
+
+    def _initialize_embedding_padding_inspector(self, model, user_input_names):
         """Register embedding input padding inspector.
 
         This is used for collecting data/compute sparsity information for embedding layer.
@@ -35,13 +45,6 @@ class DataObserver(object):
             return
 
         self._embedding_graph_input_to_padding_idx_map.clear()
-
-        def _get_initializer(model, name):
-            for tensor in model.graph.initializer:
-                if tensor.name == name:
-                    return tensor
-
-            return None
 
         for node in model.graph.node:
             if not (
@@ -53,8 +56,7 @@ class DataObserver(object):
             if not found or helper.get_attribute_value(found[0]).decode() != "embedding":
                 continue
 
-            tensor = _get_initializer(model, node.input[2])
-
+            tensor = self._get_initializer(model, node.input[2])
             if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
                 continue
 
@@ -75,16 +77,69 @@ class DataObserver(object):
 
             self._embedding_graph_input_to_padding_idx_map[node.input[1]].add(padding_idx)
 
+    def _initialize_loss_label_padding_inspector(self, model, user_input_names):
+        """Register loss label input padding inspector.
+
+        This is used for collecting data/compute sparsity information for loss.
+        """
+        if not self._enabled:
+            return
+
+        self._loss_label_graph_input_to_ignore_idx_map.clear()
+        for node in model.graph.node:
+            if not (
+                node.domain == "com.microsoft"
+                and node.op_type in ["SoftmaxCrossEntropyLossInternal"]
+                and len(node.input) == 4
+            ):
+                continue
+
+            tensor = self._get_initializer(model, node.input[3])
+            if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
+                continue
+
+            value = onnx.numpy_helper.to_array(tensor)
+            if value.ndim != 0:
+                warnings.warn(
+                    "SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {}".format(
+                        value.shape
+                    )
+                )
+                continue
+
+            ignore_index = value.item()
+
+            # Check label inputs
+            label_graph_input = None
+            if node.input[1] not in self._tensor_to_node_map:
+                if node.input[1] not in user_input_names:
+                    continue
+                label_graph_input = node.input[1]
+            else:
+                reshape_node = self._tensor_to_node_map[node.input[1]]
+                if reshape_node.op_type != "Reshape" or reshape_node.input[0] not in user_input_names:
+                    continue
+                label_graph_input = reshape_node.input[0]
+
+            if label_graph_input not in self._loss_label_graph_input_to_ignore_idx_map:
+                self._loss_label_graph_input_to_ignore_idx_map[label_graph_input] = set()
+
+            self._loss_label_graph_input_to_ignore_idx_map[label_graph_input].add(ignore_index)
+
     def inspect_from_input_data(self, name, data):
         if not self._enabled:
             return
 
-        self._current_step += 1
+        found = self._inspect_embed_label_input(name, data)
+        if found:
+            self._current_step += 1
 
-        self._inspect_embedding_input(name, data)
+            if self._current_step - self._last_step >= self._log_steps:
+                self._last_step = self._current_step
+                self._print_embed_label_stats()
 
-    def _inspect_embedding_input(self, name, data):
-        self._embedding_stats.clear()
+    def _inspect_embed_label_input(self, name, data):
+        found = False
         if (
             len(self._embedding_graph_input_to_padding_idx_map) > 0
             and name in self._embedding_graph_input_to_padding_idx_map
@@ -93,23 +148,58 @@ class DataObserver(object):
             for padding_idx in self._embedding_graph_input_to_padding_idx_map[name]:
                 valid_token = torch.count_nonzero(data - padding_idx)
                 total_token = data.numel()
-                self._embedding_stats.append(
-                    [name, padding_idx, float(valid_token) / float(total_token) * 100, valid_token, total_token]
+                self._stats.append(
+                    [
+                        self._current_step,
+                        "EMBED",
+                        name,
+                        padding_idx,
+                        float(valid_token) / float(total_token) * 100,
+                        valid_token,
+                        total_token,
+                    ]
+                )
+                found = True
+
+        if (
+            len(self._loss_label_graph_input_to_ignore_idx_map) > 0
+            and name in self._loss_label_graph_input_to_ignore_idx_map
+            and isinstance(data, torch.Tensor)
+        ):
+            for ignore_index in self._loss_label_graph_input_to_ignore_idx_map[name]:
+                valid_token = torch.count_nonzero(data - ignore_index)
+                total_token = data.numel()
+                self._stats.append(
+                    [
+                        self._current_step,
+                        "LABEL",
+                        name,
+                        ignore_index,
+                        float(valid_token) / float(total_token) * 100,
+                        valid_token,
+                        total_token,
+                    ]
                 )
 
-        if self._current_step - self._last_step >= self._log_steps:
-            self._last_step = self._current_step
-            self._print_embedding_stats()
+        return found
 
-    def _print_embedding_stats(self):
-        if len(self._embedding_stats) > 0:
-            stat = ">>>Embedding padding density (e.g. valid tokens/total tokens in current batch):\n"
-            stat += "\t| {:<15} | {:<10} | {:<10} | {:<15} | {:<15} |\n".format(
-                "INPUT NAME", "PAD IDX", "DENSITY", "VALID TOKENS", "TOTAL TOKENS"
+    def _print_embed_label_stats(self):
+        if len(self._stats) > 0:
+            stat = ">>>Valid token/label density (e.g. valid/total) in passing {} steps:\n".format(self._log_steps)
+            stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<10} | {:<15} | {:<15} |\n".format(
+                "STEP", "INPUT TYPE", " INPUT NAME", "PAD IDX", "DENSITY", "VALID TOKENS", "TOTAL TOKENS"
             )
-            for input_name, padding_idx, density, valid_token, total_token in self._embedding_stats:
-                stat += "\t| {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} |\n".format(
-                    input_name, padding_idx, density, valid_token, total_token
+            for step, input_type, input_name, padding_idx, density, valid_token, total_token in self._stats:
+                stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} |\n".format(
+                    step, input_type, input_name, padding_idx, density, valid_token, total_token
                 )
             stat += "<<<\n"
             print(stat)
+            self._stats.clear()
+
+    def _get_initializer(self, model, name):
+        for tensor in model.graph.initializer:
+            if tensor.name == name:
+                return tensor
+
+        return None
