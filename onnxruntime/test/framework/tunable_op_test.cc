@@ -568,21 +568,21 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
 
   {
     // Before TunableOp(...), there is no entry in it.
-    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0);
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
 
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(last_run, "FastFull");
 
     // After TunableOp(...), the result entry is corretly written.
-    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1);
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 1u);
     ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
   }
 
   last_run.clear();
   mgr.Clear();
   {
-    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0);
+    ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
 
     // TunableOp(...), respect the existing entry
     mgr.Add(op.Signature(), params.Signature(), tuning::TunableVecAddSelectFast::kSlowFullId);
