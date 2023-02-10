@@ -39,7 +39,9 @@ import onnx
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from fusion_options import FusionOptions
+from onnx_model_clip import ClipOnnxModel
 from onnx_model_unet import UnetOnnxModel
+from onnx_model_vae import VaeOnnxModel
 from optimizer import optimize_by_onnxruntime, optimize_model
 
 logger = logging.getLogger(__name__)
@@ -71,8 +73,21 @@ def optimize_sd_pipeline(
         RuntimeError: input onnx model does not exist
         RuntimeError: output onnx model path existed
     """
-    dirs_with_onnx = ["unet", "vae_encoder", "vae_decoder", "text_encoder", "safety_checker"]
-    for name in dirs_with_onnx:
+    model_type_mapping = {
+        "unet": "unet",
+        "vae_encoder": "vae",
+        "vae_decoder": "vae",
+        "text_encoder": "clip",
+        "safety_checker": "unet",
+    }
+
+    model_type_class_mapping = {
+        "unet": UnetOnnxModel,
+        "vae": VaeOnnxModel,
+        "clip": ClipOnnxModel,
+    }
+
+    for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
 
         if not os.path.exists(onnx_model_path):
@@ -96,12 +111,12 @@ def optimize_sd_pipeline(
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
-        fusion_options = FusionOptions("unet")
+        fusion_options = FusionOptions(model_type)
         fusion_options.enable_packed_kv = float16
 
         m = optimize_model(
             str(onnx_model_path),
-            model_type="unet",
+            model_type=model_type,
             num_heads=0,  # will be deduced from graph
             hidden_size=0,  # will be deduced from graph
             opt_level=0,
@@ -113,7 +128,7 @@ def optimize_sd_pipeline(
             logger.info("Convert %s to float16 ...", name)
             op_block_list = ["RandomNormalLike"]
             m.convert_float_to_float16(
-                op_block_list=op_block_list + force_fp32_ops if force_fp32_ops else op_block_list
+                keep_io_types=False, op_block_list=op_block_list + force_fp32_ops if force_fp32_ops else op_block_list
             )
 
         if enable_runtime_optimization and (float16 or (name not in ["unet"])):
@@ -130,7 +145,7 @@ def optimize_sd_pipeline(
                     str(tmp_model_path), use_gpu=True, optimized_model_path=str(ort_optimized_model_path)
                 )
                 model = onnx.load(str(ort_optimized_model_path), load_external_data=True)
-                m = UnetOnnxModel(model)
+                m = model_type_class_mapping[model_type](model)
 
         m.get_operator_statistics()
         m.get_fused_operator_statistics()

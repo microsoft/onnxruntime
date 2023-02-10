@@ -18,6 +18,7 @@ from onnx_model_bert import BertOnnxModel
 
 logger = getLogger(__name__)
 
+
 class UnetOnnxModel(BertOnnxModel):
     def __init__(self, model: ModelProto, num_heads: int = 0, hidden_size: int = 0):
         """Initialize UNet ONNX Model.
@@ -87,6 +88,16 @@ class UnetOnnxModel(BertOnnxModel):
         if total:
             logger.info("Removed %d Transpose nodes", total)
 
+    def fuse_attention(self, options: Optional[FusionOptions] = None):
+        # Self Attention
+        self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
+        self_attention_fusion.apply()
+
+        # Cross Attention
+        enable_packed_kv = (options is None) or options.enable_packed_kv
+        cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
+        cross_attention_fusion.apply()
+
     def optimize(self, options: Optional[FusionOptions] = None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
@@ -115,12 +126,7 @@ class UnetOnnxModel(BertOnnxModel):
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
-            self_attention_fusion.apply()
-
-            enable_packed_kv = (options is None) or options.enable_packed_kv
-            cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
-            cross_attention_fusion.apply()
+            self.fuse_attention()
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()

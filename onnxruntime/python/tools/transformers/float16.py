@@ -120,10 +120,7 @@ DEFAULT_OP_BLOCK_LIST = [
 
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
-ALWAYS_FLOAT_INPUTS = {
-    "Resize": [2],
-    "GroupNorm": [1, 2]
-}
+ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2]}
 
 
 class InitializerTracker:
