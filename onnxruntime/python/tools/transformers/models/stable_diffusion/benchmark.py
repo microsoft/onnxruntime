@@ -14,10 +14,7 @@ SD_MODELS = {
 }
 
 
-def get_test_settings():
-    height = 512
-    width = 512
-    num_inference_steps = 50
+def example_prompts():
     prompts = [
         "a photo of an astronaut riding a horse on mars",
         "cute grey cat with blue eyes, wearing a bowtie, acrylic painting",
@@ -31,7 +28,7 @@ def get_test_settings():
         "delicate elvish moonstone necklace on a velvet background, symmetrical intricate motifs, leaves, flowers, 8k",
     ]
 
-    return height, width, num_inference_steps, prompts
+    return prompts
 
 
 def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_safety_checker: bool):
@@ -84,66 +81,115 @@ def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, dis
     return f"{engine}_{short_model_name}_b{batch_size}" + ("" if disable_safety_checker else "_safe")
 
 
-def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str):
+def run_ort_pipeline(
+    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_images_per_prompt, batch_count
+):
     from diffusers import OnnxStableDiffusionPipeline
 
     assert isinstance(pipe, OnnxStableDiffusionPipeline)
 
-    height, width, num_inference_steps, prompts = get_test_settings()
+    prompts = example_prompts()
 
-    pipe("warm up", height, width, num_inference_steps=2)
+    pipe("warm up", height, width, num_inference_steps=steps)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
+        if i >= batch_count:
+            break
         input_prompts = [prompt] * batch_size
-        inference_start = time.time()
-        image = pipe(input_prompts, height, width, num_inference_steps).images[0]
-        inference_end = time.time()
+        for j in range(num_images_per_prompt):
+            inference_start = time.time()
+            images = pipe(
+                input_prompts,
+                height,
+                width,
+                num_inference_steps=steps,
+                negative_prompt=None,
+                guidance_scale=7.5,
+                num_images_per_prompt=1,
+            ).images
+            inference_end = time.time()
+            latency = inference_end - inference_start
+            latency_list.append(latency)
+            print(f"Inference took {latency} seconds")
+            for k, image in enumerate(images):
+                image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
 
-        latency = inference_end - inference_start
-        latency_list.append(latency)
-        print(f"Inference took {latency} seconds")
-        image.save(f"{image_filename_prefix}_{i}.jpg")
     print("Average latency in seconds:", sum(latency_list) / len(latency_list))
 
 
-def run_torch_pipeline(pipe, batch_size: int, image_filename_prefix: str):
+def run_torch_pipeline(
+    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_images_per_prompt, batch_count
+):
     import torch
 
-    height, width, num_inference_steps, prompts = get_test_settings()
+    prompts = example_prompts()
 
-    pipe("warm up", height, width, num_inference_steps=2)
+    pipe("warm up", height, width, num_inference_steps=steps)
 
     torch.set_grad_enabled(False)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
+        if i >= batch_count:
+            break
         input_prompts = [prompt] * batch_size
         torch.cuda.synchronize()
-        inference_start = time.time()
-        image = pipe(input_prompts, height, width, num_inference_steps).images[0]
-        torch.cuda.synchronize()
-        inference_end = time.time()
+        for j in range(num_images_per_prompt):
+            inference_start = time.time()
+            images = pipe(
+                prompt=input_prompts,
+                height=height,
+                width=width,
+                num_inference_steps=steps,
+                guidance_scale=7.5,
+                negative_prompt=None,
+                num_images_per_prompt=num_images_per_prompt,
+                generator=None,  # torch.Generator
+            ).images
 
-        latency = inference_end - inference_start
-        latency_list.append(latency)
-        print(f"Inference took {latency} seconds")
-        image.save(f"{image_filename_prefix}_{i}.jpg")
+            torch.cuda.synchronize()
+            inference_end = time.time()
+            latency = inference_end - inference_start
+            latency_list.append(latency)
+            print(f"Inference took {latency} seconds")
+            for k, image in enumerate(images):
+                image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
 
     print("Average latency in seconds:", sum(latency_list) / len(latency_list))
 
 
-def run_ort(model_name: str, directory: str, provider: str, batch_size: int, disable_safety_checker: bool):
+def run_ort(
+    model_name: str,
+    directory: str,
+    provider: str,
+    batch_size: int,
+    disable_safety_checker: bool,
+    height,
+    width,
+    steps,
+    num_images_per_prompt,
+    batch_count,
+):
     load_start = time.time()
     pipe = get_ort_pipeline(model_name, directory, provider, disable_safety_checker)
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
-    run_ort_pipeline(pipe, batch_size, image_filename_prefix)
+    run_ort_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_images_per_prompt, batch_count)
 
 
-def run_torch(model_name: str, batch_size: int, disable_safety_checker: bool):
+def run_torch(
+    model_name: str,
+    batch_size: int,
+    disable_safety_checker: bool,
+    height,
+    width,
+    steps,
+    num_images_per_prompt,
+    batch_count,
+):
     import torch
 
     torch.backends.cudnn.enabled = True
@@ -159,7 +205,9 @@ def run_torch(model_name: str, batch_size: int, disable_safety_checker: bool):
 
     image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker)
     with torch.inference_mode():
-        run_torch_pipeline(pipe, batch_size, image_filename_prefix)
+        run_torch_pipeline(
+            pipe, batch_size, image_filename_prefix, height, width, steps, num_images_per_prompt, batch_count
+        )
 
 
 def parse_arguments():
@@ -201,7 +249,58 @@ def parse_arguments():
     )
     parser.set_defaults(enable_safety_checker=False)
 
-    parser.add_argument("-b", "--batch_size", type=int, default=1)
+    parser.add_argument(
+        "-b",
+        "--batch_size",
+        type=int,
+        default=1,
+        choices=range(1, 33),
+        help="Number of prompts per batch",
+    )
+
+    parser.add_argument(
+        "--height",
+        required=False,
+        type=int,
+        default=512,
+        help="Output image height",
+    )
+
+    parser.add_argument(
+        "--width",
+        required=False,
+        type=int,
+        default=512,
+        help="Output image width",
+    )
+
+    parser.add_argument(
+        "-s",
+        "--steps",
+        required=False,
+        type=int,
+        default=50,
+        help="Number of steps",
+    )
+
+    parser.add_argument(
+        "-n",
+        "--num_images_per_prompt",
+        required=False,
+        type=int,
+        default=5,
+        help="Number of images per prompt",
+    )
+
+    parser.add_argument(
+        "-c",
+        "--batch_count",
+        required=False,
+        type=int,
+        choices=range(1, 11),
+        default=1,
+        help="Number of batches to test",
+    )
 
     args = parser.parse_args()
     return args
@@ -219,13 +318,33 @@ def main():
             # Need remove a line https://github.com/huggingface/diffusers/blob/a66f2baeb782e091dde4e1e6394e46f169e5ba58/src/diffusers/pipelines/stable_diffusion/pipeline_onnx_stable_diffusion.py#L307
             #    in diffuers to run batch_size > 1.
             assert (
-                args.enable_safety_checker
+                not args.enable_safety_checker
             ), "batch_size > 1 is not compatible with safety checker due to a bug in diffuers"
 
         provider = "CUDAExecutionProvider"  # TODO: use ["CUDAExecutionProvider", "CPUExecutionProvider"] in diffuers
-        run_ort(sd_model, args.pipeline, provider, args.batch_size, not args.enable_safety_checker)
+        run_ort(
+            sd_model,
+            args.pipeline,
+            provider,
+            args.batch_size,
+            not args.enable_safety_checker,
+            args.height,
+            args.width,
+            args.steps,
+            args.num_images_per_prompt,
+            args.batch_count,
+        )
     else:
-        run_torch(sd_model, args.batch_size, not args.enable_safety_checker)
+        run_torch(
+            sd_model,
+            args.batch_size,
+            not args.enable_safety_checker,
+            args.height,
+            args.width,
+            args.steps,
+            args.num_images_per_prompt,
+            args.batch_count,
+        )
 
 
 if __name__ == "__main__":
