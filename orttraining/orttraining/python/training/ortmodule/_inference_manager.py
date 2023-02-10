@@ -10,7 +10,7 @@ import torch
 
 from onnxruntime.capi import _pybind_state as C
 
-from . import _are_deterministic_algorithms_enabled, _data_observer, _io, _logger, _use_deterministic_algorithms, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_deterministic_algorithms, _utils
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck

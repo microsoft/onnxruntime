@@ -16,7 +16,7 @@ class DataObserver(object):
     """
 
     def __init__(self, log_steps=1):
-        self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_DATA_OBSERVER", 1, warn=True) == 1
+        self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_DATA_OBSERVER", 0, warn=True) == 1
         self._embedding_graph_input_to_padding_idx_map = {}
         self._embedding_stats = []
 
@@ -109,7 +109,7 @@ class DataObserver(object):
                 "INPUT NAME", "PAD IDX", "DENSITY", "VALID TOKENS", "TOTAL TOKENS"
             )
             for input_name, padding_idx, density, valid_token, total_token in self._embedding_stats:
-                stat += "\t| {:<15} | {:<10} | {:<10.2f}% | {:<15} | {:<15} |\n".format(
+                stat += "\t| {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} |\n".format(
                     input_name, padding_idx, density, valid_token, total_token
                 )
             stat += "<<<\n"
