@@ -25,6 +25,8 @@ struct DecoderMaskedMultiheadAttentionParams : AttentionParameters {
   void* k_cache = nullptr;
   void* v_cache = nullptr;
 
+  void* temp_data = nullptr;
+
   const int32_t* cache_indir = nullptr;
   const int32_t* mask = nullptr;    // [B, total_sequence_length]
 };

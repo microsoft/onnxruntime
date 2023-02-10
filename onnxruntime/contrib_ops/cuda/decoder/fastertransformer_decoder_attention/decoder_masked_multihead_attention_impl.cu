@@ -67,7 +67,7 @@ namespace cuda {
 
         // Use alignment for safely casting the shared buffers as Qk_vec_k.
         // Shared memory to store Q inputs.
-        __shared__ __align__(sizeof(Qk_vec_k)) T q_smem[head_size];
+        //__shared__ __align__(sizeof(Qk_vec_k)) T q_smem[head_size];
 
         // The number of elements per vector.
         constexpr int QK_VEC_SIZE = sizeof(Qk_vec_m) / sizeof(T);
@@ -109,7 +109,7 @@ namespace cuda {
         const int tidx = threadIdx.x;
 
         // While doing the product Q*K^T for the different keys we track the max.
-        float qk_max = -FLT_MAX;
+        //float qk_max = -FLT_MAX;
 
         float qk = 0.0F;
 
@@ -169,7 +169,7 @@ namespace cuda {
 
         if (!is_masked) {
             // Store the Q values to shared memory.
-            *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
+            //*reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
 
             // Write the K values to the global memory cache.
             // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
@@ -210,14 +210,16 @@ namespace cuda {
 
         const float inv_sqrt_dh = 1.f / (sqrtf(static_cast<float>(head_size)));
 
-        float f = qk_max * qk_smem[0];
+        int temp_offset = (bi * params.num_heads * params.sequence_length * params.total_sequence_length)
+            + (hi * params.sequence_length * params.total_sequence_length);
 
         // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
         if (tidx == 0) {
             // Normalize qk.
             qk *= inv_sqrt_dh;
-            qk_max = qk;
-            qk_smem[params.total_sequence_length] = qk;
+            //qk_max = qk;
+            qk_smem[params.past_sequence_length] = qk;
+            reinterpret_cast<T*>(params.temp_data)[temp_offset + params.past_sequence_length] = qk;
 
         }
 

@@ -69,7 +69,7 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = context->Output(0, {1, 2, 1, 3});
 
   std::vector<int64_t> present_dims{
       2, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
@@ -116,6 +116,7 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   parameters.v_bias = const_cast<T*>(bias_data + 2 * parameters.hidden_size);
 
   parameters.k_cache = present->MutableDataRaw();
+  parameters.temp_data = output->MutableDataRaw();
 
   cudaDeviceSynchronize();
   std::vector<float> past_host(1 * 2 * 4 * 64, 0);

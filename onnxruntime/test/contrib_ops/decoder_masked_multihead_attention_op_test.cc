@@ -115,8 +115,9 @@ namespace test {
     template <typename T>
     static std::vector<T> MergeReorderedKCacheWithK(std::vector<T>& ordered_k_cache,
         float* k,
-        int batch_size, int num_heads, int past_sequence_length,
-        int head_size, int max_sequence_length) {
+        int batch_size, int num_heads, 
+        int past_sequence_length, int max_sequence_length,
+        int head_size) {
 
         std::vector<T> merged = ordered_k_cache;
 
@@ -141,41 +142,123 @@ namespace test {
     }
 
     template<typename T>
-    static std::vector<float> MergePastWithPresent(std::vector<T>& past, float* k, 
-                                                   int num_batch, int num_heads, int past_sequence_length, int head_size) {
-        std::vector<T> merged = past;
-
-        int num_elements = num_batch * num_heads * head_size;
-       
+    static std::vector<float> MergePastKWithPresentKAndTranspose(float* past_k, float* present_k, 
+                                                   int num_batch, int num_heads, 
+                                                   int past_sequence_length, int max_sequence_length, 
+                                                   int head_size) {
 
 
+        int total_seq_length = (past_sequence_length + 1);
+        std::vector<T> merged_k(num_batch * num_heads * total_seq_length * head_size, 0);
+        std::vector<T> transposed_merged_k(num_batch * num_heads * total_seq_length * head_size, 0);
+
+        for (int b = 0; b < num_batch; ++b) {
+            for (int n = 0; n < num_heads; ++n) {
+                for (int s = 0; s < total_seq_length; ++s) {
+                    for (int h = 0; h < head_size; ++h) {
+                        float input_value = 0.f;
+
+                        if (s < past_sequence_length) {
+                            int input_offset = b * num_heads * max_sequence_length * head_size
+                                + (n * max_sequence_length * head_size)
+                                + (s * head_size) 
+                                + h;
+                            input_value = past_k[input_offset];
+                        }
+                        else {
+                            int input_offset = b * num_heads * 1 * head_size
+                                + (n * 1 * head_size)
+                                + h;
+                            input_value = present_k[input_offset];
+                        }
+
+                        int output_offset = b * num_heads * total_seq_length * head_size
+                            + (n * total_seq_length * head_size)
+                            + (s * head_size)
+                            + h;
+
+                        merged_k[output_offset] = input_value;
+
+                    }
+                }
+            }
+        }
+
+
+        for (int b = 0; b < num_batch; ++b) {
+            for (int n = 0; n < num_heads; ++n) {
+                int base_offset = (b * num_heads * total_seq_length * head_size) +
+                    (n * total_seq_length * head_size);
+
+                for (int s = 0; s < total_seq_length; ++s) {
+                    for (int h = 0; h < head_size; ++h) {
+                        int input_offset = base_offset + (s * head_size) + h;
+                        int output_offset = base_offset + (h * total_seq_length) + s;
+                            transposed_merged_k[output_offset] = merged_k[input_offset];
+
+                    }
+                }
+            }
+        }
+
+        return transposed_merged_k;
     }
 
     template<typename T>
-    void QK_Transpose(float* q_matrix, float* k_matrix, int batch_size, int hidden_size,
-        int sequence_length, int total_sequence_length, /*out*/ std::vector<T>& qk_transpose) {
-        if (sequence_length == 1) {
+    std::vector<T> QK_Transpose(float* q_matrix, float* k_transpose_matrix, 
+        int batch_size, int num_heads,
+        int sequence_length, int total_sequence_length, int head_size) {
+        
+        if (sequence_length != 1) {
             throw std::exception("Not supported");
         }
 
-        qk_transpose.resize(batch_size * 1 * total_sequence_length, 0);
+        std::vector<T> qk_transpose;
+        qk_transpose.resize(batch_size * num_heads * sequence_length * total_sequence_length, 0);
 
         for (int b = 0; b < batch_size; ++b) {
-            for (int i = 0; i < sequence_length; ++i) {
-                for (int j = 0; j < total_sequence_length; ++j) {
-                    T sum = 0;
-                    
-                    for (int k = 0; k < hidden_size; ++k) {
-                        sum += q_matrix[b * hidden_size + k] * k_matrix[b * total_sequence_length * hidden_size + j * hidden_size + k];
+            for (int n = 0; n < num_heads; ++n) {
+                int input_1_base_offset = (b * num_heads * sequence_length * head_size) +
+                                        (n * sequence_length * head_size);
+
+                int input_2_base_offset = (b * num_heads * total_sequence_length * head_size) +
+                    (n * total_sequence_length * head_size);
+
+                int output_base_offset = (b * num_heads * sequence_length * total_sequence_length) +
+                    (n * sequence_length * total_sequence_length);
+
+
+                for (int i = 0; i < sequence_length; ++i) {
+                    for (int j = 0; j < total_sequence_length; ++j) {
+
+                        T sum = 0;
+                        for (int k = 0; k < head_size; ++k) {
+
+                            sum += (q_matrix[input_1_base_offset + i * head_size + k] *
+                                k_transpose_matrix[input_2_base_offset + k * total_sequence_length + j]);
+                        }
+
+                        float scale = 1 / sqrt(static_cast<float>(head_size));
+                        qk_transpose[output_base_offset + i * total_sequence_length + j] = scale * sum;
                     }
-
-                    qk_transpose[b * total_sequence_length + j] = sum;
                 }
-
             }
+
         }
+
+        return qk_transpose;
     }
     TEST(AttentionTest, Test) {
+        int batch_size = 1;
+        int sequence_length = 1;
+        int hidden_size = 128;
+        int number_of_heads = 2;
+        int head_size = (hidden_size / number_of_heads);
+        int past_sequence_length = 2;
+        int total_sequence_length = sequence_length + past_sequence_length;
+        int max_sequence_length = 4;
+
+        /*
         int batch_size = 1;
         int sequence_length = 1;
         int hidden_size = 768;
@@ -184,6 +267,7 @@ namespace test {
         int past_sequence_length = 3;
         int total_sequence_length = sequence_length + past_sequence_length;
         int max_sequence_length = 10;
+        */
 
         OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
         tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
@@ -234,14 +318,17 @@ namespace test {
         // QKV MatMul
         std::vector<float> qkv;
         QKV(input, weight, bias, batch_size, sequence_length, hidden_size, qkv);
+        auto k_transpose = MergePastKWithPresentKAndTranspose<float>(kv_cache.data(), qkv.data() + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
+        auto qk_transpose = QK_Transpose<float>(qkv.data(), k_transpose.data(), batch_size, number_of_heads, sequence_length, total_sequence_length, head_size);
 
-        // Output
-        tester.AddOutput<float>("output", output_dims, CreateValues<float>(batch_size * sequence_length * hidden_size, 0));
 
-        auto present = MergeReorderedKCacheWithK(reordered_kv_cache, qkv.data() + hidden_size, batch_size, 
-                      number_of_heads, past_sequence_length, head_size, max_sequence_length);
+        // Output(s)
+        tester.AddOutput<float>("output", {batch_size, number_of_heads, sequence_length, total_sequence_length}, qk_transpose);
+
+        auto present = MergeReorderedKCacheWithK(reordered_kv_cache, qkv.data() + hidden_size, batch_size, number_of_heads, past_sequence_length, max_sequence_length, head_size);
         tester.AddOutput<float>("present", past_dims, present);
         
+        // Run
         std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
         execution_providers.push_back(DefaultCudaExecutionProvider());
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
