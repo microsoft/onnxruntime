@@ -13,7 +13,7 @@
 #include "ck/tensor_operation/gpu/device/device_softmax.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
-#endif
+#endif  // USE_COMPOSABLE_KERNEL
 
 #include "core/providers/rocm/math/softmax_common.h"
 
@@ -41,21 +41,21 @@ using Nop = ck::tensor_operation::element_wise::PassThrough;
 constexpr int Rank = 4;
 constexpr int NumReduceDim = 1;
 
-template <typename input_t, typename output_t, typename acc_t>
+template <typename InputT, typename OutputT, typename AccT>
 auto GetCKSoftmaxTypeStringAndOps() {
-  using InDataType = typename DataTypeAdaptor<input_t>::type;
-  using OutDataType = typename DataTypeAdaptor<output_t>::type;
-  using AccDataType = typename DataTypeAdaptor<acc_t>::type;
+  using InDataType = typename DataTypeAdaptor<InputT>::type;
+  using OutDataType = typename DataTypeAdaptor<OutputT>::type;
+  using AccDataType = typename DataTypeAdaptor<AccT>::type;
   using DeviceSoftmax = ck::tensor_operation::device::
       DeviceSoftmax<InDataType, AccDataType, OutDataType, Nop, Nop, Rank>;
   using InstanceFactory = ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceSoftmax>;
 
-  std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<input_t, output_t>>>> ret;
+  std::vector<std::pair<std::string, tunable::Op<SoftmaxParams<InputT, OutputT>>>> ret;
   for (auto&& impl : InstanceFactory::GetInstances()) {
     auto type_string = onnxruntime::MakeString(impl->GetTypeString());
     auto invoker = impl->MakeInvokerPointer();
 
-    auto ck_softmax_op = [impl = std::move(impl), invoker = std::move(invoker)](const SoftmaxParams<input_t, output_t>* params) -> Status {
+    auto ck_softmax_op = [impl = std::move(impl), invoker = std::move(invoker)](const SoftmaxParams<InputT, OutputT>* params) -> Status {
       AccDataType alpha{1.0f};
       AccDataType beta{0.0f};
 

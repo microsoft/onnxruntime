@@ -15,63 +15,60 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename input_t, typename output_t, typename acc_t, int VecSize>
-Status SoftmaxBlockwiseOp(const SoftmaxParams<input_t, output_t>* params) {
+template <typename InputT, typename OutputT, typename AccT, int VecSize>
+Status SoftmaxBlockwiseOp(const SoftmaxParams<InputT, OutputT>* params) {
   dim3 grid(params->batch_count);
   dim3 block = SoftMax_getBlockSize(VecSize, params->softmax_elements);
   if (params->is_log_softmax) {
-    softmax_block_forward<VecSize, input_t, acc_t, output_t, LogSoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), params->stream>>>(params->output, const_cast<input_t*>(params->input),
-                                                                   params->softmax_elements, params->input_stride,
-                                                                   params->output_stride);
+    softmax_block_forward<VecSize, InputT, AccT, OutputT, LogSoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
+                                                                  params->softmax_elements, params->input_stride,
+                                                                  params->output_stride);
   } else {
-    softmax_block_forward<VecSize, input_t, acc_t, output_t, SoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), params->stream>>>(params->output, const_cast<input_t*>(params->input),
-                                                                   params->softmax_elements, params->input_stride,
-                                                                   params->output_stride);
+    softmax_block_forward<VecSize, InputT, AccT, OutputT, SoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
+                                                                  params->softmax_elements, params->input_stride,
+                                                                  params->output_stride);
   }
   return HIP_CALL(hipGetLastError());
 }
 
-template <typename input_t, typename output_t, typename acc_t>
-Status SoftmaxBlockwiseStaticSelection(const SoftmaxParams<input_t, output_t>* params) {
+template <typename InputT, typename OutputT, typename AccT>
+Status SoftmaxBlockwiseStaticSelection(const SoftmaxParams<InputT, OutputT>* params) {
   dim3 grid(params->batch_count);
-  constexpr int ILP = sizeof(float4) / sizeof(input_t);
+  constexpr int ILP = sizeof(float4) / sizeof(InputT);
   dim3 block = SoftMax_getBlockSize(ILP, params->softmax_elements);
   if (params->is_log_softmax) {
-    softmax_block_forward<ILP, input_t, acc_t, output_t, LogSoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), params->stream>>>(params->output, const_cast<input_t*>(params->input),
-                                                                   params->softmax_elements, params->input_stride,
-                                                                   params->output_stride);
+    softmax_block_forward<ILP, InputT, AccT, OutputT, LogSoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
+                                                                  params->softmax_elements, params->input_stride,
+                                                                  params->output_stride);
   } else {
-    softmax_block_forward<ILP, input_t, acc_t, output_t, SoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), params->stream>>>(params->output, const_cast<input_t*>(params->input),
-                                                                   params->softmax_elements, params->input_stride,
-                                                                   params->output_stride);
+    softmax_block_forward<ILP, InputT, AccT, OutputT, SoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), params->stream>>>(params->output, const_cast<InputT*>(params->input),
+                                                                  params->softmax_elements, params->input_stride,
+                                                                  params->output_stride);
   }
   return HIP_CALL(hipGetLastError());
 }
 
-template <typename input_t, typename output_t, typename acc_t>
-class SoftmaxTunableOp : public onnxruntime::rocm::tunable::TunableOp<SoftmaxParams<input_t, output_t>> {
+template <typename InputT, typename OutputT, typename AccT>
+class SoftmaxTunableOp : public onnxruntime::rocm::tunable::TunableOp<SoftmaxParams<InputT, OutputT>> {
  public:
   SoftmaxTunableOp() {
-    this->RegisterOp(SoftmaxBlockwiseStaticSelection<input_t, output_t, acc_t>);
-    this->RegisterOp(SoftmaxBlockwiseOp<input_t, output_t, acc_t, 1>);
-    this->RegisterOp(SoftmaxBlockwiseOp<input_t, output_t, acc_t, 2>);
-    this->RegisterOp(SoftmaxBlockwiseOp<input_t, output_t, acc_t, 4>);
-    this->RegisterOp(SoftmaxBlockwiseOp<input_t, output_t, acc_t, 8>);
-    this->RegisterOp(SoftmaxBlockwiseOp<input_t, output_t, acc_t, 16>);
+    this->RegisterOp(SoftmaxBlockwiseStaticSelection<InputT, OutputT, AccT>);
+    this->RegisterOp(SoftmaxBlockwiseOp<InputT, OutputT, AccT, 1>);
+    this->RegisterOp(SoftmaxBlockwiseOp<InputT, OutputT, AccT, 2>);
+    this->RegisterOp(SoftmaxBlockwiseOp<InputT, OutputT, AccT, 4>);
+    this->RegisterOp(SoftmaxBlockwiseOp<InputT, OutputT, AccT, 8>);
+    this->RegisterOp(SoftmaxBlockwiseOp<InputT, OutputT, AccT, 16>);
 
 #ifdef USE_COMPOSABLE_KERNEL
-    for (auto&& [_, op] : GetCKSoftmaxTypeStringAndOps<input_t, output_t, acc_t>()) {
+    for (auto&& [_, op] : GetCKSoftmaxTypeStringAndOps<InputT, OutputT, AccT>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
 #endif  // USE_COMPOSABLE_KERNEL
-
-    // NOTE: the 1st kernel is SoftmaxBlockwise Original implementation.
-    this->SetDefaultId(0);
   }
 };
 

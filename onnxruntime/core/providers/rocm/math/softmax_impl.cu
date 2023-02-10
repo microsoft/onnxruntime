@@ -29,8 +29,8 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-Status dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
+template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
+Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const InputT* src, int softmax_elements, int softmax_elements_stride, int batch_count) {
   if (softmax_elements == 0) {
     return Status::OK();
   } else {
@@ -53,9 +53,9 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, cons
     switch (log2_elements) {
       #define LAUNCH_SOFTMAX_WARP_FORWARD(L2E)                                                         \
         case L2E:                                                                                      \
-          softmax_warp_forward<input_t, output_t, acc_t, L2E, is_log_softmax>                          \
+          softmax_warp_forward<InputT, OutputT, AccT, L2E, IsLogSoftmax>                             \
               <<<dim3(blocks), dim3(threads), 0, stream>>>(dst, src, batch_count,                      \
-                                                          softmax_elements_stride, softmax_elements); \
+                                                          softmax_elements_stride, softmax_elements);  \
           break;
       LAUNCH_SOFTMAX_WARP_FORWARD(0);   // 1
       LAUNCH_SOFTMAX_WARP_FORWARD(1);   // 2
@@ -75,12 +75,12 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, output_t* dst, cons
   return HIP_CALL(hipGetLastError());
 }
 
-#define SPECIALIZED_SOFTMAX_IMPL(input_t, output_t, acc_t)                            \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, false>( \
-      hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements,   \
-      int softmax_elements_stride, int batch_count);                                  \
-  template Status dispatch_warpwise_softmax_forward<input_t, output_t, acc_t, true>(  \
-      hipStream_t stream, output_t * dst, const input_t* src, int softmax_elements,   \
+#define SPECIALIZED_SOFTMAX_IMPL(InputT, OutputT, AccT)                            \
+  template Status dispatch_warpwise_softmax_forward<InputT, OutputT, AccT, false>( \
+      hipStream_t stream, OutputT * dst, const InputT* src, int softmax_elements,  \
+      int softmax_elements_stride, int batch_count);                               \
+  template Status dispatch_warpwise_softmax_forward<InputT, OutputT, AccT, true>(  \
+      hipStream_t stream, OutputT * dst, const InputT* src, int softmax_elements,  \
       int softmax_elements_stride, int batch_count);
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
@@ -88,30 +88,30 @@ SPECIALIZED_SOFTMAX_IMPL(half, half, float)
 SPECIALIZED_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
-template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-Status dispatch_blockwise_softmax_forward(hipStream_t stream, output_t* output, const input_t* input, int softmax_elements,
+template <typename InputT, typename OutputT, typename AccT, bool IsLogSoftmax>
+Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output, const InputT* input, int softmax_elements,
                                           int input_stride, int output_stride, int batch_count) {
   dim3 grid(batch_count);
-  constexpr int ILP = sizeof(float4) / sizeof(input_t);
+  constexpr int ILP = sizeof(float4) / sizeof(InputT);
   dim3 block = SoftMax_getBlockSize(ILP, softmax_elements);
-  if (is_log_softmax) {
-    softmax_block_forward<ILP, input_t, acc_t, output_t, LogSoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), stream>>>(output, const_cast<input_t*>(input),
-                                                           softmax_elements, input_stride, output_stride);
+  if (IsLogSoftmax) {
+    softmax_block_forward<ILP, InputT, AccT, OutputT, LogSoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), stream>>>(output, const_cast<InputT*>(input),
+                                                          softmax_elements, input_stride, output_stride);
   } else {
-    softmax_block_forward<ILP, input_t, acc_t, output_t, SoftMaxForwardEpilogue>
-        <<<grid, block, block.x * sizeof(acc_t), stream>>>(output, const_cast<input_t*>(input),
-                                                           softmax_elements, input_stride, output_stride);
+    softmax_block_forward<ILP, InputT, AccT, OutputT, SoftMaxForwardEpilogue>
+        <<<grid, block, block.x * sizeof(AccT), stream>>>(output, const_cast<InputT*>(input),
+                                                          softmax_elements, input_stride, output_stride);
   }
   return HIP_CALL(hipGetLastError());
 }
 
-#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(input_t, output_t, acc_t)                     \
-  template Status dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, false>(   \
-      hipStream_t stream, output_t * output, const input_t* input, int softmax_elements, \
-      int input_stride, int output_stride, int batch_count);                             \
-  template Status dispatch_blockwise_softmax_forward<input_t, output_t, acc_t, true>(    \
-      hipStream_t stream, output_t * output, const input_t* input, int softmax_elements, \
+#define SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(InputT, OutputT, AccT)                      \
+  template Status dispatch_blockwise_softmax_forward<InputT, OutputT, AccT, false>(    \
+      hipStream_t stream, OutputT * output, const InputT* input, int softmax_elements, \
+      int input_stride, int output_stride, int batch_count);                           \
+  template Status dispatch_blockwise_softmax_forward<InputT, OutputT, AccT, true>(     \
+      hipStream_t stream, OutputT * output, const InputT* input, int softmax_elements, \
       int input_stride, int output_stride, int batch_count);
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
