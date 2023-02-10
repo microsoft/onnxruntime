@@ -479,6 +479,57 @@ namespace Dml
         ORT_CATCH_RETURN
     }
 
+    HRESULT __stdcall ExecutionProviderImpl::CopyTensors(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept
+    {
+        ORT_TRY
+        {
+        ORT_THROW_HR_IF(E_INVALIDARG, dst.size() != src.size());
+
+        // Source and destination for batched GPU -> CPU copies
+        std::vector<ID3D12Resource*> srcDatas;
+        std::vector<void*> dstDatas;
+        std::vector<uint32_t> dataSizesInBytes;
+
+        assert(!m_closed);
+        auto provider = const_cast<ExecutionProviderImpl*>(this);
+
+        for (uint32_t i = 0; i < dst.size(); ++i)
+        {
+            // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
+            // and are batched across multiple calls to CopyTensor.
+            if (src[i]->IsCpuData() || !dst[i]->IsCpuData())
+            {
+                ORT_THROW_IF_FAILED(CopyTensor(dst[i], src[i]));
+                continue;
+            }
+
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst[i]);
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            if (dataSizeInBytes == 0)
+            {
+                continue;
+            }
+
+            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            dstDatas.push_back(dst[i]->GetData());
+            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
+
+            srcDatas.push_back(srcAllocInfo->GetResource());
+        }
+
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+        // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+
+        return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE ExecutionProviderImpl::FillTensorWithPattern(
         IMLOperatorTensor* dst,
         gsl::span<const std::byte> rawValue // Data type agnostic rawValue, treated as raw bits

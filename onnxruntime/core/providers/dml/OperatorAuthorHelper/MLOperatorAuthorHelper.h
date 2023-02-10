@@ -760,6 +760,54 @@ public:
         return m_impl;
     }
 
+    bool IsSequenceInputTensor(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        return operatorKernelContext->IsSequenceInputTensor(inputIndex);
+    }
+
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+        return operatorKernelContext->GetSequenceInputCount(inputIndex);
+    }
+
+    MLOperatorTensor GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_HR_IF(E_INVALIDARG, !operatorKernelContext->IsSequenceInputTensor(inputIndex));
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceInputTensor(inputIndex, sequenceIndex, &tensor));
+        return tensor.Get();
+    }
+
+    MLOperatorTensor GetSequenceOutputTensor(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput) const
+    {
+        Microsoft::WRL::ComPtr<IMLOperatorKernelContextPrivate> operatorKernelContext;
+        m_impl.As(&operatorKernelContext);
+
+        Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;
+        ORT_THROW_IF_FAILED(operatorKernelContext->GetSequenceOutputTensor(
+            outputIndex,
+            sequenceIndex,
+            dataType,
+            dimensions,
+            dimensionSizes,
+            gpuOutput,
+            &tensor));
+        return tensor.Get();
+    }
+
     MLOperatorTensor GetInputTensor(uint32_t inputIndex) const
     {
         Microsoft::WRL::ComPtr<IMLOperatorTensor> tensor;

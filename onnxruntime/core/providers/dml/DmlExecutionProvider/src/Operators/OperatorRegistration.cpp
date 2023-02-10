@@ -568,7 +568,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
-    {REG_INFO_DYNAMIC_OUTPUTS(11, ConcatFromSequence,       typeNameListDefault,            supportedTypeListAllScalarsAndSequences,DmlGraphSupport::Supported)}, // Adds negative axis.
+    {REG_INFO_DYNAMIC_OUTPUTS(11, ConcatFromSequence,       typeNameListDefault,            supportedTypeListAllScalarsAndSequences,DmlGraphSupport::NotSupported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},

@@ -472,14 +472,25 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
 
     OpKernelContextWrapper(onnxruntime::OpKernelContext* context, const onnxruntime::IExecutionProvider* provider, bool isInternalOperator, const EdgeShapes* outputShapes);
 
-    HRESULT STDMETHODCALLTYPE GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept override;
-    HRESULT STDMETHODCALLTYPE GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept override;
+    bool STDMETHODCALLTYPE IsSequenceInputTensor(uint32_t inputIndex) const noexcept override;
     uint32_t STDMETHODCALLTYPE GetSequenceInputCount(uint32_t inputIndex) const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetSequenceInputTensor(uint32_t inputIndex, uint32_t sequenceIndex, IMLOperatorTensor** tensor) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE GetSequenceOutputTensor(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput,
+        IMLOperatorTensor** tensor) const noexcept override;
+
+    HRESULT STDMETHODCALLTYPE GetInputTensor(uint32_t inputIndex, IMLOperatorTensor** tensor) const noexcept override;
 
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, IMLOperatorTensor** tensor) noexcept override;
     HRESULT STDMETHODCALLTYPE GetOutputTensor(uint32_t outputIndex, uint32_t dimensions, const uint32_t* dimensionSizes, IMLOperatorTensor** tensor) noexcept override;
 
-    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const;
+    HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data) const noexcept override;
     HRESULT STDMETHODCALLTYPE AllocateTemporaryData(size_t size, IUnknown** data, uint64_t* allocId) const;
 
     void STDMETHODCALLTYPE GetExecutionInterface(IUnknown** executionInterface) const noexcept override;
@@ -498,7 +509,7 @@ class OpKernelContextWrapper : public WRL::Base<IMLOperatorKernelContext, IMLOpe
     const EdgeShapes* m_outputShapes = nullptr;
 
     std::vector<std::vector<ComPtr<TensorWrapper>>> m_inputTensors;
-    std::vector<ComPtr<TensorWrapper>> m_outputTensors;
+    std::vector<std::vector<ComPtr<TensorWrapper>>> m_outputTensors;
 
     const onnxruntime::IExecutionProvider* m_provider = nullptr;
     ComPtr<IWinmlExecutionProvider> m_winmlProvider;
@@ -562,7 +573,7 @@ class AbiOpKernel : public onnxruntime::OpKernel
         std::vector<std::byte> data;
     };
 
-    mutable std::vector<TensorContent> m_constantInputTensorContentsOfKernel;
+    mutable std::vector<std::variant<TensorContent, std::vector<TensorContent>>> m_constantInputTensorContentsOfKernel;
 
     mutable std::mutex m_mutex;
     mutable EdgeShapes m_inferredOutputShapes;
@@ -577,6 +588,12 @@ class AbiOpKernel : public onnxruntime::OpKernel
     ComPtr<IUnknown> m_abiExecutionObject;
 
     const AttributeMap* m_defaultAttributes = nullptr;
+
+private:
+    bool RequiredCpuInputChanged(const ComPtr<IMLOperatorTensor>& constantTensor, uint32_t index) const;
+    bool RequiredCpuInputChanged(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensorSequence, uint32_t index) const;
+    void FillConstantInputs(const ComPtr<IMLOperatorTensor>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
+    void FillConstantInputs(const std::vector<ComPtr<IMLOperatorTensor>>& constantTensor, onnxruntime::OpKernelContext* context, uint32_t index) const;
 };
 
 class MLSchemaInferenceContext final : public OpNodeInfoWrapper<

@@ -106,6 +106,7 @@ enum class MLOperatorEdgeType : uint32_t
     Undefined = 0,
     Tensor = 1,
     SequenceTensor = 2,
+    Primitive = 3,
 };
 
 //! \struct MLOperatorEdgeDescription

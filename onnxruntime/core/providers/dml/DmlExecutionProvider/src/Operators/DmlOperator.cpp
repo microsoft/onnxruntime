@@ -89,7 +89,7 @@ namespace Dml
         {
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
             ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
-            
+
             // Static buffer (might truncate name) to avoid excessive dynamic allocation only for debugging purposes.
             wchar_t nodeName[512];
             ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->GetWideName(sizeof(nodeName), nodeName));
@@ -670,6 +670,59 @@ namespace Dml
             minDimensionCount,
             0
             );
+    }
+
+    TensorSequenceDesc DmlOperator::CreateTensorSequenceDescFromInput(
+        const MLOperatorKernelCreationContext& kernelInfo,
+        uint32_t index,
+        int32_t coerceAxis,
+        int32_t placement,
+        int32_t leftAlignedDimensionCount,
+        std::optional<gsl::span<const uint32_t>> tensorShape,
+        uint32_t minDimensionCount
+        ) const
+    {
+        if (!kernelInfo.IsInputValid(index))
+        {
+            // The tensor is optional.
+            return TensorSequenceDesc();
+        }
+
+        auto edgeDesc = kernelInfo.GetInputEdgeDescription(index);
+        assert(edgeDesc.edgeType == MLOperatorEdgeType::SequenceTensor);
+        ORT_THROW_HR_IF(E_INVALIDARG, edgeDesc.edgeType != MLOperatorEdgeType::SequenceTensor);
+
+        const auto& shapeDescription = kernelInfo.GetTensorShapeDescription();
+        const uint32_t numTensors = shapeDescription.GetSequenceInputCount(index);
+
+        TensorSequenceDesc tensorDescs;
+        tensorDescs.reserve(numTensors);
+
+        for (uint32_t sequenceIndex = 0; sequenceIndex < numTensors; ++sequenceIndex)
+        {
+            std::vector<uint32_t> actualTensorShape;
+            if (kernelInfo.HasTensorShapeDescription())
+            {
+                actualTensorShape = shapeDescription.GetSequenceInputTensorShape(index, sequenceIndex);
+
+                tensorDescs.emplace_back(
+                    edgeDesc.tensorDataType,
+                    tensorShape ? *tensorShape : actualTensorShape,
+                    actualTensorShape,
+                    coerceAxis,
+                    placement,
+                    leftAlignedDimensionCount,
+                    minDimensionCount,
+                    0);
+            }
+            else
+            {
+                // The tensor has delayed shape determination.
+                tensorDescs.push_back(TensorDesc());
+            }
+        }
+
+        return tensorDescs;
     }
 
     TensorDesc DmlOperator::CreateTensorDescFromOutput(

@@ -82,7 +82,7 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
     //! Gets the minimum size of a char buffer to store the node name (including null terminator).
     //! Returns 1 if the node has no name (calling GetUtf8Name will write a single null terminator).
     STDMETHOD_(uint32_t, GetUtf8NameBufferSizeInBytes)() const noexcept PURE;
- 
+
     //! Writes the node name and null terminator into a char buffer.
     STDMETHOD(GetUtf8Name)(
         uint32_t bufferSizeInBytes,
@@ -215,12 +215,28 @@ IMLOperatorKernelContextPrivate : IUnknown
         _COM_Outptr_result_maybenull_ IMLOperatorTensor** tensor
         ) const noexcept PURE;
 
+    //! Gets the output tensor of the operator at the specified index.
+    //! This sets tensor to nullptr for optional outputs which do not exist.
+    //! Returns an error if the output at the specified index is not a tensor.
+    STDMETHOD(GetSequenceOutputTensor)(
+        uint32_t outputIndex,
+        uint32_t sequenceIndex,
+        MLOperatorTensorDataType dataType,
+        uint32_t dimensions,
+        const uint32_t* dimensionSizes,
+        bool gpuOutput,
+        _COM_Outptr_result_maybenull_ IMLOperatorTensor** tensor
+        ) const noexcept PURE;
+
     //! Gets the input tensor of the operator at the specified index.
     //! This sets tensor to nullptr for optional inputs which do not exist.
     //! Returns an error if the input at the specified index is not a tensor.
     STDMETHOD_(uint32_t, GetSequenceInputCount)(
         uint32_t inputIndex
         ) const noexcept PURE;
+
+    //! Returns whether the tensor at inputIndex is a sequence tensor or not
+    STDMETHOD_(bool, IsSequenceInputTensor)(uint32_t inputIndex) const = 0;
 };
 
 // Declare private enum MLOperatorAttributeType::Tensor.
