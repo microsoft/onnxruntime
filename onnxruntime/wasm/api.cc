@@ -68,14 +68,9 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            const char* /*profile_file_prefix*/,
                                            const char* log_id,
                                            size_t log_severity_level,
-                                           size_t log_verbosity_level,
-                                           const char* optimized_model_filepath) {
+                                           size_t log_verbosity_level) {
   OrtSessionOptions* session_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateSessionOptions, &session_options);
-
-  if (optimized_model_filepath) {
-    RETURN_NULLPTR_IF_ERROR(SetOptimizedModelFilePath, session_options, optimized_model_filepath);
-  }
 
   // assume that a graph optimization level is checked and properly set at JavaScript
   RETURN_NULLPTR_IF_ERROR(SetSessionGraphOptimizationLevel,
