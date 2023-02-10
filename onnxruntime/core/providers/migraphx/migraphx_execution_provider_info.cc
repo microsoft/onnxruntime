@@ -27,9 +27,7 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
               [&info](const std::string& value_str) -> Status {
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.device_id));
                 int num_devices{};
-                ORT_RETURN_IF_NOT(
-                    HIP_CALL(hipGetDeviceCount(&num_devices)),
-                    "hipGetDeviceCount() failed.");
+                ORT_RETURN_IF_ERROR(HIP_CALL(hipGetDeviceCount(&num_devices)));
                 ORT_RETURN_IF_NOT(
                     0 <= info.device_id && info.device_id < num_devices,
                     "Invalid device ID: ", info.device_id,

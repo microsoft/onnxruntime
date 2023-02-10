@@ -26,24 +26,22 @@ class BasicBackend : public IBackend {
                GlobalContext& global_context,
                const SubGraphContext& subgraph_context);
 
-  void Infer(Ort::CustomOpApi& ort, OrtKernelContext* context) override;
+  void Infer(OrtKernelContext* context) override;
 
  private:
   bool ImportBlob(std::string hw_target, bool vpu_status);
   void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph::Node>>& const_outputs_map);
-  void PopulateConfigValue(OVConfig& config);
+  void PopulateConfigValue(OVConfig& config, ov::AnyMap& device_config);
   void EnableCaching();
-  #if defined(OV_API_20)
-  void EnableGPUThrottling(OVConfig& config);
-  #endif 
-  void StartAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void EnableGPUThrottling(ov::AnyMap& device_config);
+  void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
 #ifdef IO_BUFFER_ENABLED
-  void StartRemoteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void StartRemoteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 #endif
 
-  void CompleteAsyncInference(Ort::CustomOpApi& ort, OrtKernelContext* context, std::shared_ptr<OVInferRequest> infer_request);
+  void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
@@ -78,11 +76,7 @@ class InferRequestsQueue {
   void printstatus() {
     std::cout << "printing elements of the vector (infer_requests_): " << std::endl;
     for (auto i = infer_requests_.begin(); i != infer_requests_.end(); ++i) {
-      #if defined (OV_API_20)
       i->get()->QueryStatus();
-      #else 
-      std::cout << *i << "\n";
-      #endif 
     }
     std::cout << '\n';
   }

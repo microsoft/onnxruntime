@@ -12,6 +12,9 @@
 namespace onnxruntime {
 namespace function_utils {
 
+using string = std::string;
+using namespace ONNX_NAMESPACE;
+
 // Utilify function to get the imported version of domain from opset imports
 // Returns -1 if requested domain is not found in the opset_imports
 template <template <typename, typename> class M>
@@ -23,73 +26,13 @@ static int GetVersionForDomain(const std::string& domain, const M<std::string, i
   return it->second;
 }
 
-
-// This method updates the names of inputs/outputs of nodes in subgraphs
-// within nodes in an op that has a FunctionBody.
-// Subgraphs within an op with a FunctionBody could be referencing inputs/outputs in the OpSchema
-// and we need to replace these names with the corresponding input/output names from the actual model graph
-
-// The arguments to this method are :
-// (1) The 'subgraph' from a node containing it (ONNX::GraphProto)
-// (2) The parent 'graph' - main model graph (OnnxRuntime::Graph)
-// (3) The node with a function body (ONNX::NodeProto)
-// (4) A map containing the input name from the op schema to the corresponding index
-// E.g. For Range-11, {"start" : 0, "limit": 1, "delta": 2}
-// (5) A map containing the output name from the op schema to the corresponding index
-// E.g. For Range-11, {"output" : 0}
-static void UpdateSubgraphsWithinFunctionBody(ONNX_NAMESPACE::GraphProto& subgraph_proto,
-                                              const Graph& parent_graph,
-                                              const ONNX_NAMESPACE::NodeProto& function_node_in_parent_graph,
-                                              const InlinedHashMap<std::string, int>& input_name_idx_map,
-                                              const InlinedHashMap<std::string, int>& output_name_idx_map) {
-  // Iterate through all the nodes in the subgraph
-  for (auto subgraph_node = subgraph_proto.mutable_node()->begin();
-       subgraph_node != subgraph_proto.mutable_node()->end(); ++subgraph_node) {
-    // Iterate through all the inputs of the current node
-    for (int idx = 0; idx < (*subgraph_node).input_size(); ++idx) {
-      const std::string& tensor_name = (*subgraph_node).input().Get(idx);
-      auto iter = input_name_idx_map.find(tensor_name);
-      // If an input pertaining to the name in the op schema is found,
-      // replace it with the corresponding input to the node with function body from the actual model graph
-      if (iter != input_name_idx_map.end()) {
-        const auto parent_graph_input_to_function_node = function_node_in_parent_graph.input().Get(iter->second);
-        (*subgraph_node).set_input(idx, parent_graph_input_to_function_node);
-      }
-    }
-    // Iterate through all the output of the current node
-    for (int idx = 0; idx < (*subgraph_node).output_size(); ++idx) {
-      const std::string& tensor_name = (*subgraph_node).output().Get(idx);
-      auto iter = output_name_idx_map.find(tensor_name);
-      if (iter != output_name_idx_map.end()) {
-        // If an input pertaining to the name in the op schema is found,
-        // replace it with the corresponding output to the node with function body from the actual model graph
-        const auto& parent_graph_output_to_function_node = function_node_in_parent_graph.output().Get(iter->second);
-        (*subgraph_node).set_output(idx, parent_graph_output_to_function_node);
-      }
-    }
-
-    for (auto subgraph_node_attr = (*subgraph_node).mutable_attribute()->begin();
-         subgraph_node_attr != (*subgraph_node).mutable_attribute()->end(); ++subgraph_node_attr) {
-      if ((*subgraph_node_attr).has_f()) {
-        ORT_THROW(
-            "A node with a function body within a subgraph within another function body "
-            "is currently not supported in ORT");
-      }
-      // Recurse into any subgraphs in the current subgraph being processed
-      if ((*subgraph_node_attr).has_g()) {
-        UpdateSubgraphsWithinFunctionBody(*(*subgraph_node_attr).mutable_g(),
-                                          parent_graph, function_node_in_parent_graph,
-                                          input_name_idx_map, output_name_idx_map);
-      }
-    }
-  }
-}
-
-std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
-    const IndexedSubGraph& nodes_to_fuse) {
+std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(
+    const Graph& graph,
+    const IndexedSubGraph& nodes_to_fuse, bool allow_aggregated_tensor_type) {
   const auto* meta_def = nodes_to_fuse.GetMetaDef();
-  auto op_schema = std::make_unique<ONNX_NAMESPACE::OpSchema>();
-  op_schema->SetName(meta_def->name);
+
+  using ONNX_NAMESPACE::OpSchema;
+  auto op_schema = std::make_unique<OpSchema>(meta_def->name, __FILE__, __LINE__);
   op_schema->SetDomain(meta_def->domain);
   op_schema->SetDoc(meta_def->doc_string);
   op_schema->SinceVersion(meta_def->since_version);
@@ -98,20 +41,34 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const Graph& graph,
     op_schema->TypeAndShapeInferenceFunction(meta_def->type_and_shape_inference_function);
   }
 
-  int i = 0;
+  if (allow_aggregated_tensor_type) {
+    // The generated schema will use the same type constraint for all inputs and outputs,
+    // and that type constraint will match all tensor types.
+    // Due to this, a user of this style of schema must manually check whether any applicable type constraints
+    // for each input or output are satisfied prior to creating a node that uses this schema
+    //
+    op_schema->TypeConstraint("TAggregatedTypes", ONNX_NAMESPACE::OpSchema::all_tensor_types_with_bfloat(),
+                              "all_tensor_types_with_bfloat");
+  }
 
-  for (auto& input : meta_def->inputs) {
-    auto input_arg = graph.GetNodeArg(input);
+  int i = 0;
+  for (const auto& input : meta_def->inputs) {
+    const auto* input_arg = graph.GetNodeArg(input);
     // inputs must have a type. can be inferred for outputs.
     ORT_ENFORCE(input_arg->Type() != nullptr);
-    op_schema->Input(i, input, "", *input_arg->Type());
-    ++i;
+    op_schema->Input(i, input, "",
+                     allow_aggregated_tensor_type ? "TAggregatedTypes" : *input_arg->Type(),
+                     OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
+
   i = 0;
-  for (auto& output : meta_def->outputs) {
-    auto output_arg = graph.GetNodeArg(output);
-    op_schema->Output(i, output, "", *output_arg->Type());
-    ++i;
+  for (const auto& output : meta_def->outputs) {
+    const auto* output_arg = graph.GetNodeArg(output);
+    op_schema->Output(i, output, "",
+                      allow_aggregated_tensor_type ? "TAggregatedTypes" : *output_arg->Type(),
+                      OpSchema::FormalParameterOption::Single, /*is_homogeneous=*/!allow_aggregated_tensor_type);
+    i++;
   }
   op_schema->Finalize();
 
@@ -154,19 +111,32 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
   for (const auto& relied_opset : onnx_func_proto.opset_import()) {
     opset_imports[relied_opset.domain()] = static_cast<int>(relied_opset.version());
   }
-  for (const auto& node : onnx_func_proto.node()) {
+
+  std::function<void(const ONNX_NAMESPACE::NodeProto&)> process_node = [&](const ONNX_NAMESPACE::NodeProto& node) {
     auto it = opset_imports.find(node.domain());
-    ORT_ENFORCE(it != opset_imports.end(), "No opset registered for domain " + node.domain() + " in function opset imports.");
+    ORT_ENFORCE(it != opset_imports.end(),
+                "No opset registered for domain " + node.domain() + " in function opset imports.");
     int domain_version = it->second;
-    ORT_ENFORCE(domain_version != -1, "No opset registered for domain " + node.domain() + " in function opset imports.");
-    const auto node_op_schema =
-        schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
+    ORT_ENFORCE(domain_version != -1,
+                "No opset registered for domain " + node.domain() + " in function opset imports.");
+
+    const auto* node_op_schema = schema_registry->GetSchema(node.op_type(), domain_version, node.domain());
+    int variadic_arg_idx = -1;
     for (int i = 0; i < node.input_size(); ++i) {
       auto& in_name = node.input().Get(i);
       auto iter = input_name_idx_map.find(in_name);
       if (iter != input_name_idx_map.end()) {
         int idx = iter->second;
-        std::string type_str = node_op_schema ? node_op_schema->inputs().at(i).GetTypeStr() + "in" + std::to_string(idx) : "Tin" + std::to_string(idx);
+        // if we have hit a variadic arg it is the last input in the schema, so we need to use that index not i.
+        auto schema_idx = variadic_arg_idx != -1 ? variadic_arg_idx : i;
+
+        std::string type_str;
+        if (node_op_schema) {
+          type_str = node_op_schema->inputs().at(schema_idx).GetTypeStr() + "in" + std::to_string(idx);
+        } else {
+          type_str = "Tin" + std::to_string(idx);
+        }
+
         input_types_list[idx] = std::make_pair(in_name, type_str);
         if (!type_constraint_map.count(type_str)) {
           // If schema is available for the node then get the allowed types from the schema
@@ -175,7 +145,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->inputs().at(i).GetTypes();
+            const auto& types = node_op_schema->inputs().at(schema_idx).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (const auto* s : types) {
               dest_types.emplace_back(*s);
@@ -187,14 +157,31 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+
+        // if this is a variadic input there are no more inputs in the schema
+        if (node_op_schema && variadic_arg_idx == -1 &&
+            node_op_schema->inputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+          variadic_arg_idx = i;
+        }
       }
     }
+
+    variadic_arg_idx = -1;
     for (int i = 0; i < node.output_size(); ++i) {
       auto& out_name = node.output().Get(i);
       auto iter = output_name_idx_map.find(out_name);
       if (iter != output_name_idx_map.end()) {
         int idx = iter->second;
-        std::string type_str = node_op_schema ? node_op_schema->outputs().at(i).GetTypeStr() + "out" + std::to_string(i) : "Tout" + std::to_string(i);
+        // if we have hit a variadic arg it is the last output in the schema, so we need to use that index.
+        auto schema_idx = variadic_arg_idx != -1 ? variadic_arg_idx : i;
+
+        std::string type_str;
+        if (node_op_schema) {
+          type_str = node_op_schema->outputs().at(schema_idx).GetTypeStr() + "out" + std::to_string(idx);
+        } else {
+          type_str = "Tout" + std::to_string(idx);
+        }
+
         output_types_list[idx] = std::make_pair(out_name, type_str);
         if (!type_constraint_map.count(type_str)) {
           // If schema is available for the node then get the allowed types from the schema
@@ -203,7 +190,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
           // the requested types.
           auto& dest_types = type_constraint_map[type_str];
           if (node_op_schema) {
-            const auto& types = node_op_schema->outputs().at(i).GetTypes();
+            const auto& types = node_op_schema->outputs().at(schema_idx).GetTypes();
             dest_types.reserve(dest_types.size() + types.size());
             for (auto* data_type : types) {
               dest_types.emplace_back(*data_type);
@@ -215,6 +202,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
             }
           }
         }
+
+        // if this is a variadic output there are no more outputs in the schema
+        if (node_op_schema && variadic_arg_idx == -1 &&
+            node_op_schema->outputs().at(schema_idx).GetOption() == OpSchema::FormalParameterOption::Variadic) {
+          variadic_arg_idx = i;
+        }
       }
     }
 
@@ -224,8 +217,15 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
     for (auto& attr : node.attribute()) {
       if (!attr.ref_attr_name().empty() && utils::HasType(attr))
         attribute_type_map[attr.ref_attr_name()] = attr.type();
+      if (attr.ref_attr_name().empty() && attr.has_g()) {
+        for (const auto& sgnode : attr.g().node())
+          process_node(sgnode);
+      }
     }
-  }
+  };
+
+  for (const auto& node : onnx_func_proto.node())
+    process_node(node);
 
   int i = 0;
   for (auto& input : input_types_list) {
@@ -249,12 +249,12 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 }
 
 std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& function_domain,
-    const std::string& function_name,
-    const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
-    const std::unordered_map<std::string, int>& domain_version_map,
-    const SchemaRegistryManager& schema_registry,
-    const logging::Logger& logger,
-    bool allow_released_opsets_only) {
+                                                       const std::string& function_name,
+                                                       const InlinedHashMap<std::string, const ONNX_NAMESPACE::FunctionProto*>& model_local_functions,
+                                                       const std::unordered_map<std::string, int>& domain_version_map,
+                                                       const SchemaRegistryManager& schema_registry,
+                                                       const logging::Logger& logger,
+                                                       bool allow_released_opsets_only) {
   std::string func_identifier = function_utils::GetFunctionIdentifier(function_domain, function_name);
   auto iter = model_local_functions.find(func_identifier);
   if (iter == model_local_functions.end()) {
@@ -316,229 +316,155 @@ std::unique_ptr<ONNX_NAMESPACE::OpSchema> CreateSchema(const std::string& functi
         ONNX_NAMESPACE::ShapeInferenceOptions options{true, 1, false};
         std::unordered_map<std::string, const ONNX_NAMESPACE::FunctionProto*> map_copy(model_local_functions.begin(),
                                                                                        model_local_functions.end());
+        std::unordered_map<std::string, TensorShapeProto> empty_map;
+        ONNX_NAMESPACE::shape_inference::SymbolTableImpl symbolTable;
         ONNX_NAMESPACE::shape_inference::InferShapeForFunctionNode(*onnx_func_proto, func_domain_to_version,
-                                                                   schema_registry, ctx, options, map_copy);
+                                                                   schema_registry, ctx, options, map_copy,
+                                                                   &symbolTable, &empty_map);
       });
 
   op_schema->Finalize();
   return op_schema;
 }
 
-Status Instantiate(onnxruntime::Graph& graph,
-    const onnxruntime::NodeIndex node_index,
-    const ONNX_NAMESPACE::FunctionProto& onnx_func_proto,
-    std::unique_ptr<Function>& output) {
-  auto* node_in_parent_graph = graph.GetNode(node_index);
-  ORT_ENFORCE(node_in_parent_graph);
-  std::vector<const NodeArg*> graph_inputs(node_in_parent_graph->InputDefs().size(), nullptr),
-      graph_outputs(node_in_parent_graph->OutputDefs().size(), nullptr);
+class Inliner {
+ private:
+  std::string prefix;
+  const onnxruntime::NodeAttributes& attr_map;
+  std::vector<InlinedHashMap<std::string, std::string>> rename_scopes;
 
-  // Add node and node args into subgraph
-  // The subgraph preserved the input/output tensor names
-  // in the parent graph for later inlining purpose
-  const auto& attr_map = node_in_parent_graph->GetAttributes();
+  Inliner(std::string prefix_, const onnxruntime::NodeAttributes& attr_map_) : prefix(prefix_),
+                                                                               attr_map(attr_map_) {
+    // Create an empty mapping for the top-level scope.
+    rename_scopes.emplace_back();
+  }
 
-  ONNX_NAMESPACE::NodeProto function_op_node_proto;  // NodeProto pertaining to the op with a FunctionBody
-  node_in_parent_graph->ToProto(function_op_node_proto);
+  // Replace given name with a unique version of the name, and cache the
+  // renaming-binding in current scope.
+  void make_unique(std::string& name) {
+    auto new_name = prefix + name;
+    auto& current_scope = rename_scopes.back();
+    current_scope[name] = new_name;
+    name = new_name;
+  }
 
-  InlinedHashSet<std::string_view> node_input_outputs;
-  auto parent_input_defs = node_in_parent_graph->InputDefs();
-  auto parent_output_defs = node_in_parent_graph->OutputDefs();
-  node_input_outputs.reserve(parent_input_defs.size() + parent_output_defs.size());
+  void rename(std::string& name) {
+    if (name.empty()) return;
+    for (auto i = rename_scopes.size(); i > 0; --i) {
+      const auto& map = rename_scopes[i - 1];
+      auto iter = map.find(name);
+      if (iter != map.end()) {
+        name = iter->second;
+        return;
+      }
+    }
+    make_unique(name);
+  }
 
-  for (const auto* input_def : parent_input_defs) {
-    if (input_def->Exists()) {
-      node_input_outputs.insert(input_def->Name());
+  template <bool isOutput>
+  void bind(google::protobuf::RepeatedPtrField<string>& formals, const google::protobuf::RepeatedPtrField<string>& actuals) {
+    // Every formal parameter name FP should be replace by the corresponding actual parameter name AP.
+    // However, if AP is empty, it is a missing optional parameter. This does not make any difference
+    // for inputs. However, for outputs we use a unique dummy name to handle the case that it
+    // is used in an output-context where it is not optional.
+    ORT_ENFORCE(actuals.size() <= formals.size(),
+                "Number of actual parameters cannot exceed number of formal parameters");
+    auto& current_scope = rename_scopes.back();
+    int i = 0;
+    for (; i < actuals.size(); ++i) {
+      std::string& formal = *formals.Mutable(i);
+      std::string rename_as = actuals.Get(i);
+      if constexpr (isOutput)
+        if (rename_as.empty())
+          rename_as = prefix + formal;
+      current_scope[formal] = rename_as;
+      if (!rename_as.empty())
+        formal = rename_as;
+    }
+    for (; i < formals.size(); ++i) {
+      std::string& formal = *formals.Mutable(i);
+      std::string rename_as = isOutput ? prefix + formal : std::string("");
+      current_scope[formal] = rename_as;
+      if (!rename_as.empty())
+        formal = rename_as;
     }
   }
 
-  for (const auto* output_def : parent_output_defs) {
-    if (output_def->Exists()) {
-      node_input_outputs.insert(output_def->Name());
+  // Process a node:
+  void transform(NodeProto& n) {
+    if (!n.name().empty())
+      n.set_name(prefix + n.name());
+
+    for (auto& x : *n.mutable_input()) {
+      rename(x);
     }
-  }
-
-  ONNX_NAMESPACE::TypeProto tensor_int32;  // dummy type used for unused formal parameters
-  tensor_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
-
-  output = std::make_unique<FunctionImpl>(graph, onnx_func_proto);
-
-  auto& function_body_graph = output->MutableBody();
-  InlinedHashMap<std::string, int> input_name_idx_map;
-  InlinedHashMap<std::string, int> output_name_idx_map;
-  InlinedHashMap<std::string, std::string> internal_input_output_updates;
-
-  for (int i = 0; i < onnx_func_proto.input_size(); ++i) {
-    input_name_idx_map[onnx_func_proto.input().Get(i)] = i;
-  }
-  for (int i = 0; i < onnx_func_proto.output_size(); ++i) {
-    output_name_idx_map[onnx_func_proto.output().Get(i)] = i;
-  }
-  // iterate over each node in the FunctionProto and fix inputs/outputs
-  for (auto node = onnx_func_proto.node().begin(); node != onnx_func_proto.node().end(); ++node) {
-    InlinedVector<onnxruntime::NodeArg*> inputs;
-    InlinedVector<onnxruntime::NodeArg*> outputs;
-    std::string uniq_identifier = (*node).name();
-    if (!utils::HasName(*node)) {
-      std::stringstream ss;
-      ss << static_cast<const void*>(&(*node));
-      uniq_identifier = ss.str();
+    for (auto& y : *n.mutable_output()) {
+      rename(y);
     }
-
-    for (int idx = 0; idx < (*node).input_size(); ++idx) {
-      const std::string& tensor_name = (*node).input().Get(idx);
-      if (tensor_name.empty()) {
-        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
-        inputs.push_back(&no_arg);
-        continue;
-      }
-      auto iter = input_name_idx_map.find(tensor_name);
-      if (iter != input_name_idx_map.end()) {
-        // If input is part of function inputs, preserve NodeArg and input/output names
-        const std::string& actual_parameter_name = function_op_node_proto.input().Get(iter->second);
-        if (!actual_parameter_name.empty()) {
-          const onnxruntime::NodeArg* node_arg = graph.GetNodeArg(actual_parameter_name);
-          const ONNX_NAMESPACE::TypeProto* actual_type = node_arg->TypeAsProto();
-          auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
-          inputs.push_back(&n_input);
-          graph_inputs[iter->second] = &n_input;
-        } else {
-          // Unused optional parameter to function
-          auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, nullptr);
-          inputs.push_back(&n_input);
-          auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
-          graph_inputs[iter->second] = &unused_formal_param;
-        }
-      } else {
-        // If input is part of function outputs, preserve NodeArg and input/output names
-        iter = output_name_idx_map.find(tensor_name);
-        if (iter != output_name_idx_map.end()) {
-          const std::string& actual_parameter_name = function_op_node_proto.output().Get(iter->second);
-          const onnxruntime::NodeArg* node_arg = graph.GetNodeArg(actual_parameter_name);
-          const ONNX_NAMESPACE::TypeProto* actual_type = node_arg->TypeAsProto();
-          auto& n_input = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
-          inputs.push_back(&n_input);
-        } else {
-          // Input is intermediate input in function body.
-          // Check if input name needs to be mapped to a new unique name (this is required when node input\outputs
-          // have same names as intermediate input\outputs.
-          auto it = internal_input_output_updates.find(tensor_name);
-          if (it != internal_input_output_updates.end()) {
-            auto& n_input = function_body_graph.GetOrCreateNodeArg(
-                it->second, nullptr);
-            inputs.push_back(&n_input);
-          } else {
-            // Input is intermediate function body input and has no name collision with node input\output
-            // It can be added to the graph without any modification
-            auto& n_input = function_body_graph.GetOrCreateNodeArg(
-                tensor_name, nullptr);
-            inputs.push_back(&n_input);
-          }
-        }
-      }
-    }
-
-    for (int idx = 0; idx < (*node).output_size(); ++idx) {
-      std::string tensor_name = (*node).output().Get(idx);
-      if (tensor_name.empty()) {
-        auto& no_arg = function_body_graph.GetOrCreateNodeArg(tensor_name, nullptr);
-        outputs.push_back(&no_arg);
-        continue;
-      }
-      auto iter = output_name_idx_map.find(tensor_name);
-      if (iter != output_name_idx_map.end()) {
-        // Preserving NodeArg and input/output names
-        const std::string& actual_parameter_name = function_op_node_proto.output().Get(iter->second);
-        if (!actual_parameter_name.empty()) {
-          const onnxruntime::NodeArg* node_arg = graph.GetNodeArg(actual_parameter_name);
-          const ONNX_NAMESPACE::TypeProto* actual_type = node_arg->TypeAsProto();
-          auto& n_output = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, actual_type);
-          outputs.push_back(&n_output);
-          graph_outputs[iter->second] = &n_output;
-        } else {
-          // Unused optional parameter to function
-          auto& n_output = function_body_graph.GetOrCreateNodeArg(actual_parameter_name, nullptr);
-          outputs.push_back(&n_output);
-          auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
-          graph_outputs[iter->second] = &unused_formal_param;
-        }
-      } else {
-        // Output is intermediate output in function body.
-        // Check if output name needs to be mapped to a new unique name (this is required when node input\outputs
-        // have same names as intermediate input\outputs.
-        auto it = node_input_outputs.find(tensor_name);
-        if (it != node_input_outputs.end()) {
-          auto& n_output = function_body_graph.GetOrCreateNodeArg(
-              tensor_name + uniq_identifier, nullptr);
-          outputs.push_back(&n_output);
-          internal_input_output_updates.insert({tensor_name, tensor_name + uniq_identifier});
-        } else {
-          auto& n_output = function_body_graph.GetOrCreateNodeArg(
-              tensor_name, nullptr);
-          outputs.push_back(&n_output);
-        }
-      }
-    }
-
-    // Formal parameters unused in function body. For now, we retain them in the graph's input and
-    // output list (with a dummy type).
-    // TODO: Need a proper scheme to generate unique names to avoid name-collision.
-    for (unsigned i = 0; i < graph_inputs.size(); ++i) {
-      if (graph_inputs[i] == nullptr) {
-        auto tensor_name = onnx_func_proto.input(i) + "_dummy";
-        auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
-        graph_inputs[i] = &unused_formal_param;
-      }
-    }
-
-    for (unsigned i = 0; i < graph_outputs.size(); ++i) {
-      if (graph_outputs[i] == nullptr) {
-        auto tensor_name = onnx_func_proto.output(i) + "_dummy";
-        auto& unused_formal_param = function_body_graph.GetOrCreateNodeArg(tensor_name, &tensor_int32);
-        graph_outputs[i] = &unused_formal_param;
-      }
-    }
-
-    onnxruntime::NodeAttributes new_attr_map;
-    new_attr_map.reserve(node->attribute_size());
-    for (auto node_attr = (*node).attribute().begin();
-         node_attr != (*node).attribute().end(); ++node_attr) {
-      if (!(*node_attr).ref_attr_name().empty()) {
-        auto entry = attr_map.find((*node_attr).ref_attr_name());
+    auto& attributes = *n.mutable_attribute();
+    for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {
+      auto& attr = *attr_iter;
+      if (!attr.ref_attr_name().empty()) {
+        // Attribute-references must be replaced by the corresponding attribute-value in the call-node
+        // if the call-node contains the attribute. Otherwise, this attribute must be removed.
+        auto entry = attr_map.find(attr.ref_attr_name());
         if (entry != attr_map.cend()) {
-          onnx::AttributeProto attr_copy = entry->second;
-          attr_copy.set_name(node_attr->name());
-          new_attr_map[(*node_attr).name()] = std::move(attr_copy);
+          // Copy value of attribute, but retain original name:
+          std::string name = attr.name();
+          attr = entry->second;
+          attr.set_name(name);
+        } else {
+          attr_iter = attributes.erase(attr_iter);
+          continue;
         }
-      } else {
-        onnx::AttributeProto attr_copy = *node_attr;
-        // If this node contains subgraphs, the node inputs/outputs within them needs to be fixed as well
-        if ((*node_attr).has_g()) {
-          UpdateSubgraphsWithinFunctionBody(*attr_copy.mutable_g(),
-                                            graph, function_op_node_proto,
-                                            input_name_idx_map, output_name_idx_map);
-        }
-        new_attr_map[(*node_attr).name()] = std::move(attr_copy);
       }
+      // Subgraphs must be recursively processed.
+      if (attr.has_g()) {
+        transform(*attr.mutable_g());
+      }
+      for (auto& graph : *attr.mutable_graphs())
+        transform(graph);
+      ++attr_iter;
     }
-    function_body_graph.AddNode(uniq_identifier, node->op_type(),
-                                node->doc_string(), inputs, outputs, &new_attr_map, node->domain());
   }
 
-  function_body_graph.SetInputs(graph_inputs);
-  function_body_graph.SetOutputs(graph_outputs);
+  // Process a sub-graph, contained as an attribute in a control-flow op node.
+  void transform(GraphProto& graph) {
+    rename_scopes.emplace_back();
+    for (auto& x : *graph.mutable_input())
+      make_unique(*x.mutable_name());
+    for (auto& init : *graph.mutable_initializer())
+      make_unique(*init.mutable_name());
+    for (auto& y : *graph.mutable_output())
+      make_unique(*y.mutable_name());
+    for (auto& n : *graph.mutable_node())
+      transform(n);
+    rename_scopes.pop_back();
+  }
 
-  onnxruntime::Graph::ResolveOptions options;
-  ORT_RETURN_IF_ERROR(function_body_graph.Resolve(options));
+ public:
+  // The main specialization method: specialize a FunctionProto for a particular call-site.
+  static void specialize(const NodeProto& callnode, FunctionProto& callee, const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+    Inliner inliner(unique_prefix, attr_map);
 
-  ORT_RETURN_IF(node_in_parent_graph->InputDefs().size() != function_body_graph.GetInputsIncludingInitializers().size(),
-    "Node " + node_in_parent_graph->Name() + "'s number of inputs is different from function body graph's number of input.");
+    inliner.bind<false>(*callee.mutable_input(), callnode.input());
+    inliner.bind<true>(*callee.mutable_output(), callnode.output());
 
-  ORT_RETURN_IF(node_in_parent_graph->OutputDefs().size() != function_body_graph.GetOutputs().size(),
-              "Node ", node_in_parent_graph->Name(), "'s number of outputs is different from function body graph's number of outputs.");
-  return Status::OK();
+    for (auto& n : *callee.mutable_node())
+      inliner.transform(n);
+  }
+};
+
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, const ONNX_NAMESPACE::NodeProto calling_node,
+                const onnxruntime::NodeAttributes& attr_map, std::string unique_prefix) {
+  Inliner::specialize(calling_node, called_function, attr_map, unique_prefix);
 }
 
+void Specialize(ONNX_NAMESPACE::FunctionProto& called_function, Node& calling_node, std::string unique_prefix) {
+  ONNX_NAMESPACE::NodeProto calling_node_proto;
+  calling_node.ToProto(calling_node_proto);
+  Specialize(called_function, calling_node_proto, calling_node.GetAttributes(), unique_prefix);
 }
-}
+
+}  // namespace function_utils
+}  // namespace onnxruntime

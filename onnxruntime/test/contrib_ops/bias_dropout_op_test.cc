@@ -136,14 +136,14 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   }
 
   auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-    ASSERT_GE(fetches.size(), 1);
+    ASSERT_GE(fetches.size(), 1u);
     const auto& output_tensor = FetchTensor(fetches[0]);
     auto output_span = output_tensor.DataAsSpan<float>();
 
     const auto num_dropped_values = std::count(output_span.begin(), output_span.end(), residual_value);
 
     if (ratio == 1.0f) {
-      ASSERT_EQ(num_dropped_values, static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
+      ASSERT_EQ(static_cast<unsigned int>(num_dropped_values), static_cast<size_t>(output_span.size())) << "provider: " << provider_type;
     } else {
       ASSERT_NEAR(static_cast<float>(num_dropped_values) / static_cast<size_t>(output_span.size()),
                   training_mode == TrainingTrue ? ratio : 0.0f, 0.1f)
@@ -159,7 +159,7 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
     }
 
     if (use_mask) {
-      ASSERT_GE(fetches.size(), 2);
+      ASSERT_GE(fetches.size(), 2u);
       const auto& mask_tensor = FetchTensor(fetches[1]);
       auto mask_span = mask_tensor.DataAsSpan<bool>();
       ASSERT_EQ(mask_span.size(), output_span.size()) << "provider: " << provider_type;
@@ -186,11 +186,11 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   t.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &t_eps);
 
   std::vector<OrtValue> dropout_outputs = t.GetFetches();
-  ASSERT_GE(dropout_outputs.size(), 1);
+  ASSERT_GE(dropout_outputs.size(), 1u);
   const float* output_values = FetchTensor(dropout_outputs[0]).Data<float>();
   t_bitmask.AddOutput<float>("output", input_shape, output_values, input_size);
   if (use_mask) {
-    ASSERT_GE(dropout_outputs.size(), 2);
+    ASSERT_GE(dropout_outputs.size(), 2u);
     const bool* mask_values = FetchTensor(dropout_outputs[1]).Data<bool>();
     std::vector<BitmaskElementType> bitmask_values = MasksToBitmasks(input_size, mask_values);
     t_bitmask.AddOutput<BitmaskElementType>("mask", {static_cast<int64_t>(bitmask_values.size())}, bitmask_values);

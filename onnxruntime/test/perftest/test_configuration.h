@@ -42,6 +42,7 @@ struct RunConfig {
   size_t duration_in_seconds{600};
   size_t concurrent_session_runs{1};
   bool f_dump_statistics{false};
+  int random_seed_for_input_data{-1};
   bool f_verbose{false};
   bool enable_memory_pattern{true};
   bool enable_cpu_mem_arena{true};
@@ -57,6 +58,9 @@ struct RunConfig {
   std::basic_string<ORTCHAR_T> ep_runtime_config_string;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_name_overrides;
   std::map<std::basic_string<ORTCHAR_T>, int64_t> free_dim_denotation_overrides;
+  std::string intra_op_thread_affinities;
+  bool disable_spinning = false;
+  bool disable_spinning_between_run = false;
 };
 
 struct PerformanceTestConfig {

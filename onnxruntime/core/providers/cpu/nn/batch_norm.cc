@@ -19,7 +19,7 @@
 #include "core/providers/cpu/nn/batch_norm_helper.h"
 
 namespace onnxruntime {
-// spec: https://github.com/onnx/onnx/blob/master/docs/Operators.md#BatchNormalization
+// spec: https://github.com/onnx/onnx/blob/main/docs/Operators.md#BatchNormalization
 
 ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 7, 8, float,
                                          KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
@@ -42,10 +42,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 14, 14, float,
                                          KernelDefBuilder()
                                              .Alias(3, 1)
                                              .Alias(4, 2)
-                                             // ORT 1.8 was shipped with just the "T" type constraint and
-                                             // we want to maintain backwards compatibility for
-                                             // the hash and hence just use "T" for the hash generation
-                                             .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<float>()})
                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
                                              .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()),
                                          BatchNorm<float>);
@@ -54,10 +50,6 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(BatchNormalization, 14, 14, double,
                                          KernelDefBuilder()
                                              .Alias(3, 1)
                                              .Alias(4, 2)
-                                             // ORT 1.8 was shipped with just the "T" type constraint and
-                                             // we want to maintain backwards compatibility for
-                                             // the hash and hence just use "T" for the hash generation
-                                             .FixedTypeConstraintForHash("T", {DataTypeImpl::GetTensorType<double>()})
                                              .TypeConstraint("T", DataTypeImpl::GetTensorType<double>())
                                              .TypeConstraint("U", DataTypeImpl::GetTensorType<double>()),
                                          BatchNorm<double>);

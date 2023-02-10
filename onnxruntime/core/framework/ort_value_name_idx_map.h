@@ -4,36 +4,40 @@
 #pragma once
 
 #include <atomic>
-#include <unordered_map>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 
 // This class is not thread-safe
 // TODO: this is a static hash lookup, it's easy to do it better
 namespace onnxruntime {
 class OrtValueNameIdxMap {
  public:
-  using const_iterator = typename std::unordered_map<std::string, int>::const_iterator;
+  using const_iterator = typename InlinedHashMap<std::string, int>::const_iterator;
 
   OrtValueNameIdxMap() = default;
 
   // Add OrtValue name to map and return index associated with it.
   // If entry already existed the existing index value is returned.
   int Add(const std::string& name) {
-    auto it = map_.find(name);
-    if (it == map_.end()) {
-      int idx = next_idx_++;
-      map_.insert(it, {name, idx});
+    const int idx = next_idx_;
+    auto p = map_.emplace(name, idx);
+    if (p.second) {
       idx_name_map_[idx] = name;
+      next_idx_++;
       return idx;
     }
-    return it->second;
+    return p.first->second;
   }
 
-  common::Status GetIdx(const std::string& name, int& idx) const {
+  common::Status GetIdx(std::string_view name, int& idx) const {
     idx = -1;
 
+#ifdef DISABLE_ABSEIL
+    auto it = map_.find(std::string(name));
+#else
     auto it = map_.find(name);
+#endif
     if (it == map_.end()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Could not find OrtValue with name '", name, "'");
     }
@@ -54,6 +58,10 @@ class OrtValueNameIdxMap {
 
   size_t Size() const { return map_.size(); };
   int MaxIdx() const { return next_idx_ - 1; }
+  void Reserve(size_t size) {
+    map_.reserve(size);
+    idx_name_map_.reserve(size);
+  }
 
   const_iterator begin() const noexcept { return map_.cbegin(); }
   const_iterator end() const noexcept { return map_.cend(); }
@@ -62,7 +70,7 @@ class OrtValueNameIdxMap {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtValueNameIdxMap);
 
   int next_idx_ = 0;
-  std::unordered_map<std::string, int> map_;
-  std::unordered_map<int, std::string> idx_name_map_;
+  InlinedHashMap<std::string, int> map_;
+  InlinedHashMap<int, std::string> idx_name_map_;
 };
 }  // namespace onnxruntime

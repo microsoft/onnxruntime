@@ -8,24 +8,21 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T>
 class SoftmaxGrad final : public CudaKernel {
  public:
-  SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info},
-                                          prop_(static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp()) {
-    const auto& node = info.node();
-    opset_ = (node.OpType() == "SoftmaxGrad_13" || node.OpType() == "LogSoftmaxGrad_13") ? 13 : 1;
-    axis_ = info.GetAttrOrDefault("axis", static_cast<int64_t>(opset_ < 13 ? 1 : -1));
-    log_softmax_ = info.GetKernelDef().OpName() == "LogSoftmaxGrad" || info.GetKernelDef().OpName() == "LogSoftmaxGrad_13";
+  SoftmaxGrad(const OpKernelInfo& info) : CudaKernel{info} {
+    const auto& op_type = info.node().OpType();
+    is_since_opset_13_ = (op_type == "SoftmaxGrad_13" || op_type == "LogSoftmaxGrad_13");
+    info.GetAttrOrDefault("axis", &axis_, static_cast<int64_t>(is_since_opset_13_ ? -1 : 1));
+    is_log_softmax_ = (op_type == "LogSoftmaxGrad" || op_type == "LogSoftmaxGrad_13");
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
   int64_t axis_;
-  bool log_softmax_;
-  int opset_;  // opset_ of the forward Softmax/LogSoftmax operator
-  const cudaDeviceProp& prop_;
+  bool is_log_softmax_;
+  bool is_since_opset_13_;
 };
 
 }  // namespace cuda

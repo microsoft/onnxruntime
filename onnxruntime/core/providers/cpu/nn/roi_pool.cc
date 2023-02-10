@@ -28,10 +28,10 @@ Status RoiPool<float>::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, {num_rois, channels, pooled_height_, pooled_width_});
 
-  const auto* Xdata = X->template Data<float>();
-  const auto* rois = R->template Data<float>();
+  const auto* Xdata = X->Data<float>();
+  const auto* rois = R->Data<float>();
 
-  auto* Ydata = Y->template MutableData<float>();
+  auto* Ydata = Y->MutableData<float>();
 
   for (int n = 0; n < num_rois; n++) {
     int roi_batch_id = static_cast<int>(rois[0]);

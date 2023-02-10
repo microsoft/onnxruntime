@@ -18,7 +18,7 @@ from op_test_utils import (
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
 
 
-class TestONNXModel(unittest.TestCase):
+class TestConcatModel(unittest.TestCase):
     def construct_model(self, model_path):
         #          (input)
         #         /    |  \
@@ -30,6 +30,8 @@ class TestONNXModel(unittest.TestCase):
         #         \    |    /
         #           \  |   /
         #            Concat
+        #              |
+        #             Relu
         #              |
         #           Identity
         #              |
@@ -67,7 +69,8 @@ class TestONNXModel(unittest.TestCase):
             axis=1,
         )
 
-        identity_node = helper.make_node("Identity", ["concat_output"], ["output"], name="identity_node")
+        relu_node = helper.make_node("Relu", ["concat_output"], ["relu_output"], name="relu_node")
+        identity_node = helper.make_node("Identity", ["relu_output"], ["output"], name="identity_node")
 
         initializers = [
             conv1_weight_initializer,
@@ -75,7 +78,7 @@ class TestONNXModel(unittest.TestCase):
             conv3_weight_initializer,
         ]
         graph = helper.make_graph(
-            [conv1_node, conv2_node, conv3_node, concat_node, identity_node],
+            [conv1_node, conv2_node, conv3_node, concat_node, relu_node, identity_node],
             "qlinear_concat_op_test",
             [input],
             [output],
@@ -145,11 +148,16 @@ class TestONNXModel(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
+
+        relu_count = 0
+        if activation_type == QuantType.QInt8 and extra_options.get("ActivationSymmetric", False):
+            relu_count = 1
         qdqnode_counts = {
             "Conv": 3,
-            "QuantizeLinear": 5,
-            "DequantizeLinear": 8,
+            "QuantizeLinear": 5 + relu_count,
+            "DequantizeLinear": 8 + relu_count,
             "Concat": 1,
+            "Relu": 0 + relu_count,
         }
         check_op_type_count(self, model_q8_qdq_path, **qdqnode_counts)
         qnode_io_qtypes = {

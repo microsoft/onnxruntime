@@ -63,11 +63,11 @@ template <typename T>
 void BahdanauAttention<T>::PrepareMemory(
     const gsl::span<const T>& memory,
     const gsl::span<const int>& memory_sequence_lengths) {
-  std::copy(memory.cbegin(), memory.cend(), values_.begin());
+  std::copy(memory.begin(), memory.end(), values_.begin());
   if (memory_sequence_lengths.empty()) {
     std::fill(mem_seq_lengths_.begin(), mem_seq_lengths_.end(), max_memory_steps_);
   } else {
-    std::copy(memory_sequence_lengths.cbegin(), memory_sequence_lengths.cend(), mem_seq_lengths_.begin());
+    std::copy(memory_sequence_lengths.begin(), memory_sequence_lengths.end(), mem_seq_lengths_.begin());
   }
 
   for (int b = 0; b < batch_size_; b++) {
@@ -145,7 +145,7 @@ void BahdanauAttention<T>::Compute(
       }
     }
 
-    SoftmaxInplace(gsl::span<T>{alignments, gsl::narrow_cast<gsl::index>(mem_steps)});
+    SoftmaxInplace(gsl::span<T>{alignments, gsl::narrow_cast<size_t>(mem_steps)});
 
     // Calculate the context
     auto outspan = output.subspan(b * memory_depth_);

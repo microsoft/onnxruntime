@@ -102,16 +102,16 @@ Status ConvInteger::Compute(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
     auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(uint8_t)) * col_buffer_size);
-    col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+    col_buffer = BufferUniquePtr(col_data, BufferDeleter(std::move(alloc)));
   }
 
   auto* col_buffer_data = static_cast<uint8_t*>(col_buffer.get());
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
 
-  const auto* Xdata = X->template Data<uint8_t>();
-  const auto* Wdata = W->template Data<uint8_t>();
-  auto* Ydata = Y->template MutableData<int32_t>();
+  const auto* Xdata = X->Data<uint8_t>();
+  const auto* Wdata = W->Data<uint8_t>();
+  auto* Ydata = Y->MutableData<int32_t>();
 
   for (int image_id = 0; image_id < N; ++image_id) {
     for (int group_id = 0; group_id < conv_attrs_.group; ++group_id) {

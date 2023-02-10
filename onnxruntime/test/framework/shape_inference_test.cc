@@ -7,6 +7,7 @@
 #include "gtest/gtest.h"
 #include "core/graph/model.h"
 #include "test/framework/model_builder_utils.h"
+#include "test/util/include/test_utils.h"
 #include "test/test_environment.h"
 
 using namespace ONNX_NAMESPACE;
@@ -54,27 +55,6 @@ class ShapeInferenceTest : public ::testing::Test {
 
   const TensorShapeProto* OutputShape(onnxruntime::Node& node, int arg_num = 0) {
     return node.OutputDefs()[arg_num]->Shape();
-  }
-
-  void CheckShapeEquality(const TensorShapeProto* shape1, const TensorShapeProto* shape2) {
-    EXPECT_NE(shape1, nullptr);
-    EXPECT_NE(shape2, nullptr);
-    if ((shape1 != nullptr) && (shape2 != nullptr)) {
-      EXPECT_EQ(shape1->dim_size(), shape2->dim_size()) << "Shapes do not have same rank";
-      auto min_dims = std::min(shape1->dim_size(), shape2->dim_size());
-      for (int i = 0; i < min_dims; ++i) {
-        auto dim1 = shape1->dim(i);
-        auto dim2 = shape2->dim(i);
-        EXPECT_EQ(dim1.has_dim_value(), dim2.has_dim_value());
-        if (dim1.has_dim_value()) {
-          EXPECT_EQ(dim1.dim_value(), dim2.dim_value());
-        }
-        EXPECT_EQ(dim1.has_dim_param(), dim2.has_dim_param());
-        if (dim1.has_dim_param()) {
-          EXPECT_EQ(dim1.dim_param(), dim2.dim_param());
-        }
-      }
-    }
   }
 
 };  // namespace test

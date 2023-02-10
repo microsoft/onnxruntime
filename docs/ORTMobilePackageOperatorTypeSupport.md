@@ -2,7 +2,7 @@
 
 ## Supported operators and types
 
-The supported operators and types are based on what is required to support float32 and quantized versions of popular models. The full list of input models used to determine this list is available [here](https://github.com/microsoft/onnxruntime/blob/master/tools/ci_build/github/android/mobile_package.required_operators.readme.txt)
+The supported operators and types are based on what is required to support float32 and quantized versions of popular models. The full list of input models used to determine this list is available [here](https://github.com/microsoft/onnxruntime/blob/main/tools/ci_build/github/android/mobile_package.required_operators.readme.txt)
 
 ## Supported data input types
 

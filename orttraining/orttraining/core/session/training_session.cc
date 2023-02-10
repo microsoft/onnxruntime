@@ -25,7 +25,7 @@
 #include "orttraining/models/runner/training_util.h"
 #include "orttraining/core/optimizer/megatron_transformer.h"
 
-//Gist Encoding
+// Gist Encoding
 #include "orttraining/core/optimizer/gist_encode_decode.h"
 
 #include "orttraining/training_ops/cpu/controlflow/event_pool.h"
@@ -349,7 +349,7 @@ Status TrainingSession::ConfigureForTraining(
                                          config.distributed_config.horizontal_parallel_size,
                                          config.distributed_config.pipeline_parallel_size});
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  MemoryInfo::SetLocalRank(config.distributed_config.world_rank);
+  GetMemoryProfiler().GetMemoryInfo().SetLocalRank(config.distributed_config.world_rank);
 #endif
 
 #ifdef USE_MPI
@@ -757,7 +757,8 @@ void TrainingSession::AddPreTrainingTransformers(const IExecutionProvider& execu
 Status TrainingSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
-    MinimalBuildOptimizationHandling minimal_build_optimization_handling) const {
+    MinimalBuildOptimizationHandling minimal_build_optimization_handling,
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn /*record_runtime_optimization_produced_op_schema_fn*/) const {
   ORT_RETURN_IF_NOT(
       minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
       "Only applying full build optimizations is supported by TrainingSession.");

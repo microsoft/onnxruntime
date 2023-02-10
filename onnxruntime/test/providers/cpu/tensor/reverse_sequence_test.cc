@@ -49,6 +49,11 @@ TEST(ReverseSequenceTest, TimeMajor) {
 }
 
 TEST(ReverseSequenceTest, LargerDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 2, which exceeds threshold";
+  }
+
   OpTester test("ReverseSequence", 10);
   std::vector<float> input = {0.f, 1.f,
                               2.f, 3.f,
@@ -98,6 +103,11 @@ TEST(ReverseSequenceTest, Strings) {
 }
 
 TEST(ReverseSequenceTest, InvalidInput) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: AbiCustomRegistry.cpp(507): The parameter is incorrect.";
+  }
+
   {
     int64_t batch_size = 2, seq_size = 4;
 

@@ -209,7 +209,7 @@ Status AttentionFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
     if ((node.GetOutputEdgesCount() >= 2 && node.GetOutputEdgesCount() <= 6) &&  // Add node.GetOutputEdgesCount() == 5/6 for distilbert
-        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1}, kOnnxDomain) &&
+        graph_utils::IsSupportedOptypeVersionAndDomain(node, "LayerNormalization", {1, 17}, kOnnxDomain) &&
         graph_utils::IsSupportedProvider(node, GetCompatibleExecutionProviders())) {
       // Get hidden size from layer norm bias tensor shape.
       const NodeArg& layer_norm_bias = *(node.InputDefs()[2]);
@@ -268,6 +268,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
                                int64_t hidden_size,
                                int64_t num_heads,
                                int64_t head_size,
+                               const float mask_filter_value,
                                const logging::Logger& logger) {
   InlinedVector<std::reference_wrapper<const Node>> pivot_nodes;
   if (edges.size() == 2) {
@@ -316,7 +317,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
       {0, 0, "Reshape", {5, 13}, kOnnxDomain},
       {0, 0, "Add", {7, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(pivot_nodes[0].get(), true, k_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for k");
@@ -386,6 +387,7 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
       nullptr,
       kMSDomain);
   attention_node.AddAttribute("num_heads", num_heads);
+  attention_node.AddAttribute("mask_filter_value", mask_filter_value);
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());
@@ -437,7 +439,7 @@ static bool FuseSubGraphQK(Node& layer_norm,
 
   std::vector<NodeIndex> nodes_to_remove;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 
@@ -528,7 +530,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
 
   std::vector<NodeIndex> nodes_to_remove;
   if (!FuseSubGraphQKImpl(layer_norm, graph, parent_path_nodes, mask_input, mask_int32_map, edges, nodes_to_remove, hidden_size,
-                          num_heads, head_size, logger)) {
+                          num_heads, head_size, mask_nodes.mask_filter_value, logger)) {
     return false;
   }
 
@@ -580,7 +582,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
           |      qk_MatMul            |                          |
           |           |    [B=2]      |              ([A=1.0] mask_Cast(to=1))
           |           |   /           |                   \     /
-          |        qk_Div             |                 mask_Sub   [B=-10000.0]
+          |        qk_Div             |                 mask_Sub   [B=-10000.0 or value of mask_filter_value]
           |            \              |                        \   /
           |       mask_Add <-------- /---------------------mask_Mul
           |             |           /
@@ -624,7 +626,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
       {0, 0, "Reshape", {5, 13}, kOnnxDomain},
       {0, 0, "Add", {7, 13}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_after_layer_norm, true, parent_path, edges, logger)) {
@@ -669,7 +671,7 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm, const Node& add_after_layer
     return false;
   }
 
-  //store parent path
+  // store parent path
   std::vector<std::reference_wrapper<const Node>> parent_path_nodes{reshape, transpose, qkv_matmul, v_transpose, v_reshape, v_add, v_matmul};
 
   // Find mask nodes: Unsqueeze -> Unsqueeze -> (Cast) -> Sub -> Mul -> Add -> Softmax --> [MatMul]

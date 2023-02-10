@@ -238,7 +238,6 @@ class AdasumInterface {
               tensor_counts[i] = tensor_counts[i];
               nghrCountVec[nghrCountVec_index][i] = 0;
             } else {
-              assert((myCount - myCountSoFar) >= 0);
               nghrCountVec[nghrCountVec_index][i] =
                   tensor_counts[i] -
                   (myCount - myCountSoFar);  // should not be negative

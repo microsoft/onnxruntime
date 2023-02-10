@@ -72,11 +72,11 @@ void QLinearImpl(OpKernelContext& context, double unit_cost, const ProcessBroadc
               "MatmulInteger : input1 C_zero_point must be a scalar or 1D tensor of size 1 if given");
 
   const float A_scale = *(tensor_a_scale->Data<float>());
-  const T A_zero_point = (nullptr == tensor_a_zero_point) ? T{} : *(tensor_a_zero_point->template Data<T>());
+  const T A_zero_point = (nullptr == tensor_a_zero_point) ? T{} : *(tensor_a_zero_point->Data<T>());
   const float B_scale = *(tensor_b_scale->Data<float>());
-  const T B_zero_point = (nullptr == tensor_b_zero_point) ? T{} : *(tensor_b_zero_point->template Data<T>());
+  const T B_zero_point = (nullptr == tensor_b_zero_point) ? T{} : *(tensor_b_zero_point->Data<T>());
   const float C_scale = *(tensor_c_scale->Data<float>());
-  const T C_zero_point = (nullptr == tensor_c_zero_point) ? T{} : *(tensor_c_zero_point->template Data<T>());
+  const T C_zero_point = (nullptr == tensor_c_zero_point) ? T{} : *(tensor_c_zero_point->Data<T>());
 
   InputBroadcaster input_broadcaster{*context.Input<Tensor>(0), *context.Input<Tensor>(3)};
   OutputBroadcaster output_broadcaster{input_broadcaster.GetSpanSize(),

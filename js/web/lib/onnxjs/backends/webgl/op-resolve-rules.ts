@@ -8,12 +8,14 @@ import * as binaryOps from './ops/binary-op';
 import {cast, parseCastAttributes} from './ops/cast';
 import {concat, parseConcatAttributes} from './ops/concat';
 import {conv, parseConvAttributes} from './ops/conv';
+import {convTranspose, parseConvTransposeAttributes} from './ops/conv-transpose';
 import {depthToSpace, parseDepthToSpaceAttributes} from './ops/depth-to-space';
 import {flatten, parseFlattenAttributes} from './ops/flatten';
 import {gather, parseGatherAttributes} from './ops/gather';
 import {gemm, parseGemmAttributesV11, parseGemmAttributesV7} from './ops/gemm';
 import {imageScaler, parseImageScalerAttributes} from './ops/image-scaler';
 import {instanceNormalization, parseInstanceNormalizationAttributes} from './ops/instance-normalization';
+import {lrn, parseLrnAttributes} from './ops/lrn';
 import {matMul, parseMatMulAttributes} from './ops/matmul';
 import {padV11, padV2, parsePadAttributesV11, parsePadAttributesV2} from './ops/pad';
 import {averagePool, globalAveragePool, globalMaxPool, maxPool, parseAveragePoolAttributes, parseGlobalAveragePoolAttributes, parseMaxPoolAttributes} from './ops/pool';
@@ -48,6 +50,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['Clip', '', '11+', unaryOps.clipV11],
   ['Concat', '', '4+', concat, parseConcatAttributes],
   ['Conv', '', '1+', conv, parseConvAttributes],
+  ['ConvTranspose', '', '1+', convTranspose, parseConvTransposeAttributes],
   ['Cos', '', '7+', unaryOps.cos],
   ['Div', '', '7+', binaryOps.div],
   ['Dropout', '', '7+', unaryOps.identity],
@@ -69,6 +72,7 @@ export const WEBGL_OP_RESOLVE_RULES: readonly OpSet.ResolveRule[] = [
   ['InstanceNormalization', '', '6+', instanceNormalization, parseInstanceNormalizationAttributes],
   ['LeakyRelu', '', '6+', unaryOps.leakyRelu, unaryOps.parseLeakyReluAttributes],
   ['Less', '', '7+', binaryOps.less],
+  ['LRN', '', '1+', lrn, parseLrnAttributes],
   ['Log', '', '6+', unaryOps.log],
   ['MatMul', '', '1+', matMul, parseMatMulAttributes],
   // TODO: support new attributes for MaxPool-8 and MaxPool-10

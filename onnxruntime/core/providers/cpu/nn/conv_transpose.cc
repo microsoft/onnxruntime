@@ -58,14 +58,14 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     }
     filter_shape_ = tensor.Shape();
 
-    const size_t K = static_cast<size_t>(filter_shape_[0]) / conv_transpose_attrs_.group;
-    const size_t N = filter_shape_.SizeFromDimension(1);
+    const size_t K = static_cast<size_t>(filter_shape_[0]) / onnxruntime::narrow<size_t>(conv_transpose_attrs_.group);
+    const size_t N = onnxruntime::narrow<size_t>(filter_shape_.SizeFromDimension(1));
     auto packed_elements_per_group = N * K;
     if (packed_elements_per_group == 0 || N == 1 || K == 1) {  // No need for single row or single col case
       return Status::OK();
     }
 
-    size_t packed_filter_data_size = packed_elements_per_group * sizeof(float) * conv_transpose_attrs_.group;
+    size_t packed_filter_data_size = SafeInt<size_t>(packed_elements_per_group) * sizeof(float) * conv_transpose_attrs_.group;
     auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
     // Initialize memory to 0 as there could be some padding associated with pre-packed
@@ -73,7 +73,7 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     // if and when we try to cache this pre-packed buffer for sharing between sessions.
     memset(packed_filter_data, 0, packed_filter_data_size);
 
-    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(alloc));
+    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
 
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
       MlasTranspose(tensor.Data<float>() + (group_id * N * K),
@@ -146,12 +146,12 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
   const int64_t col_buffer_size = kernel_dim * p.input_shape.Size();
   auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(T)) * col_buffer_size);
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+  BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   T* col_buffer_data = static_cast<T*>(col_buffer.get());
 
-  const T* Xdata = p.X->template Data<T>();
-  const T* filter_data = p.F->template Data<T>();
-  T* Ydata = p.Y->template MutableData<T>();
+  const T* Xdata = p.X->Data<T>();
+  const T* filter_data = p.F->Data<T>();
+  T* Ydata = p.Y->MutableData<T>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
@@ -207,7 +207,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     if (p.B != nullptr) {
       auto Ymatrix = EigenMatrixMap<T>(Ydata, output_size, p.num_output_channels);
-      auto Bvec = ConstEigenVectorMap<T>(p.B->template Data<T>(), p.num_output_channels);
+      auto Bvec = ConstEigenVectorMap<T>(p.B->Data<T>(), p.num_output_channels);
       Ymatrix.rowwise() += Bvec.transpose();
     }
 
@@ -246,12 +246,12 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
 
   const int64_t col_buffer_size = kernel_dim * p.input_shape.Size();
   auto col_data = alloc->Alloc(SafeInt<size_t>(sizeof(float)) * col_buffer_size);
-  BufferUniquePtr col_buffer(col_data, BufferDeleter(alloc));
+  BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
   float* col_buffer_data = static_cast<float*>(col_buffer.get());
 
-  const float* Xdata = p.X->template Data<float>();
-  const float* filter_data = p.F ? p.F->template Data<float>() : static_cast<float*>(transposed_filter_.get());
-  float* Ydata = p.Y->template MutableData<float>();
+  const float* Xdata = p.X->Data<float>();
+  const float* filter_data = p.F ? p.F->Data<float>() : static_cast<float*>(transposed_filter_.get());
+  float* Ydata = p.Y->MutableData<float>();
   TensorShape output_shape = p.Y->Shape().Slice(2);
 
   for (auto image_id = 0; image_id < p.N; ++image_id) {
@@ -260,9 +260,9 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
       math::Gemm<float>(
           p.F ? CblasTrans : CblasNoTrans,
           CblasNoTrans,
-          kernel_dim,
-          input_image_size,
-          p.num_input_channels / conv_transpose_attrs_.group,
+          onnxruntime::narrow<ptrdiff_t>(kernel_dim),
+          onnxruntime::narrow<ptrdiff_t>(input_image_size),
+          onnxruntime::narrow<ptrdiff_t>( p.num_input_channels / conv_transpose_attrs_.group),
           1,
           filter_data + group_id * W_offset,
           Xdata + group_id * X_offset,
@@ -306,8 +306,8 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
     }
 
     if (p.B != nullptr) {
-      auto Ymatrix = EigenMatrixMap<float>(Ydata, output_size, p.num_output_channels);
-      auto Bvec = ConstEigenVectorMap<float>(p.B->template Data<float>(), p.num_output_channels);
+      auto Ymatrix = EigenMatrixMap<float>(Ydata, onnxruntime::narrow<size_t>(output_size), onnxruntime::narrow<size_t>(p.num_output_channels));
+      auto Bvec = ConstEigenVectorMap<float>(p.B->Data<float>(), onnxruntime::narrow<size_t>(p.num_output_channels));
       Ymatrix.rowwise() += Bvec.transpose();
     }
 

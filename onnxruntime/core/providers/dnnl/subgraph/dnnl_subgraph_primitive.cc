@@ -6,6 +6,7 @@
 #include "dnnl_batchnorm.h"
 #include "dnnl_binary.h"
 #include "dnnl_cast.h"
+#include "dnnl_concat.h"
 #include "dnnl_conv.h"
 #include "dnnl_dequantizelinear.h"
 #include "dnnl_dynamicquantizelinear.h"
@@ -177,6 +178,8 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlBinary().CreatePrimitive(*this, node);
     } else if (node.OpType() == "Cast") {
       DnnlCast().CreatePrimitive(*this, node);
+    } else if (node.OpType() == "Concat") {
+      DnnlConcat().CreatePrimitive(*this, node);      
     } else if (node.OpType() == "Conv" || node.OpType() == "ConvRelu") {
       DnnlConv().CreatePrimitive(*this, node);
     } else if (node.OpType() == "DequantizeLinear") {
@@ -197,10 +200,10 @@ void DnnlSubgraphPrimitive::AddKernels() {
       DnnlLrn().CreatePrimitive(*this, node);
     // MatMulPostOps is a OneDNN only fusion of MatMul and upto 32 elementwise or binary ops
     // FusedMatMul is a ContribOperator defined here:
-    //    https://github.com/microsoft/onnxruntime/blob/master/docs/ContribOperators.md#com.microsoft.FusedMatMul
+    //    https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#com.microsoft.FusedMatMul
     } else if (node.OpType() == "MatMul" || node.OpType() == "MatMulPostOps" || node.OpType() == "FusedMatMul") {
       DnnlMatMul().CreatePrimitive(*this, node);
-    } else if (node.OpType() == "MatMulInteger") {
+    } else if (node.OpType() == "MatMulInteger" || node.OpType() == "MatMulIntegerPostOps") {
       DnnlMatMulInteger().CreatePrimitive(*this, node);
     } else if (pool_ops.count(node.OpType())) {
       DnnlPool().CreatePrimitive(*this, node);
@@ -558,8 +561,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
     auto mem_from_dims = mem_from.get_desc().dims();
     auto mem_to_dims = mem_to.get_desc().dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {
-      LOGS_DEFAULT(ERROR) << mem_from_dims;
-      LOGS_DEFAULT(ERROR) << mem_to_dims;
+      LOGS_DEFAULT(ERROR) << tensor.Name() << ", Dims From: " << mem_from_dims << ", To: " << mem_to_dims;
       throw std::invalid_argument("not a valid reshape, inconsistent dim product");
     }
     //keep the same data type from mem_from but reshape the dims with mem_desc

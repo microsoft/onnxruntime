@@ -1,0 +1,212 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <utility>
+#include <random>
+#include "core/common/gsl.h"
+#include "core/framework/allocator.h"
+#include "core/framework/ort_value.h"
+
+namespace onnxruntime {
+
+namespace concurrency {
+class ThreadPool;
+}
+
+namespace contrib {
+namespace transformers {
+
+template <typename T>
+struct IBeamSearchState {
+  gsl::span<T> next_token_logits;      // shape (batch_size * num_beams, vocab_size)
+  gsl::span<float> next_token_scores;  // shape (batch_size, num_beams * vocab_size)
+  gsl::span<int32_t> next_tokens;      // shape (batch_size, 2 * num_beams)
+  gsl::span<int32_t> next_indices;     // shape (batch_size, 2 * num_beams)
+  gsl::span<float> next_scores;        // shape (batch_size, 2 * num_beams)
+  gsl::span<int32_t> next_positions;   // shape (batch_size, num_beams), empty for T5. Next position for position_ids.
+  gsl::span<float> beam_scores;        // shape (batch_size, num_beams)
+  gsl::span<float> scores;             // shape (max_length - sequence_length + 1, batch_size, num_beams * vocab_size)
+  gsl::span<float> remaining_scores;   // portion of scores that is available for appending next token scores.
+  gsl::span<float> topk_buffer;        // temp buffer for topk computation, including:
+                                       // 1st stage needs:
+                                       //   temp score: (batch_size * num_beams * parts_vocab, 2 * num_beams)
+                                       //   temp token: (batch_size * num_beams * parts_vocab, 2 * num_beams)
+                                       // 2nd stage needs:
+                                       //   temp score: (batch_size * num_beams, 2 * num_beams)
+                                       //   temp token: (batch_size * num_beams, 2 * num_beams)
+                                       // in total, it will be:
+                                       // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+};
+
+struct IBeamSearchCpuState {
+  gsl::span<int32_t> sequence_lengths;  // shape (batch_size, num_beams), initial sequence length
+  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, num_beams, max_seq_length)
+
+  // The following are used only by CUDA operator for data copied from device.
+  gsl::span<float> topk_scores;        // shape (batch_size, 2*num_beams), scores of topk candidates (K=2*num_beams).
+  gsl::span<int32_t> topk_tokens;      // shape (batch_size, 2*num_beams), tokens of topk candidates.
+  gsl::span<int32_t> topk_indices;     // shape (batch_size, 2*num_beams), beam indices of topk candidates.
+  gsl::span<float> final_beam_scores;  // shape (batch_size, num_beams)
+};
+
+template <typename T>
+struct IGreedySearchState {
+  gsl::span<int32_t> sequences_space;          // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;         // shape (batch_size)
+  gsl::span<int32_t> next_positions;           // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;                    // shape (batch_size)
+  gsl::span<T> next_token_scores;              // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;              // shape (batch_size)
+  gsl::span<T> temp_topk_scores_buffer;        // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
+  gsl::span<int32_t> temp_topk_tokens_buffer;  // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
+  gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
+  gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
+};
+
+template <typename T>
+struct ISamplingState {
+  gsl::span<int> d_index_in;
+  gsl::span<int> d_index_out;
+  gsl::span<int> d_offset;
+  gsl::span<T> d_sorted_score;
+  gsl::span<float> d_sorted_softmaxed_score;
+  gsl::span<float> d_softmaxed_score;
+  gsl::span<float> h_softmaxed_score;
+  gsl::span<float> d_sampled;
+  gsl::span<float> h_sampled_all;
+  gsl::span<int32_t> d_indices;
+  gsl::span<int> d_presence_mask;
+
+  BufferUniquePtr storage_buffer;
+  size_t temp_storage_bytes;
+  std::default_random_engine generator;
+
+  gsl::span<T> sorted_scores;
+  gsl::span<T> cumulative_probs;
+};
+
+class ISequences {
+ public:
+  virtual ~ISequences() {}
+  virtual gsl::span<const int32_t> GetSequence(int beam_index) const = 0;
+  virtual int GetSequenceLength() const = 0;
+};
+
+class ILogitsProcessorList {
+ public:
+  virtual ~ILogitsProcessorList() {}
+  virtual void Process(const ISequences* sequences, gsl::span<float>& next_token_scores, int step) = 0;
+};
+
+// Interface for all scorers for beam search or beam sample.
+class IBeamScorer {
+ public:
+  virtual ~IBeamScorer() {}
+
+  virtual void Initialize(AllocatorPtr& allocator, int sequence_length) = 0;
+
+  virtual void Process(ISequences* sequences,
+                       gsl::span<const float>& next_scores,
+                       gsl::span<const int32_t>& next_tokens,
+                       gsl::span<const int32_t>& next_indices) = 0;
+
+  virtual void Finalize(ISequences* sequences,
+                        gsl::span<const float>& final_beam_scores,
+                        Tensor* output_sequences,
+                        Tensor* output_sequence_scores) = 0;
+};
+
+struct IGenerationParameters {
+  static constexpr int kModelTypeGpt = 0;
+  static constexpr int kModelTypeT5 = 1;
+
+  // Parameters from node attributes
+  int model_type;  // 0 for GPT-2; 1 for encoder-decoder like T5
+  int eos_token_id;
+  int pad_token_id;
+  int decoder_start_token_id;
+  int no_repeat_ngram_size;
+  bool early_stopping;
+
+  // Parameters from inputs
+  int min_length;
+  int max_length;
+  int num_beams;
+  int num_return_sequences;
+  float length_penalty;
+  float repetition_penalty;
+  int batch_size;       // deduce from first dimension of input_ids
+  int sequence_length;  // deduce from second dimension of input_ids of GPT-2 or decoder_input_ids of T5
+
+  gsl::span<const int32_t> vocab_mask;
+  gsl::span<const int32_t> prefix_vocab_mask;
+  gsl::span<const int32_t> presence_mask;
+
+  // Parameters from outputs.
+  bool output_scores;  // whether scores existed in output
+
+  // Parameters from subgraph.
+  int vocab_size;
+  int num_heads;
+  int head_size;
+  int num_layers;
+
+  // Parameters for TopK/TopP sampling.
+  float presence_penalty;
+  float filter_value;
+  float temperature = 1.0f;
+  float top_p = 0.0f;
+  int seed = 0;
+  int min_tokens_to_keep = 1;
+  bool custom_sampling = false;
+};
+
+// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+#ifdef DEBUG_GENERATION
+#define DUMP_TENSOR_LEVEL 2
+#else
+#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
+#endif
+
+#if DUMP_TENSOR_LEVEL > 0
+#define DUMP_TENSOR_INIT() transformers::CudaTensorConsoleDumper dumper
+#define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#endif
+#if DUMP_TENSOR_LEVEL > 1
+#define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_D(...)
+#endif
+
+class IConsoleDumper {
+ public:
+  IConsoleDumper() : is_enabled_(true) {}
+  virtual ~IConsoleDumper() {}
+  void Disable() { is_enabled_ = false; }
+  bool IsEnabled() const { return is_enabled_; }
+  virtual void Print(const char* name, const float* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const = 0;
+  virtual void Print(const char* name, const Tensor& value) const = 0;
+  virtual void Print(const char* name, const OrtValue& value) const = 0;
+  virtual void Print(const char* name, int index, bool end_line) const = 0;
+  virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
+
+ protected:
+  bool is_enabled_;
+};
+
+}  // namespace transformers
+}  // namespace contrib
+}  // namespace onnxruntime

@@ -3,7 +3,7 @@
 
 #include "cudnn_common.h"
 #include "core/common/inlined_containers.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "shared_inc/cuda_call.h"
 #include "core/providers/cpu/tensor/utils.h"
 
@@ -39,6 +39,12 @@ Status CudnnTensor::Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dat
     strides[i] = gsl::narrow_cast<int>(pitches[i]);
   }
   CUDNN_RETURN_IF_ERROR(cudnnSetTensorNdDescriptor(tensor_, dataType, static_cast<int>(rank), dims.data(), strides.data()));
+  return Status::OK();
+}
+
+Status CudnnTensor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w) {
+  ORT_RETURN_IF_ERROR(CreateTensorIfNeeded());
+  CUDNN_RETURN_IF_ERROR(cudnnSetTensor4dDescriptor(tensor_, format, dataType, n, c, h, w));
   return Status::OK();
 }
 
@@ -113,15 +119,23 @@ Status CudnnFilterDescriptor::Set(gsl::span<const int64_t> filter_dims, cudnnDat
   return Status::OK();
 }
 
+Status CudnnFilterDescriptor::Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int k, int c, int h, int w) {
+  if (!desc_)
+    CUDNN_RETURN_IF_ERROR(cudnnCreateFilterDescriptor(&desc_));
+
+  CUDNN_RETURN_IF_ERROR(cudnnSetFilter4dDescriptor(desc_, dataType, format, k, c, h, w));
+  return Status::OK();
+}
+
 template <typename ElemType>
 cudnnDataType_t CudnnTensor::GetDataType() {
   ORT_THROW("cuDNN engine currently supports only single/double/half/int8/uint8 precision data types. Got:",
-    typeid(ElemType).name());
+            typeid(ElemType).name());
   // Not reachable but GCC complains
   return CUDNN_DATA_FLOAT;
 }
 
-template<>
+template <>
 cudnnDataType_t CudnnTensor::GetDataType<float>() {
   return CUDNN_DATA_FLOAT;
 }

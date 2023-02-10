@@ -115,8 +115,8 @@ struct TernaryElementwisePreparation {
         auto offset = out_rank - rank;
         for (auto i = offset; i < out_rank; ++i) {
           // the stride for broadcast dimension is kept as 0
-          if (shape.GetDims()[i - offset] != 1) {
-            padded_strides[i] = pitches[i - offset];
+          if (shape.GetDims()[gsl::narrow_cast<size_t>(i) - offset] != 1) {
+            padded_strides[i] = pitches[gsl::narrow_cast<size_t>(i) - offset];
           }
         }
       }
@@ -185,19 +185,19 @@ Status Where<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(prepare.TernaryElementwiseBroadcastPrepareHelper(condition_shape, X_shape, Y_shape, output_shape));
 
   WhereImpl<CudaT>(
-      Stream(),
+      Stream(context),
       prepare.output_rank_or_simple_broadcast,
       prepare.a_index_type,
       prepare.a_padded_strides,
-      reinterpret_cast<const bool*>(prepare.a_tensor->template Data<bool>()),
+      reinterpret_cast<const bool*>(prepare.a_tensor->Data<bool>()),
       prepare.b_index_type,
       prepare.b_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.b_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.b_tensor->Data<T>()),
       prepare.c_index_type,
       prepare.c_padded_strides,
-      reinterpret_cast<const CudaT*>(prepare.c_tensor->template Data<T>()),
+      reinterpret_cast<const CudaT*>(prepare.c_tensor->Data<T>()),
       prepare.fdm_output_strides,
-      reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>()),
+      reinterpret_cast<CudaT*>(output_tensor->MutableData<T>()),
       output_tensor->Shape().Size());
 
   return Status::OK();

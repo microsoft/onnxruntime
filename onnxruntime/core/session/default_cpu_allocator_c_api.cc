@@ -8,15 +8,6 @@
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
 
-static void ThrowOnError(OrtStatus* status) {
-  if (status) {
-    std::string ort_error_message = OrtApis::GetErrorMessage(status);
-    OrtErrorCode ort_error_code = OrtApis::GetErrorCode(status);
-    OrtApis::ReleaseStatus(status);
-    ORT_CXX_API_THROW(std::move(ort_error_message), ort_error_code);
-  }
-}
-
 struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
   OrtDefaultCpuAllocator() {
     OrtAllocator::version = ORT_API_VERSION;
@@ -26,7 +17,7 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
         [](OrtAllocator* this_, void* p) { static_cast<OrtDefaultCpuAllocator*>(this_)->Free(p); };
     OrtAllocator::Info =
         [](const OrtAllocator* this_) { return static_cast<const OrtDefaultCpuAllocator*>(this_)->Info(); };
-    ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
+    Ort::ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }
 
   ~OrtDefaultCpuAllocator() { OrtApis::ReleaseMemoryInfo(cpu_memory_info); }

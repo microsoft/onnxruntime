@@ -43,6 +43,9 @@ struct ReplaceWithQLinear : public QDQReplaceWithNew {
 
 struct UnaryReplaceWithQLinear : ReplaceWithQLinear {
   UnaryReplaceWithQLinear(std::string domain);
+
+ private:
+  NodeAttributes ExtraAttributes(const RuntimeState& state) const override;
 };
 
 struct BinaryReplaceWithQLinear : ReplaceWithQLinear {
@@ -55,6 +58,12 @@ struct VariadicReplaceWithQLinear : ReplaceWithQLinear {
 
 struct ConvReplaceWithQLinear : ReplaceWithQLinear {
   ConvReplaceWithQLinear();
+};
+struct WhereReplaceWithQLinear : ReplaceWithQLinear {
+  WhereReplaceWithQLinear();
+};
+struct SplitReplaceWithQuant : public Action {
+  Status Run(Graph&, const NodesToOptimize& selected_nodes) const override;
 };
 
 struct MatMulReplaceWithQLinear : public Action {

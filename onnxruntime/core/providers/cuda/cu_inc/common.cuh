@@ -75,10 +75,33 @@ __device__ __forceinline__ bool operator>=(const half& lh, const half& rh) { ret
 __device__ __forceinline__ bool operator<=(const half& lh, const half& rh) { return (float)lh <= (float)rh; }
 
 // support half2 arithmetic for cuda architecture < 5.3
-__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) { half2 r; r.x = lh.x + rh.x; r.y = lh.y + rh.y; return r; }
-__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) { half2 r; r.x = lh.x - rh.x; r.y = lh.y - rh.y; return r; }
-__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) { half2 r; r.x = lh.x * rh.x; r.y = lh.y * rh.y; return r; }
-__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) { half2 r; r.x = lh.x / rh.x; r.y = lh.y / rh.y; return r; }
+__device__ __forceinline__ half2 operator+(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x + rh.x;
+  r.y = lh.y + rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator-(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x - rh.x;
+  r.y = lh.y - rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator*(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x * rh.x;
+  r.y = lh.y * rh.y;
+  return r;
+}
+
+__device__ __forceinline__ half2 operator/(const half2& lh, const half2& rh) {
+  half2 r;
+  r.x = lh.x / rh.x;
+  r.y = lh.y / rh.y;
+  return r;
+}
 #endif
 
 /// Arithmetic for BFloat16
@@ -359,6 +382,41 @@ __device__ __inline__ T _Gelu(T a) {
   return a * _Normcdf(a);
 }
 
+template <typename T>
+__device__ __inline__ T _Mod(T a, T b) {
+  T r = a % b;
+  T zero = T(0);
+  if ((r > zero && b < zero) || (r < zero && b > zero)) {
+    r += b;
+  }
+  return r;
+}
+
+template <typename T>
+__device__ __inline__ T _Fmod(T a, T b) {
+  return a % b;
+}
+
+template <>
+__device__ __inline__ float _Fmod(float a, float b) {
+  return fmodf(a, b);
+}
+
+template <>
+__device__ __inline__ double _Fmod(double a, double b) {
+  return fmod(a, b);
+}
+
+template <>
+__device__ __inline__ half _Fmod(half a, half b) {
+  return fmodf((float)a, (float)b);
+}
+
+template <>
+__device__ __inline__ BFloat16 _Fmod(BFloat16 a, BFloat16 b) {
+  return fmodf((float)a, (float)b);
+}
+
 // We would like to use 64-bit integer to support large matrices. However, CUDA seems to support only 32-bit integer
 // For now, use int32_t to ensure that both Linux and Windows see this as 32 bit integer type.
 #ifndef CUDA_LONG
@@ -379,7 +437,7 @@ struct GridDim {
 };
 
 // aligned vector generates vectorized load/store on CUDA
-template<typename T, int vec_size>
+template <typename T, int vec_size>
 struct alignas(sizeof(T) * vec_size) aligned_vector {
   T val[vec_size];
 };
@@ -400,6 +458,7 @@ struct alignas(sizeof(T) * vec_size) aligned_vector {
 
 // WARP related definitions and functions
 constexpr int GPU_WARP_SIZE = 32;
+constexpr int GPU_WARP_SIZE_HOST = GPU_WARP_SIZE;
 
 template <typename T>
 __device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = GPU_WARP_SIZE, unsigned int mask = 0xffffffff) {

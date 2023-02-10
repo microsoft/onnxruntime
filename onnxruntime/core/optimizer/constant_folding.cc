@@ -184,9 +184,15 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
 
       OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs);
-
-      OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, logger);
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
+#endif
+      OpKernelContext op_kernel_context(&frame, kernel.get(), /*stream*/ nullptr, nullptr, logger);
       ORT_RETURN_IF_ERROR(kernel->Compute(&op_kernel_context));
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
       std::vector<OrtValue> fetches;
       ORT_RETURN_IF_ERROR(frame.GetOutputs(fetches));
@@ -196,11 +202,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       ORT_ENFORCE(fetches.size() == node->OutputDefs().size());
       converted_to_constant = true;
       for (size_t fetch_idx = 0; fetch_idx < fetches.size(); ++fetch_idx) {
-        OrtValue& ort_value = fetches[fetch_idx];
+        const auto& constant_arg_out = *node->OutputDefs()[fetch_idx];
         // XXX: Add support for SparseTensors outputs when we have sparse outputs
-        if (!ort_value.IsTensor()) {
-          LOGS(logger, WARNING) << "Unsupported output type of " << ort_value.Type()
-                                << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
+        if (!utils::HasTensorType(*constant_arg_out.TypeAsProto())) {
+          LOGS(logger, INFO) << "Unsupported output type of " << constant_arg_out.Type()
+                             << ". Can't constant fold " << node->OpType() << " node '" << node->Name() << "'";
           converted_to_constant = false;
           break;
         }

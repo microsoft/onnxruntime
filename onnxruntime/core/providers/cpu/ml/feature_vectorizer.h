@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace ml {
 
-// https://github.com/onnx/onnx/blob/master/docs/Operators-ml.md#ai.onnx.ml.FeatureVectorizer
+// https://github.com/onnx/onnx/blob/main/docs/Operators-ml.md#ai.onnx.ml.FeatureVectorizer
 class FeatureVectorizer final : public OpKernel {
  public:
   FeatureVectorizer(const OpKernelInfo& info) : OpKernel(info) {

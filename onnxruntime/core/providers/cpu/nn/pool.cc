@@ -26,12 +26,8 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(
     uint8_t);
 }  // namespace op_kernel_type_control
 
-using MaxPool8DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
 using EnabledMaxPool8DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 8, Input, 0);
-using MaxPool12DataTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(
-    kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 using EnabledMaxPool12DataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(
     kCpuExecutionProvider, kOnnxDomain, MaxPool, 12, Input, 0);
 
@@ -65,8 +61,8 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
   auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
   Tensor* Y = context->Output(0, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
 
   // The main loop
   const int64_t channels = x_shape[1];
@@ -82,7 +78,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
 
   switch (kernel_shape.size()) {
     case 1: {
-      RunLoop<Pool1DTask<T, PoolType>>(tp, total_channels,
+      RunLoop<Pool1DTask<T, PoolType>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                        {X_data, Y_data, x_step, y_step, pooled_height, stride_h(), height, kernel_shape,
                                         pads, pool_context_, pool_attrs_});
 
@@ -90,7 +86,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     }
 
     case 2: {
-      RunLoop<Pool2DTask<T, PoolType>>(tp, total_channels,
+      RunLoop<Pool2DTask<T, PoolType>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                        {X_data, Y_data, x_step, y_step, pooled_height, pooled_width, stride_h(),
                                         stride_w(), height, width, kernel_shape, pads, pool_context_, pool_attrs_});
 
@@ -98,7 +94,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     }
     case 3: {
       RunLoop<Pool3DTask<T, PoolType>>(
-          tp, total_channels,
+          tp, onnxruntime::narrow<size_t>(total_channels),
           {X_data, Y_data, x_step, y_step, pooled_height, pooled_width, pooled_depth, stride_h(), stride_w(),
            stride_d(), height, width, depth, kernel_shape, pads, pool_context_, pool_attrs_});
 
@@ -144,7 +140,7 @@ Status PoolBase::Compute(OpKernelContext* context, MLAS_POOLING_KIND kind) const
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.kernel_shape.data(),
            pool_attrs_.global_pooling ? nullptr : pads.data(),
            pool_attrs_.global_pooling ? nullptr : pool_attrs_.strides.data(), output_dims.data(),
-           X->template Data<float>(), Y->template MutableData<float>(), thread_pool);
+           X->Data<float>(), Y->MutableData<float>(), thread_pool);
 
   return Status::OK();
 }
@@ -196,9 +192,9 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, output_dims);
   Tensor* I = context->Output(1, output_dims);
 
-  const auto* X_data = X->template Data<T>();
-  auto* Y_data = Y->template MutableData<T>();
-  int64_t* I_data = I != nullptr ? I->template MutableData<int64_t>() : nullptr;
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
+  int64_t* I_data = I != nullptr ? I->MutableData<int64_t>() : nullptr;
 
   // The main loop
   int64_t channels = x_shape[1];
@@ -216,7 +212,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       int64_t y_step = pooled_height;
       const int64_t dilation_h = pool_attrs_.dilations[0];
 
-      RunLoop<MaxPool1DTask<T>>(tp, total_channels,
+      RunLoop<MaxPool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                 {X_data, Y_data, I_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
                                  height, kernel_shape, pads});
       break;
@@ -228,7 +224,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       const int64_t dilation_h = pool_attrs_.dilations[0];
       const int64_t dilation_w = pool_attrs_.dilations[1];
       RunLoop<MaxPool2DTask<T>>(
-          tp, total_channels,
+          tp, onnxruntime::narrow<size_t>(total_channels),
           {X_data, Y_data, I_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h(),
            stride_w(), height, width, kernel_shape, pads, pool_attrs_.storage_order});
       break;
@@ -239,7 +235,7 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
       const int64_t dilation_h = pool_attrs_.dilations[0];
       const int64_t dilation_w = pool_attrs_.dilations[1];
       const int64_t dilation_d = pool_attrs_.dilations[2];
-      RunLoop<MaxPool3DTask<T>>(tp, total_channels,
+      RunLoop<MaxPool3DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
                                 {X_data, Y_data, I_data, x_step, y_step,
                                  dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
                                  pooled_depth, stride_h(), stride_w(), stride_d(), height,
@@ -248,6 +244,81 @@ Status MaxPoolV8::ComputeImpl(OpKernelContext* context) const {
     }
     default:
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size : ");
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  bool need_dilation = false;
+  for (auto n : pool_attrs_.dilations) {
+    need_dilation |= n > 1;
+  }
+
+  const auto* X = context->Input<Tensor>(0);
+  const TensorShape& x_shape = X->Shape();
+
+  ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
+
+  auto pads = pool_attrs_.pads;
+  auto kernel_shape = pool_attrs_.kernel_shape;
+
+  auto output_dims = pool_attrs_.SetOutputSize(x_shape, x_shape[1], &pads);
+  Tensor* Y = context->Output(0, output_dims);
+
+  const auto* X_data = X->Data<T>();
+  auto* Y_data = Y->MutableData<T>();
+
+  // The main loop
+  int64_t channels = x_shape[1];
+  int64_t height = x_shape[2];
+  int64_t width = kernel_shape.size() > 1 ? x_shape[3] : 1;
+  int64_t depth = kernel_shape.size() > 2 ? x_shape[4] : 1;
+  int64_t pooled_height = output_dims[2];
+  int64_t pooled_width = kernel_shape.size() > 1 ? output_dims[3] : 1;
+  int64_t pooled_depth = kernel_shape.size() > 2 ? output_dims[4] : 1;
+  const int64_t total_channels = x_shape[0] * channels;
+
+  switch (kernel_shape.size()) {
+    case 1: {
+      int64_t x_step = height;
+      int64_t y_step = pooled_height;
+      const int64_t dilation_h = pool_attrs_.dilations[0];
+
+      RunLoop<LpPool1DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
+                                {X_data, Y_data, x_step, y_step, dilation_h, pooled_height, stride_h(),
+                                 height, kernel_shape, pads, p_});
+      break;
+    }
+
+    case 2: {
+      int64_t x_step = height * width;
+      int64_t y_step = pooled_height * pooled_width;
+      const int64_t dilation_h = pool_attrs_.dilations[0];
+      const int64_t dilation_w = pool_attrs_.dilations[1];
+      RunLoop<LpPool2DTask<T>>(
+          tp, onnxruntime::narrow<size_t>(total_channels),
+          {X_data, Y_data, x_step, y_step, dilation_h, dilation_w, pooled_height, pooled_width, stride_h(),
+           stride_w(), height, width, kernel_shape, pads, p_});
+      break;
+    }
+    case 3: {
+      int64_t x_step = height * width * depth;
+      int64_t y_step = pooled_height * pooled_width * pooled_depth;
+      const int64_t dilation_h = pool_attrs_.dilations[0];
+      const int64_t dilation_w = pool_attrs_.dilations[1];
+      const int64_t dilation_d = pool_attrs_.dilations[2];
+      RunLoop<LpPool3DTask<T>>(tp, onnxruntime::narrow<size_t>(total_channels),
+                                {X_data, Y_data, x_step, y_step,
+                                 dilation_h, dilation_w, dilation_d, pooled_height, pooled_width,
+                                 pooled_depth, stride_h(), stride_w(), stride_d(), height,
+                                width, depth, kernel_shape, pads, p_});
+      break;
+    }
+    default:
+      return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported kernel dimension : " + std::to_string(kernel_shape.size()));
   }
 
   return Status::OK();
@@ -272,7 +343,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
                                    KernelDefBuilder()
                                        .TypeConstraint(
                                            "T",
-                                           BuildKernelDefConstraintsFromTypeList<MaxPool8DataTypes>(),
                                            BuildKernelDefConstraintsFromTypeList<EnabledMaxPool8DataTypes>())
                                        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                                    MaxPoolV8);
@@ -281,7 +351,6 @@ ONNX_CPU_OPERATOR_KERNEL(MaxPool, 12,
                          KernelDefBuilder()
                              .TypeConstraint(
                                  "T",
-                                 BuildKernelDefConstraintsFromTypeList<MaxPool12DataTypes>(),
                                  BuildKernelDefConstraintsFromTypeList<EnabledMaxPool12DataTypes>())
                              .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
                          MaxPoolV8);
@@ -290,8 +359,16 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LpPool, 2, 10,
                                    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                                    Pool<float, LpPool>);
 
-ONNX_CPU_OPERATOR_KERNEL(LpPool, 11, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
-                         Pool<float, LpPool>);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(LpPool, 11, 17,
+                                   KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                   Pool<float, LpPool>);
+
+ONNX_CPU_OPERATOR_KERNEL(LpPool, 18,
+                         KernelDefBuilder()
+                            .TypeConstraint(
+                                "T", 
+                                DataTypeImpl::GetTensorType<float>()),
+                         LpPoolV18<float>);
 
 ONNX_CPU_OPERATOR_KERNEL(GlobalLpPool, 2, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
                          Pool<float, LpPool>);

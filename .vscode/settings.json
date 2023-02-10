@@ -34,5 +34,10 @@
     "python.linting.pydocstyleArgs": [
         "--convention=google"
     ],
-    "python.linting.banditEnabled": true
+    "python.linting.banditEnabled": true,
+    "cpplint.lineLength": 120,
+    "cpplint.filters": [
+        "-build/include_subdir",
+        "-runtime/references"
+    ]
 }

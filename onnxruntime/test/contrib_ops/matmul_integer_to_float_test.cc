@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/span_utils.h"
 #include "core/framework/tensor.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
@@ -49,11 +50,11 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
     return static_cast<WType>(v);
   });
 
-  std::vector<float> A_scale = random.Uniform<float>(std::array<int64_t, 1>{1}, -0.1f, 0.1f);
+  std::vector<float> A_scale = random.Uniform<float>(AsSpan<int64_t>({1}), -0.1f, 0.1f);
   std::vector<IType> A_zero_point{(std::numeric_limits<IType>::lowest() + std::numeric_limits<IType>::max() + IType(2)) / 2};
 
   int64_t b_scale_zp_size = per_column ? B_dims.back() : 1;
-  std::vector<float> B_scale = random.Uniform<float>({b_scale_zp_size}, -0.1f, 0.1f);
+  std::vector<float> B_scale = random.Uniform<float>(AsSpan({b_scale_zp_size}), -0.1f, 0.1f);
 
   std::vector<WType> B_zero_point(b_scale_zp_size);
   std::for_each(B_zero_point.begin(),
@@ -64,7 +65,7 @@ void TestMatMulIntegerToFloat(const std::vector<int64_t>& A_dims,
                                                                   std::numeric_limits<WType>::max())[0]);
                 });
 
-  std::vector<float> Bias = random.Uniform<float>({B_dims.back()}, -0.1f, 0.1f);
+  std::vector<float> Bias = random.Uniform<float>(AsSpan({B_dims.back()}), -0.1f, 0.1f);
 
   OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
   test.AddInput<IType>("A", A_dims, A_data);
@@ -150,70 +151,6 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8S8) {
 
 TEST(MatMulIntegerToFloat, NoZeroPoint_HasBias_test_S8S8) {
   RunMatMulIntegerToFloatTest<int8_t, int8_t, false, true>("testdata/matmul_integer_to_float_int8_int8_bias.onnx");
-}
-
-TEST(MatMulIntegerToFloat, MatMulInteger_Nuphar) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape,
-                       const std::vector<int64_t>& weights_shape,
-                       const std::vector<int64_t>& scale_shape_1,
-                       const std::vector<int64_t>& scale_shape_2) {
-    auto build_test_case = [&](ModelTestBuilder& builder) {
-      auto* input_arg = builder.MakeInput<uint8_t>(input_shape,
-                                                   std::numeric_limits<uint8_t>::min(),
-                                                   std::numeric_limits<uint8_t>::max());
-      auto* output_arg = builder.MakeOutput();
-      auto* weight = builder.MakeInitializer<int8_t>(weights_shape,
-                                                     std::numeric_limits<int8_t>::min() / 2,
-                                                     std::numeric_limits<int8_t>::max() / 2);
-
-      // add MatMulInteger
-      auto* matmul_integer_output = builder.MakeIntermediate();
-      builder.AddNode("MatMulInteger", {input_arg, weight}, {matmul_integer_output});
-
-      // add Cast
-      auto* cast_output = builder.MakeIntermediate();
-      Node& cast_node = builder.AddNode("Cast", {matmul_integer_output}, {cast_output});
-      cast_node.AddAttribute("to", (int64_t)1);
-
-      // add Mul1
-      auto* mul1_input1_arg = builder.MakeInput<float>(scale_shape_1, -0.1f, 0.f);
-      auto* mul1_input2_arg = builder.MakeInput<float>(scale_shape_2, -0.1f, 0.f);
-      auto* mul1_output = builder.MakeIntermediate();
-      builder.AddNode("Mul", {mul1_input1_arg, mul1_input2_arg}, {mul1_output});
-
-      // add Mul2
-      builder.AddNode("Mul", {mul1_output, cast_output}, {output_arg});
-    };
-
-    auto check_mp_reshape_graph = [&](InferenceSessionWrapper& session) {
-      auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
-    };
-
-    TransformerTester(build_test_case,
-                      check_mp_reshape_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/,
-                      1e-5 /*per_sample_tolerance*/,
-                      1e-5 /*relative_per_sample_tolerance*/);
-  };
-
-  // Scale Scalar
-  test_case({5, 4, 3}, {3, 4}, {1}, {1});
-
-  // B per-column
-  test_case({5, 4, 3}, {3, 4}, {1}, {4});
-
-  // A per-row, B per-column
-  test_case({5, 4, 3}, {3, 4}, {5, 4, 1}, {4});
-  test_case({5, 4, 3}, {3, 4}, {5, 4, 1}, {1, 4});
-  test_case({5, 4, 3}, {3, 4}, {1, 4}, {5, 4, 1});
-  test_case({5, 4, 3}, {3, 4}, {4}, {5, 4, 1});
-
-  // A per-row, B per-column, and offset
-  test_case({15, 14, 13}, {15, 13, 27}, {15, 14, 1}, {15, 1, 27});
-  test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27}, {15, 14, 1});
 }
 
 TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {

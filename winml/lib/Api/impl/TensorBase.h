@@ -6,6 +6,11 @@
 #pragma warning(push)
 #pragma warning(disable : 6387)
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26814)
+#endif
+
 #include "LearningModelBinding.h"
 #include "LearningModelDevice.h"
 #include "LearningModelSession.h"
@@ -1075,5 +1080,9 @@ struct TensorBase : TBase {
 };
 
 }  // namespace _winml
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 #pragma warning(pop)

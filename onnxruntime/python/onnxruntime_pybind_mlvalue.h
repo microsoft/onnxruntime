@@ -17,6 +17,8 @@
 #include "core/framework/ort_value.h"
 #include "core/session/inference_session.h"
 
+PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+
 namespace onnxruntime {
 namespace python {
 

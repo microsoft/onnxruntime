@@ -4,7 +4,7 @@
 #pragma once
 
 #include <random>
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
@@ -12,6 +12,15 @@
 #include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
+
+template <typename OutputType>
+Status MultinomialComputeShared(AllocatorPtr& alloc,
+                                const Tensor& X,
+                                const int64_t batch_size,
+                                const int64_t num_classes,
+                                const int64_t num_samples,
+                                std::default_random_engine& generator,
+                                Tensor& Y);
 
 class RandomNormal final : public OpKernel {
  public:

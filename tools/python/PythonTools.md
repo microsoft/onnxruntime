@@ -4,13 +4,13 @@
 
 Provides helpers for creating ONNX test directories that can be run using onnx_test_runner and onnxruntime_perf_test.
 
-In order to import ort_test_dir_utils you need to either 
+In order to import ort_test_dir_utils you need to either
   - run python from the `<onnxruntime root dir`>/tools/python directory
-  - add the directory to your PYTHONPATH 
+  - add the directory to your PYTHONPATH
   - add the directory to sys.path prior to importing
 
 e.g. to add to sys.path
-```python 
+```python
 import sys
 sys.path.append('<onnxruntime root dir>/tools/python')
 
@@ -19,7 +19,7 @@ import ort_test_dir_utils
 
 ### Creating a test directory for a model.
 
-The create_test_dir helper can create the input and output pb files in various ways. 
+The create_test_dir helper can create the input and output pb files in various ways.
 
 Often a support request will only provide a problematic model and no input data. create_test_dir can be used to create input to allow the model to be debugged more easily. Random input can be generated if not provided. If expected output is not provided, the model will be run with the input, and the output from that will be saved as the expected output.
 
@@ -57,7 +57,7 @@ model_path = '<onnxruntime root dir>/onnxruntime/test/testdata/transform/expand_
 # when using the default data generation any symbolic dimension values must be provided
 symbolic_vals = {'dynamic':2} # provide value for symbolic dim named 'dynamic' in 'input2'
 
-# let create_test_dir create random input in the (arbitrary) default range of -10 to 10. 
+# let create_test_dir create random input in the (arbitrary) default range of -10 to 10.
 # it will create data of the correct type based on the model.
 ort_test_dir_utils.create_test_dir(model_path, 'temp/examples', 'test1', symbolic_dim_values_map=symbolic_vals)
 
@@ -75,7 +75,7 @@ onnx_test_data_utils.dump_pb('temp/examples/test2/test_data_set_0')
 
 ### Running the test using python
 
-To execute the test once the directory is created you can use the onnx_test_runner or onnxruntime_perf_test executables if you have built onnxruntime from source, or the run_test_dir helper. Input can be either the test directory, or the model in case there are multiple in the test directory. 
+To execute the test once the directory is created you can use the onnx_test_runner or onnxruntime_perf_test executables if you have built onnxruntime from source, or the run_test_dir helper. Input can be either the test directory, or the model in case there are multiple in the test directory.
 
 ```python
 def run_test_dir(model_or_dir):
@@ -107,7 +107,7 @@ except:
 Provides helpers for generating/reading protobuf files containing ONNX TensorProto data.
 
 ```
-usage: onnx_test_data_utils.py [-h] --action {dump_pb,numpy_to_pb,image_to_pb,random_to_pb,update_name_in_pb} 
+usage: onnx_test_data_utils.py [-h] --action {dump_pb,numpy_to_pb,image_to_pb,random_to_pb,update_name_in_pb}
                                [--input INPUT] [--name NAME] [--output OUTPUT] [--resize RESIZE] [--channels_last] [--add_batch_dim]
                                [--shape SHAPE] [--datatype DATATYPE] [--min_value MIN_VALUE] [--max_value MAX_VALUE] [--seed SEED]
 
@@ -163,3 +163,20 @@ optional arguments:
   -m MODEL, --model MODEL   model file
   -o OUT, --out OUT         output directory (default: <current dire)
 ```
+
+## onnx2tfevents.py
+
+Convert ONNX model to TensorBoard events file so that we can visualize the model in TensorBoard. This is especially useful for debugging large models that cannot be visualized in Netron.
+
+```
+usage: onnx2tfevents.py [-h] [--logdir LOGDIR] [--model MODEL]
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --logdir LOGDIR  Tensorboard log directory
+  --model MODEL    ONNX model path
+```
+
+Once the events file is generated, start the tensorboard and visualize the model graph.
+
+Note: This tool requires torch and tensorboard to be installed.

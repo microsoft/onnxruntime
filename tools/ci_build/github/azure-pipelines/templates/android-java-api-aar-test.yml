@@ -37,6 +37,8 @@ jobs:
       artifactName: '${{parameters.artifactName}}'
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
+  - template: use-android-ndk.yml
+
   - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
     displayName: Setup gradle wrapper to use gradle 6.8.3
 

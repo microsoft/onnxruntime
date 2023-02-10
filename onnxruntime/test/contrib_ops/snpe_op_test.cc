@@ -1,4 +1,4 @@
-﻿
+
 #if defined(USE_SNPE)
 
 #ifdef _MSC_VER
@@ -134,13 +134,14 @@ class OpTesterSnpe : public OpTester {
       OpTester::Run();
     } else {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(CreateExecutionProviderFactory_SNPE(provider_options_map_)->CreateProvider());
+      execution_providers.push_back(SNPEProviderFactoryCreator::Create(provider_options_map_)->CreateProvider());
       OpTester::Run(ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
   void AddProviderOption(const std::string& key, const std::string& value) {
     provider_options_map_[key] = value;
   }
+
  private:
   ProviderOptions provider_options_map_;
 };
@@ -152,8 +153,9 @@ TEST(Snpe_ConvertFromConcat, MimoSupport) {
 
   test.AddInput<float>("value0", {2, 2}, {11.0f, 12.0f, 13.0f, 14.0f});
   test.AddInput<float>("value1", {2, 2}, {21.0f, 22.0f, 23.0f, 24.0f});
-  test.AddOutput<float>("output", {4, 2}, {11.0f, 12.0f, 13.0f, 14.0f,
-                                           21.0f, 22.0f, 23.0f, 24.0f});
+  test.AddOutput<float>("output", {4, 2},
+                        {11.0f, 12.0f, 13.0f, 14.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");
@@ -179,12 +181,15 @@ TEST(Snpe_ConvertFromSplit, SimoSupport) {
 
   test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_split_equal_parts_2d.dlc"));
 
-  test.AddInput<float>("input", {2, 6}, {11.0f, 12.0f, 13.0f,  14.0f, 15.0f, 16.0f,
-                                         21.0f, 22.0f, 23.0f,  24.0f, 25.0f, 26.0f});
-  test.AddOutput<float>("output_1", {2, 3}, {11.0f, 12.0f, 13.0f,
-                                             21.0f, 22.0f, 23.0f});
-  test.AddOutput<float>("output_2", {2, 3}, {14.0f, 15.0f, 16.0f,
-                                             24.0f, 25.0f, 26.0f});
+  test.AddInput<float>("input", {2, 6},
+                       {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                        21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddOutput<float>("output_1", {2, 3},
+                        {11.0f, 12.0f, 13.0f,
+                         21.0f, 22.0f, 23.0f});
+  test.AddOutput<float>("output_2", {2, 3},
+                        {14.0f, 15.0f, 16.0f,
+                         24.0f, 25.0f, 26.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");
@@ -196,10 +201,12 @@ TEST(Snpe_ConvertFromAbs, SisoSupport) {
 
   test.AddAttribute("DLC", LoadDlcFile("./testdata/snpe/test_abs.dlc"));
 
-  test.AddInput<float>("x", {2, 3, 2}, {11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f,
-                                        21.0f, 22.0f, -23.0f, 24.0f, -25.0f, 26.0f});
-  test.AddOutput<float>("y", {2, 3, 2}, {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
-                                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
+  test.AddInput<float>("x", {2, 3, 2},
+                       {11.0f, -12.0f, 13.0f, 14.0f, -15.0f, 16.0f,
+                        21.0f, 22.0f, -23.0f, 24.0f, -25.0f, 26.0f});
+  test.AddOutput<float>("y", {2, 3, 2},
+                        {11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f,
+                         21.0f, 22.0f, 23.0f, 24.0f, 25.0f, 26.0f});
   test.Run();
 
   test.AddProviderOption("buffer_type", "FLOAT");
@@ -236,7 +243,7 @@ TEST(Snpe_ConvertFromAbs, QuantizedModelTf8Test) {
   //            output_test_data_f.data(), output_test_data_f.size(), bit_width);
   // data converted from float: {117, 128, 138, 149, 159, 170, 223, 234, 244, 255},
   // different with run result which is acceptable since it's quantized model.
-  std::vector<uint8_t> output_test_data_ui8 {118, 128, 139, 149, 159, 171, 224, 233, 245, 255};
+  std::vector<uint8_t> output_test_data_ui8{118, 128, 139, 149, 159, 171, 224, 233, 245, 255};
 
   std::vector<uint8_t> output_data;
   it = output_data.begin();

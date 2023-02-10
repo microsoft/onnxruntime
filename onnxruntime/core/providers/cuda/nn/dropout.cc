@@ -14,7 +14,7 @@ namespace {
 template <typename T>
 struct GetRatioDataImpl {
   void operator()(const Tensor* ratio, float& ratio_data) const {
-    ratio_data = static_cast<float>(*(ratio->template Data<T>()));
+    ratio_data = static_cast<float>(*(ratio->Data<T>()));
     ORT_ENFORCE(ratio_data >= 0.0f && ratio_data < 1.0f, "ratio_data is outside range [0, 1)");
   }
 };
@@ -25,8 +25,8 @@ struct DropoutComputeImpl {
                   const float ratio_data, PhiloxGenerator& generator, const Tensor& X, Tensor& Y, void* mask_data,
                   bool use_bitmask) const {
     typedef typename ToCudaType<T>::MappedType CudaT;
-    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.template Data<T>());
-    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.template MutableData<T>());
+    const CudaT* X_data = reinterpret_cast<const CudaT*>(X.Data<T>());
+    CudaT* Y_data = reinterpret_cast<CudaT*>(Y.MutableData<T>());
 
     DropoutKernelImpl<CudaT>(prop, stream, N, mask_element_count, ratio_data, generator, X_data, Y_data, mask_data,
                              use_bitmask);
@@ -90,17 +90,17 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
     const void* X_data = X->DataRaw();
     void* Y_data = Y->MutableDataRaw();
     if (Y_data != X_data) {
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream()));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y_data, X_data, X->SizeInBytes(), cudaMemcpyDeviceToDevice, Stream(context)));
     }
 
     // If mask is requested, return all 1s.
     if (mask) {
       if (UseBitmask) {
         CUDA_RETURN_IF_ERROR(
-            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream()));
+            cudaMemsetAsync(mask->MutableDataRaw(), -1, mask_element_count * sizeof(BitmaskElementType), Stream(context)));
       } else {
         CUDA_RETURN_IF_ERROR(
-            cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream()));
+            cudaMemsetAsync(mask->MutableData<bool>(), true, mask_element_count * sizeof(bool), Stream(context)));
       }
     }
 
@@ -108,17 +108,17 @@ Status Dropout<UseBitmask>::ComputeInternal(OpKernelContext* context) const {
   }
 
   IAllocatorUniquePtr<void> temp_mask_buffer{};  // buffer to use if mask is not provided
-  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer]() {
+  void* const mask_data = [this, mask_element_count, mask, &temp_mask_buffer, context]() {
     if (mask) return mask->MutableDataRaw();
     temp_mask_buffer =
-        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)));
+        GetScratchBuffer<void>(mask_element_count * (UseBitmask ? sizeof(BitmaskElementType) : sizeof(bool)), context->GetComputeStream());
     return temp_mask_buffer.get();
   }();
 
   PhiloxGenerator& generator = generator_ ? *generator_ : PhiloxGenerator::Default();
 
   utils::MLTypeCallDispatcher<float, MLFloat16, double, BFloat16> t_disp(X->GetElementType());
-  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(), N, mask_element_count, ratio_data, generator, *X, *Y,
+  t_disp.Invoke<DropoutComputeImpl>(GetDeviceProp(), Stream(context), N, mask_element_count, ratio_data, generator, *X, *Y,
                                     mask_data, UseBitmask);
 
   return Status::OK();

@@ -15,6 +15,7 @@
 #include <curand.h>
 #include <cudnn.h>
 #include <cufft.h>
+#include <cublasLt.h>
 
 #ifdef ORT_USE_NCCL
 #include <nccl.h>

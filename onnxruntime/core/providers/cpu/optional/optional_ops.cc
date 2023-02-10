@@ -20,17 +20,37 @@ ONNX_CPU_OPERATOR_KERNEL(Optional,
                              .Alias(0, 0),
                          Optional);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
+                                   15,
+                                   17,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
+                                   OptionalHasElement);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
+                                   15,
+                                   17,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+                                       // We may be able to re-use the input for the output as is unless the output
+                                       // is a graph output. We provide this hint to the allocation planner
+                                       // to make the re-use call.
+                                       .Alias(0, 0),
+                                   OptionalGetElement);
+
 ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
-                         15,
+                         18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
                          OptionalHasElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
-                         15,
+                         18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
                              // We may be able to re-use the input for the output as is unless the output
                              // is a graph output. We provide this hint to the allocation planner
@@ -118,7 +138,11 @@ Status Optional::Compute(OpKernelContext* ctx) const {
 
   } else {  // No input was provided - we use the type proto to construct the output OrtValue
 
-    CheckValidTypeProto(*type_proto_);
+    if (!CheckValidTypeProto(*type_proto_)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "The TypeProto attribute in the Optional op ",
+                             "can only be of type(tensor) or (seq(tensor))");
+    }
 
     // type is either Tensor or TensorSeq (we have validated this already in CheckValidTypeProto())
     if (type_proto_->has_tensor_type()) {
@@ -136,7 +160,10 @@ Status OptionalHasElement::Compute(OpKernelContext* ctx) const {
 
   // Output is a scalar
   auto* output_tensor = ctx->Output(0, {});
-  output_tensor->MutableData<bool>()[0] = input_ort_value->IsAllocated();
+  if (input_ort_value)
+    output_tensor->MutableData<bool>()[0] = input_ort_value->IsAllocated();
+  else
+    output_tensor->MutableData<bool>()[0] = false;
 
   return Status::OK();
 }

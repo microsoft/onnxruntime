@@ -107,7 +107,20 @@ void EmbedLayerNormalizationShapeInference(::ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+// Shape inference for Attention and QAttention
 void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int past_input_index) {
+  // Input 0, 1, 2 are input, weights and bias.
+  // The other inputs may vary in Attention and QAttention. For example, past_input_index is 4 for Attention,
+  // and 8 for QAttention.
+  //
+  // Input 0 has 3D shape (batch_size, sequence_length, input_hidden_size)
+  // Input 1 has 2D shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
+  // Input 2 has 1D shape (hidden_size + hidden_size + v_hidden_size)
+  // The past input has shape (2, batch_size, num_heads, past_sequence_length, head_size)
+  // Output 0 has 3D shape (batch_size, sequence_length, v_hidden_size)
+  // Output 1 (present) has 5D shape (2, batch_size, num_heads, total_sequence_length, head_size)
+  // When past and present share buffer, they shape is same: (2, batch_size, num_heads, max_sequence_length, head_size)
+
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
   if (ctx.getNumOutputs() > 1) {
@@ -128,17 +141,17 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       fail_shape_inference("Invalid bias shape");
     }
 
+    int64_t v_hidden_size = -1;
     std::vector<int64_t> qkv_hidden_sizes;
     getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
 
-    int64_t output_hidden_size;
     if (qkv_hidden_sizes.size() != 0) {
       if (qkv_hidden_sizes.size() != 3) {
         fail_shape_inference("qkv_hidden_sizes should have 3 elements")
       }
-      output_hidden_size = qkv_hidden_sizes[2];
+      v_hidden_size = qkv_hidden_sizes[2];
     } else {
-      output_hidden_size = bias_shape.dim(0).dim_value() / 3;
+      v_hidden_size = bias_shape.dim(0).dim_value() / 3;
     }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -146,28 +159,32 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       *output_shape.add_dim() = dim;
     }
 
-    output_shape.mutable_dim(2)->set_dim_value(output_hidden_size);
+    output_shape.mutable_dim(2)->set_dim_value(v_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
 
-    // TODO does the extra output need any changes?
-    if (ctx.getNumOutputs() > 1) {
+    if (ctx.getNumOutputs() > 1) {  // has present output
       if (hasInputShape(ctx, past_input_index)) {
         auto& past_shape = getInputShape(ctx, past_input_index);
         auto& past_dims = past_shape.dim();
         if (past_dims.size() != 5) {
-          fail_shape_inference("Inputs 4 shall be 5 dimensions");
+          fail_shape_inference("The past input shall be 5 dimensions");
         }
 
-        if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
-          auto all_sequence_length = past_shape.dim(3).dim_value() + input_shape.dim(1).dim_value();
+        auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
+        if (past_present_share_buffer) {
+          propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
+        } else {
+          if (input_dims[1].has_dim_value() && past_dims[3].has_dim_value()) {
+            int64_t total_sequence_length = input_dims[1].dim_value() + past_shape.dim(3).dim_value();
 
-          ONNX_NAMESPACE::TensorShapeProto present_shape;
-          for (auto& dim : past_dims) {
-            *present_shape.add_dim() = dim;
+            ONNX_NAMESPACE::TensorShapeProto present_shape;
+            for (auto& dim : past_dims) {
+              *present_shape.add_dim() = dim;
+            }
+            present_shape.mutable_dim(3)->set_dim_value(total_sequence_length);
+
+            updateOutputShape(ctx, 1, present_shape);
           }
-          present_shape.mutable_dim(3)->set_dim_value(all_sequence_length);
-
-          updateOutputShape(ctx, 1, present_shape);
         }
       }
     }

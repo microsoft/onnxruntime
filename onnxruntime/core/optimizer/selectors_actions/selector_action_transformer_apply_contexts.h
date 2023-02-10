@@ -3,10 +3,20 @@
 
 #pragma once
 
-#include <functional>
 #include <variant>
 
-#include "core/framework/kernel_registry_manager.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include <functional>
+
+#include "core/common/status.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD)
+using onnxruntime::common::Status;
+namespace ONNX_NAMESPACE {
+class OpSchema;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 namespace onnxruntime {
 
@@ -24,7 +34,9 @@ struct SatDirectApplicationContext {
 
 // Context to save runtime optimizations for later replay.
 struct SatRuntimeOptimizationSaveContext {
-  std::reference_wrapper<const KernelRegistryManager> kernel_registry_manager;
+#if !defined(ORT_MINIMAL_BUILD)
+  std::function<Status(const ONNX_NAMESPACE::OpSchema&)> record_produced_node_op_schema;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 };
 
 // Context to load runtime optimizations and replay them.

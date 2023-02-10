@@ -63,18 +63,16 @@ void ComputeBroadcastBackwardAxes(
       auto A_dim = A_dims[i].dim_param(),
            B_dim = B_dims[j].dim_param();
       if (A_dim != B_dim) {
-        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic dimension expects to match. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
-                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
+        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic dimension expects to match. "
+                           << "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) << " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       }
     } else if (A_dims[i].has_dim_param() && B_dims[j].has_dim_value()) {
       auto A_dim = A_dims[i].dim_param();
       auto B_dim = B_dims[j].dim_value();
 
       if (B_dim != 1) {
-        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the B_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
-                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
+        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the B_dimension to be 1. "
+                           << "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) << " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       } else {
         if (B_axes) {
           B_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -85,9 +83,8 @@ void ComputeBroadcastBackwardAxes(
       auto B_dim = B_dims[j].dim_param();
 
       if (A_dim != 1) {
-        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the A_dimension to be 1. " <<
-                  "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) <<
-                  " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
+        LOGS_DEFAULT(INFO) << "Gradient building for node " << node_name << ": symbolic broadcasting expects the A_dimension to be 1. "
+                           << "A_dims:" << ToString(A_dims) << ", B_dims:" << ToString(B_dims) << " This is a relaxing case, and the kernel might run into problem later if A_dims and B_dims turns out not broadcastable.";
       } else {
         if (A_axes) {
           A_axes->push_back(gsl::narrow_cast<int64_t>(k));
@@ -160,7 +157,6 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
   output.push_back(
       NodeDef("Shape", {b}, {b_shape}, NodeAttributes(), b_shape.name + "_rhs"));
 
-
   ArgDef a_op = ArgDef(""), b_op = ArgDef("");
   if (a_axes)
     a_op = *a_axes;
@@ -185,7 +181,7 @@ void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
                 {input_arg_def},
                 {output_arg_def},
                 {{"keepdims", ONNX_NAMESPACE::MakeAttribute("keepdims", static_cast<int64_t>(keep_dims))},
-                {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
+                 {"axes", ONNX_NAMESPACE::MakeAttribute("axes", reduce_axes)}}));
     return;
   }
 
@@ -278,9 +274,9 @@ void GradientBuilderBase::HandleBroadcastingDynamic(const ArgDef& input_grad,
 
 std::vector<NodeDef> GradientBuilderBase::GetBiasGeluGradNodes(
     bool use_approximation,
-    const ArgDef& dY, const ArgDef& X, const ArgDef& B,  // inputs
-    const ArgDef& dX, const ArgDef& dB,                  // outputs
-    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  //intermediate args
+    const ArgDef& dY, const ArgDef& X, const ArgDef& B,                  // inputs
+    const ArgDef& dX, const ArgDef& dB,                                  // outputs
+    const ArgDef& b_axes, const ArgDef& b_shape, const ArgDef& x_shape,  // intermediate args
     const std::string& node_name) const {
   std::vector<Dimension> B_shape, X_shape;
   std::vector<NodeDef> result;
@@ -344,19 +340,46 @@ AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
   }
 
   if (value.is_array()) {
-    ORT_ENFORCE(!attr_def.is_tensor, "1D tensor attribute is not supported for now.");
-    // Support only INTs for now.
-    switch (elem_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-        std::vector<int64_t> int_array;
-        for (const auto& elem : value) {
-          ORT_ENFORCE(elem.is_number_integer());
-          int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
-        }
-        attr_proto = ONNX_NAMESPACE::MakeAttribute(name, int_array);
-      } break;
-      default:
-        ORT_ENFORCE(false, "List attribute of type ", std::to_string(elem_type), " is not supported for now.");
+    if (attr_def.is_tensor) {
+      // 1D tensor. Support only INT and BOOL types for now.
+      TensorProto tensor_proto;
+      switch (elem_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          std::vector<int64_t> int_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_number_integer());
+            int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
+          }
+          tensor_proto = ONNX_NAMESPACE::ToTensor<int64_t>(int_array);
+          tensor_proto.add_dims(static_cast<int64_t>(int_array.size()));
+        } break;
+        case ONNX_NAMESPACE::TensorProto_DataType_BOOL: {
+          std::vector<bool> bool_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_boolean());
+            bool_array.emplace_back(elem.get<bool>());
+          }
+          tensor_proto = ONNX_NAMESPACE::ToTensor<bool>(bool_array);
+          tensor_proto.add_dims(static_cast<int64_t>(bool_array.size()));
+        } break;
+        default:
+          ORT_ENFORCE(false, "Type ", std::to_string(elem_type), " is not supported for 1D tensor attribute.");
+      }
+      attr_proto = ONNX_NAMESPACE::MakeAttribute(name, tensor_proto);
+    } else {
+      // Support only INTs for now.
+      switch (elem_type) {
+        case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
+          std::vector<int64_t> int_array;
+          for (const auto& elem : value) {
+            ORT_ENFORCE(elem.is_number_integer());
+            int_array.emplace_back(static_cast<int64_t>(elem.get<int>()));
+          }
+          attr_proto = ONNX_NAMESPACE::MakeAttribute(name, int_array);
+        } break;
+        default:
+          ORT_ENFORCE(false, "List attribute of type ", std::to_string(elem_type), " is not supported for now.");
+      }
     }
   } else if (attr_def.is_tensor) {
     TensorProto tensor_proto;
@@ -403,6 +426,14 @@ AttributeProto GradientBuilderBase::AttributeDefinitionToAttributeProto(
   }
 
   return attr_proto;
+}
+
+void GradientBuilderBase::SetPythonOpRequireGradInfo(
+    const std::string& node_name,
+    std::vector<int64_t> input_requires_grad_info) const {
+  python_op_input_require_grad_info_.insert(
+      std::make_pair<std::string, std::vector<int64_t>>(
+          std::string(node_name), std::move(input_requires_grad_info)));
 }
 
 }  // namespace training

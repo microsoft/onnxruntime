@@ -14,6 +14,8 @@
 #include <mimalloc.h>
 #endif
 
+#include "core/framework/bfc_arena.h"
+
 namespace onnxruntime {
 
 // private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
@@ -109,6 +111,22 @@ void* CPUAllocator::Alloc(size_t size) {
 void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
+
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+  if (use_reserve)
+    return alloc.Reserve(size);
+  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
+#ifdef ORT_ENABLE_STREAM
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
+    if (stream_aware_alloc) {
+      return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
+    }
+#else
+  ORT_UNUSED_PARAMETER(wait_fn);
+#endif  // ORT_ENABLE_STREAM
+  }
+  return alloc.Alloc(size);
+}
 }  // namespace onnxruntime
 
 std::ostream& operator<<(std::ostream& out, const OrtMemoryInfo& info) { return (out << info.ToString()); }
@@ -170,4 +188,8 @@ ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1,
                     _Out_ int* out) {
   *out = (*info1 == *info2) ? 0 : -1;
   return nullptr;
+}
+
+ORT_API(void, OrtApis::MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* info, _Out_ OrtMemoryInfoDeviceType* out) {
+  *out = static_cast<OrtMemoryInfoDeviceType>(info->device.Type());
 }

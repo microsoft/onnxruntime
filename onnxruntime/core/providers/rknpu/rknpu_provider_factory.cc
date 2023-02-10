@@ -2,6 +2,7 @@
 
 #include "core/providers/rknpu/rknpu_provider_factory.h"
 #include "rknpu_execution_provider.h"
+#include "rknpu_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 
 using namespace onnxruntime;
@@ -20,7 +21,7 @@ std::unique_ptr<IExecutionProvider> RknpuProviderFactory::CreateProvider() {
 }
 
 std::shared_ptr<IExecutionProviderFactory>
-CreateExecutionProviderFactory_Rknpu() {
+RknpuProviderFactoryCreator::Create() {
   return std::make_shared<onnxruntime::RknpuProviderFactory>();
 }
 }  // namespace onnxruntime
@@ -28,6 +29,6 @@ CreateExecutionProviderFactory_Rknpu() {
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Rknpu,
                     _In_ OrtSessionOptions* options) {
   options->provider_factories.push_back(
-      onnxruntime::CreateExecutionProviderFactory_Rknpu());
+      onnxruntime::RknpuProviderFactoryCreator::Create());
   return nullptr;
 }

@@ -3,8 +3,11 @@
 
 #include "optimizer_api.h"
 
+#include "core/graph/constants.h"
+#include "core/common/make_string.h"
+
 #include <algorithm>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
@@ -967,6 +970,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
 static bool HandleResize(HandlerArgs& args) {
   auto inputs = args.node.Inputs();
   int64_t rank_int = gsl::narrow_cast<int64_t>(args.perm.size());
@@ -996,6 +1000,7 @@ static bool HandleResize(HandlerArgs& args) {
 }
 
 constexpr HandlerInfo resize_handler = {&FirstInput, &HandleResize};
+#endif
 
 static bool HandlePad(HandlerArgs& args) {
   size_t rank = args.perm.size();
@@ -1035,7 +1040,7 @@ static bool HandlePad(HandlerArgs& args) {
 
 constexpr HandlerInfo pad_handler = {&FirstInput, &HandlePad};
 
-static bool HandleReduceOp(HandlerArgs& args) {
+static bool HandleReduceOpWithArg(HandlerArgs& args) {
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
 
   std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
@@ -1073,11 +1078,11 @@ static bool HandleReduceOp(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOp};
-
-static bool HandleReduceSum(HandlerArgs& args) {
-  if (args.ctx.opset < 13) {
-    return HandleReduceOp(args);
+static bool HandleReduceOps(HandlerArgs& args) {
+  if ((args.node.OpType() == "ReduceSum" && args.ctx.opset < 13) ||
+      // or all other reduce operators since opset 18
+      (args.node.OpType() != "ReduceSum" && args.ctx.opset < 18)) {
+    return HandleReduceOpWithArg(args);
   }
 
   bool keepdims = args.node.GetAttributeIntDefault("keepdims", 1) != 0;
@@ -1142,7 +1147,7 @@ static bool HandleReduceSum(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo reduce_sum_handler = {&FirstInput, &HandleReduceSum};
+constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
 
 static bool HandleSqueeze(HandlerArgs& args) {
   std::vector<int64_t> new_axes;
@@ -1607,7 +1612,7 @@ static bool HandleMaxPool(HandlerArgs& args) {
     return false;
   }
 
-  auto new_node = SwapNodeOpTypeAndDomain(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft");
+  auto new_node = SwapNodeOpTypeDomainAndSinceVersion(args.ctx.graph, args.node, "NhwcMaxPool", "com.microsoft", 1);
   new_node->ClearAttribute("storage_order");  // Only relevant for indices output. Prohibited for NhwcMaxPool.
   TransposeFirstInput(args.ctx, *new_node, args.perm_inv);
   TransposeOutputs(args.ctx, *new_node, args.perm);
@@ -1691,8 +1696,20 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
     {"Split", split_handler},
     {"Shape", shape_handler},
     {"Pad", pad_handler},
+// The CUDA Resize kernel assumes that the input is NCHW and
+// Resize can't be supported in ORT builds with CUDA enabled.
+// TODO: Enable this once the CUDA Resize kernel is implemented
+// "generically" (i.e.) aligning with the generic nature of the
+// ONNX spec.
+// See https://github.com/microsoft/onnxruntime/pull/10824 for
+// a similar fix applied to the CPU Resize kernel.
+// Per tests included in #10824, the ROCM EP also generates
+// incorrect results when this handler is used, so the Resize
+// handler is not enabled even for those builds.
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
-    {"ReduceSum", reduce_sum_handler},
+#endif
+    {"ReduceSum", reduce_op_handler},
 
     {"ReduceLogSum", reduce_op_handler},
     {"ReduceLogSumExp", reduce_op_handler},
@@ -1736,10 +1753,10 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
   std::string key;
   auto domain = node.Domain();
   auto op_type = node.OpType();
-  if (domain == "" || domain == "ai.onnx") {
+  if (domain == onnxruntime::kOnnxDomain || domain == onnxruntime::kOnnxDomainAlias) {
     key = std::string(op_type);
-  } else if (domain == "com.microsoft") {
-    key = "com.microsoft." + std::string(op_type);
+  } else if (domain == onnxruntime::kMSDomain) {
+    key = onnxruntime::MakeString(domain, ".", op_type);
   } else {
     return nullptr;
   }
@@ -1754,6 +1771,30 @@ static const HandlerInfo* GetHandler(api::NodeRef& node, bool allow_extended_ops
     }
   }
   return nullptr;
+}
+
+// Some op should be optimized any time there is a transpose as input and a handler is available.
+static bool CanNodeSkipCostCheck(const OptimizerCtx& ctx, const api::NodeRef& node) {
+  if (node.IsOp("Transpose")) {
+    return true;
+  }
+  if (node.IsOp("MaxPool")) {
+    // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
+    return true;
+  }
+  if (node.IsOp("Resize")) {
+    // Resize is included because it has higher perf in the NHWC variant when
+    // the input X is 4D int8 tensor and the mode is linear
+    auto X_value_info = ctx.graph.GetValueInfo(node.Inputs()[0]);
+    auto X_shape = X_value_info->Shape();
+    auto X_dtype = X_value_info->DType();
+    auto mode = node.GetAttributeString("mode");
+    if (X_shape && X_shape->size() == 4 && (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+        mode && *mode == "linear") {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Finds a handler for the node and estimates the cost of pushing a transpose. Does so if deemed beneficial.
@@ -1771,9 +1812,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
     return false;
   }
 
-  // Transpose and MaxPool should be optimized any time there is a transpose as input and a handler is available.
-  // Inclusion of MaxPool is a hack because it has higher perf in the NHWC variant when supported.
-  if (!ctx.skip_cost_check && !node.IsOp("Transpose") && !node.IsOp("MaxPool")) {
+  if (!ctx.skip_cost_check && !CanNodeSkipCostCheck(ctx, node)) {
     // We require the input cost (number of transposes before the op) and the total cost to strictly decrease.
     // Strict decrease of the input cost ensures the optimization is stable, since the total cost decrease is just an
     // estimate (the transpose after the op may or may not cancel with a subsequent transpose). We don't want
@@ -1953,11 +1992,18 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      auto consumers = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
-      bool is_part_of_qdq_group = std::find_if(consumers->nodes.cbegin(), consumers->nodes.cend(),
+      // Check if Transpose node is the only consumer of dq node
+      auto consumers_of_dq_node = ctx.graph.GetValueConsumers(dq_node->Outputs()[0]);
+      if (!consumers_of_dq_node->comprehensive || consumers_of_dq_node->nodes.size() > 1) {
+        continue;
+      }
+
+      auto consumers_of_transpose_node = ctx.graph.GetValueConsumers(transpose_node.Outputs()[0]);
+      bool is_part_of_qdq_group = std::find_if(consumers_of_transpose_node->nodes.cbegin(),
+                                               consumers_of_transpose_node->nodes.cend(),
                                                [](const std::unique_ptr<api::NodeRef>& node) {
                                                  return node->OpType() == "QuantizeLinear";
-                                               }) != consumers->nodes.cend();
+                                               }) != consumers_of_transpose_node->nodes.cend();
       if (is_part_of_qdq_group) {
         continue;
       }
@@ -1968,7 +2014,9 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
         continue;
       }
 
-      if (!HandleQuantizeDequantizeScale(ctx.graph, *perm, *dq_node, ctx.opset)) {
+      // we're moving the Transpose to before the DQ, so we need to use the inverse permutations to update the axis
+      // attribute correctly when doing per-axis dequantization
+      if (!HandleQuantizeDequantizeScale(ctx.graph, InvertPerm(*perm), *dq_node, ctx.opset)) {
         continue;
       }
 
@@ -1988,10 +2036,11 @@ OptimizeResult OptimizeImpl(OptimizerCtx& ctx) {
 
 const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
   // List of all layout sensitive ops defined in ONNX standard.
-  static std::unordered_set<std::string_view> layout_sensitive_ops = {"Conv", "QLinearConv", "BatchNormalization",
-                                                                      "AveragePool", "GlobalAveragePool", "MaxPool",
-                                                                      "GlobalMaxPool", "LRN", "GridSample",
-                                                                      "DepthToSpace", "SpaceToDepth"};
+  static std::unordered_set<std::string_view> layout_sensitive_ops = {
+      "Conv", "QLinearConv", "BatchNormalization",
+      "AveragePool", "GlobalAveragePool", "MaxPool",
+      "GlobalMaxPool", "LRN", "GridSample",
+      "DepthToSpace", "SpaceToDepth", "ConvTranspose", "MaxUnpool"};
 
   return layout_sensitive_ops;
 }
@@ -2031,10 +2080,11 @@ void WrapTransposesAroundNode(api::GraphRef& graph, api::NodeRef& node,
   }
 }
 
-std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
-                                                      std::string_view op_type, std::string_view domain) {
+static std::unique_ptr<api::NodeRef> SwapNodeImpl(api::GraphRef& graph, api::NodeRef& node,
+                                                  std::string_view op_type, std::string_view domain,
+                                                  std::optional<int> since_version) {
   auto outputs = node.Outputs();
-  auto new_node = graph.CopyNode(node, op_type, domain);
+  auto new_node = graph.CopyNode(node, op_type, domain, since_version);
 
   for (size_t j = 0; j < outputs.size(); ++j) {
     if (outputs[j] != "") {
@@ -2043,6 +2093,17 @@ std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api:
   }
   graph.RemoveNode(node);
   return new_node;
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
+                                                      std::string_view op_type, std::string_view domain) {
+  return SwapNodeImpl(graph, node, op_type, domain, std::nullopt);
+}
+
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version) {
+  return SwapNodeImpl(graph, node, op_type, domain, since_version);
 }
 
 }  // namespace onnx_layout_transformation

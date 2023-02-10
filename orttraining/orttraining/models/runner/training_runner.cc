@@ -34,28 +34,36 @@ namespace training {
 
 static std::vector<FreeDimensionOverride> overrides = {};
 static SessionOptions SESSION_OPTION = {
-    ExecutionMode::ORT_SEQUENTIAL,     //execution_mode
-    ExecutionOrder::PRIORITY_BASED,    //execution_order
-    false,                             //enable_profiling
-    ORT_TSTR(""),                      //optimized_model_filepath
-    true,                              //enable_mem_pattern
-    true,                              //enable_mem_reuse
-    true,                              //enable_cpu_mem_arena
-    ORT_TSTR("onnxruntime_profile_"),  //profile_file_prefix
-    "",                                //session_logid
-    -1,                                //session_log_severity_level
-    0,                                 //session_log_verbosity_level
-    5,                                 //max_num_graph_transformation_steps
-    TransformerLevel::Level1,          //graph_optimization_level
-    {},                                //intra_op_param
-    {},                                //inter_op_param
-    overrides,                         //free_dimension_overrides
-    true,                              //use_per_session_threads
-    true,                              //thread_pool_allow_spinning
-    false,                             //use_deterministic_compute
-    {},                                //config_options
+    ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
+    ExecutionOrder::PRIORITY_BASED,    // execution_order
+    false,                             // enable_profiling
+    ORT_TSTR(""),                      // optimized_model_filepath
+    true,                              // enable_mem_pattern
+    true,                              // enable_mem_reuse
+    true,                              // enable_cpu_mem_arena
+    ORT_TSTR("onnxruntime_profile_"),  // profile_file_prefix
+    "",                                // session_logid
+    -1,                                // session_log_severity_level
+    0,                                 // session_log_verbosity_level
+    5,                                 // max_num_graph_transformation_steps
+    TransformerLevel::Level1,          // graph_optimization_level
+    {},                                // intra_op_param
+    {},                                // inter_op_param
+    overrides,                         // free_dimension_overrides
+    true,                              // use_per_session_threads
+    true,                              // thread_pool_allow_spinning
+    false,                             // use_deterministic_compute
+    {},                                // config_options
     {},                                // initializers_to_share_map
+#if !defined(ORT_MINIMAL_BUILD)  && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},                                // external_initializers
+#endif
+    nullptr,                           // custom_create_thread_fn
+    nullptr,                           // custom_thread_creation_options
+    nullptr,                           // custom_join_thread_fn
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+    {},                                // custom_op_libs
+#endif
 };
 
 TrainingRunner::TrainingRunner(Parameters params, const Environment& env)
@@ -192,6 +200,7 @@ Status TrainingRunner::Initialize() {
     gt_config.gelu_recompute = params_.gelu_recompute;
     gt_config.transformer_layer_recompute = params_.transformer_layer_recompute;
     gt_config.number_recompute_layers = params_.number_recompute_layers;
+    gt_config.enable_compute_optimizer = true;
 
     config.graph_transformer_config = gt_config;
   }
@@ -580,7 +589,7 @@ void TrainingRunner::RunWithUpdate(VectorString& feed_names,
 
         ORT_THROW_IF_ERROR(status);
       } catch (std::exception&) {
-        // If exception happens during worker execution, propogate the exception to main thread.
+        // If exception happens during worker execution, propagate the exception to main thread.
         pipeline_worker_pool_.worker_states[worker_id].execution_exception = std::current_exception();
       }
     },
@@ -810,7 +819,7 @@ Status TrainingRunner::TrainingLoop(IDataLoader& training_data_loader, IDataLoad
       size_t batch_num_cur_shard = training_data->TotalBatch(params_.batch_size);
       for (size_t batch = 0; batch < batch_num_cur_shard && step_ < params_.num_train_steps; ++batch) {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-        MemoryInfo::SetIteration(step_);
+        GetSession().GetMemoryProfiler().GetMemoryInfo().SetIteration(step_);
 #endif
         const bool is_weight_update_step = (step_ + 1) % params_.gradient_accumulation_steps == 0;
 

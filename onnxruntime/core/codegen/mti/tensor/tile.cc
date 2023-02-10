@@ -3,7 +3,7 @@
 
 #include "core/codegen/mti/tensor/tile.h"
 #include "core/codegen/mti/mti_tvm_utils.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace tvm_codegen {

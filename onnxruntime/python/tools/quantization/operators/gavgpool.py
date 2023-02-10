@@ -1,6 +1,6 @@
 import onnx
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, attribute_to_kwarg, ms_domain
 from .base_operator import QuantOperatorBase
 
 
@@ -32,7 +32,7 @@ class QGlobalAveragePool(QuantOperatorBase):
         output_zp_name = output_zp_name_from_parameter if data_found else quantized_input_value.zp_name
         quantized_output_value = QuantizedValue(
             node.output[0],
-            node.output[0] + "_quantized",
+            node.output[0] + TENSOR_NAME_QUANT_SUFFIX,
             output_scale_name,
             output_zp_name,
             QuantizedValueType.Input,

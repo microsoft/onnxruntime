@@ -3,6 +3,7 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/providers.h"
+#include "core/providers/provider_factory_creators.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
@@ -12,32 +13,31 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptionsV2* provider_options);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nuphar(bool, const char*);
 //std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char*);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(
-    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, bool use_compiled_network, const char* blob_dump_path);
+    const char* device_type, bool enable_vpu_fast_compile, const char* device_id, size_t num_of_threads, const char* cache_dir);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rocm(const OrtROCMProviderOptions* provider_options);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensorrt(const OrtTensorRTProviderOptionsV2* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_SNPE(const ProviderOptions& provider_options);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Xnnpack();
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cann(const OrtCANNProviderOptions* provider_options);
 
 // EP for internal testing
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(const std::unordered_set<std::string>& supported_ops);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_InternalTesting(
+    const std::unordered_set<std::string>& supported_ops);
 
 namespace test {
 
 // unique_ptr providers with default values for session registration
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider();
-std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider(bool enable_arena = true);
-std::unique_ptr<IExecutionProvider> DefaultNupharExecutionProvider(bool allow_unaligned_buffers = true);
+std::unique_ptr<IExecutionProvider> DefaultDnnlExecutionProvider();
+std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDnnlProviderOptions* provider_options);
 //std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider();
 std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const OrtTensorRTProviderOptions* params);
@@ -49,12 +49,13 @@ std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_arena = true);
 std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena = true);
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op = false);
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 
-// EP for internal testing
 std::unique_ptr<IExecutionProvider> DefaultInternalTestingExecutionProvider(
     const std::unordered_set<std::string>& supported_ops);
 

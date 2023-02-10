@@ -7,6 +7,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/providers/cpu/nn/unpool.h"
+#include "core/common/narrow.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include <cmath>
 
@@ -35,7 +36,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
   if (X == nullptr) return Status(common::ONNXRUNTIME, common::FAIL, "input count mismatch");
   const TensorShape& X_shape = X->Shape();
-  const auto* X_data = X->template Data<float>();
+  const auto* X_data = X->Data<float>();
 
   ORT_RETURN_IF_NOT(X_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
@@ -48,7 +49,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   // Get pooled index tensor
   const auto* I = context->Input<Tensor>(1);
   const TensorShape& I_shape = I->Shape();
-  const auto* I_data = I->template Data<int64_t>();
+  const auto* I_data = I->Data<int64_t>();
 
   ORT_RETURN_IF_NOT(I_shape == X_shape, "Index tensor shape should be same as that of the input data tensor to unpool.");
 
@@ -75,7 +76,7 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
                       "Shape must be 1 dimensional as it's tensor data of a shape");
 
     // Turn the shape tensor data into an actual shape
-    const auto* p_shape = tensor_shape->template Data<int64_t>();
+    const auto* p_shape = tensor_shape->Data<int64_t>();
     std::vector<int64_t> given_output_dims(p_shape, p_shape + tensor_shape->Shape().Size());
     TensorShape given_shape(given_output_dims);
 
@@ -90,12 +91,12 @@ Status MaxUnpool::Compute(OpKernelContext* context) const {
   int64_t total_elements = X_shape.Size();
 
   Tensor* Y = context->Output(0, shape);
-  auto* Y_data = Y->template MutableData<float>();
-  auto out = gsl::make_span(Y_data, Y->Shape().Size());
+  auto* Y_data = Y->MutableData<float>();
+  auto out = gsl::make_span(Y_data, narrow<size_t>(Y->Shape().Size()));
   std::fill_n(out.data(), out.size(), 0.f);
 
   for (auto cur_elem = 0; cur_elem < total_elements; ++cur_elem) {
-    out[I_data[cur_elem]] = X_data[cur_elem];
+    out[narrow<size_t>(I_data[narrow<size_t>(cur_elem)])] = X_data[narrow<size_t>(cur_elem)];
   }
 
   return Status::OK();

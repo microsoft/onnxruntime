@@ -87,7 +87,7 @@ def process_trainabledropout(model):
             )
             index += 1
             # add training_mode output
-            mode_scalar = np.asarray([True]).astype(np.bool).reshape(())
+            mode_scalar = np.asarray([True]).astype(bool).reshape(())
             mode_value = numpy_helper.from_array(mode_scalar, "training_mode")
             training_mode_node = add_const(
                 model, "dropout_training_mode_node_%d" % index, "dropout_training_mode_%d" % index, t_value=mode_value

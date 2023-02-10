@@ -4,7 +4,6 @@
 #include "core/providers/cpu/ml/normalizer.h"
 
 #include <algorithm>
-#include "gsl/gsl"
 
 /*
 ONNX_OPERATOR_SCHEMA(Normalizer)
@@ -134,7 +133,7 @@ Status Normalizer::Normalize(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, x_shape);
 
-  const T* input = X.template Data<T>();
+  const T* input = X.Data<T>();
   float* output = Y->MutableData<float>();
 
   switch (normalization_) {

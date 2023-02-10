@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Condition="('$(OutputType)'!='Library' OR '$(IsAppExtension)'=='True')">
+    <NativeReference Condition="'$(Platform)' == 'arm64'" Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx.10.14-arm64\native\libonnxruntime.dylib">
+      <Kind>Framework</Kind>
+      <IsCxx>True</IsCxx>
+      <SmartLink>True</SmartLink>
+      <ForceLoad>True</ForceLoad>
+      <LinkerFlags>-lc++</LinkerFlags>
+      <WeakFrameworks>CoreML</WeakFrameworks>
+    </NativeReference>
+    <NativeReference Condition="'$(Platform)' == 'x64'" Include="$(MSBuildThisFileDirectory)..\..\runtimes\osx.10.14-x64\native\libonnxruntime.dylib">
+      <Kind>Framework</Kind>
+      <IsCxx>True</IsCxx>
+      <SmartLink>True</SmartLink>
+      <ForceLoad>True</ForceLoad>
+      <LinkerFlags>-lc++</LinkerFlags>
+      <WeakFrameworks>CoreML</WeakFrameworks>
+    </NativeReference>
+  </ItemGroup>
+</Project>

@@ -12,7 +12,7 @@
  * Configuration information for a Run call.
  */
 struct OrtRunOptions {
-  /// Log severity.  See https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+  /// Log severity.  See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
   /// Default = -1 (use the log severity from the InferenceSession that the Run is for).
   int run_log_severity_level = -1;
   int run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
@@ -28,6 +28,8 @@ struct OrtRunOptions {
   bool only_execute_path_to_fetches = false;
 
 #ifdef ENABLE_TRAINING
+  // Used by onnxruntime::training::TrainingSession. This class is now deprecated.
+  // Delete training_mode when TrainingSession is deleted.
   // Set to 'true' to run in training mode.
   bool training_mode = true;
 #endif

@@ -22,7 +22,7 @@ jobs:
   pool:
     vmImage: 'ubuntu-20.04'
 
-  timeoutInMinutes: 10
+  timeoutInMinutes: 30
 
   steps:
   - checkout: self

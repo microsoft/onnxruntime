@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "core/common/span_utils.h"
 #include "test/common/quantization_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -105,19 +106,17 @@ void RunQAttention(const std::vector<float>& input_data,
   tester.AddInput<QInput>("input_zero_point", {1}, {input_quant_params.zero_point});
   tester.AddInput<QWeight>("weight_zero_point", {1}, {weight_quant_params.zero_point});
 
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if constexpr (ep == EP::CUDA) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else if constexpr (ep == EP::CPU) {
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCpuExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   } else {  // onednn ep
-    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultDnnlExecutionProvider());
-    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider}, nullptr, &execution_providers);
   }
+
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
+             {kTensorrtExecutionProvider}, nullptr, &execution_providers);
 }
 
 static void RunQAttentionCUDA(
@@ -877,7 +876,7 @@ void TestQuantizedAttentionPastState(int64_t batch,
   std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.3f);
 
   std::vector<float> input_scale{0.005f};
-  std::vector<float> weight_scale(random.Uniform<float>({weight_scale_zp_size}, -0.01f, 0.01f));
+  std::vector<float> weight_scale(random.Uniform<float>(AsSpan({weight_scale_zp_size}), -0.01f, 0.01f));
 
   std::vector<int64_t> past_dims{2, batch, head_number, past_seq_len, head_size};
   std::vector<float> past_data = random.Gaussian<float>(past_dims, 0.0f, 0.3f);
@@ -981,7 +980,8 @@ TEST(QAttentionTest, QAttentionPrunedModel) {
                    input_hidden_size);
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
 TEST(QAttentionTest, SharedPrepackedWeights) {
   int batch_size = 1;
   int sequence_length = 2;

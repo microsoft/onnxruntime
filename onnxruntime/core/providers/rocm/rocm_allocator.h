@@ -19,7 +19,6 @@ class ROCMAllocator : public IAllocator {
                           device_id, OrtMemTypeDefault)) {}
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 
  private:
   void CheckDevice(bool throw_when_fail) const;
@@ -57,11 +56,10 @@ class ROCMPinnedAllocator : public IAllocator {
   ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, device_id),
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, device_id),
                           device_id, OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  FencePtr CreateFence(const SessionState* session_state) override;
 };
 }  // namespace onnxruntime

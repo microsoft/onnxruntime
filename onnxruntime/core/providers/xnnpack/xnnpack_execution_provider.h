@@ -8,15 +8,22 @@
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+#include "core/framework/session_options.h"
 
+struct pthreadpool;
 namespace onnxruntime {
+// placeholder for future use. no options currently
 struct XnnpackExecutionProviderInfo {
-  bool create_arena{true};
+  int xnn_thread_pool_size{0};
+  const SessionOptions* session_options{nullptr};
+  XnnpackExecutionProviderInfo() = default;
 
-  explicit XnnpackExecutionProviderInfo(bool use_arena = true)
-      : create_arena{use_arena} {}
-
-  XnnpackExecutionProviderInfo() = delete;
+  XnnpackExecutionProviderInfo(const ProviderOptions& po, const SessionOptions* sess_option)
+      : session_options(sess_option) {
+    if (auto it = po.find("intra_op_num_threads"); it != po.end()) {
+      xnn_thread_pool_size = std::stoi(it->second);
+    }
+  }
 };
 
 class XnnpackExecutionProvider : public IExecutionProvider {
@@ -25,10 +32,12 @@ class XnnpackExecutionProvider : public IExecutionProvider {
   ~XnnpackExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
-      const onnxruntime::GraphViewer& graph,
-      const std::vector<const KernelRegistry*>& kernel_registries) const override;
+      const onnxruntime::GraphViewer& graph_viewer,
+      const IKernelLookup& /*kernel_lookup*/) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
 
@@ -36,6 +45,13 @@ class XnnpackExecutionProvider : public IExecutionProvider {
 
   // xnnpack does not support concurrent execution of a kernel
   bool ConcurrentRunSupported() const override { return false; }
+
+  pthreadpool* GetPrivateThreadPool() const {
+    return xnnpack_thread_pool_;
+  }
+
+ private:
+  pthreadpool* xnnpack_thread_pool_{nullptr};
 };
 
 }  // namespace onnxruntime

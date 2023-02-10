@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/eager/ort_kernel_invoker.h"
 #include "core/common/logging/sinks/clog_sink.h"
+#include "core/common/span_utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "test/framework/test_utils.h"
 #include "asserts.h"
@@ -22,7 +23,7 @@ TEST(InvokerTest, Basic) {
       std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
-      &logger_id); 
+      &logger_id);
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
@@ -39,7 +40,7 @@ TEST(InvokerTest, Basic) {
   ASSERT_STATUS_OK(kernel_invoker.Invoke("Add", {A, B}, result, nullptr));
   const Tensor& C = result.back().Get<Tensor>();
   auto& c_shape = C.Shape();
-  EXPECT_EQ(c_shape.GetDims(), gsl::make_span(dims_mul_x));
+  EXPECT_TRUE(SpanEq(c_shape.GetDims(), gsl::make_span(dims_mul_x)));
 
   std::vector<float> expected_result = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
   auto* c_data = C.Data<float>();
@@ -55,7 +56,7 @@ TEST(InvokerTest, Inplace) {
       std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
-      &logger_id); 
+      &logger_id);
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   IOnnxRuntimeOpSchemaRegistryList tmp_op_registry = {};
@@ -121,7 +122,7 @@ TEST(InvokerTest, CustomOp) {
       std::unique_ptr<logging::ISink>{new logging::CLogSink{}},
       logging::Severity::kVERBOSE, false,
       logging::LoggingManager::InstanceType::Default,
-      &logger_id); 
+      &logger_id);
   std::unique_ptr<Environment> env;
   ASSERT_STATUS_OK(Environment::Create(std::move(logging_manager), env));
   ORTInvoker kernel_invoker(std::move(cpu_execution_provider), env->GetLoggingManager()->DefaultLogger(), regs);

@@ -34,7 +34,7 @@ Status ReduceRowSumOnMatrixA(cudaStream_t stream, const int8_t* matrix, int32_t*
                                                                                                                                                  static_cast<int>(helper.K()));
   }
 
-  return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template <int TPB>
@@ -63,7 +63,7 @@ Status ReduceColSumOnMatrixB(cudaStream_t stream, const int8_t* matrix, int32_t*
                                                                                                                                                  static_cast<int32_t>(helper.N()));
   }
 
-  return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return CUDA_CALL(cudaGetLastError());
 }
 
 __global__ void ComputeOffsetOfMatrixAB(const int32_t* row_sum,
@@ -124,7 +124,7 @@ Status OffsetOutput(cudaStream_t stream,
     }
   }
 
-  return CUDA_CALL(cudaPeekAtLastError()) ? Status::OK() : Status(common::ONNXRUNTIME, common::FAIL);
+  return CUDA_CALL(cudaGetLastError());
 }
 
 }  // namespace cuda

@@ -189,6 +189,7 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2 = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8S8_KERNEL_AVX2>,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8S8_KERNEL_AVX2::PackedStrides.K,
+    6  // assembly kernel M stride
 };
 
 struct MLAS_GEMM_U8U8_KERNEL_AVX2
@@ -270,4 +271,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2 = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8U8_KERNEL_AVX2>,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedK,
     MLAS_GEMM_U8U8_KERNEL_AVX2::PackedStrides.K,
+    6 // assembly kernel M stride
 };

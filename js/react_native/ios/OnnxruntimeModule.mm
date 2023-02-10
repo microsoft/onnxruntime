@@ -12,9 +12,10 @@
 
 struct SessionInfo {
   std::unique_ptr<Ort::Session> session;
-  std::vector<Ort::MemoryAllocation> allocations;
   std::vector<const char *> inputNames;
+  std::vector<Ort::AllocatedStringPtr> inputNames_ptrs;
   std::vector<const char *> outputNames;
+  std::vector<Ort::AllocatedStringPtr> outputNames_ptrs;
 };
 
 static Ort::Env *ortEnv = new Ort::Env(ORT_LOGGING_LEVEL_INFO, "Default");
@@ -90,16 +91,16 @@ RCT_EXPORT_METHOD(run
 
     sessionInfo->inputNames.reserve(sessionInfo->session->GetInputCount());
     for (size_t i = 0; i < sessionInfo->session->GetInputCount(); ++i) {
-      auto inputName = sessionInfo->session->GetInputName(i, ortAllocator);
-      sessionInfo->allocations.emplace_back(ortAllocator, inputName, strlen(inputName) + 1);
-      sessionInfo->inputNames.emplace_back(inputName);
+      auto inputName = sessionInfo->session->GetInputNameAllocated(i, ortAllocator);
+      sessionInfo->inputNames.emplace_back(inputName.get());
+      sessionInfo->inputNames_ptrs.emplace_back(std::move(inputName));
     }
 
     sessionInfo->outputNames.reserve(sessionInfo->session->GetOutputCount());
     for (size_t i = 0; i < sessionInfo->session->GetOutputCount(); ++i) {
-      auto outputName = sessionInfo->session->GetOutputName(i, ortAllocator);
-      sessionInfo->allocations.emplace_back(ortAllocator, outputName, strlen(outputName) + 1);
-      sessionInfo->outputNames.emplace_back(outputName);
+      auto outputName = sessionInfo->session->GetOutputNameAllocated(i, ortAllocator);
+      sessionInfo->outputNames.emplace_back(outputName.get());
+      sessionInfo->outputNames_ptrs.emplace_back(std::move(outputName));
     }
 
     value = [NSValue valueWithPointer:(void *)sessionInfo];

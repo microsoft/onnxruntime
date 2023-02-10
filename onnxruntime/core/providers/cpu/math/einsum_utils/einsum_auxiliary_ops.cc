@@ -161,7 +161,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
   const auto input_dims = input_shape.GetDims();
   auto rank = static_cast<int64_t>(input_dims.size());
 
-  ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[dim_1] == input_dims[dim_2],
+  ORT_ENFORCE(rank >= 2 && dim_1 != dim_2 && input_dims[onnxruntime::narrow<size_t>(dim_1)] == input_dims[onnxruntime::narrow<size_t>(dim_2)],
               "Cannot parse the diagonal elements along dims ", dim_1, " and ", dim_2, " for input shape ", input_shape);
 
   int64_t first_dim = -1;   // first_dim holds the lesser of dim_1 and dim_2
@@ -179,20 +179,20 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
   bool is_transpose_required = IsTransposeRequiredForDiagonal(dim_1, dim_2, rank);
   if (is_transpose_required) {
-    std::vector<size_t> permutation(rank, 0);
+    std::vector<size_t> permutation(onnxruntime::narrow<size_t>(rank), 0);
     int64_t first_dim_axis = -1;  // This is the axis eventually occupied by the first_dim
 
     // If one of the diagonal dimensions is one of the 2 innermost dims, then leave it as such
     // so as to avoid transpose overhead
     if (first_dim == rank - 2) {  // If rank - 2 is occupied by first_dim, keep it there
-      permutation[rank - 2] = first_dim;
+      permutation[SafeInt<size_t>(rank) - 2] = onnxruntime::narrow<size_t>(first_dim);
       first_dim_axis = rank - 2;
     } else {
       if (second_dim != rank - 2) {  // If rank - 2 is not occupied by second_dim, then put first_dim there
-        permutation[rank - 2] = first_dim;
+        permutation[SafeInt<size_t>(rank) - 2] = onnxruntime::narrow<size_t>(first_dim);
         first_dim_axis = rank - 2;
       } else {  // If rank - 2 is occupied by second_dim, then put first_dim in rank - 1
-        permutation[rank - 1] = first_dim;
+        permutation[SafeInt<size_t>(rank)  - 1] = onnxruntime::narrow<size_t>(first_dim);
         first_dim_axis = rank - 1;
         preserve_innermost_dim_val = true;  // We always want to preserve the dim value of the first_dim
       }
@@ -200,15 +200,15 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
     // Put the second_dim in the dim not occupied by the first_dim
     if (first_dim_axis != rank - 1) {
-      permutation[rank - 1] = second_dim;
+      permutation[SafeInt<size_t>(rank)  - 1] = onnxruntime::narrow<size_t>(second_dim);
     } else {
-      permutation[rank - 2] = second_dim;
+      permutation[SafeInt<size_t>(rank) - 2] = onnxruntime::narrow<size_t>(second_dim);
     }
 
-    int64_t iter = 0;
+    size_t iter = 0;
     for (int64_t i = 0; i < rank; ++i) {
       if (i != first_dim && i != second_dim) {
-        permutation[iter++] = i;
+        permutation[iter++] = onnxruntime::narrow<size_t>(i);
       }
     }
 
@@ -223,7 +223,7 @@ std::unique_ptr<Tensor> Diagonal(const Tensor& input, int64_t dim_1, int64_t dim
 
     // Find the "reverse" permutation
     iter = 0;
-    std::vector<size_t> reverse_permutation(rank, 0);
+    std::vector<size_t> reverse_permutation(onnxruntime::narrow<size_t>(rank), 0);
     for (const auto& perm : permutation) {
       reverse_permutation[perm] = iter++;
     }
@@ -330,9 +330,9 @@ std::unique_ptr<Tensor> MatMul(const Tensor& input_1, const gsl::span<const int6
   // and it will de-allocate the memory for this intermediate tensor when it goes out of scope
   std::unique_ptr<Tensor> output = std::make_unique<Tensor>(input_1.DataType(), output_dims, allocator);
 
-  const T* input_1_data = input_1.template Data<T>();
-  const T* input_2_data = input_2.template Data<T>();
-  T* output_data = output->template MutableData<T>();
+  const T* input_1_data = input_1.Data<T>();
+  const T* input_2_data = input_2.Data<T>();
+  T* output_data = output->MutableData<T>();
 
   auto status = device_matmul_func(input_1_data, input_2_data, output_data,
                                    left_offset, right_offset, output_offset, batches, M, K, N, tp, einsum_cuda_assets);
@@ -468,4 +468,3 @@ template std::unique_ptr<Tensor> ReduceSum<MLFloat16>(
 
 }  // namespace EinsumOp
 }  // namespace onnxruntime
-

@@ -31,6 +31,13 @@ TEST(NGramRepeatBlockTest, NGramSize_3) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
+#ifdef USE_ROCM
+  if (nullptr != DefaultRocmExecutionProvider().get()) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultRocmExecutionProvider());
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+#endif
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());

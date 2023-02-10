@@ -5,7 +5,7 @@
 
 #include "core/codegen/mti/mti_tvm_utils.h"
 #include <climits>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <topi/transform.h>
 #include <tvm/ir_pass.h>
 

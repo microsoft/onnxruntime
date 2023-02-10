@@ -84,6 +84,12 @@ class ExecutionProviders {
   const std::vector<std::string>& GetIds() const { return exec_provider_ids_; }
   const ProviderOptionsMap& GetAllProviderOptions() const { return exec_provider_options_; }
 
+  bool GetCpuProviderWasImplicitlyAdded() const { return cpu_execution_provider_was_implicitly_added_; }
+
+  void SetCpuProviderWasImplicitlyAdded(bool cpu_execution_provider_was_implicitly_added) {
+    cpu_execution_provider_was_implicitly_added_ = cpu_execution_provider_was_implicitly_added;
+  }
+
  private:
   // Some compilers emit incomprehensive output if this is allowed
   // with a container that has unique_ptr or something move-only.
@@ -95,5 +101,9 @@ class ExecutionProviders {
 
   // maps for fast lookup of an index into exec_providers_
   std::unordered_map<std::string, size_t> provider_idx_map_;
+
+  // Whether the CPU provider was implicitly added to a session for fallback (true),
+  // or whether it was explicitly added by the caller.
+  bool cpu_execution_provider_was_implicitly_added_ = false;
 };
 }  // namespace onnxruntime

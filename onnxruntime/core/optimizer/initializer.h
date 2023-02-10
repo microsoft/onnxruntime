@@ -27,18 +27,18 @@ class Initializer final {
               gsl::span<const int64_t> dims);
 
   Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-              const Path& model_path);
+              const Path& model_path = {});
 
   ~Initializer() = default;
 
   void ToProto(ONNX_NAMESPACE::TensorProto& tensor_proto) const {
     tensor_proto = utils::TensorToTensorProto(data_, name_);
   }
-
+#if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string& name) const;
 
   ONNX_NAMESPACE::TensorProto ToBFloat16(const std::string& name) const;
-
+#endif  // ORT_EXTENDED_MINIMAL_BUILD
   int data_type() const {
     return data_.GetElementType();
   }
@@ -57,8 +57,13 @@ class Initializer final {
     return data_.Data<T>();
   }
 
-  const int8_t* raw_data() const {
-    return reinterpret_cast<const int8_t*>(data_.DataRaw());
+  template <typename T>
+  auto DataAsSpan() const {
+    return data_.DataAsSpan<T>();
+  }
+
+  gsl::span<const uint8_t> DataAsByteSpan() const {
+    return gsl::make_span(reinterpret_cast<const uint8_t*>(data_.DataRaw()), data_.SizeInBytes());
   }
 
   gsl::span<const int64_t> dims() const {
@@ -67,12 +72,13 @@ class Initializer final {
 
   int64_t size() const { return data_.Shape().Size(); }
 
+#if !defined(ORT_EXTENDED_MINIMAL_BUILD)
   Initializer& add(float value);
 
   Initializer& add(const Initializer& other);
 
   Initializer& sub(const Initializer& other);
-  
+
   Initializer& mul(const Initializer& other);
 
   Initializer& div(const Initializer& other);
@@ -80,7 +86,7 @@ class Initializer final {
   Initializer& sqrt();
 
   void scale_by_axis(const Initializer& other, int axis);
-
+#endif  // ORT_EXTENDED_MINIMAL_BUILD
  private:
 
   std::string name_;

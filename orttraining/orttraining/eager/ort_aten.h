@@ -9,6 +9,12 @@
 #include "ort_util.h"
 #include "ort_ops.h"
 #include "ort_log.h"
+#include "ort_tensor.h"
+
+#define CHECK_STATUS(status) if (!status.IsOK()) { \
+  std::stringstream err; \
+  err << "ORT return failure (line " << __LINE__ << "): " << status.ErrorMessage(); \
+  throw std::runtime_error(err.str()); }
 
 namespace torch_ort {
 namespace eager {
@@ -88,6 +94,17 @@ OrtValue create_ort_value(
   return create_ort_value(invoker, values_vector);
 }
 
+template<typename T>
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  const at::OptionalArrayRef<T> values) {
+  std::vector<T> values_vector;
+  if (values.has_value()) {
+    values_vector.assign(values.value().begin(), values.value().end());
+  }
+  return create_ort_value(invoker, values_vector);
+}
+
 onnx::AttributeProto create_ort_attribute(
   const char* name,
   at::Scalar value,
@@ -106,7 +123,9 @@ bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid
 
 bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types);
 
-bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types);
+bool IsSupportedType(at::IntArrayRef array, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::OptionalIntArrayRef array, const std::vector<at::ScalarType>& valid_types);
 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types);
 
@@ -121,5 +140,24 @@ c10::optional<at::ScalarType> PromoteScalarTypesWithCategory(
 ONNX_NAMESPACE::TensorProto_DataType GetONNXTensorProtoDataType(at::ScalarType dtype);
 
 OrtValue CastToType(onnxruntime::ORTInvoker& invoker, const OrtValue& input, at::ScalarType type);
+void CastToType_out(onnxruntime::ORTInvoker& invoker, const OrtValue& input, OrtValue& output, at::ScalarType type);
+
+void resize_output(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* output,
+  at::IntArrayRef shape);
+
+void resize_impl_ort_(
+  onnxruntime::ORTInvoker& invoker,
+  ORTTensorImpl* self,
+  at::IntArrayRef size);
+
+namespace aten {
+
+// aten::nonzero(Tensor self) -> Tensor
+at::Tensor nonzero(
+  const at::Tensor& self);
+
+} // namespace aten
 } // namespace eager
 } // namespace torch_ort

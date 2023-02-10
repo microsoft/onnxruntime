@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "core/providers/cpu/quantization/quantize_linear.h"
 #include "core/providers/common.h"
 #include "core/mlas/inc/mlas.h"
@@ -25,9 +26,9 @@ static void PrepareForQDQ(const TensorShape& input_shape,
                 "x_zero_point must be null or a scalar or 1D tensor or size 1.");
   } else {  // per-channel QuantizeLinear/DequantizeLinear
     const int64_t axis_no_neg = HandleNegativeAxis(axis, input_shape.NumDimensions());
-    block_count = input_shape.SizeToDimension(axis_no_neg);
-    broadcast_dim = input_shape[axis_no_neg];
-    block_size = input_shape.SizeFromDimension(axis_no_neg + 1);
+    block_count = input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis_no_neg));
+    broadcast_dim = input_shape[onnxruntime::narrow<size_t>(axis_no_neg)];
+    block_size = input_shape.SizeFromDimension(SafeInt<size_t>(axis_no_neg) + 1);
 
     // if an axis was specified, ensure the scale and zero point are compatible
     ORT_ENFORCE(scale.Shape().NumDimensions() == 1 && scale.Shape()[0] == broadcast_dim,
@@ -81,11 +82,11 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   PrepareForQDQ(x.Shape(), x_scale, x_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const float* scale = x_scale.template Data<float>();
-  const T* input = x.template Data<T>();
-  float* output = y.template MutableData<float>();
+  const float* scale = x_scale.Data<float>();
+  const T* input = x.Data<T>();
+  float* output = y.MutableData<float>();
 
-  const T* zero_point = x_zero_point ? x_zero_point->template Data<T>() : nullptr;
+  const T* zero_point = x_zero_point ? x_zero_point->Data<T>() : nullptr;
   if (std::is_same<T, int32_t>::value) {
     ORT_ENFORCE(zero_point == nullptr ||
                     std::all_of(zero_point,
@@ -148,10 +149,10 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
   int64_t block_size;
   PrepareForQDQ(x.Shape(), y_scale, y_zero_point, axis_, N, broadcast_dim, block_size);
 
-  const T* zero_point = y_zero_point != nullptr ? y_zero_point->template Data<T>() : nullptr;
-  const float* scale = y_scale.template Data<float>();
-  const float* input = x.template Data<float>();
-  T* output = y.template MutableData<T>();
+  const T* zero_point = y_zero_point != nullptr ? y_zero_point->Data<T>() : nullptr;
+  const float* scale = y_scale.Data<float>();
+  const float* input = x.Data<float>();
+  T* output = y.MutableData<T>();
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {

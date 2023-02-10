@@ -11,21 +11,6 @@
 #include "core/util/qmath.h"
 #include "core/mlas/inc/mlas.h"
 
-#if defined(_M_ARM64) || defined(__aarch64__)
-
-//
-// TODO!! Hack! need to move this to MLAS
-//
-// We use a different job partition with mobile devices
-// where the model tends to be smaller. When the entire
-// weight matrix fits in the cache, we process a thin
-// horizontal slice of the result matrix at a time. The
-// thickness of this slice depend on micro-kernel M
-// stride.
-//
-#define GEMM_KERNEL_STRIDE_M 4
-
-#endif
 
 namespace onnxruntime {
 
@@ -85,8 +70,8 @@ class QLinearConv : public OpKernel {
     ORT_ENFORCE(IsValidQuantParam(W_zero_point, M),
                 "QLinearConv : filter zero point shape invalid");
 
-    X_zero_point_value = *(X_zero_point->template Data<ActType>());
-    Y_zero_point_value = *(Y_zero_point->template Data<ActType>());
+    X_zero_point_value = *(X_zero_point->Data<ActType>());
+    Y_zero_point_value = *(Y_zero_point->Data<ActType>());
 
     const int64_t W_zero_point_size = W_zero_point->Shape().Size();
     const auto* W_zero_point_data = static_cast<const uint8_t*>(W_zero_point->DataRaw());
@@ -109,45 +94,77 @@ class QLinearConv : public OpKernel {
     ORT_ENFORCE(IsValidQuantParam(W_scale, M),
                 "QLinearConv : filter scale shape invalid");
 
-    auto X_scale_value = *(X_scale->template Data<float>());
-    auto Y_scale_value = *(Y_scale->template Data<float>());
+    auto X_scale_value = *(X_scale->Data<float>());
+    auto Y_scale_value = *(Y_scale->Data<float>());
 
     std::vector<float> output_scales;
     const int64_t W_scale_size = W_scale->Shape().Size();
-    const auto* W_scale_data = W_scale->template Data<float>();
+    const auto* W_scale_data = W_scale->Data<float>();
     output_scales.resize(static_cast<size_t>(W_scale_size));
     for (int64_t i = 0; i < W_scale_size; i++) {
-      output_scales[i] = (X_scale_value * W_scale_data[i] / Y_scale_value);
+      output_scales[onnxruntime::narrow<size_t>(i)] = (X_scale_value * W_scale_data[i] / Y_scale_value);
     }
 
     return output_scales;
   }
 
-  static int32_t ComputeTaskCount(int64_t output_image_size, int64_t group_output_channels, int64_t kernel_dim) {
-    // Replicate the logic from MlasGemmU8X8Schedule to control the number of
-    // worker threads used for the convolution.
-    int32_t maximum_thread_count;
-    if (CPUIDInfo::GetCPUIDInfo().IsHybrid()) {
-      maximum_thread_count = 64;
-    } else {
-      maximum_thread_count = 16;
-    }
-    constexpr double thread_complexity = static_cast<double>(64 * 1024);
+  /**
+   * @brief Computes the partition stride of the activation tensor.
+   *
+   *        Current threaded job partiton is limited in that we can't
+   *        partition the filter tensor (a TODO item). So we can only
+   *        horizontally partition the activation tensor into thin
+   *        slices. This function decides the thickness of that slice,
+   *        which is also number of output pixels each job produces.
+   *
+   * @param degree_of_parallelism  Configured thread parallelism for this run
+   * @param output_image_size      Number of pixels in the output image
+   * @param group_output_channels  Number of filters in this group.
+   * @param kernel_dim             Dimension of a filter
+   * @param comp_kernel_stride     Best stride to fully utilize hand tuned computing kernel.
+   * @return
+  */
+  static int32_t ComputeOutputStride(int32_t degree_of_parallelism,
+                                     int64_t output_image_size,
+                                     int64_t group_output_channels,
+                                     int64_t kernel_dim,
+                                     int64_t comp_kernel_stride) {
+    //
+    // The idea is to simply partition the activation tensor using the computation kernel stride, to ensure
+    // the hand crafted kernel code has maximum throughput in almost all the jobs. Most of the below logic,
+    // however, is to take care of corner cases where we have either too few or too many partitions.
+    //
+    constexpr double MIN_COMPLEXITY = static_cast<double>(64 * 1024);
 
-    const double complexity = static_cast<double>(output_image_size) *
-                              static_cast<double>(group_output_channels) *
-                              static_cast<double>(kernel_dim);
+    const int64_t weights = group_output_channels * kernel_dim;
+    const int32_t min_stride = static_cast<int32_t>(std::ceil(MIN_COMPLEXITY / static_cast<double>(weights)));
 
-    int32_t task_count = maximum_thread_count;
-    if (complexity < thread_complexity * maximum_thread_count) {
-      task_count = static_cast<int32_t>(complexity / thread_complexity) + 1;
-    }
-    if (task_count > output_image_size) {
-      // Ensure that every thread produces at least one output.
-      task_count = static_cast<int32_t>(output_image_size);
+    int32_t output_stride = static_cast<int32_t>(comp_kernel_stride);
+
+    if (output_stride < min_stride) {
+      output_stride = (min_stride + output_stride - 1) / output_stride * output_stride;
     }
 
-    return task_count;
+    const auto task_count = (output_image_size + output_stride - 1) / output_stride;
+#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
+    const auto large_jobs = degree_of_parallelism << 6;
+#else
+    const auto large_jobs = degree_of_parallelism * 5;
+#endif
+    if (task_count > large_jobs) {
+      // too many tasks, need a bigger stride
+      output_stride = static_cast<int32_t>(((output_image_size + large_jobs - 1) / large_jobs + comp_kernel_stride - 1) / comp_kernel_stride * comp_kernel_stride);
+    }
+
+    // We need a better partiton when we have a big filter tensor and very small activation tensor
+    // TODO!! we should partition the weight tensor instead
+    constexpr int64_t BIG_WEIGHT = 1024 * 1024;
+    if (weights >= BIG_WEIGHT && task_count < (degree_of_parallelism / 8) ) {
+        int32_t s1 = static_cast<int32_t>((output_image_size + degree_of_parallelism - 1) / degree_of_parallelism);
+        output_stride = std::max(s1, min_stride);
+    }
+
+    return output_stride;
   }
 
   bool TryConvSymPrepack(const uint8_t* Wdata,
@@ -166,7 +183,7 @@ class QLinearConv : public OpKernel {
       return false;
     }
 
-    auto X_zero_point_value = *(X_zero_point->template Data<ActType>());
+    auto X_zero_point_value = *(X_zero_point->Data<ActType>());
     const size_t W_zero_point_size = static_cast<size_t>(W_zero_point->Shape().Size());
     const auto* W_zero_point_data = W_zero_point->Data<int8_t>();
     if (!std::all_of(W_zero_point_data, W_zero_point_data + W_zero_point_size, [](int8_t v) { return v == 0; })) {
@@ -179,7 +196,7 @@ class QLinearConv : public OpKernel {
     if (packed_size != 0) {
       const Tensor* B = nullptr;
       Info().TryGetConstantInput(8, &B);
-      const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
+      const auto* Bdata = B != nullptr ? B->Data<int32_t>() : nullptr;
 
       column_sums_.resize(output_channels);
       const int8_t* sdata = (const int8_t*)Wdata;
@@ -612,9 +629,9 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     gemm_output_buffer = BufferUniquePtr(gemm_output_data, BufferDeleter(alloc));
   }
 
-  const auto* Xdata = X->template Data<ActType>();
-  const auto* Bdata = B != nullptr ? B->template Data<int32_t>() : nullptr;
-  auto* Ydata = Y->template MutableData<ActType>();
+  const auto* Xdata = X->Data<ActType>();
+  const auto* Bdata = B != nullptr ? B->Data<int32_t>() : nullptr;
+  auto* Ydata = Y->MutableData<ActType>();
 
   BufferUniquePtr transpose_input_buffer;
   BufferUniquePtr transpose_output_buffer;
@@ -629,6 +646,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
 
   BufferUniquePtr col_buffer;
   BufferUniquePtr indirection_buffer;
+  size_t ind_buf_length = 0;
   std::vector<ActType> padding_data;
 
   bool use_indirection_buffer = false;
@@ -644,23 +662,122 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
       group_col_buffer_size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
       auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
       col_buffer = BufferUniquePtr(col_data, BufferDeleter(alloc));
+      memset(col_data, 0, SafeInt<size_t>(sizeof(ActType)) * group_col_buffer_size);
     }
   }
+
+  bool parallel_batch = is_symmetric_conv_ && channels_last_;
+
   if (use_indirection_buffer) {
     // Allocate indirection buffer pointers and prepare a padding vector for
     // the im2col transform.
-    auto* indirection_data = alloc->Alloc(SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size);
+    ind_buf_length = SafeInt<size_t>(sizeof(const ActType*)) * kernel_size * output_image_size;
+    if (parallel_batch)
+      ind_buf_length *= SafeInt<size_t>(N); // ind buffer per each image in the batch
+    auto* indirection_data = alloc->Alloc(ind_buf_length);
     indirection_buffer = BufferUniquePtr(indirection_data, BufferDeleter(alloc));
     padding_data.resize(static_cast<size_t>(C), X_zero_point_value);
   }
 
   concurrency::ThreadPool* thread_pool = context->GetOperatorThreadPool();
-#if defined(_M_ARM64) || defined(__aarch64__)
-  int32_t task_count = (output_image_size + (GEMM_KERNEL_STRIDE_M - 1)) / GEMM_KERNEL_STRIDE_M;
-#else
-  int32_t task_count = ComputeTaskCount(output_image_size, group_output_channels, kernel_dim);
-  task_count = std::min(task_count, concurrency::ThreadPool::DegreeOfParallelism(thread_pool));
-#endif
+
+  /*************************************
+  * Thread partition idea: we are essentially partition a GEMM A[M,K] x B[K,N].
+  * Here B contains the conv filters, which are usually not big, so we assume
+  * it can be in cache entirely. Then we simply partition A horizontally into
+  * thin slices along M dimension. This would ensure that the slice of A fits
+  * into the cache and reduce the chance of kernel waiting for memory.
+  *
+  * The thickness of A slice should be multiple of kernel stride M. Since
+  * we have to choose from many different kernels, the logic of finding
+  * the stride M is hacky.
+  */
+
+  // The following convoluted branches must match the kernel selection logic
+  // in conv_worker.
+  int64_t compute_stride;
+  if (is_symmetric_conv_) {
+    if (is_depthwise_conv) {
+      compute_stride = MlasConvSymDepthwiseGetKernelOutputCnt(std::is_signed<ActType>::value);
+    } else {
+      compute_stride = MlasConvSymGetKernelOutputCount(std::is_signed<ActType>::value);
+    }
+  } else if (is_depthwise_conv) {
+    compute_stride = MlasConvDepthwiseGetKernelOutputCnt();
+  } else {
+    if (is_symmetric_gemm_) {
+      compute_stride = MlasSymmQgemmGetKernelOutputCnt();
+    } else {
+      compute_stride = MlasQgemmGetKernelOutputCnt(std::is_signed<ActType>::value, is_W_signed);
+    }
+  }
+
+  const int32_t degree_of_par = concurrency::ThreadPool::DegreeOfParallelism(thread_pool);
+  const int32_t stride_m = ComputeOutputStride(degree_of_par, output_image_size, group_output_channels, kernel_dim, compute_stride);
+  const int64_t task_count = (output_image_size + stride_m - 1) / stride_m;
+
+  if (parallel_batch) // process all batch images in the same parallel section
+  {
+    auto conv_worker = [&](ptrdiff_t batch) {
+      int64_t image_id = batch / task_count;
+      int64_t output_start = (batch % task_count) * stride_m;
+      int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
+
+      auto* worker_input_image = Xdata + X_offset * image_id;
+
+      ActType const** worker_indirection_buffer = nullptr;
+      if (indirection_buffer) {
+        size_t offset = SafeInt<size_t>(image_id * output_image_size + output_start) * kernel_size;
+        assert(offset < ind_buf_length);
+        worker_indirection_buffer = static_cast<ActType const**>(indirection_buffer.get()) + offset;
+
+        math::Im2col<ActType, StorageOrder::NHWC>()(
+          worker_input_image,
+          C,
+          input_shape.GetDims().data(),
+          output_shape.GetDims().data(),
+          kernel_shape.data(),
+          strides.data(),
+          dilations.data(),
+          pads.data(),
+          static_cast<ptrdiff_t>(kernel_rank),
+          output_start,
+          output_count,
+          worker_indirection_buffer,
+          padding_data.data());
+      }
+
+      auto* worker_output = Ydata + Y_offset * image_id + output_start * M;
+
+      MLAS_CONV_SYM_PARAMS conv_params = {};
+      if (worker_indirection_buffer) {
+        conv_params.InputIndirection = reinterpret_cast<void const**>(worker_indirection_buffer);
+      } else {
+        conv_params.InputDirect = worker_input_image + output_start * C;
+      }
+      conv_params.Filter = packed_W_buffer_.get();
+      conv_params.Output = worker_output;
+      conv_params.InputChannels = static_cast<size_t>(C);
+      conv_params.OutputChannels = static_cast<size_t>(M);
+      conv_params.OutputCount = static_cast<size_t>(output_count);
+      conv_params.KernelSize = static_cast<size_t>(kernel_size);
+      conv_params.Bias = column_sums_.data();
+      conv_params.Scale = output_scales.data();
+      conv_params.PerChannelScale = output_scales.size() > 1;
+      conv_params.OutputZeroPoint = Y_zero_point_value;
+      conv_params.InputIsSigned = std::is_signed<ActType>::value;
+
+      if (is_depthwise_conv) {
+        MlasConvSymDepthwise(conv_params);
+      } else {
+        MlasConvSym(conv_params);
+      }
+    };
+
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count * N), conv_worker);
+
+    return Status::OK();
+  }
 
   for (int64_t image_id = 0; image_id < N; ++image_id) {
     const auto* input_data = Xdata;
@@ -698,14 +815,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
     }
 
     auto conv_worker = [&](ptrdiff_t batch) {
-#if defined(_M_ARM64) || defined(__aarch64__)
-      int64_t output_start = batch * GEMM_KERNEL_STRIDE_M;
-      int64_t output_count = std::min((int64_t)GEMM_KERNEL_STRIDE_M, output_image_size - output_start);
-#else
-      auto work = concurrency::ThreadPool::PartitionWork(batch, task_count, static_cast<ptrdiff_t>(output_image_size));
-      int64_t output_start = static_cast<int64_t>(work.start);
-      int64_t output_count = static_cast<int64_t>(work.end) - work.start;
-#endif
+      int64_t output_start = (int64_t)batch * (int64_t)stride_m;
+      int64_t output_count = std::min((int64_t)stride_m, output_image_size - output_start);
 
       ActType const** worker_indirection_buffer = nullptr;
       if (indirection_buffer) {
@@ -880,7 +991,7 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           static_cast<size_t>(M));
     };
 
-    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, task_count, conv_worker);
+    concurrency::ThreadPool::TrySimpleParallelFor(thread_pool, onnxruntime::narrow<ptrdiff_t>(task_count), conv_worker);
 
     if (!channels_last_) {
       // Transpose the output from channels last (NHWC) to channels first (NCHW).

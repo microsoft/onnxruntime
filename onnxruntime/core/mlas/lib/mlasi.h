@@ -735,9 +735,11 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+#ifdef MLAS_AMX_SUPPORTED
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
-extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
@@ -988,7 +990,7 @@ MlasPartitionWork(
 #if defined(_MSC_VER) && !defined(__clang__)
   #pragma warning(push)
   // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497) 
+  #pragma warning(disable:26497)
 #endif
 
 MLAS_FORCEINLINE
@@ -1158,6 +1160,8 @@ MlasBroadcastInt32x4(int32_t Value)
     return _mm_set1_epi32(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_i32x4_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_splats(Value);
 #else
     return MLAS_INT32X4{Value, Value, Value, Value};
 #endif
@@ -1207,6 +1211,8 @@ MlasAddInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
     return _mm_add_epi32(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_i32x4_add(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_add(Vector1, Vector2);
 #else
     return Vector1 + Vector2;
 #endif
@@ -1282,6 +1288,8 @@ MlasXorInt32x4(MLAS_INT32X4 Vector1, MLAS_INT32X4 Vector2)
     return _mm_xor_si128(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_xor(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_xor(Vector1, Vector2);
 #else
     return Vector1 ^ Vector2;
 #endif
@@ -1371,6 +1379,10 @@ MlasBroadcastFloat32x4(float Value)
     return _mm_set1_ps(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    // Suppress wrong GCC warnings
+    MLAS_UNREFERENCED_PARAMETER(Value);
+    return vec_splats(Value);
 #else
     return MLAS_FLOAT32X4{Value, Value, Value, Value};
 #endif
@@ -1386,6 +1398,8 @@ MlasBroadcastFloat32x4(const float* Value)
     return _mm_load_ps1(Value);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_v128_load32_splat(Value);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_splats(*Value);
 #else
     return MLAS_FLOAT32X4{*Value, *Value, *Value, *Value};
 #endif
@@ -1610,6 +1624,8 @@ MlasAddFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_add_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_add(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_add(Vector1, Vector2);
 #else
     return Vector1 + Vector2;
 #endif
@@ -1625,6 +1641,8 @@ MlasSubtractFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_sub_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_sub(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    return vec_sub(Vector1, Vector2);
 #else
     return Vector1 - Vector2;
 #endif
@@ -1640,6 +1658,11 @@ MlasMultiplyFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
     return _mm_mul_ps(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_mul(Vector1, Vector2);
+#elif defined(MLAS_VSX_INTRINSICS)
+    // Suppress wrong GCC warnings
+    MLAS_UNREFERENCED_PARAMETER(Vector1);
+    MLAS_UNREFERENCED_PARAMETER(Vector2);
+    return vec_mul(Vector1, Vector2);
 #else
     return Vector1 * Vector2;
 #endif
@@ -1784,7 +1807,8 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_max_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
+    // Don't use vec_max to avoid undefined behavior if NAN
+    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #else
@@ -1801,7 +1825,8 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_SSE2_INTRINSICS)
     return _mm_min_ps(Vector1, Vector2);
 #elif defined(MLAS_VSX_INTRINSICS)
-    return vec_sel(vec_sel(vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1)), Vector1, vec_cmpne(Vector1, Vector1)), Vector2, vec_cmpne(Vector2, Vector2));
+    // Don't use vec_min to avoid undefined behavior if NAN
+    return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #else
@@ -2039,4 +2064,51 @@ MlasReadTimeStampCounter(void)
     return 0;
 #endif
 #endif
+}
+
+//
+// Aligned buffer for GEMM packing, etc.
+//
+
+
+constexpr size_t ThreadedBufAlignment = 64;
+extern thread_local size_t ThreadedBufSize;
+#ifdef _MSC_VER
+extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
+#else
+extern thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
+#endif
+
+MLAS_FORCEINLINE
+constexpr size_t
+UpAlignSize(size_t size)
+{
+    size = (size + ThreadedBufAlignment - 1) / ThreadedBufAlignment;
+    return size * ThreadedBufAlignment;
+}
+
+
+MLAS_FORCEINLINE
+void
+MlasThreadedBufAlloc(size_t size)
+{
+    if (size > ThreadedBufSize) {
+#ifdef _MSC_VER
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
+#elif (__STDC_VERSION__ >= 201112L) && !defined(__APPLE__)
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
+#else
+	// aligned_alloc unavailable macos 10.14 or earlier
+        void* ptr;
+        int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
+        if (err != 0) {
+            ptr = nullptr;
+        }
+        ThreadedBufHolder.reset(reinterpret_cast<uint8_t*>(ptr));
+#endif
+
+        ThreadedBufSize = size;
+    }
 }

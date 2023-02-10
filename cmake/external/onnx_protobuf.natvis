@@ -1,0 +1,291 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+  <!--Protobuf classes. These feature protobuf internals that change from version to version
+      and must be updated on protobuf version change -->
+  <Type Name="google::protobuf::RepeatedField&lt;*&gt;">
+    <DisplayString>{{ size={current_size_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">current_size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">total_size_</Item>
+      <Item Name="[arena]" Condition="total_size_ == 0 &amp;&amp; arena_or_elements_" ExcludeView="simple">arena_or_elements_</Item>
+      <ArrayItems Condition="total_size_ != 0">
+        <Size>current_size_</Size>
+        <ValuePointer>($T1*)arena_or_elements_</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  <Type Name="google::protobuf::RepeatedPtrField&lt;*&gt;">
+    <DisplayString>{{ size={current_size_} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]" ExcludeView="simple">current_size_</Item>
+      <Item Name="[capacity]" ExcludeView="simple">total_size_</Item>
+      <Item Name="[arena]" Condition="arena_" ExcludeView="simple">arena_</Item>
+      <ArrayItems Condition="rep_ != 0">
+        <Size>current_size_</Size>
+        <ValuePointer>($T1**)rep_->elements</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+  
+  <Type Name="google::protobuf::internal::TaggedPtr&lt;*&gt;">
+    <DisplayString>{{ {*($T1*)ptr_} }}</DisplayString>
+    <Expand>
+    </Expand>
+  </Type>
+
+  <!--ONNX Specific protobuf classes
+    Some examples show calling functions on classes, however, this is not supported in VS2019
+    Thus we need to come up with has_*() utils.
+  -->
+  <Type Name="onnx::StringStringEntryProto">
+    <DisplayString>{{ {key_.tagged_ptr_}:{value_.tagged_ptr_} }}</DisplayString>
+    <Expand>
+        <Item Name="[key]">key_.tagged_ptr_</Item>
+        <Item Name="[value]">value_.tagged_ptr_</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TensorAnnotation">
+    <DisplayString>{{ tensor_name={tensor_name_.tagged_ptr_} }}</DisplayString>
+    <Expand>
+        <Item Name="[tensor_name]">tensor_name_.tagged_ptr_</Item>
+        <Item Name="[quant_parameter_tensor_names]">quant_parameter_tensor_names_</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnx::ValueInfoProto">
+    <Intrinsic Name="_has_type" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000004u) != 0"/>
+    <DisplayString>{{ name={name_.tagged_ptr_} }}</DisplayString>
+    <Expand>
+        <Item Name="[name]">name_.tagged_ptr_</Item>
+        <Item Name="[type]" Condition="_has_type()">type_</Item>
+        <Item Name="[has_type]">_has_type()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnx::OperatorSetIdProto">
+  <DisplayString>{{ domain={ domain_.tagged_ptr_ }, version={ version_ } }}</DisplayString>
+  <Expand>
+  </Expand>
+  </Type>
+
+  <Type Name="onnx::AttributeProto">
+    <Intrinsic Name="_has_tensor" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000010u) != 0"/>
+    <Intrinsic Name="_has_graph" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000020u) != 0"/>
+    <Intrinsic Name="_has_type_proto" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000040u) != 0"/>
+    <Intrinsic Name="_has_sparse_tensor" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000080u) != 0"/>
+    <DisplayString>{{ name={ name_.tagged_ptr_ }, type={ (AttributeProto_AttributeType)type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[name]">name_.tagged_ptr_</Item>
+      <Item Name="[type]">(AttributeProto_AttributeType)type_</Item>
+      <Item Name="[i]" Condition="type_ == AttributeProto_AttributeType_INT">i_</Item>
+      <Item Name="[ints]" Condition="type_ == AttributeProto_AttributeType_INTS">ints_</Item>
+      <Item Name="[f]" Condition="type_ == AttributeProto_AttributeType_FLOAT">f_</Item>
+      <Item Name="[floats]" Condition="type_ == AttributeProto_AttributeType_FLOATS">floats_</Item>
+      <Item Name="[s]" Condition="type_ == AttributeProto_AttributeType_STRING">s_.tagged_ptr_</Item>
+      <Item Name="[strings]" Condition="type_ == AttributeProto_AttributeType_STRINGS">strings_</Item>
+      <Item Name="[t]" Condition="type_ == AttributeProto_AttributeType_TENSOR &amp;&amp; _has_tensor()">t_</Item>
+      <Item Name="[tensors]" Condition="type_ == AttributeProto_AttributeType_TENSORS">tensors_</Item>
+      <Item Name="[g]" Condition="type_ == AttributeProto_AttributeType_GRAPH &amp;&amp; _has_graph()">t_</Item>
+      <Item Name="[graphs]" Condition="type_ == AttributeProto_AttributeType_GRAPHS">graphs_</Item>
+      <Item Name="[tp]" Condition="type_ == AttributeProto_AttributeType_TYPE_PROTO &amp;&amp; _has_type_proto()">t_</Item>
+      <Item Name="[type_protos]" Condition="type_ == AttributeProto_AttributeType_TYPE_PROTOS">type_protos_</Item>
+      <Item Name="[sparse_tensor]" Condition="type_ == AttributeProto_AttributeType_SPARSE_TENSOR &amp;&amp; _has_sparse_tensor()">sparse_tensor_</Item>
+      <Item Name="[sparse_tensors]" Condition="type_ == AttributeProto_AttributeType_SPARSE_TENSORS">sparse_tensors_</Item>
+      <Item Name="[ref_attr_name]">ref_attr_name_.tagged_ptr_</Item>
+      <Item Name="[doc]">doc_string_.tagged_ptr_</Item>
+      <Item Name="[has_tensor]">_has_tensor()</Item>
+      <Item Name="[has_graph]">_has_graph()</Item>
+      <Item Name="[has_type_proto]">_has_type_proto()</Item>
+      <Item Name="[has_sparse_tensor]">_has_sparse_tensor()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnx::NodeProto">
+    <DisplayString>{{ name={ name_.tagged_ptr_ }, domain={ domain_.tagged_ptr_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[name]">name_.tagged_ptr_</Item>
+      <Item Name="[domain]">domain_.tagged_ptr_</Item>
+      <Item Name="[op_type]">op_type_.tagged_ptr_</Item>
+      <Item Name="[input]">input_</Item>
+      <Item Name="[output]">output_</Item>
+      <Item Name="[attribute]">attribute_</Item>
+    </Expand>
+  </Type>
+    
+  <Type Name="onnx::FunctionProto">
+    <DisplayString>{{ name={ name_.tagged_ptr_ }, domain={ domain_.tagged_ptr_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[opset_import]">opset_import_</Item>
+      <Item Name="[input]">input_</Item>
+      <Item Name="[output]">output_</Item>
+      <Item Name="[node]">node_</Item>
+      <Item Name="[doc]" ExcludeView="simple">doc_string_.tagged_ptr_</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::GraphProto">
+    <DisplayString>{{ name={ name_.tagged_ptr_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[name]">name_.tagged_ptr_</Item>
+      <Item Name="[value_info]">value_info_</Item>
+      <Item Name="[input]">input_</Item>
+      <Item Name="[output]">output_</Item>
+      <Item Name="[node]">node_</Item>
+      <Item Name="[initializer]">initializer_</Item>
+      <Item Name="[sparse_initializer]">sparse_initializer_</Item>
+      <Item Name="[doc]" ExcludeView="simple">doc_string_.tagged_ptr_</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::ModelProto">
+    <DisplayString>{{ producer={producer_name_.tagged_ptr_}, domain={ domain_.tagged_ptr_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[opset_import]" ExcludeView="simple">opset_import_</Item>
+      <Item Name="[metadata_props]" ExcludeView="simple">metadata_props_</Item>
+      <Item Name="[producer_version]" ExcludeView="simple">producer_version_.tagged_ptr_</Item>
+      <Item Name="[ir_version]" ExcludeView="simple">ir_version_</Item>
+      <Item Name="[model_version]" ExcludeView="simple">model_version_</Item>
+      <Item Name="[doc]" ExcludeView="simple">doc_string_.tagged_ptr_</Item>
+      <Item Name="[graph]" ExcludeView="simple">graph_</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TensorShapeProto_Dimension">
+    <DisplayString Condition="*_oneof_case_ == 0">empty</DisplayString>
+    <DisplayString Condition="*_oneof_case_ == kDimValue">{{ v = {value_.dim_value_} }}</DisplayString>
+    <DisplayString Condition="*_oneof_case_ == kDimParam">{{ p = {value_.dim_param_.tagged_ptr_} }}</DisplayString>
+    <Expand>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TensorShapeProto">
+    <DisplayString>{{ size={ dim_.current_size_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[dims]" ExcludeView="simple">dim_</Item>
+    </Expand>
+  </Type>
+  
+  <!--Type Protos-->
+  <Type Name="onnx::TypeProto">
+    <DisplayString>{{ type={ (ValueCase)*_oneof_case_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[type]" ExcludeView="simple">(ValueCase)*_oneof_case_</Item>
+      <Item Name="[tensor_type]" Condition="*_oneof_case_ == kTensorType" ExcludeView="simple">value_.tensor_type_</Item>
+      <Item Name="[sequence_type]" Condition="*_oneof_case_ == kSequenceType" ExcludeView="simple">value_.sequence_type_</Item>
+      <Item Name="[map_type]" Condition="*_oneof_case_ == kMapType" ExcludeView="simple">value_.map_type_</Item>
+      <Item Name="[sparse_tensor_type]" Condition="*_oneof_case_ == kSparseTensorType" ExcludeView="simple">value_.sparse_tensor_type_</Item>
+      <Item Name="[optional_type]" Condition="*_oneof_case_ == kOptionalType" ExcludeView="simple">value_.optional_type_</Item>
+      <Item Name="[denotation]" ExcludeView="simple">denotation_.tagged_ptr_</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TypeProto_Tensor">
+    <Intrinsic Name="_has_shape" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <DisplayString>{{ elem_type={ (TensorProto_DataType)elem_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[elem_type]" ExcludeView="simple">(TensorProto_DataType)elem_type_</Item>
+      <Item Name="[shape]" Condition="_has_shape()" ExcludeView="simple">shape_</Item>
+      <Item Name="[has_shape]" ExcludeView="simple">_has_shape()</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TypeProto_Sequence">
+    <Intrinsic Name="_has_element_type" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <DisplayString Condition="_has_element_type()">{{ elem_type={ *elem_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[elem_type]" Condition="_has_element_type()" ExcludeView="simple">elem_type_</Item>
+      <Item Name="[has_element_type]" ExcludeView="simple">_has_element_type()</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::TypeProto_Map">
+    <Intrinsic Name="_has_value_type" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <DisplayString>{{ key_type={ (TensorProto_DataType)key_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[key_type]" ExcludeView="simple">(TensorProto_DataType)key_type_</Item>
+      <Item Name="[value_type]" Condition="_has_value_type()" ExcludeView="simple">value_type_</Item>
+      <Item Name="[has_value_type]" ExcludeView="simple">_has_value_type()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnx::TypeProto_SparseTensor">
+    <Intrinsic Name="_has_shape" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <DisplayString>{{ elem_type={ (TensorProto_DataType)elem_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[elem_type]" ExcludeView="simple">(TensorProto_DataType)elem_type_</Item>
+      <Item Name="[shape]" Condition="_has_shape()" ExcludeView="simple">shape_</Item>
+      <Item Name="[has_shape]" ExcludeView="simple">_has_shape()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="onnx::TypeProto_Optional">
+    <Intrinsic Name="_has_element_type" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <DisplayString Condition="_has_element_type()">{{ elem_type={ *elem_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[elem_type]" Condition="_has_element_type()" ExcludeView="simple">elem_type_</Item>
+      <Item Name="[has_element_type]" ExcludeView="simple">_has_element_type()</Item>
+    </Expand>
+  </Type>
+
+   <!--Protos-->
+  <Type Name="onnx::TensorProto_Segment">
+    <DisplayString>{{ begin={ begin_ }, end={ end_ } }}</DisplayString>
+    <Expand></Expand>
+  </Type>
+  
+  <!--TODO Figure out how to calculate the size of the tensor given its shape. Loops are only possible in custom lists. -->
+  <Type Name="onnx::TensorProto">
+    <Intrinsic Name="_has_raw_data" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000002u) != 0" />
+    <Intrinsic Name="_has_data_location" Expression="((_has_bits_.has_bits_[0] &amp; 0x00000020u) != 0)" />
+    <Intrinsic Name="_has_segment" Expression="((_has_bits_.has_bits_[0] &amp; 0x00000008u) != 0)" />
+    <Intrinsic Name="_shape_array" Expression="(int64_t*)dims_.arena_or_elements_" />
+    <Intrinsic Name="_shape_size" Expression="dims_.current_size_" />
+    <Intrinsic Name="_shape_size_1" Expression="_shape_array()[0]" />
+    <Intrinsic Name="_shape_size_2" Expression="_shape_array()[0] * _shape_array()[1]"/>
+    <Intrinsic Name="_shape_size_3" Expression="_shape_size_2() * _shape_array()[2]" />
+    <Intrinsic Name="_shape_size_4" Expression="_shape_size_3() * _shape_array()[3]" />
+    <Intrinsic Name="_shape_size_5" Expression="_shape_size_4() * _shape_array()[4]" />
+    <DisplayString>{{ name={name_.tagged_ptr_}, data_type={ (TensorProto_DataType)data_type_ } }}</DisplayString>
+    <Expand>
+      <Item Name="[name]" ExcludeView="simple">name_.tagged_ptr_</Item>
+      <Item Name="[data_type]" ExcludeView="simple">(TensorProto_DataType)data_type_</Item>
+      <Item Name="[size]" Condition="_shape_size() == 0"  ExcludeView="simple">1</Item>
+      <Item Name="[size]" Condition="_shape_size() == 1"  ExcludeView="simple">_shape_size_1()</Item>
+      <Item Name="[size]" Condition="_shape_size() == 2"  ExcludeView="simple">_shape_size_2()</Item>
+      <Item Name="[size]" Condition="_shape_size() == 3"  ExcludeView="simple">_shape_size_3()</Item>
+      <Item Name="[size]" Condition="_shape_size() == 4"  ExcludeView="simple">_shape_size_4()</Item>
+      <Item Name="[size]" Condition="_shape_size() == 5"  ExcludeView="simple">_shape_size_5()</Item>
+      <Item Name="[shape]" ExcludeView="simple">dims_</Item>
+      <Item Name="[float_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_FLOAT &amp;&amp; !_has_raw_data()">float_data_</Item>
+      <Item Name="[bool_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_BOOL &amp;&amp; !_has_raw_data()">int32_data_</Item>
+      <Item Name="[int8_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_INT8 &amp;&amp; !_has_raw_data()">int32_data_</Item>
+      <Item Name="[uint8_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_UINT8 &amp;&amp; !_has_raw_data()">int32_data_</Item>
+      <Item Name="[int32_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_INT32 &amp;&amp; !_has_raw_data()">int32_data_</Item>
+      <Item Name="[uint32_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_UINT32 &amp;&amp; !_has_raw_data()">int64_data_</Item>
+      <Item Name="[int64_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_INT64 &amp;&amp; !_has_raw_data()">int64_data_</Item>
+      <Item Name="[uint64_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_UINT64 &amp;&amp; !_has_raw_data()">uint64_data_</Item>
+      <Item Name="[double_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_DOUBLE &amp;&amp; !_has_raw_data()">double_data_</Item>
+      <Item Name="[string_data]" ExcludeView="simple" Condition="data_type_ == TensorProto_DataType_STRING &amp;&amp; !_has_raw_data()">string_data_</Item>
+      <Item Name="[raw_data]" ExcludeView="simple" Condition="_has_raw_data()">(std::string*)(raw_data_.tagged_ptr_.ptr_)</Item>
+      <Item Name="[data_location]" ExcludeView="simple" Condition="_has_data_location()">(TensorProto_DataLocation) data_location_</Item>
+      <Item Name="[external_data]" ExcludeView="simple" Condition="_has_data_location()">external_data_</Item>
+      <Item Name="[has_raw_data]" ExcludeView="simple">_has_raw_data()</Item>
+      <Item Name="[has_data_location]" ExcludeView="simple">_has_data_location()</Item>
+      <Item Name="[has_segment]" ExcludeView="simple">_has_segment()</Item>
+    </Expand>
+  </Type>
+  
+  <Type Name="onnx::SparseTensorProto">
+    <Intrinsic Name="_has_values" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000001u) != 0"/>
+    <Intrinsic Name="_has_indices" Expression="(_has_bits_.has_bits_[0] &amp; 0x00000002u) != 0"/>
+    <DisplayString>{{ SparseTensorProto }}</DisplayString>
+    <Expand>
+      <Item Name="[dense_shape]" ExcludeView="simple">dims_</Item>
+      <Item Name="[values]" Condition="_has_values()" ExcludeView="simple">values_</Item>
+      <Item Name="[indices]" Condition="_has_indices()" ExcludeView="simple">indices_</Item>
+      <Item Name="[has_values]" ExcludeView="simple">_has_values()</Item>
+      <Item Name="[has_indices]" ExcludeView="simple">_has_indices()</Item>
+    </Expand>
+  </Type>
+</AutoVisualizer>

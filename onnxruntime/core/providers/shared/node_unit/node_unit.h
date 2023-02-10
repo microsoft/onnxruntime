@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/graph/basic_types.h"
+#include "core/graph/graph.h"
 
 namespace onnxruntime {
 
@@ -64,10 +65,16 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }
-  const std::vector<const Node*>& GetOutputNodes() const noexcept { return output_nodes_; }
+  const std::vector<const Node*>& GetDQNodes() const noexcept { return dq_nodes_; }
+  const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
+  std::vector<const Node*> GetAllNodesInGroup() const noexcept;
+
+  Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
+  Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
 
  private:
-  const std::vector<const Node*> output_nodes_;  // all the nodes producing outputs for this NodeUnit
+  const std::vector<const Node*> q_nodes_;       // q-nodes for this NodeUnit
+  const std::vector<const Node*> dq_nodes_;   // dq nodes for this NodeUnit, not all inputs
   const Node& target_node_;
   const Type type_;
 

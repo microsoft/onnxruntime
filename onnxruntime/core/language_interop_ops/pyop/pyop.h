@@ -1,9 +1,12 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
+
 #include "core/platform/env.h"
 #define LOAD_PYOP_SYM(n,v,m) ORT_ENFORCE(Env::Default().GetSymbolFromLibrary(handle_,n,reinterpret_cast<void**>(&v))==Status::OK(),m)
-#include "core/framework/ort_value.h"
+
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include <iostream>
 #include <vector>
 #include <unordered_map>
@@ -12,6 +15,10 @@
 #else
 #define HMODULE void*
 #endif
+
+namespace ONNX_NAMESPACE {
+class NodeProto;
+}
 
 namespace onnxruntime {
 
@@ -46,8 +53,7 @@ private:
 
 struct PyCustomKernel {
 
-    PyCustomKernel(Ort::CustomOpApi   ort,
-                   const OnnxAttrs&   attrs,
+    PyCustomKernel(const OnnxAttrs&   attrs,
                    const std::string& module,
                    const std::string& class_name,
                    const std::string& compute,
@@ -55,9 +61,8 @@ struct PyCustomKernel {
     ~PyCustomKernel();
     void    GetOutputShape(OrtKernelContext*, size_t, OrtTensorTypeAndShapeInfo*);
     void    Compute(OrtKernelContext* context);
-    int32_t GetType(const OrtValue* input) const;
+    int32_t GetNumpyType(int32_t elem_type) const;
 private:
-    Ort::CustomOpApi ort_;
     OnnxAttrs        attrs_;
     std::string      module_;
     std::string      class_name_;
@@ -75,7 +80,7 @@ struct PyCustomOp: Ort::CustomOpBase<PyCustomOp, PyCustomKernel> {
                const std::string&  class_name,
                const std::string&  compute      = "compute",
                PyOpLogFunc         logging_func = [](const char*){});
-    void* CreateKernel(Ort::CustomOpApi api, const OrtKernelInfo*) const;
+    void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const;
     const char* GetName() const;
     size_t GetInputTypeCount() const;
     ONNXTensorElementDataType GetInputType(size_t index) const;
@@ -93,3 +98,4 @@ private:
 
 PyCustomOp* LoadPyOp(const ONNX_NAMESPACE::NodeProto& node_proto, PyOpLogFunc log_func);
 }//namespace onnxruntime
+

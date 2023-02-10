@@ -1190,4 +1190,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10 = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_QUANT_KERNEL_POWER10>,
     MLAS_GEMM_QUANT_KERNEL_POWER10::PackedK,
     MLAS_GEMM_QUANT_KERNEL_POWER10::PackedStrides.K,
+    8 // Kernel M stride
 };

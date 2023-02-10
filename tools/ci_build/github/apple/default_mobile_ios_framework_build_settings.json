@@ -20,6 +20,7 @@
         "--enable_reduced_operator_type_support",
         "--use_coreml",
         "--skip_tests",
+        "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
         "--apple_deploy_target=11.0"
     ]
 }

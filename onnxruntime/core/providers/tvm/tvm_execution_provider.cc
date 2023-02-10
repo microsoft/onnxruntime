@@ -5,6 +5,7 @@
 #include <map>
 #include <utility>
 
+#include "core/common/common.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/kernel_registry.h"
@@ -56,7 +57,7 @@ TvmExecutionProvider::~TvmExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TvmExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                    const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                    const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (graph_viewer.IsSubgraph()) {
     return result;
@@ -123,7 +124,7 @@ common::Status TvmExecutionProvider::Compile(const std::vector<FusedNodeAndGraph
     std::string onnx_model_str;
     model_proto.SerializeToString(&onnx_model_str);
     compilers_[func_name] = std::make_shared<TVMCompiler>(std::move(onnx_model_str),
-                              fused_node.ModelPath().ToPathString(),
+                              ToUTF8String(fused_node.ModelPath().ToPathString()),
                               int(opset->version()));
     InputsInfoMap all_input_shapes;
     auto mod = compileModel(func_name, graph_body_viewer, all_input_shapes);

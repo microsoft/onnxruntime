@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include <core/common/safeint.h>
 #include "gather_nd.h"
 #include "core/platform/threadpool.h"
 
@@ -64,13 +64,13 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
 
   const auto num_slice_dims = indices_shape[indices_shape.NumDimensions() - 1];
   const auto num_slices = indices_shape.SizeToDimension(indices_shape.NumDimensions() - 1);
-  const auto slice_size = input_shape.SizeFromDimension(batch_dims_ + num_slice_dims);
-  const auto num_batches = input_shape.SizeToDimension(batch_dims_);
-  const auto input_batch_stride = input_shape.SizeFromDimension(batch_dims_);
+  const auto slice_size = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + num_slice_dims);
+  const auto num_batches = input_shape.SizeToDimension(SafeInt<size_t>(batch_dims_));
+  const auto input_batch_stride = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_));
   const auto num_slices_per_batch = num_slices / num_batches;
-  std::vector<int64_t> sizes_from_slice_dims(num_slice_dims);
+  std::vector<int64_t> sizes_from_slice_dims(onnxruntime::narrow<size_t>(num_slice_dims));
   for (int64_t i = 0; i < num_slice_dims; ++i) {
-    sizes_from_slice_dims[i] = input_shape.SizeFromDimension(batch_dims_ + i + 1);
+    sizes_from_slice_dims[onnxruntime::narrow<size_t>(i)] = input_shape.SizeFromDimension(SafeInt<size_t>(batch_dims_) + i + 1);
   }
 
   int64_t err_index = 0;
@@ -78,18 +78,18 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
   p.element_count_per_slice = slice_size;
   p.bytes_per_slice = p.element_bytes * p.element_count_per_slice;
   const auto* indices_data = indices_tensor->Data<Tind>();
-  p.slice_offsets.assign(num_slices, 0LL);
+  p.slice_offsets.assign(onnxruntime::narrow<size_t>(num_slices), 0LL);
 
   // Compute the element_offset
   auto lambda = [&](int64_t slice_idx) {
-    const size_t batch_idx = slice_idx / num_slices_per_batch;
-    const size_t input_base_offset = batch_idx * input_batch_stride;
+    const size_t batch_idx = onnxruntime::narrow<size_t>(slice_idx / num_slices_per_batch);
+    const size_t input_base_offset = batch_idx * SafeInt<size_t>(input_batch_stride);
 
     const auto* const slice_indices = indices_data + slice_idx * num_slice_dims;
     size_t relative_slice_offset = 0;
     for (int64_t dim_idx = 0; dim_idx < num_slice_dims; ++dim_idx) {
       int64_t index = static_cast<int64_t>(slice_indices[dim_idx]);
-      const auto upper_limit = input_shape[batch_dims_ + dim_idx];
+      const auto upper_limit = input_shape[SafeInt<size_t>(batch_dims_) + dim_idx];
       const auto lower_limit = -upper_limit;
       if (index < lower_limit || index >= upper_limit) {
         err_index = index;
@@ -97,14 +97,14 @@ Status GatherNDBase::PrepareForCompute(const TensorShape& input_shape, const Ten
       }
       if (index < 0) index += upper_limit;
 
-      relative_slice_offset += index * sizes_from_slice_dims[dim_idx];
+      relative_slice_offset += SafeInt<size_t>(index) * sizes_from_slice_dims[onnxruntime::narrow<size_t>(dim_idx)];
     }
 
-    p.slice_offsets[slice_idx] = static_cast<uint64_t>(input_base_offset) + relative_slice_offset;
+    p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] = static_cast<uint64_t>(input_base_offset) + relative_slice_offset;
   };
 
   concurrency::ThreadPool::TryParallelFor(
-      tp, num_slices, static_cast<double>(num_slice_dims),
+      tp, onnxruntime::narrow<size_t>(num_slices), static_cast<double>(num_slice_dims),
       [&lambda](ptrdiff_t first, ptrdiff_t last) {
         for (int slice_idx = static_cast<int>(first), end = static_cast<int>(last); slice_idx < end; ++slice_idx) {
           lambda(slice_idx);
@@ -143,7 +143,7 @@ Status GatherND::Compute(OpKernelContext* context) const {
   }
 
   std::vector<int64_t> shape(indices_shape.GetDims().begin(), indices_shape.GetDims().end() - 1);
-  shape.insert(shape.end(), input_shape.GetDims().begin() + last_indices_dimension,
+  shape.insert(shape.end(), input_shape.GetDims().begin() + onnxruntime::narrow<std::ptrdiff_t>(last_indices_dimension),
                input_shape.GetDims().end());
 
   auto* output_tensor = context->Output(0, TensorShape(std::move(shape)));
@@ -178,8 +178,8 @@ Status GatherND::Compute(OpKernelContext* context) const {
 
 Status GatherND::GatherNumber(const Prepare& p, concurrency::ThreadPool* tp) const {
   auto lambda = [&](int64_t slice_idx) {
-    memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[slice_idx] * p.element_bytes,
-           p.bytes_per_slice);
+    memcpy(p.output_base + slice_idx * p.bytes_per_slice, p.input_base + p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] * p.element_bytes,
+           onnxruntime::narrow<size_t>(p.bytes_per_slice));
   };
   concurrency::ThreadPool::TryParallelFor(
       tp, p.slice_offsets.size(), static_cast<double>(p.bytes_per_slice),
@@ -195,7 +195,7 @@ Status GatherND::GatherString(const Prepare& p, concurrency::ThreadPool* tp) con
   auto lambda = [&](int64_t slice_idx) {
     const int64_t slice_base_offset = slice_idx * p.element_count_per_slice;
     for (int64_t j = 0; j < static_cast<int64_t>(p.element_count_per_slice); ++j) {
-      p.output_str_base[slice_base_offset + j] = p.input_str_base[p.slice_offsets[slice_idx] + j];
+      p.output_str_base[slice_base_offset + j] = p.input_str_base[p.slice_offsets[onnxruntime::narrow<size_t>(slice_idx)] + j];
     }
   };
   concurrency::ThreadPool::TryParallelFor(

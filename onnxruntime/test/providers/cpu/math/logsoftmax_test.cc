@@ -39,7 +39,7 @@ static void RunTest(const std::vector<float>& x_vals,
 }
 
 TEST(LogSoftmaxOperator, Simple) {
-  // https://github.com/onnx/onnx/blob/master/docs/Operators.md#LogSoftmax
+  // https://github.com/onnx/onnx/blob/main/docs/Operators.md#LogSoftmax
   // x = np.array([[-1, 0, 1]]).astype(np.float32)
   // # expected output[[-2.40760589, -1.40760589, -0.40760589]]
 

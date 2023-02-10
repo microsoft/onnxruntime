@@ -32,26 +32,26 @@ TEST(RandomTest, PhiloxGeneratorTest) {
   PhiloxGenerator generator(17);
 
   auto seeds = generator.NextPhiloxSeeds(1);
-  ASSERT_EQ(seeds.first, 17);
-  ASSERT_EQ(seeds.second, 0);
+  ASSERT_EQ(seeds.first, 17u);
+  ASSERT_EQ(seeds.second, 0u);
 
   seeds = generator.NextPhiloxSeeds(10);
-  ASSERT_EQ(seeds.first, 17);
-  ASSERT_EQ(seeds.second, 1);
+  ASSERT_EQ(seeds.first, 17u);
+  ASSERT_EQ(seeds.second, 1u);
 
   seeds = generator.NextPhiloxSeeds(0);
-  ASSERT_EQ(seeds.first, 17);
-  ASSERT_EQ(seeds.second, 11);
+  ASSERT_EQ(seeds.first, 17u);
+  ASSERT_EQ(seeds.second, 11u);
 
   seeds = generator.NextPhiloxSeeds(1);
-  ASSERT_EQ(seeds.first, 17);
-  ASSERT_EQ(seeds.second, 11);
+  ASSERT_EQ(seeds.first, 17u);
+  ASSERT_EQ(seeds.second, 11u);
 
   generator.SetSeed(17);
 
   seeds = generator.NextPhiloxSeeds(1);
-  ASSERT_EQ(seeds.first, 17);
-  ASSERT_EQ(seeds.second, 0);
+  ASSERT_EQ(seeds.first, 17u);
+  ASSERT_EQ(seeds.second, 0u);
 }
 
 }  // namespace test

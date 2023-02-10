@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/common/utf8_util.h"
 #include "core/framework/tensor.h"
 #include "core/framework/op_kernel.h"
@@ -120,7 +121,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   // add padding and add start/end test separators if necessary
   size_t max_tokens = 0;
   auto X = ctx->Input<Tensor>(0);
-  auto const input_data = X->template Data<std::string>();
+  auto const input_data = X->Data<std::string>();
   auto curr_input = input_data;
   auto const last = input_data + N * C;
   while (curr_input != last) {
@@ -153,7 +154,7 @@ Status Tokenizer::CharTokenize(OpKernelContext* ctx, size_t N, size_t C,
   output_dims.push_back(max_tokens);
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->template MutableData<std::string>();
+  auto const output_data = output_tensor->MutableData<std::string>();
   size_t output_index = 0;
   curr_input = input_data;
   while (curr_input != last) {
@@ -206,7 +207,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   // collect all the output tokens here
   size_t max_tokens = 0;
   auto X = ctx->Input<Tensor>(0);
-  auto const input_data = X->template Data<std::string>();
+  auto const input_data = X->Data<std::string>();
   auto curr_input = input_data;
   auto const last = input_data + N * C;
   while (curr_input != last) {
@@ -294,7 +295,7 @@ Status Tokenizer::SeparatorExpressionTokenizer(OpKernelContext* ctx,
   TensorShape output_shape(output_dims);
 
   auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->template MutableData<std::string>();
+  auto const output_data = output_tensor->MutableData<std::string>();
 
 #ifdef _DEBUG
   const size_t max_output_index = N * C * max_tokens;
@@ -343,7 +344,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
 
   size_t max_tokens = 0;
   auto X = ctx->Input<Tensor>(0);
-  auto const input_data = X->template Data<std::string>();
+  auto const input_data = X->Data<std::string>();
   auto curr_input = input_data;
   auto const last = input_data + N * C;
 
@@ -418,7 +419,7 @@ Status Tokenizer::TokenExpression(OpKernelContext* ctx,
   TensorShape output_shape(output_dims);
 
   auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->template MutableData<std::string>();
+  auto const output_data = output_tensor->MutableData<std::string>();
 
 #ifdef _DEBUG
   const size_t max_output_index = N * C * max_tokens;
@@ -473,10 +474,10 @@ Status Tokenizer::Compute(OpKernelContext* ctx) const {
   size_t C = 0;
   if (input_dims.size() == 1) {
     N = 1;
-    C = gsl::narrow<size_t>(input_dims[0]);
+    C = narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
-    N = gsl::narrow<size_t>(input_dims[0]);
-    C = gsl::narrow<size_t>(input_dims[1]);
+    N = narrow<size_t>(input_dims[0]);
+    C = narrow<size_t>(input_dims[1]);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either [C] or [N][C] allowed");

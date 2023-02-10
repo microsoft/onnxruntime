@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#include "core/optimizer/initializer.h"
 #include "core/optimizer/propagate_cast_ops.h"
+
+#include "core/common/span_utils.h"
+#include "core/optimizer/initializer.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 #include <deque>
@@ -125,14 +127,6 @@ static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
   return true;
 }
 
-namespace {
-// borrowed from providers/common.h
-template <class AssociativeContainer, class Key>
-inline bool Contains(const AssociativeContainer& container, const Key& key) {
-  return container.find(key) != container.end();
-}
-}  // namespace
-
 // Check whether the given opcode is fp16 allowed for the given level of optimization.
 static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16AllowOps& fp16_allow_level0_ops) {
   // XXX: Shall we add a check for unsupported level or just ignore it as the current code does?
@@ -140,9 +134,9 @@ static bool IsFP16Allow(const std::string& op_type, size_t level, const FP16Allo
 
   using OpsSetType = InlinedHashSet<std::string_view>;
   static const OpsSetType level1_fp16_allow_set =
-      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze"};
+      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze", "Gelu"};
   static const OpsSetType level2_fp16_allow_set = {
-      "Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "Gelu", "LayerNormalization", "Where"};
+      "Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "LayerNormalization", "Where"};
 
   // To support new optimization levels, you need to extend the below array with a set ops for the new level
   static const std::array<std::reference_wrapper<const OpsSetType>, MaxSupportedCastPropagationLevel> allowed_ops =
@@ -466,12 +460,12 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
         if (IsCastTo(child, TensorProto::FLOAT16)) {
           // The parent and child cancel out
           LOGS(logger, VERBOSE) << "RemoveBackToBackCasts: Removed Cast nodes  " << parent->Name() << " and " << child->Name();
-          ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, std::array{parent, child}, removed_nodes));
+          ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({parent, child}), removed_nodes));
           modified = true;
         } else if (IsCastTo(child, TensorProto::FLOAT)) {
           // Child is a duplicate of parent
           LOGS(logger, VERBOSE) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
-          ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {child}, removed_nodes));
+          ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({child}), removed_nodes));
           modified = true;
         }
       }
@@ -518,14 +512,14 @@ static bool RemoveBackToBackCasts(Graph& graph, Node* parent,
             // Child is a duplicate of parent
             LOGS(logger, VERBOSE) << "RemoveBackToBackCasts: Removed Cast node  " << child->Name();
             graph.RemoveEdge(parent->Index(), child->Index(), 0, 0);
-            ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {child}, removed_nodes));
+            ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({child}), removed_nodes));
             modified = true;
           }
         }
       }
       if (children_count == 0) {
         // No more children nodes exists, and the parent-cast output is not a graph output. Remove it!
-        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {parent}, removed_nodes));
+        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({parent}), removed_nodes));
       }
       if (!new_consumers.empty()) {
         auto consumers = graph.GetMutableConsumerNodes(parent_input->Name());
@@ -743,7 +737,7 @@ static bool PropagateForwards(Graph& graph, Node* node,
     }
     // Remove Cast operation
     LOGS(logger, VERBOSE) << "PropagateForwards: Removed Cast node  " << node->Name();
-    ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {node}, removed_nodes));
+    ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({node}), removed_nodes));
     ORT_THROW_IF_ERROR(InsertCastNodes(graph, require_cast, false, removed_nodes, inserted_nodes));
     LOGS(logger, VERBOSE) << "PropagateForwards: Inserted Cast FP32 nodes "
                           << ConcatNames(require_cast, GetName);
@@ -789,7 +783,7 @@ static bool PropagateBackwards(Graph& graph, Node* node,
                             << ConcatNames(require_cast_fp32, GetName);
     }
     // Remove Cast operations
-    ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {node}, removed_nodes));
+    ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({node}), removed_nodes));
     LOGS(logger, VERBOSE) << "PropagateBackwards: Removed Cast node  " << node->Name();
     ORT_THROW_IF_ERROR(InsertCastNodes(graph, require_cast, true, removed_nodes, inserted_nodes));
     LOGS(logger, VERBOSE) << "PropagateBackwards: Inserted Cast nodes "
@@ -928,7 +922,7 @@ static bool RemoveUnnecessaryCasts(Graph& graph, Node* node,
     TensorProto_DataType data_type = static_cast<TensorProto_DataType>(elem_type);
     if (IsCastTo(node, data_type)) {
       LOGS(logger, VERBOSE) << "Removed unnecessary cast " << node->Name();
-      ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {node}, removed_nodes));
+      ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({node}), removed_nodes));
       modified = true;
     }
   }
@@ -1023,7 +1017,7 @@ static bool PropagateFP32CastsFromInputsToOutputs(Graph& graph, Node* node,
                               << ConcatNames(non_cast_producers_map, GetName);
       }
       for (Node* cast : casts) {
-        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {cast}, removed_nodes));
+        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({cast}), removed_nodes));
       }
       LOGS(logger, VERBOSE) << "PropagateFP32CastsFromInputsToOutputs: Removed Cast nodes "
                             << ConcatNames(casts)
@@ -1130,7 +1124,7 @@ static bool PropagateFP16CastsFromOutputsToInputs(Graph& graph, Node* node,
                               << ConcatNames(non_cast_consumers_map, GetName);
       }
       for (Node* cast : casts) {
-        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, {cast}, removed_nodes));
+        ORT_THROW_IF_ERROR(RemoveCastNodesChain(graph, AsSpan({cast}), removed_nodes));
       }
       LOGS(logger, VERBOSE) << "PropagateFP16CastsFromOutputsToInputs: Removed Cast nodes "
                             << ConcatNames(casts)

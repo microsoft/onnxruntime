@@ -8,6 +8,7 @@
 #pragma warning(disable : 4996)
 #endif
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
@@ -54,11 +55,11 @@ class IdentityOp final : public OpKernel {
       //If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
         if (!X->IsDataTypeString()) {
-          memcpy(target, source, shape.Size() * X_type->Size());
+          memcpy(target, source, SafeInt<size_t>(shape.Size()) * X_type->Size());
         } else {
           // handle std::string
-          const auto* src = X->template Data<std::string>();
-          auto* dst = Y->template MutableData<std::string>();
+          const auto* src = X->Data<std::string>();
+          auto* dst = Y->MutableData<std::string>();
           std::copy(src, src + shape.Size(), dst);
         }
       }

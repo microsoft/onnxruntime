@@ -1,21 +1,27 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * A sequence of {@link OnnxValue}s all of the same type.
  *
- * <p>Supports the types mentioned in "onnxruntime_c_api.h", currently String, Long, Float, Double,
- * Map&gt;String,Float&lt;, Map&gt;Long,Float&lt;.
+ * <p>Supports the types mentioned in "onnxruntime_c_api.h", currently
+ *
+ * <ul>
+ *   <li>OnnxTensor&lt;String&gt;
+ *   <li>OnnxTensor&lt;Long&gt;
+ *   <li>OnnxTensor&lt;Float&gt;
+ *   <li>OnnxTensor&lt;Double&gt;
+ *   <li>OnnxMap&lt;String,Float&gt;
+ *   <li>OnnxMap&lt;Long,Float&gt;
+ * </ul>
  */
 public class OnnxSequence implements OnnxValue {
 
@@ -54,51 +60,33 @@ public class OnnxSequence implements OnnxValue {
   }
 
   /**
-   * Extracts a Java object from the native ONNX type.
+   * Extracts a Java list of the {@link OnnxValue}s which can then be further unwrapped.
    *
-   * <p>Returns either a {@link List} of boxed primitives, {@link String}s, or {@link
-   * java.util.Map}s.
+   * <p>Returns either a {@link List} of either {@link OnnxTensor} or {@link OnnxMap}.
    *
-   * @return A Java object containing the value.
+   * <p>Note unlike the other {@link OnnxValue#getValue()} methods, this does not copy the values
+   * themselves into the Java heap, it merely exposes them as {@link OnnxValue} instances, allowing
+   * users to use the faster copy methods available for {@link OnnxTensor}. This also means that
+   * those values need to be closed separately from this instance, and are not closed by {@link
+   * #close} on this object.
+   *
+   * @return A Java list containing the values.
    * @throws OrtException If the runtime failed to read an element.
    */
   @Override
-  public List<Object> getValue() throws OrtException {
+  public List<? extends OnnxValue> getValue() throws OrtException {
     if (info.sequenceOfMaps) {
-      List<Object> outputSequence = new ArrayList<>(info.length);
-      for (int i = 0; i < info.length; i++) {
-        Object[] keys = getMapKeys(i);
-        Object[] values = getMapValues(i);
-        HashMap<Object, Object> map = new HashMap<>(OrtUtil.capacityFromSize(keys.length));
-        for (int j = 0; j < keys.length; j++) {
-          map.put(keys[j], values[j]);
-        }
-        outputSequence.add(map);
-      }
-      return outputSequence;
+      OnnxMap[] maps = getMaps(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+      return Collections.unmodifiableList(Arrays.asList(maps));
     } else {
       switch (info.sequenceType) {
-        case FLOAT:
-          float[] floats = getFloats(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          ArrayList<Object> boxed = new ArrayList<>(floats.length);
-          for (float aFloat : floats) {
-            // box float to Float
-            boxed.add(aFloat);
-          }
-          return boxed;
-        case DOUBLE:
-          return Arrays.stream(getDoubles(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .collect(Collectors.toList());
-        case INT64:
-          return Arrays.stream(getLongs(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle))
-              .boxed()
-              .collect(Collectors.toList());
         case STRING:
-          String[] strings = getStrings(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
-          ArrayList<Object> list = new ArrayList<>(strings.length);
-          list.addAll(Arrays.asList(strings));
-          return list;
+        case INT64:
+        case FLOAT:
+        case DOUBLE:
+          OnnxTensor[] tensors =
+              getTensors(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+          return Collections.unmodifiableList(Arrays.asList(tensors));
         case BOOL:
         case UINT8:
         case INT8:
@@ -127,95 +115,10 @@ public class OnnxSequence implements OnnxValue {
     close(OnnxRuntime.ortApiHandle, nativeHandle);
   }
 
-  /**
-   * Extract the keys for the map at the specified index.
-   *
-   * @param index The index to extract.
-   * @return The map keys as an array.
-   * @throws OrtException If the native code failed to read the keys.
-   */
-  private Object[] getMapKeys(int index) throws OrtException {
-    if (info.mapInfo.keyType == OnnxJavaType.STRING) {
-      return getStringKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-    } else {
-      return Arrays.stream(
-              getLongKeys(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-          .boxed()
-          .toArray();
-    }
-  }
-
-  /**
-   * Extract the values for the map at the specified index.
-   *
-   * @param index The index to extract.
-   * @return The map values as an array.
-   * @throws OrtException If the native code failed to read the values.
-   */
-  private Object[] getMapValues(int index) throws OrtException {
-    switch (info.mapInfo.valueType) {
-      case STRING:
-        {
-          return getStringValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-        }
-      case INT64:
-        {
-          return Arrays.stream(
-                  getLongValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-              .boxed()
-              .toArray();
-        }
-      case FLOAT:
-        {
-          float[] floats =
-              getFloatValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index);
-          Float[] boxed = new Float[floats.length];
-          for (int i = 0; i < floats.length; i++) {
-            // cast float to Float
-            boxed[i] = floats[i];
-          }
-          return boxed;
-        }
-      case DOUBLE:
-        {
-          return Arrays.stream(
-                  getDoubleValues(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, index))
-              .boxed()
-              .toArray();
-        }
-      default:
-        throw new RuntimeException("Invalid or unknown valueType: " + info.mapInfo.valueType);
-    }
-  }
-
-  private native String[] getStringKeys(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native long[] getLongKeys(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native String[] getStringValues(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native long[] getLongValues(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native float[] getFloatValues(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native double[] getDoubleValues(
-      long apiHandle, long nativeHandle, long allocatorHandle, int index) throws OrtException;
-
-  private native String[] getStrings(long apiHandle, long nativeHandle, long allocatorHandle)
+  private native OnnxMap[] getMaps(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
-  private native long[] getLongs(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
-
-  private native float[] getFloats(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
-
-  private native double[] getDoubles(long apiHandle, long nativeHandle, long allocatorHandle)
+  private native OnnxTensor[] getTensors(long apiHandle, long nativeHandle, long allocatorHandle)
       throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);

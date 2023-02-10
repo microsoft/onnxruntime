@@ -19,8 +19,8 @@ class DepthToSpaceOpBuilder : public BaseOpBuilder {
   // Add operator related
  private:
 #ifdef __APPLE__
-  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                               const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -67,15 +67,9 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderI
     return false;
   }
 
-  const auto input_size = input_shape.size();
-  if (input_size != 4) {
-    LOGS(logger, VERBOSE) << "DepthToSpace only supports 4d shape, input is " << input_size << "d shape.";
-  }
-
-  // CoreML spec ReorganizeDataLayer DEPTH_TO_SPACE mode only accepts input with one batch ([C, H, W]).
-  if (input_shape[0] != 1) {
-    LOGS(logger, VERBOSE) << "The batch size of DepthToSpace [" << input_shape[0] << "] is not supported.";
-    return false;
+  const auto input_rank = input_shape.size();
+  if (input_rank < 4) {
+    LOGS(logger, VERBOSE) << "DepthToSpace does not support input shape of " << input_rank << "d shape.";
   }
 
   NodeAttrHelper helper(node);

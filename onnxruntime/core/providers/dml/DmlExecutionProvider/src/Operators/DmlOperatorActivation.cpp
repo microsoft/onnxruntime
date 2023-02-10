@@ -25,7 +25,7 @@ public:
 
         ActivationOperatorDescUnion operatorDesc = {};
 
-        int coerceAxis = TensorAxis::DoNotCoerce;
+        std::vector<uint32_t> dmlAxes;
 
         switch (operatorType)
         {
@@ -39,7 +39,29 @@ public:
         case DML_OPERATOR_ACTIVATION_HARDMAX:
             {
                 const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
-                coerceAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
+                int axis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, 1), onnxDimCount);
+                std::vector<int32_t> onnxAxes(onnxDimCount - axis);
+                std::iota(onnxAxes.begin(), onnxAxes.end(), static_cast<int32_t>(axis));
+
+                dmlAxes.resize(onnxDimCount - axis);
+                GetDmlAdjustedAxes(onnxAxes, onnxDimCount, m_inputTensorDescs.front().GetDimensionCount(), /*out*/ dmlAxes);
+
+                operatorDesc.hardmax1.Axes = dmlAxes.data();
+                operatorDesc.hardmax1.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
+            }
+            break;
+
+        case DML_OPERATOR_ACTIVATION_SOFTMAX1:
+        case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1:
+        case DML_OPERATOR_ACTIVATION_HARDMAX1:
+            {
+                const uint32_t onnxDimCount = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0).size());
+                int onnxAxis = HandleNegativeAxis(kernelCreationContext.GetOptionalAttribute<int>(AttrName::Axis, -1), onnxDimCount);
+
+                dmlAxes.push_back(GetDmlAdjustedAxis(onnxAxis, onnxDimCount, m_inputTensorDescs.front().GetDimensionCount()));
+
+                operatorDesc.hardmax1.Axes = dmlAxes.data();
+                operatorDesc.hardmax1.AxisCount = gsl::narrow_cast<uint32_t>(dmlAxes.size());
             }
             break;
 
@@ -91,18 +113,13 @@ public:
         case DML_OPERATOR_ACTIVATION_SIGMOID:
         case DML_OPERATOR_ACTIVATION_TANH:
         case DML_OPERATOR_ACTIVATION_SOFTSIGN:
+        case DML_OPERATOR_ACTIVATION_GELU:
             // No additional parameters to set.
             break;
 
         default:
             assert(false);
             break;
-        }
-
-        if (coerceAxis != TensorAxis::DoNotCoerce)
-        {
-            m_inputTensorDescs[0] = CreateTensorDescFromInput(kernelCreationContext, 0, coerceAxis);
-            m_outputTensorDescs[0] = CreateTensorDescFromOutput(kernelCreationContext, 0, coerceAxis);
         }
 
         gsl::span<const uint32_t> outputSizes = m_outputTensorDescs[0].GetSizes();
@@ -134,8 +151,23 @@ public:
             operatorDesc.elu.OutputTensor = outputDescs.data();
         }
 
-        DML_OPERATOR_DESC opDesc = { operatorType, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { remappedOperatorType(operatorType), &operatorDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
+    }
+
+private:
+    DML_OPERATOR_TYPE remappedOperatorType(const DML_OPERATOR_TYPE operatorType) const {
+        switch (operatorType)
+        {
+            case DML_OPERATOR_ACTIVATION_HARDMAX:
+                return DML_OPERATOR_ACTIVATION_HARDMAX1;
+            case DML_OPERATOR_ACTIVATION_SOFTMAX:
+                return DML_OPERATOR_ACTIVATION_SOFTMAX1;
+            case DML_OPERATOR_ACTIVATION_LOG_SOFTMAX:
+                return DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1;
+            default:
+                return operatorType;
+        }
     }
 };
 
@@ -166,8 +198,12 @@ DML_OP_DEFINE_CREATION_FUNCTION(Softplus,            DmlOperatorActivationTempla
 DML_OP_DEFINE_CREATION_FUNCTION(ParametricSoftplus,  DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS>);
 DML_OP_DEFINE_CREATION_FUNCTION(Dropout,             DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_IDENTITY>);
 DML_OP_DEFINE_CREATION_FUNCTION(Softmax,             DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_SOFTMAX>);
+DML_OP_DEFINE_CREATION_FUNCTION(Softmax13,           DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_SOFTMAX1>);
 DML_OP_DEFINE_CREATION_FUNCTION(LogSoftmax,          DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_LOG_SOFTMAX>);
+DML_OP_DEFINE_CREATION_FUNCTION(LogSoftmax13,        DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_LOG_SOFTMAX1>);
 DML_OP_DEFINE_CREATION_FUNCTION(Hardmax,             DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_HARDMAX>);
+DML_OP_DEFINE_CREATION_FUNCTION(Hardmax13,           DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_HARDMAX1>);
 DML_OP_DEFINE_CREATION_FUNCTION(Shrink,              DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_SHRINK>);
+DML_OP_DEFINE_CREATION_FUNCTION(Gelu,                DmlOperatorActivationTemplate<DML_OPERATOR_ACTIVATION_GELU>);
 
 } // namespace Dml

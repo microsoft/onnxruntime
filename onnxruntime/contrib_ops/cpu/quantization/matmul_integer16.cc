@@ -34,9 +34,9 @@ Status MatMulInteger16<int16_t, int16_t, int32_t>::Compute(OpKernelContext* ctx)
 
   for (int i = 0; i < static_cast<int>(helper.OutputOffsets().size()); i++) {
     EigenCastGEMM<int16_t, int16_t, int32_t>(
-        A->template Data<int16_t>() + helper.LeftOffsets()[i],
-        B->template Data<int16_t>() + helper.RightOffsets()[i],
-        Y->template MutableData<int32_t>() + helper.OutputOffsets()[i],
+        A->Data<int16_t>() + helper.LeftOffsets()[i],
+        B->Data<int16_t>() + helper.RightOffsets()[i],
+        Y->MutableData<int32_t>() + helper.OutputOffsets()[i],
         static_cast<int>(helper.M()),
         static_cast<int>(helper.N()),
         static_cast<int>(helper.K()));

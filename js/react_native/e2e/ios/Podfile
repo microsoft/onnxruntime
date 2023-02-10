@@ -1,7 +1,7 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '11.0'
+platform :ios, '12.4'
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
@@ -10,10 +10,13 @@ target 'OnnxruntimeModuleExample' do
 
   use_frameworks!
 
-  if File.exist?('../../local_pods/onnxruntime-mobile-c.zip')
-    pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
+  # Mobile build:
+  # if File.exist?('../../local_pods/onnxruntime-mobile-c.zip')
+  #   pod 'onnxruntime-mobile-c', :podspec => '../../onnxruntime-mobile-c.podspec'
+  if File.exist?('../../local_pods/onnxruntime-c.zip')
+    pod 'onnxruntime-c', :podspec => '../../onnxruntime-c.podspec'
   end
-  pod 'onnxruntime-react-native', :path => '../..'
+  pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'
 
   inherit! :search_paths
 end

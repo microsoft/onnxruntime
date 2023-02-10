@@ -759,4 +759,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot = {
     MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_UDOT>,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedK,
     MLAS_GEMM_U8X8_KERNEL_UDOT::PackedStrides.K,
+    8
 };

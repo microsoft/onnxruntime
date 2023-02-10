@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "onnx/onnx_pb.h"
 

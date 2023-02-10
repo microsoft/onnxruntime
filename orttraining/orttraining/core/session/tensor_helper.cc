@@ -18,15 +18,15 @@ TensorShapeVector GetSliceShape(
   ORT_ENFORCE(shape.size() > 0);
   ORT_ENFORCE(slice_axis < shape.size());
   ORT_ENFORCE(num_slices > 0);
-  ORT_ENFORCE(shape.at(slice_axis) > 0);
-  ORT_ENFORCE(shape.at(slice_axis) % num_slices == 0);
+  ORT_ENFORCE(shape[slice_axis] > 0);
+  ORT_ENFORCE(shape[slice_axis] % num_slices == 0);
 
   // Shape of slice along slice_axis.
   TensorShapeVector slice_shape(shape.size());
   // Compute original slice's shape.
   std::copy(shape.begin(), shape.end(), slice_shape.begin());
   // Replace the sliced dimension.
-  slice_shape.at(slice_axis) = shape.at(slice_axis) / num_slices;
+  slice_shape[slice_axis] = shape[slice_axis] / num_slices;
 
   return slice_shape;
 }

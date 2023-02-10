@@ -9,25 +9,28 @@ namespace contrib {
 namespace cuda {
 
 size_t GetPinnedBufferSize(
-    int batch_size);
+    size_t batch_size);
 
 size_t GetLongformerAttentionWorkspaceSize(
     size_t element_size,
-    int batch_size,
-    int num_heads,
-    int head_size,
-    int sequence_length,
-    int max_num_global,
-    int window,
+    size_t batch_size,
+    size_t num_heads,
+    size_t head_size,
+    size_t sequence_length,
+
+    size_t max_num_global,
+    size_t window,
     bool disable_compact_memory);
 
-bool LaunchLongformerAttentionKernel(
+Status LaunchLongformerAttentionKernel(
     const cudaDeviceProp& device_prop,  // Device Properties
     cublasHandle_t cublas,              // Cublas handle
     cudaStream_t stream,                // CUDA stream
     const void* input,                  // Input tensor
+    const void* bias,                   // Bias tensor
     const void* attention_mask,         // Attention mask with shape (B, S)
     const void* global_input,           // Global attention input, or nullptr when max_num_global == 0.
+    const void* global_bias,            // Global bias tensor
     const int* global_attention,        // Global attention flags with shape (B, S)
     const int* global_index,            // Global index
     const int* batch_global_num,        // Number of global tokens per batch. It is in device memory.
@@ -41,8 +44,9 @@ bool LaunchLongformerAttentionKernel(
     int window,                         // One sided attention window (W)
     int max_num_global,                 // Maximum number of global tokens (G)
     const size_t element_size,          // Element size of input tensor,
-    bool disable_compact_memory         // Disable compact memory kernel
-);
+    bool disable_compact_memory,        // Disable compact memory kernel
+    bool use_merged_qkv_weights,
+    bool use_half4);
 
 }  // namespace cuda
 }  // namespace contrib
