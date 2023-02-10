@@ -44,7 +44,7 @@ steps:
           mkdir -vp ~/.docker/cli-plugins/
           curl --silent -L "https://github.com/docker/buildx/releases/download/v0.10.2/buildx-v0.10.2.linux-arm-v6" > ~/.docker/cli-plugins/docker-buildx
           chmod a+x ~/.docker/cli-plugins/docker-buildx
-          export PATH = ~/.docker/cli-plugins/:${PATH}
+          export PATH=~/.docker/cli-plugins/:${PATH}
           ls ~/.docker/cli-plugins/
           ${{ parameters.ScriptName }} \
             --dockerfile "${{ parameters.Dockerfile }}" \

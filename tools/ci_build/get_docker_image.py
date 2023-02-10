@@ -97,11 +97,13 @@ def main():
             cwd=str(dest),
         )
     if use_container_registry:
+        '''
         run(
             args.docker_path,
             "buildx",
             "version",
         )
+        '''
         run(
             "docker-buildx",
             "--push",
