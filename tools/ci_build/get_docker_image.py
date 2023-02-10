@@ -99,11 +99,15 @@ def main():
     if use_container_registry:
         run(
             args.docker_path,
+            "version",
+        )
+        run(
+            args.docker_path,
             "--log-level",
             "error",
             "buildx",
             "build",
-            "--output=type=registry",
+            "--push",
             "--tag",
             full_image_name,
             "--cache-from",
