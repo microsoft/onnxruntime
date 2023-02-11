@@ -112,14 +112,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
-constexpr const char* BiasSkip_ver1_doc = R"DOC(
+constexpr const char* BiasAdd_ver1_doc = R"DOC(
 Add input with bias, then add residual inputs.
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    BiasSkip, 1,
+    BiasAdd, 1,
     OpSchema()
-        .SetDoc(BiasSkip_ver1_doc)
+        .SetDoc(BiasAdd_ver1_doc)
         .Input(0,
                "X",
                "Input tensor. Dimensions are (N, S, C), where N is the batch size, S is image size H*W, and C is number of channels",

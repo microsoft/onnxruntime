@@ -3,20 +3,16 @@
 
 #pragma once
 #include "core/common/common.h"
-#include "core/providers/cuda/cuda_kernel.h"
+#include "core/common/status.h"
+#include <cuda.h>
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-using namespace onnxruntime::cuda;
-
 template <typename T>
-class BiasSkip final : public CudaKernel {
- public:
-  BiasSkip(const OpKernelInfo& op_kernel_info);
-  Status ComputeInternal(OpKernelContext* context) const override;
-};
+void LaunchBiasAddKernel(cudaStream_t stream, int32_t grid_size, int32_t num_channels,
+                         T const* input, T const* bias, T const* residual, T* output);
 
 }  // namespace cuda
 }  // namespace contrib

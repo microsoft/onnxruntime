@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "contrib_ops/cuda/diffusion/bias_skip.h"
-#include "contrib_ops/cuda/diffusion/bias_skip_impl.h"
+#include "contrib_ops/cuda/diffusion/bias_add.h"
+#include "contrib_ops/cuda/diffusion/bias_add_impl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -11,14 +11,14 @@ namespace cuda {
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      BiasSkip,                                            \
+      BiasAdd,                                                    \
       kMSDomain,                                                  \
       1,                                                          \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      BiasSkip<T>);
+      BiasAdd<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16);
 REGISTER_KERNEL_TYPED(float);
@@ -26,11 +26,11 @@ REGISTER_KERNEL_TYPED(float);
 using namespace ONNX_NAMESPACE;
 
 template <typename T>
-BiasSkip<T>::BiasSkip(const OpKernelInfo& op_info) : CudaKernel(op_info) {
+BiasAdd<T>::BiasAdd(const OpKernelInfo& op_info) : CudaKernel(op_info) {
 }
 
 template <typename T>
-Status BiasSkip<T>::ComputeInternal(OpKernelContext* context) const {
+Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
   // Input:  [batch_size, height*width, channels]
   // Bias:   [hidden_size]
   // Skip:   [batch_size, height*width, channels]
@@ -70,7 +70,7 @@ Status BiasSkip<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   const int32_t grid_size = static_cast<int32_t>(input_dims[0] * input_dims[1]);
-  LaunchBiasSkipKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]),
+  LaunchBiasAddKernel<CudaT>(Stream(context), grid_size, static_cast<int32_t>(input_dims[2]),
                               reinterpret_cast<const CudaT*>(input->Data<T>()),
                               reinterpret_cast<const CudaT*>(bias->Data<T>()),
                               reinterpret_cast<const CudaT*>(skip->Data<T>()),

@@ -17,14 +17,14 @@ namespace test {
 static std::vector<float> GetExpectedResult(const std::vector<float>& input_data,
                                             const std::vector<float>& bias_data,
                                             const std::vector<float>& skip_data) {
-    std::vector<float> output_data;
-    output_data.reserve(input_data.size());
+  std::vector<float> output_data;
+  output_data.reserve(input_data.size());
 
-    size_t bias_length = bias_data.size();
-    for (size_t i = 0; i < input_data.size(); i++) {
-        output_data.push_back(input_data[i] + bias_data[i % bias_length] + skip_data[i]);
-    }
-    return output_data;
+  size_t bias_length = bias_data.size();
+  for (size_t i = 0; i < input_data.size(); i++) {
+    output_data.push_back(input_data[i] + bias_data[i % bias_length] + skip_data[i]);
+  }
+  return output_data;
 }
 
 static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
@@ -41,7 +41,7 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
     return;
   }
 
-  OpTester tester("BiasSkip", 1, onnxruntime::kMSDomain);
+  OpTester tester("BiasAdd", 1, onnxruntime::kMSDomain);
 
   if (use_float16) {
     tester.AddInput<MLFloat16>("X", input_dims, ToFloat16(input_data));
@@ -60,7 +60,7 @@ static void RunSkipBiasGpuTest(const std::vector<float>& input_data,
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-static void RunBiasSkipTest(int64_t batch_size, int64_t image_size, int64_t num_channels) {
+static void RunBiasAddTest(int64_t batch_size, int64_t image_size, int64_t num_channels) {
   std::vector<int64_t> input_dims = {batch_size, image_size, num_channels};
   std::vector<int64_t> bias_dims = {num_channels};
   std::vector<int64_t>& skip_dims = input_dims;
@@ -75,25 +75,25 @@ static void RunBiasSkipTest(int64_t batch_size, int64_t image_size, int64_t num_
   RunSkipBiasGpuTest(input_data, bias_data, skip_data, output_data, input_dims, bias_dims, skip_dims, output_dims);
 }
 
-TEST(BiasSkipTest, BiasSkipTest_HiddenSize_320) {
+TEST(BiasAddTest, BiasAddTest_HiddenSize_320) {
   constexpr int64_t batch_size = 2;
   constexpr int64_t image_size = 5;
   constexpr int64_t num_channels = 320;
-  RunBiasSkipTest(batch_size, image_size, num_channels);
+  RunBiasAddTest(batch_size, image_size, num_channels);
 }
 
-TEST(BiasSkipTest, BiasSkipTest_HiddenSize_640) {
+TEST(BiasAddTest, BiasAddTest_HiddenSize_640) {
   constexpr int64_t batch_size = 2;
   constexpr int64_t image_size = 1;
   constexpr int64_t num_channels = 640;
-  RunBiasSkipTest(batch_size, image_size, num_channels);
+  RunBiasAddTest(batch_size, image_size, num_channels);
 }
 
-TEST(BiasSkipTest, BiasSkipTest_HiddenSize_1280) {
+TEST(BiasAddTest, BiasAddTest_HiddenSize_1280) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t image_size = 2;
   constexpr int64_t num_channels = 1280;
-  RunBiasSkipTest(batch_size, image_size, num_channels);
+  RunBiasAddTest(batch_size, image_size, num_channels);
 }
 #endif
 
