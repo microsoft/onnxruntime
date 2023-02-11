@@ -50,6 +50,7 @@ class AttentionMask:
             return None
 
         if input in self.mask_indice:
+            #print("mask exists, shape unknown")
             return self.mask_indice[input]
 
         # Add cast to convert int64 to int32
@@ -64,6 +65,7 @@ class AttentionMask:
 
         # Attention supports int32 attention mask (2D) since 1.4.0
         if self.mask_format == AttentionMaskFormat.AttentionMask:
+            #print("2d mask")
             self.mask_indice[input] = input_name
             return input_name
 
@@ -79,6 +81,7 @@ class AttentionMask:
         self.model.add_node(mask_index_node)
 
         self.mask_indice[input] = output_name
+        #print("1d mask")
         return output_name
 
 
@@ -211,14 +214,16 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
+        #q_mul: NodeProto = None,
+        decoder_attention: bool = False,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
         Args:
             mask_index (str): mask input
             q_matmul (NodeProto): MatMul node in fully connection for Q
-            k_matmul (NodeProto): MatMul node in fully connection for  K
-            v_matmul (NodeProto): MatMul node in fully connection for  V
+            k_matmul (NodeProto): MatMul node in fully connection for K
+            v_matmul (NodeProto): MatMul node in fully connection for V
             q_add (NodeProto): Add bias node in fully connection for Q
             k_add (NodeProto): Add bias node in fully connection for K
             v_add (NodeProto): Add bias node in fully connection for V
@@ -226,6 +231,7 @@ class FusionAttention(Fusion):
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             input (str): input name
             output (str): output name
+            q_mul (NodeProto): Mul node in fully connection for Q
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -242,6 +248,12 @@ class FusionAttention(Fusion):
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
         k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
         v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+        
+        # if q_mul is not None:
+        #     q_constant = self.model.get_initializer(q_mul.input[1])
+        #     qc = NumpyHelper.to_array(q_constant)
+        # else:
+        #     qc = np.float32(1)
 
         if q_weight is None:
             print(
@@ -252,7 +264,7 @@ class FusionAttention(Fusion):
         if not (k_weight and v_weight and q_bias and k_bias):
             return None
 
-        qw = NumpyHelper.to_array(q_weight)
+        qw = NumpyHelper.to_array(q_weight) #* qc
         kw = NumpyHelper.to_array(k_weight)
         vw = NumpyHelper.to_array(v_weight)
 
@@ -290,7 +302,7 @@ class FusionAttention(Fusion):
             qkv_weight = np.stack((qw, kw, vw), axis=1)
             qkv_weight_dim = 3 * qw_out_size
 
-        qb = NumpyHelper.to_array(q_bias)
+        qb = NumpyHelper.to_array(q_bias) #* qc
         kb = NumpyHelper.to_array(k_bias)
         vb = NumpyHelper.to_array(v_bias)
 
@@ -342,7 +354,7 @@ class FusionAttention(Fusion):
 
             attention_inputs = [
                 q_matmul.output[0],
-                k_matmul.output[0],
+                k_matmul.output[0], #if k_matmul.output[0] == k_add.input[1] else k_add.input[1],
                 v_matmul.output[0],
                 attention_node_name + "_qkv_bias",
             ]
@@ -365,9 +377,50 @@ class FusionAttention(Fusion):
                 attention_inputs.append(mask_index)
             else:
                 attention_inputs.append("")
+            #     if q_mul is not None:
+            #         # Reshape 4d attention mask with constant lower triangle to 2d attention mask with unidirectional = 1
+            #         reshape_4d_to_2d = helper.make_tensor("reshape_4d_to_2d", TensorProto.INT32, [2], [batch_size, sequence_length])
+            #         self.model.add_initializer(reshape_4d_to_2d, self.this_graph_name)
+            #         attention_mask_2d = helper.make_node(
+            #             "Reshape", # "Squeeze",
+            #             inputs=[mask_index, reshape_4d_to_2d],
+            #             outputs=[mask_index + "_2d"],
+            #             name=mask_index + "_4d_mask_to_2d",
+            #         )
+            #         attention_inputs.append(mask_index + "_4d_mask_to_2d")
+            #     else:
+            #         attention_inputs.append(mask_index)
 
             if add_qk_str is not None:
                 attention_inputs.append("")  # no past
+                # if decoder_attention:
+                #     # Convert add_qk_str to float
+                #     cast_node_name = self.model.create_node_name("Cast")
+                #     add_qk_fp32 = helper.make_node(
+                #         "Cast",
+                #         inputs=[add_qk_str],
+                #         outputs=[add_qk_str + "_float32"],
+                #         name=cast_node_name,
+                #         to=int(TensorProto.FLOAT),
+                #     )
+                #     # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
+                #     # B = batch size, M = max sequence length, N = num heads
+                #     concat_node_name = self.model.create_node_name("Concat")
+                #     concat_add_qk_fp32 = helper.make_node(
+                #         "Concat",
+                #         inputs=[add_qk_str + "_float32" for _ in range(num_heads)],
+                #         outputs=[add_qk_str + "_float32_mask"],
+                #         name=concat_node_name,
+                #         axis=1,
+                #     )
+                #     # Add new nodes to graph
+                #     self.nodes_to_add.append(add_qk_fp32)
+                #     self.nodes_to_add.append(concat_add_qk_fp32)
+                #     self.node_name_to_graph_name[cast_node_name] = self.this_graph_name
+                #     self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+                #     # Add attention mask to attention node
+                #     attention_inputs.append(add_qk_str + "_float32_mask")
+                # else:
                 attention_inputs.append(add_qk_str)
 
             attention_node = helper.make_node(
@@ -378,6 +431,9 @@ class FusionAttention(Fusion):
             )
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+
+        # if q_mul is not None:
+        #     attention_node.attribute.extend([helper.make_attribute("unidirectional", 1)])
 
         if is_qkv_diff_dims:
             attention_node.attribute.extend(
@@ -572,7 +628,7 @@ class FusionAttention(Fusion):
         if mask_nodes is None:
             logger.debug("fuse_attention: failed to match mask path")
             return
-
+        
         if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
@@ -580,12 +636,16 @@ class FusionAttention(Fusion):
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+            #print(f"Mask input = {mask_nodes[-1].input[0]}, mask index = {mask_index}")
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
+            #import os
+            #if not os.path.exists('temp.onnx'):
+            #    self.model.save_model_to_file('temp.onnx', use_external_data_format=True)
             new_node = self.create_attention_node(
                 mask_index,
                 matmul_q,
@@ -638,3 +698,4 @@ class FusionAttention(Fusion):
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             self.prune_graph = True
+

@@ -41,6 +41,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include <iostream>
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -48,7 +49,7 @@ using namespace cub;
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 #define CUDA_MEMORY_ALIGNMENT 256
 
-#define DUMP_ATTENTION_LEVEL 0
+#define DUMP_ATTENTION_LEVEL 2
 #if DUMP_ATTENTION_LEVEL > 1
 #define DUMP_ATTENTION_INIT() transformers::CudaTensorConsoleDumper dumper
 #define DUMP_ATTENTION(...) dumper.Print(__VA_ARGS__)
@@ -320,12 +321,12 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   } else {  // gemm_buffer == nullptr
     assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
-    DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("query_bias", data.bias, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
-    DUMP_ATTENTION_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
-    DUMP_ATTENTION_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
+    //DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
+    //DUMP_ATTENTION_D("query_bias", data.bias, num_heads, qk_head_size);
+    //DUMP_ATTENTION_D("key", data.key, batch_size * kv_sequence_length, num_heads, qk_head_size);
+    //DUMP_ATTENTION_D("key_bias", data.bias + num_heads * qk_head_size, num_heads, qk_head_size);
+    //DUMP_ATTENTION_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
+    //DUMP_ATTENTION_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
 
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
@@ -347,9 +348,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                     num_heads, qk_head_size, v_head_size,
                     data.bias, data.query, data.key, data.value, q, k, v);
 
-      DUMP_ATTENTION_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
-      DUMP_ATTENTION_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
-      DUMP_ATTENTION_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      //DUMP_ATTENTION_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      //DUMP_ATTENTION_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      //DUMP_ATTENTION_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
     }
 #endif
@@ -362,7 +363,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
           batch_size, sequence_length,
           num_heads, qk_head_size,
           data.bias, data.query, data.key, data.value, qkv, false, kv_sequence_length);
-      DUMP_ATTENTION_D("qkv(BSN3H)", qkv, batch_size, sequence_length, num_heads, 2 * qk_head_size + v_head_size);
+      //DUMP_ATTENTION_D("qkv(BSN3H)", qkv, batch_size, sequence_length, num_heads, 2 * qk_head_size + v_head_size);
 
       qkv_format = AttentionQkvFormat::QKV_BSN3H;
     } else {  // unfused kernel
@@ -387,9 +388,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                                 data.value, data.bias + 2 * num_heads * qk_head_size, v,
                                 true, -1);
 
-      DUMP_ATTENTION_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
-      DUMP_ATTENTION_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
-      DUMP_ATTENTION_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
+      //DUMP_ATTENTION_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
+      //DUMP_ATTENTION_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
+      //DUMP_ATTENTION_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
   }
@@ -499,7 +500,7 @@ Status QkvToContext(
     LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-    DUMP_ATTENTION_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
+    //DUMP_ATTENTION_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
 
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
@@ -509,7 +510,7 @@ Status QkvToContext(
     LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
-    DUMP_ATTENTION_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
+    //DUMP_ATTENTION_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
 
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(data.fused_cross_attention_kernel);
@@ -528,7 +529,7 @@ Status QkvToContext(
         kv_sequence_length,         // sequence length of KV
         stream);
 
-    DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    //DUMP_ATTENTION("trt cross output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 
@@ -554,11 +555,11 @@ Status QkvToContext(
     if (use_fused_kernel) {
       assert(qkv_format == AttentionQkvFormat::QKV_BSN3H);
       fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
-      DUMP_ATTENTION("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      //DUMP_ATTENTION("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     } else {
       assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
       fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);
-      DUMP_ATTENTION("fused causal output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      //DUMP_ATTENTION("fused causal output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     }
     return Status::OK();
   }
@@ -590,7 +591,8 @@ Status QkvToContext(
     p.stream = stream;
     run_memory_efficient_attention(p);
 
-    DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    std::cout << "Dumping MHA output" << std::endl;
+    // DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
@@ -622,6 +624,9 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
+  std::cout << "Dumping QK info" << std::endl;
+  DUMP_ATTENTION_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
+  DUMP_ATTENTION_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
   DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
@@ -656,7 +661,9 @@ Status QkvToContext(
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
+  std::cout << "Dumping softmax info" << std::endl;
   DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
+  DUMP_ATTENTION_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;
@@ -670,8 +677,11 @@ Status QkvToContext(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  max_threads_per_block, false, temp_output, data.output);
+  std::cout << "Dumping reshape info" << std::endl;
   DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return result;
+
+  // Change attention dump for model_opt.onnx
 }
 
 template <typename T>

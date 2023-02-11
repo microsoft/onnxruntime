@@ -11,7 +11,8 @@ namespace contrib {
 namespace cuda {
 namespace transformers {
 
-#ifdef DEBUG_GENERATION
+#define DEBUG_GENERATION_ATTN 1
+#ifdef DEBUG_GENERATION_ATTN
 template <typename T>
 class PinnedHostBuffer {
  public:
@@ -38,7 +39,7 @@ class PinnedHostBuffer {
   T* buffer_;
 };
 
-constexpr int64_t kGpuSnippetThreshold = 0;
+constexpr int64_t kGpuSnippetThreshold = 5;
 
 template <typename T>
 void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool is_gpu_tensor) {

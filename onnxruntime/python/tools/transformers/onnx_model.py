@@ -347,6 +347,8 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
+            #if current_node.name in {'Add_2968', 'Expand_2901', 'Unsqueeze_2888', 'Unsqueeze_2887', 'Where_2885'}:
+            #    print("Current node:", current_node.name, op_type, parent_input_index[i])
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
@@ -918,6 +920,7 @@ class OnnxModel:
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
+        #OnnxModel.save(self.model, "temp_before_sort.onnx", save_as_external_data=True)
         OnnxModel.graph_topological_sort(self.model.graph)
 
     @staticmethod
@@ -1085,3 +1088,4 @@ class OnnxModel:
         for value_info in self.model.graph.value_info:
             if value_info.name not in excluded:
                 value_info.name = prefix + value_info.name
+

@@ -1,6 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <iostream>
+#include <string>
+#include <unordered_set>
+
 namespace onnxruntime {
 class IExecutionFrame;
 class Stream;
@@ -35,6 +39,13 @@ class OpKernelContext {
   template <typename T>
   const T* Input(int index) const {
     const OrtValue* p_ml_value = GetInputMLValue(index);
+    // if (index == 0) {
+    //   std::unordered_set<std::string> filters({"onnx::Softmax_2976", "onnx::Softmax_3040", "onnx::MatMul_2962", "onnx::MatMul_3039"});
+    //   const auto name = kernel_->Node().InputDefs()[index]->Name();
+    //   if (filters.find(name) != filters.end()) {
+    //     std::cout << name << std::endl;
+    //   }
+    // }
     ORT_TRY {
       return p_ml_value ? &(p_ml_value->Get<T>()) : nullptr;
     }
