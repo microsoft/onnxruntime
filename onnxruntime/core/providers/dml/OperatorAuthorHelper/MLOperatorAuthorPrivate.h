@@ -42,7 +42,10 @@ IMLOperatorShapeInferenceContextPrivate : public IMLOperatorShapeInferenceContex
         ) const noexcept PURE;
 
     //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(uint32_t inputIndex) const noexcept PURE;
+    STDMETHOD(GetSequenceInputCount)(
+        uint32_t inputIndex,
+        _Out_ uint32_t* inputCount
+        ) const noexcept PURE;
 
     //! Gets the number of dimensions of a tensor output of the operator.
     STDMETHOD(GetSequenceInputTensorDimensionCount)(
@@ -180,7 +183,10 @@ interface DECLSPEC_UUID("440DA47C-018B-41F6-80A4-13FCF0544F37") DECLSPEC_NOVTABL
 IMLOperatorTensorShapeDescriptionPrivate : IUnknown
 {
     //! Gets the number of dimensions of a tensor output of the operator.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(uint32_t inputIndex) const noexcept PURE;
+    STDMETHOD(GetSequenceInputCount)(
+        uint32_t inputIndex,
+        _Out_ uint32_t* inputCount
+        ) const noexcept PURE;
 
     //! Gets the number of dimensions of a tensor input of the operator.
     //! Returns an error if the input at the specified index is not a tensor.
@@ -231,8 +237,9 @@ IMLOperatorKernelContextPrivate : IUnknown
     //! Gets the input tensor of the operator at the specified index.
     //! This sets tensor to nullptr for optional inputs which do not exist.
     //! Returns an error if the input at the specified index is not a tensor.
-    STDMETHOD_(uint32_t, GetSequenceInputCount)(
-        uint32_t inputIndex
+    STDMETHOD(GetSequenceInputCount)(
+        uint32_t inputIndex,
+        _Out_ uint32_t* inputCount
         ) const noexcept PURE;
 
     //! Returns whether the tensor at inputIndex is a sequence tensor or not

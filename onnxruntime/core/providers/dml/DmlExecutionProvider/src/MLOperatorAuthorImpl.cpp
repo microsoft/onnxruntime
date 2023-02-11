@@ -1053,29 +1053,25 @@ namespace Windows::AI::MachineLearning::Adapter
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
-    uint32_t STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputCount(uint32_t inputIndex) const noexcept
+    HRESULT STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept
     {
         ORT_TRY
         {
             VerifyNotClosed();
 
-            if (inputIndex >= GetInputCount())
-            {
-                return E_INVALIDARG;
-            }
+            ML_CHECK_BOOL(inputIndex < GetInputCount());
+            ML_CHECK_BOOL(m_kernelContext != nullptr);
 
             // Input shapes are determined either from the input tensor, override or from the underlying proto
-            if (m_kernelContext)
-            {
-                assert(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
-                auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
-                ML_CHECK_BOOL(inputTensorSeq != nullptr);
-                return static_cast<uint32_t>(inputTensorSeq->Size());
-            }
+            assert(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            ML_CHECK_BOOL(m_kernelContext->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            auto inputTensorSeq = m_kernelContext->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
+            ML_CHECK_BOOL(inputTensorSeq != nullptr);
+            *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
 
+            return S_OK;
         }
-        catch(...){}
-        return 0;
+        ORT_CATCH_RETURN
     }
 
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
@@ -2060,7 +2056,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    uint32_t STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputCount(uint32_t inputIndex)  const noexcept
+    HRESULT STDMETHODCALLTYPE OpKernelContextWrapper::GetSequenceInputCount(uint32_t inputIndex, uint32_t* inputCount) const noexcept
     {
         ORT_TRY
         {
@@ -2069,9 +2065,11 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
             assert(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
+            ML_CHECK_BOOL(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
             auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
             ML_CHECK_BOOL(inputTensorSeq != nullptr);
-            return static_cast<uint32_t>(inputTensorSeq->Size());
+            *inputCount = static_cast<uint32_t>(inputTensorSeq->Size());
+            return S_OK;
         }
         ORT_CATCH_RETURN
     }
