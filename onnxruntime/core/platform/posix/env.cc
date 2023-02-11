@@ -34,6 +34,7 @@ limitations under the License.
 #include <thread>
 #include <utility>  // for std::forward
 #include <vector>
+#include <iostream>
 
 // We can not use CPUINFO if it is not supported and we do not want to used
 // it on certain platforms because of the binary size increase.
@@ -261,6 +262,7 @@ class PosixThread : public EnvThread {
     }
     ORT_CATCH(...) {
       // Ignore exceptions
+      std::cout << "caught posix thread exception during creation." << std::endl;
     }
     return nullptr;
   }
