@@ -32,7 +32,7 @@ def example_prompts():
 
 
 def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_safety_checker: bool):
-    from diffusers import OnnxStableDiffusionPipeline
+    from diffusers import DPMSolverMultistepScheduler, OnnxStableDiffusionPipeline
 
     import onnxruntime
 
@@ -51,6 +51,8 @@ def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_saf
             provider=provider,
             use_auth_token=True,
         )
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe.set_progress_bar_config(disable=True)
 
     if disable_safety_checker:
         pipe.safety_checker = None
@@ -60,14 +62,15 @@ def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_saf
 
 
 def get_torch_pipeline(model_name: str, disable_safety_checker: bool):
-    from diffusers import StableDiffusionPipeline
+    from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
     from torch import channels_last, float16
 
     pipe = StableDiffusionPipeline.from_pretrained(
         model_name, torch_dtype=float16, revision="fp16", use_auth_token=True
     ).to("cuda")
-
     pipe.unet.to(memory_format=channels_last)  # in-place operation
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    pipe.set_progress_bar_config(disable=True)
 
     if disable_safety_checker:
         pipe.safety_checker = None
@@ -81,9 +84,7 @@ def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, dis
     return f"{engine}_{short_model_name}_b{batch_size}" + ("" if disable_safety_checker else "_safe")
 
 
-def run_ort_pipeline(
-    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_images_per_prompt, batch_count
-):
+def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count):
     from diffusers import OnnxStableDiffusionPipeline
 
     assert isinstance(pipe, OnnxStableDiffusionPipeline)
@@ -94,19 +95,18 @@ def run_ort_pipeline(
 
     latency_list = []
     for i, prompt in enumerate(prompts):
-        if i >= batch_count:
+        if i >= num_prompts:
             break
-        input_prompts = [prompt] * batch_size
-        for j in range(num_images_per_prompt):
+        for j in range(batch_count):
             inference_start = time.time()
             images = pipe(
-                input_prompts,
+                prompt,
                 height,
                 width,
                 num_inference_steps=steps,
                 negative_prompt=None,
                 guidance_scale=7.5,
-                num_images_per_prompt=1,
+                num_images_per_prompt=batch_size,
             ).images
             inference_end = time.time()
             latency = inference_end - inference_start
@@ -119,7 +119,7 @@ def run_ort_pipeline(
 
 
 def run_torch_pipeline(
-    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_images_per_prompt, batch_count
+    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count
 ):
     import torch
 
@@ -131,20 +131,19 @@ def run_torch_pipeline(
 
     latency_list = []
     for i, prompt in enumerate(prompts):
-        if i >= batch_count:
+        if i >= num_prompts:
             break
-        input_prompts = [prompt] * batch_size
         torch.cuda.synchronize()
-        for j in range(num_images_per_prompt):
+        for j in range(batch_count):
             inference_start = time.time()
             images = pipe(
-                prompt=input_prompts,
+                prompt=prompt,
                 height=height,
                 width=width,
                 num_inference_steps=steps,
                 guidance_scale=7.5,
                 negative_prompt=None,
-                num_images_per_prompt=num_images_per_prompt,
+                num_images_per_prompt=batch_size,
                 generator=None,  # torch.Generator
             ).images
 
@@ -168,7 +167,7 @@ def run_ort(
     height,
     width,
     steps,
-    num_images_per_prompt,
+    num_prompts,
     batch_count,
 ):
     load_start = time.time()
@@ -177,7 +176,7 @@ def run_ort(
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
-    run_ort_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_images_per_prompt, batch_count)
+    run_ort_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count)
 
 
 def run_torch(
@@ -187,7 +186,7 @@ def run_torch(
     height,
     width,
     steps,
-    num_images_per_prompt,
+    num_prompts,
     batch_count,
 ):
     import torch
@@ -205,9 +204,7 @@ def run_torch(
 
     image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker)
     with torch.inference_mode():
-        run_torch_pipeline(
-            pipe, batch_size, image_filename_prefix, height, width, steps, num_images_per_prompt, batch_count
-        )
+        run_torch_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count)
 
 
 def parse_arguments():
@@ -254,8 +251,8 @@ def parse_arguments():
         "--batch_size",
         type=int,
         default=1,
-        choices=range(1, 33),
-        help="Number of prompts per batch",
+        choices=[1, 2, 4, 8, 16, 32],
+        help="Number of images per batch",
     )
 
     parser.add_argument(
@@ -285,11 +282,11 @@ def parse_arguments():
 
     parser.add_argument(
         "-n",
-        "--num_images_per_prompt",
+        "--num_prompts",
         required=False,
         type=int,
-        default=5,
-        help="Number of images per prompt",
+        default=1,
+        help="Number of prompts",
     )
 
     parser.add_argument(
@@ -298,7 +295,7 @@ def parse_arguments():
         required=False,
         type=int,
         choices=range(1, 11),
-        default=1,
+        default=10,
         help="Number of batches to test",
     )
 
@@ -331,7 +328,7 @@ def main():
             args.height,
             args.width,
             args.steps,
-            args.num_images_per_prompt,
+            args.num_prompts,
             args.batch_count,
         )
     else:
@@ -342,7 +339,7 @@ def main():
             args.height,
             args.width,
             args.steps,
-            args.num_images_per_prompt,
+            args.num_prompts,
             args.batch_count,
         )
 
