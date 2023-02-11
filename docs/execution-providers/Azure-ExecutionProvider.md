@@ -7,21 +7,19 @@ nav_order: 11
 
 # Azure Execution Provider (Preview)
 
-The Azure Execution Provider enables ONNX Runtime to invoke an remote Azure endpoint for inferenece, the endpoint must be deployed beforehand.
-To consume the endpoint, a model of same inputs and outputs must be loaded locally in the first place.
+The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference. The endpoint must be deployed beforehand.
+To consume the endpoint, a model with same inputs and outputs must be first loaded locally.
 
-One use case for Azure Execution Provider is small-big models. E.g. A smaller model deployed on edge device for faster inference,
-while a bigger model deployed on Azure for higher precision, with Azure Execution Provider, a switch between the two could be easily achieved.
-Again, the two models must have same inputs and outputs.
+One use case for Azure Execution Provider is for small-big models. E.g. A smaller model can be deployed on edge devices for faster inference,
+while a bigger model can be deployed on Azure for higher precision. Using the Azure Execution Provider, switching between the two can be easily achieved (assuming same inputs and outputs). 
 
-Azure Execution Provider is in preview stage, all API(s) and usage are subjuct to change.
+Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
-## Limitations
+## Current Limitations
 
-So far, Azure Execution Provider is limited to:
-* only support [triton](https://github.com/triton-inference-server) server on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
-* only build and run on Windows and Linux.
-* available only as python package, but user could also build from source and consume the feature by C/C++ API(s).
+* Only supports [Triton Inference Server](https://github.com/triton-inference-server) on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
+* Only builds and run on Windows and Linux.
+* Available only as Python package, but can be built from source and used via C/C++ API(s).
 
 ## Requirements
 
