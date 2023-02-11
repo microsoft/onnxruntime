@@ -271,8 +271,10 @@ class FusionBartAttention(FusionAttention):
                 return
             
             self.use_multi_head_attention = decoder_cross_attention
+            # If mask_index = None, then don't do *qc in fusion_attention.py
+            # If mask_index != None, then do *qc in fusion_attention.py and use mul_q
             new_node = self.create_attention_node(
-                mask_index,
+                None, # mask_index,
                 matmul_q,
                 matmul_k,
                 matmul_v,
@@ -283,8 +285,8 @@ class FusionBartAttention(FusionAttention):
                 hidden_size,
                 root_input,
                 attention_last_node.output[0],
-                None, # mask_index if decoder_attention else None,
-                decoder_attention, # mul_q if decoder_attention else None,
+                mask_index if decoder_attention else None,
+                None # mul_q if mask_index != None else None,
             )
             #print("checkpoint 8")
             if new_node is None:

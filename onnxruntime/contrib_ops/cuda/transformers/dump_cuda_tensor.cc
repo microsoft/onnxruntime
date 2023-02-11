@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 namespace transformers {
 
-#define DEBUG_GENERATION_ATTN 1
+// #define DEBUG_GENERATION_ATTN 1
 #ifdef DEBUG_GENERATION_ATTN
 template <typename T>
 class PinnedHostBuffer {

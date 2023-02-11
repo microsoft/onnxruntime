@@ -49,7 +49,7 @@ using namespace cub;
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
 #define CUDA_MEMORY_ALIGNMENT 256
 
-#define DUMP_ATTENTION_LEVEL 2
+#define DUMP_ATTENTION_LEVEL 0
 #if DUMP_ATTENTION_LEVEL > 1
 #define DUMP_ATTENTION_INIT() transformers::CudaTensorConsoleDumper dumper
 #define DUMP_ATTENTION(...) dumper.Print(__VA_ARGS__)
@@ -591,8 +591,8 @@ Status QkvToContext(
     p.stream = stream;
     run_memory_efficient_attention(p);
 
-    std::cout << "Dumping MHA output" << std::endl;
-    // DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    // std::cout << "Dumping MHA output" << std::endl;
+    DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
@@ -624,7 +624,7 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
-  std::cout << "Dumping QK info" << std::endl;
+  // std::cout << "Dumping QK info" << std::endl;
   DUMP_ATTENTION_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
   DUMP_ATTENTION_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
   DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
@@ -661,7 +661,7 @@ Status QkvToContext(
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
-  std::cout << "Dumping softmax info" << std::endl;
+  // std::cout << "Dumping softmax info" << std::endl;
   DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
   DUMP_ATTENTION_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
 
@@ -677,7 +677,7 @@ Status QkvToContext(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  max_threads_per_block, false, temp_output, data.output);
-  std::cout << "Dumping reshape info" << std::endl;
+  // std::cout << "Dumping reshape info" << std::endl;
   DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return result;
 

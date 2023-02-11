@@ -214,8 +214,7 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
-        #q_mul: NodeProto = None,
-        decoder_attention: bool = False,
+        q_mul: NodeProto = None,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -377,51 +376,53 @@ class FusionAttention(Fusion):
                 attention_inputs.append(mask_index)
             else:
                 attention_inputs.append("")
-            #     if q_mul is not None:
-            #         # Reshape 4d attention mask with constant lower triangle to 2d attention mask with unidirectional = 1
-            #         reshape_4d_to_2d = helper.make_tensor("reshape_4d_to_2d", TensorProto.INT32, [2], [batch_size, sequence_length])
-            #         self.model.add_initializer(reshape_4d_to_2d, self.this_graph_name)
-            #         attention_mask_2d = helper.make_node(
-            #             "Reshape", # "Squeeze",
-            #             inputs=[mask_index, reshape_4d_to_2d],
-            #             outputs=[mask_index + "_2d"],
-            #             name=mask_index + "_4d_mask_to_2d",
-            #         )
-            #         attention_inputs.append(mask_index + "_4d_mask_to_2d")
-            #     else:
-            #         attention_inputs.append(mask_index)
+                # if q_mul is not None:
+                #     # Reshape 4d attention mask with constant lower triangle to 2d attention mask with unidirectional = 1
+                #     reshape_4d_to_2d = helper.make_tensor("reshape_4d_to_2d", TensorProto.INT32, [2], [batch_size, sequence_length])
+                #     self.model.add_initializer(reshape_4d_to_2d, self.this_graph_name)
+                #     attention_mask_2d = helper.make_node(
+                #         "Reshape", # "Squeeze",
+                #         inputs=[mask_index, reshape_4d_to_2d],
+                #         outputs=[mask_index + "_2d"],
+                #         name=mask_index + "_4d_mask_to_2d",
+                #     )
+                #     attention_inputs.append(mask_index + "_4d_mask_to_2d")
+                # else:
+                #     attention_inputs.append(mask_index)
 
             if add_qk_str is not None:
                 attention_inputs.append("")  # no past
-                # if decoder_attention:
-                #     # Convert add_qk_str to float
-                #     cast_node_name = self.model.create_node_name("Cast")
-                #     add_qk_fp32 = helper.make_node(
-                #         "Cast",
-                #         inputs=[add_qk_str],
-                #         outputs=[add_qk_str + "_float32"],
-                #         name=cast_node_name,
-                #         to=int(TensorProto.FLOAT),
-                #     )
-                #     # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
-                #     # B = batch size, M = max sequence length, N = num heads
-                #     concat_node_name = self.model.create_node_name("Concat")
-                #     concat_add_qk_fp32 = helper.make_node(
-                #         "Concat",
-                #         inputs=[add_qk_str + "_float32" for _ in range(num_heads)],
-                #         outputs=[add_qk_str + "_float32_mask"],
-                #         name=concat_node_name,
-                #         axis=1,
-                #     )
-                #     # Add new nodes to graph
-                #     self.nodes_to_add.append(add_qk_fp32)
-                #     self.nodes_to_add.append(concat_add_qk_fp32)
-                #     self.node_name_to_graph_name[cast_node_name] = self.this_graph_name
-                #     self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
-                #     # Add attention mask to attention node
-                #     attention_inputs.append(add_qk_str + "_float32_mask")
+                # attention_inputs.append(add_qk_str)
+
+                # if q_mul is not None:
+                # Convert add_qk_str to float
+                cast_node_name = self.model.create_node_name("Cast")
+                add_qk_fp32 = helper.make_node(
+                    "Cast",
+                    inputs=[add_qk_str],
+                    outputs=[add_qk_str + "_float32"],
+                    name=cast_node_name,
+                    to=int(TensorProto.FLOAT),
+                )
+                # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
+                # B = batch size, M = max sequence length, N = num heads
+                concat_node_name = self.model.create_node_name("Concat")
+                concat_add_qk_fp32 = helper.make_node(
+                    "Concat",
+                    inputs=[add_qk_str + "_float32" for _ in range(num_heads)],
+                    outputs=[add_qk_str + "_float32_mask"],
+                    name=concat_node_name,
+                    axis=1,
+                )
+                # Add new nodes to graph
+                self.nodes_to_add.append(add_qk_fp32)
+                self.nodes_to_add.append(concat_add_qk_fp32)
+                self.node_name_to_graph_name[cast_node_name] = self.this_graph_name
+                self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
+                # Add attention mask to attention node
+                attention_inputs.append(add_qk_str + "_float32_mask")
                 # else:
-                attention_inputs.append(add_qk_str)
+                #     attention_inputs.append(add_qk_str)
 
             attention_node = helper.make_node(
                 "Attention",

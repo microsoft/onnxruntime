@@ -55,7 +55,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
-  std::cout << "Computing attention..." << std::endl;
+  // std::cout << "Computing attention..." << std::endl;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
