@@ -67,7 +67,7 @@ namespace cuda {
 
         // Use alignment for safely casting the shared buffers as Qk_vec_k.
         // Shared memory to store Q inputs.
-        //__shared__ __align__(sizeof(Qk_vec_k)) T q_smem[head_size];
+        __shared__ __align__(sizeof(Qk_vec_k)) T q_smem[head_size];
 
         // The number of elements per vector.
         constexpr int QK_VEC_SIZE = sizeof(Qk_vec_m) / sizeof(T);
@@ -94,7 +94,7 @@ namespace cuda {
         //const int beami = bi % params.beam_width;
 
         // The "beam-aware" batch idx
-        //const int bbi = bi / params.beam_width;
+        const int bbi = bi / params.beam_width;
 
         // The head.
         const int hi = blockIdx.x;
@@ -103,19 +103,19 @@ namespace cuda {
         const int bhi = bi * params.num_heads + hi;
         
         // Combine the "beam-aware" batch idx and the head indices.
-        //const int bbhi = bbi * params.beam_width * params.num_heads + hi;
+        const int bbhi = bbi * params.beam_width * params.num_heads + hi;
         
         // The thread in the block.
         const int tidx = threadIdx.x;
 
         // While doing the product Q*K^T for the different keys we track the max.
-        //float qk_max = -FLT_MAX;
+        float qk_max = -FLT_MAX;
 
         float qk = 0.0F;
 
         int qkv_base_offset = bi * (3 * params.hidden_size) + hi * head_size;
 
-        //const size_t bi_seq_len_offset = bi * params.max_sequence_length;
+        const size_t bi_seq_len_offset = bi * params.max_sequence_length;
 
         // First QK_VECS_PER_WARP load Q and K + the bias values for the current timestep.
         const bool is_masked = tidx >= QK_VECS_PER_WARP;
@@ -167,16 +167,17 @@ namespace cuda {
         q = add_vec(q, q_bias);
         k = add_vec(k, k_bias);
 
+        T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
+
         if (!is_masked) {
             // Store the Q values to shared memory.
-            //*reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
+            *reinterpret_cast<Qk_vec_k*>(&q_smem[tidx * QK_VEC_SIZE]) = q;
 
             // Write the K values to the global memory cache.
             // NOTE: The stores are uncoalesced as we have multiple chunks of 16B spread across the memory
             // system. We designed it this way as it allows much better memory loads (and there are many
             // more loads) + the stores are really "write and forget" since we won't need the ack before
             // the end of the kernel. There's plenty of time for the transactions to complete.
-            T* params_k_cache = reinterpret_cast<T*>(params.k_cache);
 
             // The 16B chunk written by the thread.
             int co = tidx / QK_VECS_IN_16B;
@@ -217,7 +218,7 @@ namespace cuda {
         if (tidx == 0) {
             // Normalize qk.
             qk *= inv_sqrt_dh;
-            //qk_max = qk;
+            qk_max = qk;
             qk_smem[params.past_sequence_length] = qk;
             reinterpret_cast<T*>(params.temp_data)[temp_offset + params.past_sequence_length] = qk;
 
@@ -226,7 +227,6 @@ namespace cuda {
         // Make sure the data is in shared memory.
         __syncthreads();
 
-        /*
         // The type of queries and keys for the math in the Q*K^T product.
         using K_vec_k = typename K_vec_k_<T, THREADS_PER_KEY>::Type;
         using K_vec_m = typename K_vec_m_<T, THREADS_PER_KEY>::Type;
@@ -268,7 +268,7 @@ namespace cuda {
         T* k_cache_batch = &params_k_cache[bbhi * params.max_sequence_length * head_size + ki];
 
         // Pick a number of keys to make sure all the threads of a warp enter (due to shfl_sync).
-        int ti_end = ((params.total_sequence_length + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
+        int ti_end = ((params.past_sequence_length + K_PER_WARP - 1) / K_PER_WARP) * K_PER_WARP;
 
         // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
         bool has_beams = params.cache_indir != nullptr;
@@ -276,7 +276,7 @@ namespace cuda {
         const int* beam_indices = has_beams ? &params.cache_indir[bi_seq_len_offset] : nullptr;
 
         for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-            bool      is_masked = (params.mask != nullptr) && params.mask[bi_seq_len_offset + ti];
+            bool      is_masked = (params.mask != nullptr) && (params.mask[bi_seq_len_offset + ti] == 0);
 
             // The keys loaded from the key cache.
             K_vec_k k[K_VECS_PER_THREAD];
@@ -284,7 +284,7 @@ namespace cuda {
             for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
                 int jj = ii * params.max_sequence_length + ti;
 
-                if (ti < params.total_sequence_length) {
+                if (ti < params.past_sequence_length) {
                     if (has_beams) {
                         const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
                         k[ii] = vec_conversion<K_vec_k, K_vec_m>(
@@ -303,9 +303,10 @@ namespace cuda {
 
             // Store the product to shared memory. There's one qk value per timestep. Update the max.
             // if( ti < params.timestep && tidx % THREADS_PER_KEY == 0 ) {
-            if (ti < params.total_sequence_length && tidx % THREADS_PER_KEY == 0) {
+            if (ti < params.past_sequence_length && tidx % THREADS_PER_KEY == 0) {
                 qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
                 qk_smem[ti] = qk;
+                reinterpret_cast<T*>(params.temp_data)[temp_offset + ti] = qk;
             }
         }
 
@@ -317,9 +318,9 @@ namespace cuda {
         for (int mask = WARP_SIZE / 2; mask >= THREADS_PER_KEY; mask /= 2) {
             qk_max = fmaxf(qk_max, __shfl_xor_sync(uint32_t(-1), qk_max, mask));
         }
-        */
     }
 
+    // Template instantiation
     template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiheadAttentionParams params);
 
 }  // namespace cuda

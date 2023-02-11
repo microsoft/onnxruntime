@@ -306,8 +306,8 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
           }
 
         // the default for existing tests
-        //ASSERT_NEAR(expected[i], output[i], threshold)
-        //    << "i:" << i << ", provider_type: " << provider_type;
+        ASSERT_NEAR(expected[i], output[i], threshold)
+            << "i:" << i << ", provider_type: " << provider_type;
       } else {
         if (has_abs_err) {
           ASSERT_NEAR(expected[i], output[i],
