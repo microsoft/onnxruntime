@@ -63,7 +63,7 @@ Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* skip = context->Input<Tensor>(2);
   if (skip->Shape() != input->Shape()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Shape of input and skip (residule) shall be the same");
+                           "Shape of input and skip (residual) shall be the same");
   }
 
   Tensor* output = context->Output(0, input->Shape());
