@@ -575,11 +575,6 @@ class PlannerImpl {
     // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
     using GraphInputsSet = InlinedHashSet<std::string_view>;
     const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-    GraphInputsSet graph_inputs;
-    graph_inputs.reserve(graph_inputs_nodes.size());
-    for (auto& graph_input : graph_inputs_nodes) {
-      graph_inputs.insert(graph_input->Name());
-    }
 
     for (auto graph_input : graph_viewer_.GetInputs()) {
       OrtValueIndex index = Index(graph_input->Name());
@@ -1051,9 +1046,8 @@ class PlannerImpl {
     auto& allocation_plan = plan_.allocation_plan;
 
     // build the consumer list for each value
-    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
-    value_consumers.resize(num_ml_values);
+    value_consumer_map_.reserve(num_ml_values);
 
     // iterate each stream from back, so the first element is the last consumer in single stream case
     for (auto& stream : stream_nodes_) {
@@ -1069,7 +1063,7 @@ class PlannerImpl {
             auto origin = Buffer(value_idx);
             if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
               // add current node as consumer for origin buffer
-              value_consumers[origin].push_back(node_index);
+              value_consumer_map_[origin].insert(node_index);
             }
           }
           return Status::OK();
@@ -1429,8 +1423,6 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
-        } else if (IsNonTensor(*node_output)) {
-          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
@@ -2113,19 +2105,6 @@ Status PlannerImpl::CreatePlan(
 #else
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
 #endif
-
-  // build value_node_map
-  for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-    auto* node = graph_viewer_.GetNode(node_index);
-    const auto& output_defs = node->OutputDefs();
-    for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
-      const auto& node_output = output_defs[output_idx_local];
-      if (!node_output->Exists()) continue;
-      OrtValueIndex output_idx_global;
-      ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
-      value_node_map_[output_idx_global] = node_index;
-    }
-  }
 
   // determine sharing/reuse among ml-values
   ORT_RETURN_IF_ERROR(ComputeReusePlan());
