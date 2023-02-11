@@ -1229,7 +1229,8 @@ def generate_build_tree(
 
         # default path of onnxruntime-extensions, using git submodule
         for config in configs:
-            onnxruntime_extensions_path = os.path.join("..", build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.abspath(onnxruntime_extensions_path)
 
             if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
                 # use absolute path here because onnxruntime-extensions is outside onnxruntime
