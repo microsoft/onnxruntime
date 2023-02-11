@@ -7,8 +7,8 @@ from logging import getLogger
 from typing import Optional
 
 from fusion_attention_unet import FusionAttentionUnet
-from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_bias_add import FusionBiasAdd
+from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions

@@ -42,7 +42,7 @@ class FusionAttentionVae(Fusion):
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         value = self.model.get_constant_value(concat.input[2])
-        if not (isinstance(value, np.ndarray) and value.size == 1):
+        if not (value is not None and isinstance(value, np.ndarray) and value.size == 1):
             return self.num_heads, self.hidden_size  # Fall back to user specified value
         num_heads = int(value)
         if num_heads <= 0:
@@ -108,44 +108,43 @@ class FusionAttentionVae(Fusion):
             return None
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug("input hidden size %d is not a multiple of num of heads %d", hidden_size, num_heads)
             return None
 
-        q_weight = self.model.get_initializer(q_matmul.input[1])
-        k_weight = self.model.get_initializer(k_matmul.input[1])
-        v_weight = self.model.get_initializer(v_matmul.input[1])
-        if not (q_weight and k_weight and v_weight):
+        q_weight_tensor = self.model.get_initializer(q_matmul.input[1])
+        k_weight_tensor = self.model.get_initializer(k_matmul.input[1])
+        v_weight_tensor = self.model.get_initializer(v_matmul.input[1])
+        if not (q_weight_tensor and k_weight_tensor and v_weight_tensor):
             return None
 
-        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-        k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-        v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+        q_bias_tensor = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        k_bias_tensor = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+        v_bias_tensor = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
 
-        qb = numpy_helper.to_array(q_bias)
-        kb = numpy_helper.to_array(k_bias)
-        vb = numpy_helper.to_array(v_bias)
+        q_bias = numpy_helper.to_array(q_bias_tensor)
+        k_bias = numpy_helper.to_array(k_bias_tensor)
+        v_bias = numpy_helper.to_array(v_bias_tensor)
 
-        q_bias_shape = np.prod(qb.shape)
-        k_bias_shape = np.prod(kb.shape)
-        v_bias_shape = np.prod(vb.shape)
+        q_bias_shape = np.prod(q_bias.shape)
+        k_bias_shape = np.prod(k_bias.shape)
+        v_bias_shape = np.prod(v_bias.shape)
 
         # Sometimes weights are stored in fp16
-        if q_weight.data_type == 10:
+        if q_weight_tensor.data_type == 10:
             logger.debug("weights are in fp16. Please run fp16 conversion after optimization")
             return None
 
-        qw = numpy_helper.to_array(q_weight)
-        kw = numpy_helper.to_array(k_weight)
-        vw = numpy_helper.to_array(v_weight)
-        logger.debug(f"qw={qw.shape} kw={kw.shape} vw={vw.shape} hidden_size={hidden_size}")
+        q_weight = numpy_helper.to_array(q_weight_tensor)
+        k_weight = numpy_helper.to_array(k_weight_tensor)
+        v_weight = numpy_helper.to_array(v_weight_tensor)
 
         # assert q and k have same shape as expected
-        if qw.shape != kw.shape or qw.shape != vw.shape:
+        if q_weight.shape != k_weight.shape or q_weight.shape != v_weight.shape:
             return None
 
-        qw_in_size = qw.shape[0]
-        kw_in_size = kw.shape[0]
-        vw_in_size = vw.shape[0]
+        qw_in_size = q_weight.shape[0]
+        kw_in_size = k_weight.shape[0]
+        vw_in_size = v_weight.shape[0]
 
         assert qw_in_size == kw_in_size and kw_in_size == vw_in_size
 
@@ -158,17 +157,17 @@ class FusionAttentionVae(Fusion):
         # All the matrices can have the same shape or q, k matrics can have the same shape with v being different
         # For 2d weights, the shapes would be [in_size, out_size].
         # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
-        qw_out_size = np.prod(qw.shape[1:])
+        qw_out_size = np.prod(q_weight.shape[1:])
 
-        qkv_weight = np.stack((qw, kw, vw), axis=1)
-        qkv_weight_dim = 3 * qw_out_size
+        qkv_weight = np.stack((q_weight, k_weight, v_weight), axis=1)
+        qkv_weight_dim = 3 * int(qw_out_size)
 
         attention_node_name = self.model.create_node_name("Attention")
 
         assert q_bias_shape == k_bias_shape == v_bias_shape
 
         qkv_bias_dim = 0
-        qkv_bias = np.stack((qb, kb, vb), axis=0)
+        qkv_bias = np.stack((q_bias, k_bias, v_bias), axis=0)
         qkv_bias_dim = 3 * q_bias_shape
 
         weight = helper.make_tensor(

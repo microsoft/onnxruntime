@@ -142,22 +142,22 @@ class FusionGroupNorm(Fusion):
         # instance_norm_scale might from Constant node. Use prune graph to clear it.
         self.prune_graph = True
 
-        input = root
-        output = last_node.output[0]
+        input_name = root
+        output_name = last_node.output[0]
 
         # NCHW to NHWC
         transpose_input = helper.make_node(
             "Transpose",
-            [input],
-            [input + "_NHWC"],
+            [input_name],
+            [input_name + "_NHWC"],
             name=self.model.create_node_name("Transpose", name_prefix="Transpose_NCHW_to_NHWC"),
             perm=[0, 2, 3, 1],
         )
 
         new_node = helper.make_node(
             "GroupNorm",
-            inputs=[input + "_NHWC", group_norm_name + "_gamma", group_norm_name + "_beta"],
-            outputs=[output + "_NHWC"],
+            inputs=[input_name + "_NHWC", group_norm_name + "_gamma", group_norm_name + "_beta"],
+            outputs=[output_name + "_NHWC"],
             name=group_norm_name,
         )
 
@@ -169,8 +169,8 @@ class FusionGroupNorm(Fusion):
         # NHWC to NCHW
         transpose_output = helper.make_node(
             "Transpose",
-            [output + "_NHWC"],
-            [output],
+            [output_name + "_NHWC"],
+            [output_name],
             name=self.model.create_node_name("Transpose", name_prefix="Transpose_NHWC_to_NCHW"),
             perm=[0, 3, 1, 2],
         )

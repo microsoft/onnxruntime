@@ -6,9 +6,9 @@ from logging import getLogger
 from typing import Dict
 
 from fusion_base import Fusion
+from numpy import ndarray
 from onnx import helper
 from onnx_model import OnnxModel
-from numpy import ndarray
 
 logger = getLogger(__name__)
 
@@ -40,7 +40,7 @@ class FusionBiasAdd(Fusion):
             return
 
         bias_index, bias_value = self.model.get_constant_input(bias_node)
-        if not (isinstance(bias_index, int) and isinstance(bias_value, ndarray)):
+        if not (isinstance(bias_index, int) and bias_value and isinstance(bias_value, ndarray)):
             return
         if bias_value.ndim != 1:
             return

@@ -283,11 +283,11 @@ def convert_float_to_float16(
                             n.output[i] = name_mapping[n.output[i]]
 
                     is_node_blocked = n.op_type in op_block_list or n.name in node_block_list
-                    for i, input in enumerate(n.input):
-                        if input in fp32_initializers:
+                    for i, input_name in enumerate(n.input):
+                        if input_name in fp32_initializers:
                             # For Resize/GroupNorm, only the first input can be float16
                             use_fp32_weight = is_node_blocked or (n.op_type in ["Resize", "GroupNorm"] and i != 0)
-                            fp32_initializers[input].add_node(n, use_fp32_weight)
+                            fp32_initializers[input_name].add_node(n, use_fp32_weight)
 
                     if is_node_blocked:
                         node_list.append(n)
@@ -344,13 +344,13 @@ def convert_float_to_float16(
                     )
                 )
 
-    # Some operators has data type fixed as float for some inputs. Add a float16 to float cast for those inputs.
+    # Some operators has data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in resize_node_list:
-        for i, input in enumerate(node.input):
+        for i, input_name in enumerate(node.input):
             if i not in ALWAYS_FLOAT_INPUTS[node.op_type]:
                 continue
             for value_info in value_info_list:
-                if input == value_info.name:
+                if input_name == value_info.name:
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
@@ -359,7 +359,7 @@ def convert_float_to_float16(
                     new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT
                     # add Cast node (from tensor(float16) to tensor(float) before current node
                     node_name = node.name + "_input_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input], [output_name], to=1, name=node_name)]
+                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.input[i] = output_name
@@ -371,9 +371,9 @@ def convert_float_to_float16(
         # insert a float16 to float Cast node before the node,
         # change current node's input name and create new value_info for the new name
         for i in range(len(node.input)):
-            input = node.input[i]
+            input_name = node.input[i]
             for value_info in value_info_list:
-                if input == value_info.name:
+                if input_name == value_info.name:
                     # create new value_info for current node's new input name
                     new_value_info = model.graph.value_info.add()
                     new_value_info.CopyFrom(value_info)
@@ -382,7 +382,7 @@ def convert_float_to_float16(
                     new_value_info.type.tensor_type.elem_type = onnx_proto.TensorProto.FLOAT
                     # add Cast node (from tensor(float16) to tensor(float) before current node
                     node_name = node.name + "_input_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input], [output_name], to=1, name=node_name)]
+                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.input[i] = output_name

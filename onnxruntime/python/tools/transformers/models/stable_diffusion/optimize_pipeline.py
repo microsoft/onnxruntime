@@ -94,13 +94,13 @@ def optimize_sd_pipeline(
     }
 
     if force_fp32_ops:
-        for op in force_fp32_ops:
-            parts = op.split(":")
+        for fp32_operator in force_fp32_ops:
+            parts = fp32_operator.split(":")
             if len(parts) == 2 and parts[0] in force_fp32_operators and (parts[1] and parts[1][0].isupper()):
                 force_fp32_operators[parts[0]].append(parts[1])
             else:
                 raise ValueError(
-                    f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {op}"
+                    f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {fp32_operator}"
                 )
 
     for name, model_type in model_type_mapping.items():
