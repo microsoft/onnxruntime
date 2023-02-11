@@ -572,10 +572,6 @@ class PlannerImpl {
   }
 
   Status ComputeReuseCount() {
-    // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    using GraphInputsSet = InlinedHashSet<std::string_view>;
-    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-
     for (auto graph_input : graph_viewer_.GetInputs()) {
       OrtValueIndex index = Index(graph_input->Name());
       UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
@@ -1801,7 +1797,7 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor 
+        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
         if (node->OpType() != "Shape" && execution_plan[i]->device_.Type() != OrtDevice::CPU) {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
@@ -1815,7 +1811,7 @@ class PlannerImpl {
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  // TODO(leca): After we separate MemcpyToHost to an extra stream, by default there shouldn't be the case that 
+                  // TODO(leca): After we separate MemcpyToHost to an extra stream, by default there shouldn't be the case that
                   // producer and consumer are both in the same CUDA stream and producer has a CPU output consumed by consumer.
                   // The only possible way is user explicitly creates this case in the customized partition JSON file (see PlannerTest.MultiStreamCudaEPNodeCPUOutput)
                   OrtDevice::DeviceType output_arg_device = plan_.allocation_plan[output_arg_idx].location.device.Type();
@@ -1849,7 +1845,7 @@ class PlannerImpl {
         ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
-    
+
     // 4. add commands to logic queue
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (size_t j = 0; j < stream_nodes_[i].size(); ++j) {
