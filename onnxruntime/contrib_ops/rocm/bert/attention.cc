@@ -115,7 +115,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.batch_size,
                                                    parameters.num_heads, 
                                                    parameters.head_size,
-                                                   parameters.sequence_length,, 
+                                                   parameters.sequence_length,
                                                    parameters.past_sequence_length); 
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());

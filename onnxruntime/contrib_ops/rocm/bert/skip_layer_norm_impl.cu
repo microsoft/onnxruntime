@@ -53,7 +53,7 @@ Status LaunchSkipLayerNormKernel(
     return op(&params);
   }
 
-  return SkipLayerNormStaticSelection<T, Simplified>(&params)
+  return SkipLayerNormStaticSelection<T, Simplified>(&params);
 }
 
 template Status LaunchSkipLayerNormKernel<float, true>(
