@@ -1423,6 +1423,8 @@ class PlannerImpl {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
           InplaceReuse(reused, current);
 #endif
+        } else if (IsNonTensor(*node_output)) {
+          AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
                    FindReusableTensor(*node_output, &reused)) {
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.

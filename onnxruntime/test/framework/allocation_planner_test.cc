@@ -1845,9 +1845,9 @@ TEST_F(PlannerTest, ParaPlanCreation) {
   auto* exe_plan = const_cast<onnxruntime::SessionState&>(main_graph_session_state).GetExecutionPlan();
   auto& per_value_plans = exe_plan->GetAllocationPlan();
   InlinedHashMap<std::string, std::string> reuse_pairs;
-  reuse_pairs.emplace("conv_0_out", "maxpool_out");
-  reuse_pairs.emplace("conv_1_out", "conv_2_out");
-  reuse_pairs.emplace("relu_1_out", "relu_2_out");
+  reuse_pairs.emplace("conv_0_out", "relu_0_out");  // conv_0_out is reused by relu_0_out
+  reuse_pairs.emplace("conv_1_out", "relu_1_out");  // conv_1_out is reused by relu_1_out
+  reuse_pairs.emplace("conv_2_out", "relu_2_out");  // conv_2_out is reused by relu_2_out
   for (size_t i = 0; i < per_value_plans.size(); ++i) {
     auto& per_value_plan = per_value_plans[i];
     if (per_value_plan.alloc_kind == AllocKind::kReuse) {
