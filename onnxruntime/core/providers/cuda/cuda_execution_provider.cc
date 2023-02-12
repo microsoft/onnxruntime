@@ -220,7 +220,8 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
-      info_{info} {
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -271,18 +272,8 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 }
 
-void CUDAExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void CUDAExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool CUDAExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* CUDAExecutionProvider::GetTuningContext() const {
+  return const_cast<cuda::tunable::CudaTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {

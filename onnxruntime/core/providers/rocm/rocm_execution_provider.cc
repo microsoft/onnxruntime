@@ -166,7 +166,8 @@ void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
 
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      info_{info} {
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
@@ -212,18 +213,8 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
-void ROCMExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void ROCMExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool ROCMExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* ROCMExecutionProvider::GetTuningContext() const {
+  return const_cast<rocm::tunable::RocmTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
