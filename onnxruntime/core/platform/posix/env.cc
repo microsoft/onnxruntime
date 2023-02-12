@@ -260,9 +260,9 @@ class PosixThread : public EnvThread {
       // Ignore the returned value for now
       p->start_address(p->index, p->param);
     }
-    ORT_CATCH(...) {
+    ORT_CATCH(const std::exception& ex) {
       // Ignore exceptions
-      std::cout << "caught posix thread exception during creation." << std::endl;
+      std::cout << "caught posix thread exception during creation: " << ex.what() << std::endl;
     }
     return nullptr;
   }
