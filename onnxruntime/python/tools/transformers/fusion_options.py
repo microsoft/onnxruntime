@@ -54,6 +54,7 @@ class FusionOptions:
         self.enable_group_norm = model_type in ["unet", "vae"]
         self.enable_bias_splitgelu = model_type in ["unet"]
         self.enable_packed_kv = model_type in ["unet"]
+        self.enable_bias_add = model_type in ["unet"]
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:

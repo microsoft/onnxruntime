@@ -36,6 +36,9 @@ from typing import List
 
 import coloredlogs
 import onnx
+from packaging import version
+
+import onnxruntime
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 from fusion_options import FusionOptions
@@ -127,8 +130,12 @@ def optimize_sd_pipeline(
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
+        # There are some optimizations that are not avaiable in v1.14 or older version
+        has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
+
         fusion_options = FusionOptions(model_type)
         fusion_options.enable_packed_kv = float16
+        fusion_options.enable_bias_add = has_all_optimizations
 
         m = optimize_model(
             str(onnx_model_path),
