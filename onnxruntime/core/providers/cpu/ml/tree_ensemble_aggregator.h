@@ -61,26 +61,33 @@ struct ScoreValue {
   }
 };
 
-enum MissingTrack {
-  kNone,
-  kTrue,
-  kFalse
+enum MissingTrack : uint8_t {
+  kTrue = 16,
+  kFalse = 0
 };
 
 template <typename T>
 struct TreeNodeElement {
-  TreeNodeElementId id;
+  // TreeNodeElementId id;  // not necessary
   int feature_id;
   T value;
-  T hitrates;
-  NODE_MODE mode;
-  TreeNodeElement<T>* truenode;
-  TreeNodeElement<T>* falsenode;
-  MissingTrack missing_tracks;
-  std::vector<SparseValue<T>> weights;
 
-  bool is_not_leaf;
-  bool is_missing_track_true;
+  // onnx specification says hitrates is used to store information about the node,
+  // but this information is not used for inference
+  // T hitrates;  
+
+  // True node, false node are obtained by computing this + truenode_inc,
+  // this + falsenode_inc, this implementation assumes a tree has less than 2^21 nodes,
+  // This attribute could be removed if the true or false node is always placed at the next position.
+  // In case of a leaf, it must be null.
+  uint32_t truenode_inc;
+  uint32_t falsenode_inc;
+  std::vector<SparseValue<T>> weights;
+  uint8_t flags;
+
+  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
+  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
+  inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>

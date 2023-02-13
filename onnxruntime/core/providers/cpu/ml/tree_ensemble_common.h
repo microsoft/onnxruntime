@@ -180,9 +180,11 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
   n_targets_or_classes_ = n_targets_or_classes;
   max_tree_depth_ = 1000;
+  ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max());
 
   // additional members
-  size_t i, limit;
+  size_t limit;
+  uint32_t i;
   std::vector<NODE_MODE> cmodes(nodes_modes.size());
   same_mode_ = true;
   int fpos = -1;
@@ -200,16 +202,22 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // filling nodes
 
+  std::vector<TreeNodeElementId> node_tree_ids(nodes_treeids.size());
+  std::vector<int64_t> truenode_ids(nodes_treeids.size());
+  std::vector<int64_t> falsenode_ids(nodes_treeids.size());
+  std::fill(truenode_ids.begin(), truenode_ids.end(), 0);
+  std::fill(falsenode_ids.begin(), falsenode_ids.end(), 0);
   n_nodes_ = nodes_treeids.size();
   nodes_.resize(nodes_treeids.size());
   roots_.clear();
-  std::unordered_map<TreeNodeElementId, TreeNodeElement<ThresholdType>*, TreeNodeElementId::hash_fn> idi;
+  std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
   max_feature_id_ = 0;
 
   for (i = 0, limit = nodes_treeids.size(); i < limit; ++i) {
     TreeNodeElement<ThresholdType>& node = nodes_[i];
-    node.id.tree_id = static_cast<int>(nodes_treeids[i]);
-    node.id.node_id = static_cast<int>(nodes_nodeids[i]);
+    TreeNodeElementId& node_tree_id = node_tree_ids[i];
+    node_tree_id.tree_id = static_cast<int>(nodes_treeids[i]);
+    node_tree_id.node_id = static_cast<int>(nodes_nodeids[i]);
     node.feature_id = static_cast<int>(nodes_featureids[i]);
     if (node.feature_id > max_feature_id_) {
       max_feature_id_ = node.feature_id;
@@ -219,68 +227,59 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } else {
       node.value = nodes_values_as_tensor[i];
     }
+    /* hitrates is not used for inference
     if (nodes_hitrates_as_tensor.empty()) {
       node.hitrates = static_cast<ThresholdType>(i < nodes_hitrates.size() ? nodes_hitrates[i] : -1);
     } else {
       node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
     }
-    node.mode = cmodes[i];
-    node.is_not_leaf = node.mode != NODE_MODE::LEAF;
-    node.truenode = nullptr;   // nodes_truenodeids[i];
-    node.falsenode = nullptr;  // nodes_falsenodeids[i];
-    node.missing_tracks = i < static_cast<size_t>(nodes_missing_value_tracks_true.size())
-                              ? (nodes_missing_value_tracks_true[i] == 1
-                                     ? MissingTrack::kTrue
-                                     : MissingTrack::kFalse)
-                              : MissingTrack::kNone;
-    node.is_missing_track_true = node.missing_tracks == MissingTrack::kTrue;
-    if (idi.find(node.id) != idi.end()) {
-      ORT_THROW("Node ", node.id.node_id, " in tree ", node.id.tree_id, " is already there.");
+    */
+    node.flags |= static_cast<uint8_t>(cmodes[i]);
+    node.truenode_inc = 0;   // nodes_truenodeids[i];
+    node.falsenode_inc = 0;  // nodes_falsenodeids[i];
+
+    if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
+      node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
     }
-    idi.insert(std::pair<TreeNodeElementId, TreeNodeElement<ThresholdType>*>(node.id, &node));
+    if (idi.find(node_tree_id) != idi.end()) {
+      ORT_THROW("Node ", node_tree_id.node_id, " in tree ", node_tree_id.tree_id, " is already there.");
+    }
+    idi.insert(std::pair<TreeNodeElementId, uint32_t>(node_tree_id, i));
   }
 
   TreeNodeElementId coor;
+  i = 0;
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it, ++i) {
-    if (!it->is_not_leaf)
+    if (!it->is_not_leaf())
       continue;
-    i = std::distance(nodes_.begin(), it);
-    coor.tree_id = it->id.tree_id;
+
+    TreeNodeElementId& node_tree_id = node_tree_ids[i];
+    coor.tree_id = node_tree_id.tree_id;
     coor.node_id = static_cast<int>(nodes_truenodeids[i]);
 
     auto found = idi.find(coor);
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (truenode).");
     }
-    if (coor.node_id >= 0 && coor.node_id < n_nodes_) {
-      it->truenode = found->second;
-      if ((it->truenode->id.tree_id != it->id.tree_id) ||
-          (it->truenode->id.node_id == it->id.node_id)) {
-        ORT_THROW("One falsenode is pointing either to itself, either to another tree.");
-      }
-    } else
-      it->truenode = nullptr;
+    truenode_ids[i] = (coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0;
 
     coor.node_id = static_cast<int>(nodes_falsenodeids[i]);
     found = idi.find(coor);
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (falsenode).");
     }
-    if (coor.node_id >= 0 && coor.node_id < n_nodes_) {
-      it->falsenode = found->second;
-      if ((it->falsenode->id.tree_id != it->id.tree_id) ||
-          (it->falsenode->id.node_id == it->id.node_id)) {
-        ORT_THROW("One falsenode is pointing either to itself, either to another tree.");
-      }
-    } else
-      it->falsenode = nullptr;
+    falsenode_ids[i] = (coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0;
   }
 
   int64_t previous = -1;
   for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
-    if ((previous == -1) || (previous != nodes_[i].id.tree_id))
-      roots_.push_back(&(nodes_[i]));
-    previous = nodes_[i].id.tree_id;
+    if ((previous == -1) || (previous != node_tree_ids[i].tree_id))
+      roots_.push_back(&(nodes_[idi[node_tree_ids[i]]]));
+    previous = node_tree_ids[i].tree_id;
+    ORT_ENFORCE(truenode_ids[i] == 0 || truenode_ids[i] > i);
+    nodes_[i].truenode_inc = truenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(truenode_ids[i] - i);
+    ORT_ENFORCE(falsenode_ids[i] == 0 || falsenode_ids[i] > i);
+    nodes_[i].falsenode_inc = falsenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(falsenode_ids[i] - i);
   }
 
   TreeNodeElementId ind;
@@ -297,7 +296,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } else {
       w.value = target_class_weights_as_tensor[i];
     }
-    idi[ind]->weights.push_back(w);
+    nodes_[idi[ind]].weights.push_back(w);
   }
 
   n_trees_ = roots_.size();
@@ -587,17 +586,17 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
 
 #define TREE_FIND_VALUE(CMP)                                         \
   if (has_missing_tracks_) {                                         \
-    while (root->is_not_leaf) {                                      \
+    while (root->is_not_leaf()) {                                    \
       val = x_data[root->feature_id];                                \
-      root = (val CMP root->value ||                                 \
-              (root->is_missing_track_true && _isnan_(val)))         \
-                 ? root->truenode                                    \
-                 : root->falsenode;                                  \
+      root += (val CMP root->value ||                                \
+              (root->is_missing_track_true() && _isnan_(val)))       \
+                 ? root->truenode_inc                                \
+                 : root->falsenode_inc;                              \
     }                                                                \
   } else {                                                           \
-    while (root->is_not_leaf) {                                      \
+    while (root->is_not_leaf()) {                                    \
       val = x_data[root->feature_id];                                \
-      root = val CMP root->value ? root->truenode : root->falsenode; \
+      root += val CMP root->value ? root->truenode_inc : root->falsenode_inc; \
     }                                                                \
   }
 
@@ -612,20 +611,20 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     TreeNodeElement<ThresholdType>* root, const InputType* x_data) const {
   InputType val;
   if (same_mode_) {
-    switch (root->mode) {
+    switch (root->mode()) {
       case NODE_MODE::BRANCH_LEQ:
         if (has_missing_tracks_) {
-          while (root->is_not_leaf) {
+          while (root->is_not_leaf()) {
             val = x_data[root->feature_id];
-            root = (val <= root->value ||
-                    (root->is_missing_track_true && _isnan_(val)))
-                       ? root->truenode
-                       : root->falsenode;
+            root += (val <= root->value ||
+                    (root->is_missing_track_true() && _isnan_(val)))
+                       ? root->truenode_inc
+                       : root->falsenode_inc;
           }
         } else {
-          while (root->is_not_leaf) {
+          while (root->is_not_leaf()) {
             val = x_data[root->feature_id];
-            root = val <= root->value ? root->truenode : root->falsenode;
+            root += val <= root->value ? root->truenode_inc : root->falsenode_inc;
           }
         }
         break;
@@ -649,39 +648,39 @@ TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ProcessTreeNodeLeave(
     }
   } else {  // Different rules to compare to node thresholds.
     ThresholdType threshold;
-    while (root->is_not_leaf) {
+    while (root->is_not_leaf()) {
       val = x_data[root->feature_id];
       threshold = root->value;
-      switch (root->mode) {
+      switch (root->mode()) {
         case NODE_MODE::BRANCH_LEQ:
-          root = val <= threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val <= threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::BRANCH_LT:
-          root = val < threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val < threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::BRANCH_GTE:
-          root = val >= threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val >= threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::BRANCH_GT:
-          root = val > threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val > threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::BRANCH_EQ:
-          root = val == threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val == threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::BRANCH_NEQ:
-          root = val != threshold || (root->is_missing_track_true && _isnan_(val))
-                     ? root->truenode
-                     : root->falsenode;
+          root += val != threshold || (root->is_missing_track_true() && _isnan_(val))
+                     ? root->truenode_inc
+                     : root->falsenode_inc;
           break;
         case NODE_MODE::LEAF:
           break;
