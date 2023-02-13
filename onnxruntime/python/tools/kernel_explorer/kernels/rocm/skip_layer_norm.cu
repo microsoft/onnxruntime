@@ -110,7 +110,7 @@ class SkipLayerNormTunable : public IKernelExplorer {
  private:
   using ParamsT = contrib::rocm::SkipLayerNormParams<T>;
   ParamsT params_{};
-  contrib::rocm::SkipLayerNormTunableOp<T, bool> op_{};
+  contrib::rocm::SkipLayerNormTunableOp<T, Simplified> op_{};
 };
 
 #define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
