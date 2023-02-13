@@ -43,13 +43,22 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 #define REGISTER_DEQUANTIZELINEAR(T)                              \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                 \
       DequantizeLinear,                                           \
-      13,                                                         \
+      19,                                                         \
       T,                                                          \
       KernelDefBuilder()                                          \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
       DequantizeLinear<T>);
 
 #define REGISTER_DEQUANTIZELINEAR_VERSIONED(T)                    \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                       \
+      DequantizeLinear,                                           \
+      13,                                                         \
+      18,                                                         \
+      T,                                                          \
+      KernelDefBuilder()                                          \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DequantizeLinear<T>);                                       \
+                                                                  \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                       \
       DequantizeLinear,                                           \
       10,                                                         \
@@ -62,6 +71,8 @@ static void PrepareForQDQ(const TensorShape& input_shape,
 REGISTER_DEQUANTIZELINEAR(int8_t)
 REGISTER_DEQUANTIZELINEAR(uint8_t)
 REGISTER_DEQUANTIZELINEAR(int32_t)
+REGISTER_DEQUANTIZELINEAR(FloatE4M3)
+REGISTER_DEQUANTIZELINEAR(FloatE5M2)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(uint8_t)
 REGISTER_DEQUANTIZELINEAR_VERSIONED(int32_t)
@@ -112,7 +123,7 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 #define REGISTER_QUANTIZELINEAR(T)                                    \
   ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
       QuantizeLinear,                                                 \
-      13,                                                             \
+      19,                                                             \
       T,                                                              \
       KernelDefBuilder()                                              \
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
@@ -120,6 +131,16 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
       QuantizeLinear<T>);
 
 #define REGISTER_QUANTIZELINEAR_VERSIONED(T)                          \
+  ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
+      QuantizeLinear,                                                 \
+      13,                                                             \
+      18,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T>);                                             \
+                                                                      \
   ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(                           \
       QuantizeLinear,                                                 \
       10,                                                             \
@@ -132,6 +153,8 @@ Status DequantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
 REGISTER_QUANTIZELINEAR(int8_t)
 REGISTER_QUANTIZELINEAR(uint8_t)
+REGISTER_QUANTIZELINEAR(FloatE4M3)
+REGISTER_QUANTIZELINEAR(FloatE5M2)
 REGISTER_QUANTIZELINEAR_VERSIONED(int8_t)
 REGISTER_QUANTIZELINEAR_VERSIONED(uint8_t)
 
