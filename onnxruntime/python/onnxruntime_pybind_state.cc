@@ -1666,6 +1666,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
       })
       .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
+#if !defined(ORT_MINIMAL_BUILD)
         py::list ret;
         for (const auto& trs : sess->GetSessionHandle()->GetTuningResults()) {
           py::dict py_trs;
@@ -1676,8 +1677,13 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
 
         return ret;
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
+#endif
       })
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
         std::vector<TuningResults> tuning_results;
         for (auto handle: results) {
           auto py_trs = handle.cast<py::dict>();
@@ -1703,6 +1709,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         if (!status.IsOK()) {
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_UNUSED_PARAMETER(results);
+        ORT_UNUSED_PARAMETER(error_on_invalid);
+        ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
+#endif
       });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())

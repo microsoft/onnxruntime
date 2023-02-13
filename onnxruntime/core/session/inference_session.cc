@@ -1550,6 +1550,7 @@ common::Status InferenceSession::Initialize() {
     }
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
   std::vector<TuningResults> tuning_results;
   bool found_tuning_results = false;
   ORT_RETURN_IF_ERROR(inference_session_utils::ParseTuningResultsFromModelMetadata(
@@ -1557,6 +1558,7 @@ common::Status InferenceSession::Initialize() {
   if (found_tuning_results) {
     ORT_RETURN_IF_ERROR(SetTuningResults(tuning_results));
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return status;
 }
