@@ -107,7 +107,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<MLFloat16>& values_y) {
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
