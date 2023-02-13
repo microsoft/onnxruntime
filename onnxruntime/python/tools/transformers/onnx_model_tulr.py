@@ -15,7 +15,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#python optimizer.py --input /home/wy/Turing/tulr/model.onnx --output /home/wy/Turing/tulr/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/spacev6/model_best.onnx --output /home/wy/Turing/tulrv6/spacev6/opt16/model_best.onnx --model_type tulr --num_heads 12 --hidden_size 768 --use_external_data_format --float16
 
 class FusionTulrAttention(FusionAttention):
     """
@@ -266,7 +267,14 @@ class FusionTulrAttention(FusionAttention):
             [0, 0, 0, 1],
         )
         if q_nodes is None:
-            return
+            q_nodes = self.model.match_parent_path(
+                matmul_qk,
+                ["Transpose", "Reshape", "Add", "MatMul"],
+                [0, 0, 0, 0],
+            )
+            if q_nodes is None:
+                return
+
         add_q = q_nodes[-2]
         matmul_q = q_nodes[-1]
 
@@ -448,6 +456,6 @@ class TulrOnnxModel(BertOnnxModel):
 
     def postprocess(self):
         self.rpb_fusion.apply()
-        self.gru_fusion.apply()
+        #self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
