@@ -15,7 +15,8 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-#python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/base/model.onnx --output /home/wy/Turing/tulrv6/base/opt16/model.onnx --model_type tulr --num_heads 12 --hidden_size 768 --use_external_data_format --float16
+#python optimizer.py --input /home/wy/Turing/tulrv6/large/model.onnx --output /home/wy/Turing/tulrv6/large/opt16/model.onnx --model_type tulr --num_heads 16 --hidden_size 1024 --use_external_data_format --float16
 #python optimizer.py --input /home/wy/Turing/tulrv6/spacev6/model_best.onnx --output /home/wy/Turing/tulrv6/spacev6/opt16/model_best.onnx --model_type tulr --num_heads 12 --hidden_size 768 --use_external_data_format --float16
 
 class FusionTulrAttention(FusionAttention):
@@ -341,12 +342,12 @@ class FusionTulrAttention(FusionAttention):
 # Input(2, "key_length", "The length of key.", "U")
 # Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
 class FusionRelativePositionBiasBlock(Fusion):
-    def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: bool):
+    def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: int):
         super().__init__(model, "RelativePositionBias", "GatherElements")
-        self.max_distance = 128
-        self.is_bidirectional = 1
+        self.max_distance = max_distance
+        self.is_bidirectional = is_bidirectional
 
-    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+    def fuse_large(self, node, input_name_to_nodes, output_name_to_node):
         stem_nodes = self.model.match_parent_path(
             node,
             ["Expand", "Where", "Equal", "Concat", "Unsqueeze", "Gather", "Shape", "Sub", "Unsqueeze", "Expand", "Unsqueeze", "Range"],
@@ -391,6 +392,46 @@ class FusionRelativePositionBiasBlock(Fusion):
 
         self.nodes_to_add.append(rpb_node)
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
+
+    def fuse_base(self, node, input_name_to_nodes, output_name_to_node):
+        stem_nodes = self.model.match_parent_path(
+            node,
+            ["Expand", "Unsqueeze", "Unsqueeze", "Gemm", "Cast", "OneHot", "Add", "Where", "Abs", "Range", "ReduceMin", "Sub", "Unsqueeze", "Expand", "Unsqueeze", "Range"],
+        )
+        if stem_nodes is None:
+            return
+        range_node = stem_nodes[-1]
+        gemm = stem_nodes[3]
+
+        self.nodes_to_remove.extend(stem_nodes)
+
+        table_weight = self.model.get_initializer(gemm.input[0])
+        table_weight_np = NumpyHelper.to_array(table_weight)
+        bias_table = helper.make_tensor(
+            name="bias_table_weight",
+            data_type=TensorProto.FLOAT,
+            dims=[np.shape(table_weight_np)[1], np.shape(table_weight_np)[0]],
+            vals=table_weight_np.flatten().tolist(),
+        )
+        self.model.add_initializer(bias_table, self.this_graph_name)
+        inputs = [bias_table.name, range_node.input[1], range_node.input[1]]
+        outputs = [node.output[0]]
+        rpb_node = helper.make_node(
+            "RelativePositionBias",
+            inputs=inputs,
+            outputs=outputs,
+            name=self.model.create_node_name("RelativePositionBias", name_prefix="RPB"),
+        )
+        rpb_node.domain = "com.microsoft"
+        rpb_node.attribute.extend([helper.make_attribute("max_distance", self.max_distance)])
+        rpb_node.attribute.extend([helper.make_attribute("is_bidirectional", self.is_bidirectional)])
+
+        self.nodes_to_add.append(rpb_node)
+        self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        self.fuse_large(node, input_name_to_nodes, output_name_to_node)
+        self.fuse_base(node, input_name_to_nodes, output_name_to_node)
 
 # Attr("num_heads", "Number of attention heads", AttributeProto::INT)
 # Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
@@ -448,7 +489,7 @@ class TulrOnnxModel(BertOnnxModel):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionTulrAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 32, True)
+        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128, True)
         self.gru_fusion = FusionGRUGate(self, self.num_heads)
 
     def fuse_attention(self):
