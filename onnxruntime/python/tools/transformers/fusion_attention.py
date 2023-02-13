@@ -337,7 +337,7 @@ class FusionAttention(Fusion):
         # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
         if self.use_multi_head_attention:
             if add_qk_str is not None:
-                logger.debug("MultiHeadAttention does not support extra_add_qk: cannot fuse the attention.")
+                logger.debug("MultiHeadAttention does not support relative_position_bias: cannot fuse the attention.")
                 return None
 
             attention_inputs = [

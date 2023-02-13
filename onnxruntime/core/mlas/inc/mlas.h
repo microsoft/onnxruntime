@@ -1085,7 +1085,8 @@ MLASCALL
 MlasReorderOutputNchw(
     const int64_t* OutputShape,
     const float* S,
-    float* D
+    float* D,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void

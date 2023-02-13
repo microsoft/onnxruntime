@@ -39,7 +39,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   auto& device_prop = GetDeviceProp();
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
@@ -47,7 +47,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
+                                  relative_position_bias,
                                   nullptr,
                                   device_prop.maxThreadsPerBlock));
 
@@ -88,7 +88,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
   // TODO: use custom kernel of expand to improve the performance.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      IsTunableOpEnabled(), Stream(context), rocblas,
+      GetTuningContext(), Stream(context), rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       n, m, 1,
       /*alpha=*/1.0f,
@@ -99,7 +99,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   // result(N, M) = 1 * weights x input + 1 x B.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      IsTunableOpEnabled(), Stream(context), rocblas,
+      GetTuningContext(), Stream(context), rocblas,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       n, m, k,
       /*alpha=*/1.0f,
@@ -114,7 +114,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
       device_prop,
-      IsTunableOpEnabled(),
+      GetTuningContext(),
       Stream(context),
       rocblas,
       element_size,
@@ -129,7 +129,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
       mask_filter_value_,
       nullptr == past ? nullptr : past->Data<T>(),
-      nullptr == extra_add_qk ? nullptr : extra_add_qk->Data<T>(),
+      nullptr == relative_position_bias ? nullptr : relative_position_bias->Data<T>(),
       work_space.get(),
       output->MutableData<T>(),
       nullptr == present ? nullptr : present->MutableData<T>());

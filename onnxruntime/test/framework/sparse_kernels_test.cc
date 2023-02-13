@@ -391,7 +391,7 @@ class SparseTensorTests : public testing::Test {
 
   OrtValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
     OrtValue mlvalue;
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), shape, elts, &mlvalue);
+    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape, elts, &mlvalue);
     return mlvalue;
   }
 
@@ -586,7 +586,7 @@ TEST(SparseCrcsFormatTests, Test1) {
   ASSERT_EQ(9U + 1U, outer_indices.size());
 
   // Test owning instance
-  auto default_allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto default_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
 
   SparseTensor tensor_alloc(DataTypeImpl::GetType<float>(), dense_shape, default_allocator);
   ASSERT_EQ(tensor_alloc.DenseShape(), dense_shape);
@@ -1289,7 +1289,7 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
 
 TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
 
   const TensorShape dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1452,7 +1452,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto cuda_allocator = cuda_provider->GetAllocator(OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
@@ -1508,7 +1508,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
 
   const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1679,7 +1679,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cuda_allocator = cuda_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto cuda_allocator = cuda_provider->GetAllocator(OrtMemTypeDefault);
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
     ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(cuda_transfer)));
@@ -1739,7 +1739,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 TEST(SparseTensorConversionTests, BlockSparse) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
 
   DataTransferManager dtm;
   {

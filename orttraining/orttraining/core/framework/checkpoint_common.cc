@@ -27,7 +27,7 @@ Status CreateOrtValuesFromTensorProtos(
     NameMLValMap& name_to_ort_value) {
   static const CPUExecutionProviderInfo info;
   static const CPUExecutionProvider cpu_provider(info);
-  static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+  static const AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
 
   for (const auto& tensor_proto : tensor_protos) {
     TensorShape tensor_shape{utils::GetTensorShapeFromTensorProto(tensor_proto)};
