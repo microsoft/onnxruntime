@@ -205,63 +205,6 @@ Status QkvToContext(
                         max_threads_per_block, false, scratch3, output);
 }
 
-Status LaunchAttentionKernel(
-    const hipDeviceProp_t& prop,
-    RocmTuningContext* tuning_ctx,
-    hipStream_t stream,
-    rocblas_handle& rocblas,
-    const size_t element_size,
-    int batch_size,
-    int sequence_length,
-    int num_heads,
-    int head_size,
-    int past_sequence_length,
-    bool is_unidirectional,
-    const void* input,
-    const int* mask_index,
-    gsl::span<const int64_t> mask_index_dims,
-    const float mask_filter_value,
-    const void* past,
-    const void* relative_position_bias,
-    void* workspace,
-    void* output,
-    void* present) {
-  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
-  const TransformerOptions* options = TransformerOptions::GetInstance();
-  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
-  if (element_size == 2) {
-    return QkvToContext(
-        prop, tuning_ctx, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
-        reinterpret_cast<const __half*>(input),
-        reinterpret_cast<__half*>(output),
-        reinterpret_cast<__half*>(workspace),
-        mask_index,
-        mask_index_dims,
-        mask_filter_value,
-        is_unidirectional,
-        past_sequence_length,
-        reinterpret_cast<const __half*>(past),
-        reinterpret_cast<const __half*>(relative_position_bias),
-        reinterpret_cast<__half*>(present),
-        use_persistent_softmax);
-  } else {
-    return QkvToContext(
-        prop, tuning_ctx, rocblas, stream, batch_size, sequence_length, num_heads, head_size, element_size,
-        reinterpret_cast<const float*>(input),
-        reinterpret_cast<float*>(output),
-        reinterpret_cast<float*>(workspace),
-        mask_index,
-        mask_index_dims,
-        mask_filter_value,
-        is_unidirectional,
-        past_sequence_length,
-        reinterpret_cast<const float*>(past),
-        reinterpret_cast<const float*>(relative_position_bias),
-        reinterpret_cast<float*>(present),
-        use_persistent_softmax);
-  }
-}
-
 template <typename T>
 Status DecoderQkvToContext(
     const hipDeviceProp_t& prop,
@@ -566,7 +509,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
+  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
@@ -615,35 +558,34 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       /*beta=*/1.0f,
       reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.sequence_length,
-                                                   parameters.past_sequence_length);
+  size_t workspace_size = GetAttentionWorkspaceSize(element_size,
+                                                    parameters.batch_size,
+                                                    parameters.num_heads,
+                                                    parameters.head_size,
+                                                    parameters.sequence_length,
+                                                    parameters.past_sequence_length);
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
-  return LaunchAttentionKernel(
-      device_prop,
-      GetTuningContext(),
-      Stream(context),
-      rocblas,
-      element_size,
-      parameters.batch_size,
-      parameters.sequence_length,
-      parameters.num_heads,
-      parameters.head_size,
-      parameters.past_sequence_length,
-      is_unidirectional_,
-      reinterpret_cast<const void*>(gemm_buffer.get()),
+  auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
+
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
+
+  return QkvToContext(
+      device_prop, GetTuningContext(), rocblas, Stream(context),
+      parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size, element_size,
+      reinterpret_cast<const HipT*>(gemm_buffer.get()),
+      reinterpret_cast<HipT*>(output->MutableDataRaw()),
+      reinterpret_cast<HipT*>(workspace.get()),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
       mask_filter_value_,
-      nullptr == past ? nullptr : past->Data<T>(),
-      nullptr == relative_position_bias ? nullptr : relative_position_bias->Data<T>(),
-      work_space.get(),
-      output->MutableData<T>(),
-      nullptr == present ? nullptr : present->MutableData<T>());
+      is_unidirectional_,
+      parameters.past_sequence_length,
+      nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
+      nullptr == relative_position_bias ? nullptr : reinterpret_cast<const HipT*>(relative_position_bias->DataRaw()),
+      nullptr == present ? nullptr : reinterpret_cast<HipT*>(present->MutableDataRaw()),
+      use_persistent_softmax);
 }
 
 
