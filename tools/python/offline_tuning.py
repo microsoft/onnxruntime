@@ -141,7 +141,7 @@ def main():
         tuning_results = None
         try:
             tuning_results = json.load(open(args.json_or_onnx, "r"))
-        except:
+        except Exception:
             # it might be an onnx file otherwise, try it latter
             pass
 
@@ -152,7 +152,7 @@ def main():
                 if tuning_results is None:
                     sys.stderr.write(f"{args.input_onnx} does not have tuning results embedded!\n")
                     sys.exit(-1)
-            except:
+            except Exception:
                 pass
 
         if tuning_results is None:
