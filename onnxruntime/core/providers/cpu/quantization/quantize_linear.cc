@@ -179,7 +179,7 @@ Status QuantizeLinear<T>::Compute(OpKernelContext* ctx) const {
 
   for (size_t n = 0; n < static_cast<size_t>(N); n++) {
     for (size_t bd = 0; bd < static_cast<size_t>(broadcast_dim); bd++) {
-      T zp = zero_point != nullptr ? zero_point[bd] : 0;
+      T zp = zero_point != nullptr ? zero_point[bd] : static_cast<T>(0);
       ParQuantizeLinear(input, output, static_cast<size_t>(block_size), scale[bd], zp, ctx->GetOperatorThreadPool());
       input += block_size;
       output += block_size;

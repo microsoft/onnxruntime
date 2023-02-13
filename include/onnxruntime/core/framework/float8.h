@@ -122,47 +122,47 @@ struct FloatE4M3 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __floate4m32float(*reinterpret_cast<const __nv_floate4m3*>(&val));
 #else
+    uint32_t res;
     if (val == 255) {
-      uint32_t res = 0xffc00000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-    if (val == 127) {
-      uint32_t res = 0x7fc00000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-
-    uint32_t expo = (val & 0x78) >> 3;
-    uint32_t mant = val & 0x07;
-    uint32_t sign = val & 0x80;
-    uint32_t res = sign << 24;
-    if (expo == 0) {
-      if (mant > 0) {
-        expo = 0x7F - 7;
-        if ((mant & 0x4) == 0) {
-          mant &= 0x3;
-          mant <<= 1;
-          expo -= 1;
+      res = 0xffc00000;
+    } else if (val == 127) {
+      res = 0x7fc00000;
+    } else {
+      uint32_t expo = (val & 0x78) >> 3;
+      uint32_t mant = val & 0x07;
+      uint32_t sign = val & 0x80;
+      res = sign << 24;
+      if (expo == 0) {
+        if (mant > 0) {
+          expo = 0x7F - 7;
+          if ((mant & 0x4) == 0) {
+            mant &= 0x3;
+            mant <<= 1;
+            expo -= 1;
+          }
+          if ((mant & 0x4) == 0) {
+            mant &= 0x3;
+            mant <<= 1;
+            expo -= 1;
+          }
+          if ((mant & 0x4) == 0) {
+            mant &= 0x3;
+            mant <<= 1;
+            expo -= 1;
+          }
+          res |= (mant & 0x3) << 21;
+          res |= expo << 23;
         }
-        if ((mant & 0x4) == 0) {
-          mant &= 0x3;
-          mant <<= 1;
-          expo -= 1;
-        }
-        if ((mant & 0x4) == 0) {
-          mant &= 0x3;
-          mant <<= 1;
-          expo -= 1;
-        }
-        res |= (mant & 0x3) << 21;
+      } else {
+        res |= mant << 20;
+        expo -= 0x7;
+        expo += 0x7F;
         res |= expo << 23;
       }
-    } else {
-      res |= mant << 20;
-      expo -= 0x7;
-      expo += 0x7F;
-      res |= expo << 23;
     }
-    return *(reinterpret_cast<float*>(&res));
+    float float_res;
+    std::memcpy(&float_res, &res, sizeof(float));
+    return float_res;
 #endif
   }
 
@@ -275,51 +275,47 @@ struct FloatE5M2 {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __floate5m22float(*reinterpret_cast<const __nv_floate5m2*>(&val));
 #else
+    uint32_t res;
     if (val >= 253) {
-      uint32_t res = 0xffc00000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-    if (val >= 125 && val <= 127) {
-      uint32_t res = 0x7fc00000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-    if (val == 252) {
-      uint32_t res = 0xff800000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-    if (val == 124) {
-      uint32_t res = 0x7f800000;
-      return *(reinterpret_cast<float*>(&res));
-    }
-
-    uint32_t expo = (val & 0x7C) >> 2;
-    uint32_t mant = val & 0x03;
-    uint32_t sign = val & 0x80;
-    uint32_t res = sign << 24;
-    if (expo == 0) {
-      if (mant > 0) {
-        expo = 0x7F - 15;
-        if ((mant & 0x2) == 0) {
-          mant &= 0x1;
-          mant <<= 1;
-          expo -= 1;
+      res = 0xffc00000;
+    } else if (val >= 125 && val <= 127) {
+      res = 0x7fc00000;
+    } else if (val == 252) {
+      res = 0xff800000;
+    } else if (val == 124) {
+      res = 0x7f800000;
+    } else {
+      uint32_t expo = (val & 0x7C) >> 2;
+      uint32_t mant = val & 0x03;
+      uint32_t sign = val & 0x80;
+      res = sign << 24;
+      if (expo == 0) {
+        if (mant > 0) {
+          expo = 0x7F - 15;
+          if ((mant & 0x2) == 0) {
+            mant &= 0x1;
+            mant <<= 1;
+            expo -= 1;
+          }
+          if ((mant & 0x2) == 0) {
+            mant &= 0x1;
+            mant <<= 1;
+            expo -= 1;
+          }
+          res |= (mant & 0x1) << 22;
+          res |= expo << 23;
         }
-        if ((mant & 0x2) == 0) {
-          mant &= 0x1;
-          mant <<= 1;
-          expo -= 1;
-        }
-        res |= (mant & 0x1) << 22;
+      } else {
+        res |= mant << 21;
+        expo -= 15;
+        expo += 0x7F;
         res |= expo << 23;
       }
-    } else {
-      res |= mant << 21;
-      expo -= 15;
-      expo += 0x7F;
-      res |= expo << 23;
     }
 
-    return *(reinterpret_cast<float*>(&res));
+    float float_res;
+    std::memcpy(&float_res, &res, sizeof(float));
+    return float_res;
 #endif
   }
 

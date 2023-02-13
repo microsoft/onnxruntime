@@ -46,8 +46,6 @@ using AllFixedSize =
         uint8_t,
         MLFloat16,
         BFloat16,
-        FloatE4M3,
-        FloatE5M2,
         bool>;
 
 using All =
@@ -64,9 +62,7 @@ using AllIeeeFloat =
     TypeList<
         float,
         double,
-        MLFloat16,
-        FloatE4M3,
-        FloatE5M2>;
+        MLFloat16>;
 
 using AllNumeric =
     TypeList<
@@ -81,9 +77,7 @@ using AllNumeric =
         int8_t,
         uint8_t,
         MLFloat16,
-        BFloat16,
-        FloatE4M3,
-        FloatE5M2>;
+        BFloat16>;
 
 }  // namespace element_type_lists
 
