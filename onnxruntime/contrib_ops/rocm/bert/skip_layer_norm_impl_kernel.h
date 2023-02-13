@@ -46,7 +46,7 @@ __global__ void SkipLayerNormKernel(
     
     output[idx] = val;
   }
-  if (Simplified) {
+  if constexpr (Simplified) {
     SimplifiedLayerNorm<T, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
     return;
   }
@@ -101,7 +101,7 @@ __global__ void SkipLayerNormKernelVec(
       *(reinterpret_cast<VecT*>(&output[idx])) = *reinterpret_cast<VecT*>(&input_v[0]);
     }
   }
-  if (Simplified) {
+  if constexpr (Simplified) {
     SimplifiedLayerNormVec<T, TPB, ILP>(thread_data.value, ld, offset, gamma, epsilon, output);
     return;
   }
@@ -155,7 +155,7 @@ __global__ void SkipLayerNormKernelSmall(
 
     thread_data = hipcub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
   }
-  if (Simplified) {
+  if constexpr (Simplified) {
     SimplifiedLayerNormSmall<T, TPB, ILP>(input_v, thread_data.value, ld, idx, gamma, epsilon, output);
     return;
   }

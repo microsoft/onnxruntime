@@ -59,20 +59,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention 
-
-  int batch_size = parameters.batch_size;
-  int sequence_length = parameters.sequence_length;
+  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention 
 
   TensorShapeVector output_shape(3);
-  output_shape[0] = static_cast<int64_t>(batch_size);
-  output_shape[1] = static_cast<int64_t>(sequence_length);
+  output_shape[0] = static_cast<int64_t>(parameters.batch_size);
+  output_shape[1] = static_cast<int64_t>(parameters.sequence_length);
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
       2, parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
+      parameters.past_present_share_buffer ? parameters.max_sequence_length : parameters.total_sequence_length,
       parameters.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
@@ -80,7 +77,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   rocblas_handle rocblas = GetRocblasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
-  int m = batch_size * sequence_length;
+  int m = parameters.batch_size * parameters.sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
   auto gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
@@ -130,11 +127,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.num_heads,
       parameters.head_size,
       parameters.past_sequence_length,
-      is_unidirectional_,
+      parameters.is_unidirectional,
       reinterpret_cast<const void*>(gemm_buffer.get()),
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-      mask_filter_value_,
+      parameters.mask_filter_value,
       nullptr == past ? nullptr : past->Data<T>(),
       nullptr == relative_position_bias ? nullptr : relative_position_bias->Data<T>(),
       work_space.get(),

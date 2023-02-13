@@ -82,7 +82,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
                            "Last dimension of gamma and input does not match");
   }
 
-  if (!Simplified) {
+  if constexpr (!Simplified) {
     if (nullptr != beta) {
       const auto& beta_dims = beta->Shape().GetDims();
       if (beta_dims.size() != 1) {
