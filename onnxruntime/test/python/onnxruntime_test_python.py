@@ -424,11 +424,11 @@ class TestInferenceSession(unittest.TestCase):
             self.assertNotIn("NOT_A_VALIDATOR_KEY", tuning_results["validators"])
 
             # invalid EP will be rejected
-            invalid_unkonwn_ep = copyTuningResultsWithProbe(tuning_results)
-            invalid_unkonwn_ep["ep"] = "UnknownEP"
-            sess.set_tuning_results([invalid_unkonwn_ep])
+            invalid_unknown_ep = copyTuningResultsWithProbe(tuning_results)
+            invalid_unknown_ep["ep"] = "UnknownEP"
+            sess.set_tuning_results([invalid_unknown_ep])
             with self.assertRaises(RuntimeError) as context:
-                sess.set_tuning_results([invalid_unkonwn_ep], error_on_invalid=True)
+                sess.set_tuning_results([invalid_unknown_ep], error_on_invalid=True)
             self.assertIn("Cannot find execution provider UnknownEP", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
