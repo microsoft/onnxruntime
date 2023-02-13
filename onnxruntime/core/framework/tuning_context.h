@@ -67,6 +67,7 @@ class TuningResultsValidator {
   using GetValidateFuncs = std::unordered_map<std::string, std::pair<GetFunc, ValidateFunc>>;
 
   TuningResultsValidator();
+  virtual ~TuningResultsValidator() = default;
 
   std::unordered_map<std::string, std::string> GetAllValidators() const;
   Status ValidateAll(const std::unordered_map<std::string, std::string>& to_validate) const;
