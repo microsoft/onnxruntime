@@ -166,7 +166,8 @@ void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
 
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      info_{info} {
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
@@ -212,18 +213,8 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
-void ROCMExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void ROCMExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool ROCMExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* ROCMExecutionProvider::GetTuningContext() const {
+  return const_cast<rocm::tunable::RocmTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -285,15 +276,15 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr ROCMExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
-    auto rocm_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    auto rocm_alloc = IExecutionProvider::GetAllocator(mem_type);
     if (!rocm_alloc) {
       return CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
                                  info_.external_allocator_info, info_.default_memory_arena_cfg);
     }
   }
-  return IExecutionProvider::GetAllocator(id, mem_type);
+  return IExecutionProvider::GetAllocator(mem_type);
 }
 
 Status ROCMExecutionProvider::Sync() const {
@@ -2258,7 +2249,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // setup ROCM allocator
   // NOTE: We call IExecutionProvider::GetAllocator as ROCMExecutionProvider::GetAllocator will return
   //       a per-thread allocator for OrtMemTypeDefault.
-  auto rocm_alloc = IExecutionProvider::GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
+  auto rocm_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!rocm_alloc) {
     // use shared allocator if available
     rocm_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
@@ -2277,7 +2268,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!rocm_pinned_alloc) {
     rocm_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2295,7 +2286,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
-  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!rocm_cpu_alloc) {
     rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2323,24 +2314,14 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  if (use_ep_level_unified_stream_)
-    RegisterRocmStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().MiopenHandle(),
-                              GetPerThreadContext().RocblasHandle());
-  else
-    RegisterRocmStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().MiopenHandle(),
-                              GetPerThreadContext().RocblasHandle());
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            !IsGraphCaptureEnabled(),
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().MiopenHandle(),
+                            GetPerThreadContext().RocblasHandle());
 }
 }  // namespace onnxruntime

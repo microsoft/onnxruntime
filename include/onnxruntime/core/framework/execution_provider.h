@@ -30,6 +30,7 @@ class Node;
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
 #include "core/framework/stream_handles.h"
+#include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
@@ -77,7 +78,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -299,6 +300,13 @@ class IExecutionProvider {
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
+
+  /**
+   * Return the tuning context which holds all TunableOp state.
+   */
+  virtual ITuningContext* GetTuningContext() const {
+    return nullptr;
+  }
 
  private:
   const std::string type_;

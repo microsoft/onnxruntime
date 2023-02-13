@@ -12,7 +12,7 @@ TEST(DNNLExecutionProviderTest, MetadataTest) {
   info.create_arena = false;
   auto provider = std::make_unique<DNNLExecutionProvider>(info);
   EXPECT_TRUE(provider != nullptr);
-  ASSERT_STREQ(provider->GetAllocator(0, OrtMemTypeCPUOutput)->Info().name, "DnnlCpu");
+  ASSERT_STREQ(provider->GetAllocator(OrtMemTypeCPUOutput)->Info().name, "DnnlCpu");
   #endif
 }
 }  // namespace test
