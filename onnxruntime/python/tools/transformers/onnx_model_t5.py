@@ -100,7 +100,7 @@ class FusionRelativePositionBiasBlock(Fusion):
             if range_nodes is None:
                 return
 
-        range = range_nodes[-1]
+        range_node = range_nodes[-1]
 
         self.nodes_to_remove.extend(compute_bias_nodes)
         self.nodes_to_remove.extend(compute_buckets_nodes)
@@ -119,7 +119,7 @@ class FusionRelativePositionBiasBlock(Fusion):
         )
 
         self.model.add_initializer(bias_table, self.this_graph_name)
-        inputs = [bias_table.name, range.input[1], range.input[1]]
+        inputs = [bias_table.name, range_node.input[1], range_node.input[1]]
         outputs = [unsqueeze.output[0]]
         rpb_node = helper.make_node(
             "RelativePositionBias",
