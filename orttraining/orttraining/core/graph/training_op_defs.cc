@@ -149,19 +149,42 @@ TensorProto ToDimensionOneTensor(T value) {
   return t;
 }
 
-std::pair<bool, int64_t> HandleDifferedInputOutputDataType(const int64_t input_elem_type,
-                                                           const int64_t output_elem_type) {
+struct InputOutputAdaptorInfo {
+  bool need_adapt_input = false;
+  int64_t input_target_elem_type{-1};
+
+  bool need_adapt_output = false;
+  int64_t output_target_elem_type{-1};
+};
+
+void HandleDifferedInputOutputDataType(const int64_t input_elem_type,
+                                       const int64_t output_elem_type,
+                                       InputOutputAdaptorInfo& adaptor_info) {
+  if (input_elem_type == output_elem_type) {
+    return;
+  }
+
   static std::unordered_map<::ONNX_NAMESPACE::TensorProto_DataType, int> bytes_for_elem_type = {
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16, 2},
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BFLOAT16, 2},
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, 4},
       {ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_DOUBLE, 8},
   };
-  bool use_input_elem_type_for_compute = false;
-  // bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >=
-  // bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
-  return std::make_pair(use_input_elem_type_for_compute,
-                        use_input_elem_type_for_compute ? input_elem_type : output_elem_type);
+
+  // Use a larger type for computation if the input and output types are different.
+  bool use_input_elem_type_for_compute =
+      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(input_elem_type)] >=
+      bytes_for_elem_type[static_cast<::ONNX_NAMESPACE::TensorProto_DataType>(output_elem_type)];
+
+  if (use_input_elem_type_for_compute) {
+    // Compute in input type and cast to output type before return result.
+    adaptor_info.need_adapt_output = true;
+    adaptor_info.output_target_elem_type = output_elem_type;
+  } else {
+    // Cast input to output_elem_type, and compute in output_elem_type, return result.
+    adaptor_info.need_adapt_input = true;
+    adaptor_info.input_target_elem_type = output_elem_type;
+  }
 }
 
 bool SCELossInternalFunBuilder(
@@ -171,31 +194,31 @@ bool SCELossInternalFunBuilder(
   bool hasWeight = ctx.hasInput(2);
   bool hasIgnoreIndex = ctx.hasInput(3);
 
-  bool add_cast_for_input = false;
-  bool add_cast_for_output = false;
+  InputOutputAdaptorInfo adaptor_info;
+
+  // Handle the adaptor only when output_type is specified in attribute.
   auto output_type_attr = ctx.getAttribute("output_type");
-  int64_t output_type = 0;
-  std::pair<bool, int64_t> cast_info;
   if (output_type_attr != nullptr) {
     const TypeProto* first_input_type_proto = ctx.getInputType(0);
     auto output_elem_type = output_type_attr->i();
-    if (first_input_type_proto != nullptr &&
-        output_elem_type != first_input_type_proto->tensor_type().elem_type()) {
-      cast_info = HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
-                                                    output_elem_type);
-      add_cast_for_input = !cast_info.first;
-      add_cast_for_output = (output_elem_type != cast_info.second);
-      output_type = output_elem_type;
+    if (first_input_type_proto != nullptr) {
+      HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                        output_elem_type,
+                                        adaptor_info);
+    } else {
+      // If the input type is not specified, we add input cast to make sure type check successful.
+      adaptor_info.need_adapt_input = true;
+      adaptor_info.input_target_elem_type = output_elem_type;
     }
   }
 
   FunctionBuilder builder(functionProto);
 
-  if (add_cast_for_input) {
-    builder.Add("scores_casted = Cast(scores)", "to", cast_info.second);
+  if (adaptor_info.need_adapt_input) {
+    builder.Add("scores_casted = Cast(scores)", "to", adaptor_info.input_target_elem_type);
 
     if (hasWeight) {
-      builder.Add("weights_casted = Cast(weights)", "to", cast_info.second);
+      builder.Add("weights_casted = Cast(weights)", "to", adaptor_info.input_target_elem_type);
     }
   } else {
     builder.Add("scores_casted = Identity (scores)");
@@ -229,10 +252,10 @@ bool SCELossInternalFunBuilder(
   else
     builder.Add("intermediate_output = com.microsoft.NegativeLogLikelihoodLossInternal2 <reduction : string = @reduction> (X_Log, labels)");
 
-  if (add_cast_for_output) {
-    builder.Add("output = Cast(intermediate_output)", "to", output_type);
+  if (adaptor_info.need_adapt_output) {
+    builder.Add("output = Cast(intermediate_output)", "to", adaptor_info.output_target_elem_type);
     if (ctx.hasOutput(1)) {
-      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", output_type);
+      builder.Add("log_prob = Cast(intermediate_log_prob)", "to", adaptor_info.output_target_elem_type);
     }
   } else {
     builder.Add("output = Identity (intermediate_output)");
@@ -256,17 +279,21 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
       ignore_index_as_attr ? (ctx.getAttribute("ignore_index") != nullptr) : ctx.hasInput(4);
   bool has_weight = ctx.hasInput(3);
 
-  bool add_cast_for_input = false;
+  InputOutputAdaptorInfo adaptor_info;
+
+  // Handle the adaptor only when output_type is specified in attribute.
   auto output_type_attr = ctx.getAttribute("output_type");
-  std::pair<bool, int64_t> cast_info;
   if (output_type_attr != nullptr) {
     const TypeProto* first_input_type_proto = ctx.getInputType(0);
     auto output_elem_type = output_type_attr->i();
-    if (first_input_type_proto != nullptr &&
-        output_elem_type != first_input_type_proto->tensor_type().elem_type()) {
-      cast_info = HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
-                                                    output_elem_type);
-      add_cast_for_input = cast_info.first;
+    if (first_input_type_proto == nullptr) {
+      HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
+                                        output_elem_type,
+                                        adaptor_info);
+    } else {
+      // If the input type is not specified, we add input cast to make sure type check successful.
+      adaptor_info.need_adapt_input = true;
+      adaptor_info.input_target_elem_type = output_elem_type;
     }
   }
 
@@ -278,16 +305,16 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   // weight : [C]
   // label : [B, d1, d2, ...]
 
-  if (add_cast_for_input) {
-    builder.Add("dY_casted = Cast(dY)", "to", cast_info.second);
-    builder.Add("log_prob_casted = Cast(log_prob)", "to", cast_info.second);
+  if (adaptor_info.need_adapt_input) {
+    builder.Add("dY_casted = Cast(dY)", "to", adaptor_info.input_target_elem_type);
+    builder.Add("log_prob_casted = Cast(log_prob)", "to", adaptor_info.input_target_elem_type);
 
     if (has_weight) {
-      builder.Add("weight_casted = Cast(weight)", "to", cast_info.second);
+      builder.Add("weight_casted = Cast(weight)", "to", adaptor_info.input_target_elem_type);
     }
 
     if (ctx.hasInput(5)) {
-      builder.Add("bias_casted = Cast(bias)", "to", cast_info.second);
+      builder.Add("bias_casted = Cast(bias)", "to", adaptor_info.input_target_elem_type);
     }
   } else {
     builder.Add("dY_casted = Identity (dY)");
@@ -436,12 +463,18 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
     builder.Add(R"(
                 d_logits_without_bias = Reshape (d_logits_BCD, orig_shape)
                 bias_shaped = Reshape (bias_casted, orig_shape)
-                d_logits = Add(d_logits_without_bias, bias_shaped)
+                intermediate_d_logits = Add(d_logits_without_bias, bias_shaped)
               )");
   } else {
     builder.Add(R"(
-                d_logits = Reshape (d_logits_BCD, orig_shape)
+                intermediate_d_logits = Reshape (d_logits_BCD, orig_shape)
               )");
+  }
+
+  if (adaptor_info.need_adapt_output) {
+    builder.Add("d_logits = Cast(intermediate_d_logits)", "to", adaptor_info.output_target_elem_type);
+  } else {
+    builder.Add("d_logits = Identity (intermediate_d_logits)");
   }
 
   schema.BuildFunction(functionProto);

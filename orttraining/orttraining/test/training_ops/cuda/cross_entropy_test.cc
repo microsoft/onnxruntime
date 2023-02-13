@@ -597,45 +597,45 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_MediumSizeTensor) {
 }
 
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_MediumSizeTensor_half) {
-  std::vector<int64_t> X_dims{3, 2};
-  std::vector<int64_t> index_dims{3};
-  std::vector<int64_t> weight_dims{2};
+  std::vector<int64_t> X_dims{8, 1024};
+  std::vector<int64_t> index_dims{8};
+  std::vector<int64_t> weight_dims{1024};
   std::vector<int64_t> Y_dims{};
-  std::vector<int64_t> Y_dims_none{3};
-  std::vector<int64_t> log_prob_dims{3, 2};
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
-  //                                                   "mean", -1, 5e-2);
-  TestSoftmaxCrossEntropyLoss<float, float>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
-                                            "mean", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
-  //                                                   "sum", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
-  //                                                   "sum", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims,
-  //                                                   "none", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims,
-  //                                                   "none", -1, 5e-2);
+  std::vector<int64_t> Y_dims_none{8};
+  std::vector<int64_t> log_prob_dims{8, 1024};
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
+                                                    "mean", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
+                                                    "mean", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
+                                                    "sum", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
+                                                    "sum", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims,
+                                                    "none", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, MLFloat16>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims,
+                                                    "none", -1, 5e-2);
 }
 
 TEST(CrossEntropyTest, SoftmaxCrossEntropyLoss_MediumSizeTensor_half_input_float_output) {
-  std::vector<int64_t> X_dims{3, 2};
-  std::vector<int64_t> index_dims{3};
-  std::vector<int64_t> weight_dims{2};
+  std::vector<int64_t> X_dims{8, 1024};
+  std::vector<int64_t> index_dims{8};
+  std::vector<int64_t> weight_dims{1024};
   std::vector<int64_t> Y_dims{};
-  std::vector<int64_t> Y_dims_none{3};
-  std::vector<int64_t> log_prob_dims{3, 2};
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
-  //                                               "mean", -1, 5e-2);
+  std::vector<int64_t> Y_dims_none{8};
+  std::vector<int64_t> log_prob_dims{8, 1024};
+  TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
+                                                "mean", -1, 5e-2);
   TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
                                                 "mean", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
-  //                                               "sum", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
-  //                                               "sum", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims,
-  //                                               "none", -1, 5e-2);
-  // TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims,
-  //                                               "none", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims, &log_prob_dims,
+                                                "sum", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, nullptr, &Y_dims, &log_prob_dims,
+                                                "sum", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, &weight_dims, &Y_dims_none, &log_prob_dims,
+                                                "none", -1, 5e-2);
+  TestSoftmaxCrossEntropyLoss<MLFloat16, float>(&X_dims, &index_dims, nullptr, &Y_dims_none, &log_prob_dims,
+                                                "none", -1, 5e-2);
 }
 
 // TODO fix flaky test
@@ -797,26 +797,26 @@ static void PrepareSCELossInternalGradTestData(
 }
 
 template <typename T, typename TOut>
-static std::vector<OrtValue> RunSCELossInternalGradWithEP(std::function<std::unique_ptr<IExecutionProvider>()>
-                                                              ep_creator,
-                                                          const std::string& reduction,
-                                                          const std::int64_t ignore_index,
-                                                          const double error_tolerance,
-                                                          const bool has_bias,
-                                                          const std::vector<int64_t>& dY_dims,
-                                                          const std::vector<int64_t>& log_prob_dims,
-                                                          const std::vector<int64_t>& index_dims,
-                                                          const std::vector<int64_t>& weight_dims,
-                                                          const std::vector<int64_t>& dX_dims,
-                                                          std::vector<float>& dY_data,
-                                                          std::vector<float>& log_prob_data,
-                                                          std::vector<int64_t>& index_data,
-                                                          std::vector<float>& weight_data,
-                                                          std::vector<float>& bias_data) {
-  // If expected rets is provided, use it to verify outputs; otherwise, skip output verification.
+static std::vector<OrtValue> RunSCELossInternalGradWithEP(
+    std::function<std::unique_ptr<IExecutionProvider>()>
+        ep_creator,
+    const std::string& reduction,
+    const std::int64_t ignore_index,
+    const double error_tolerance,
+    const bool has_bias,
+    const std::vector<int64_t>& dY_dims,
+    const std::vector<int64_t>& log_prob_dims,
+    const std::vector<int64_t>& index_dims,
+    const std::vector<int64_t>& weight_dims,
+    const std::vector<int64_t>& dX_dims,
+    std::vector<float>& dY_data,
+    std::vector<float>& log_prob_data,
+    std::vector<int64_t>& index_data,
+    std::vector<float>& weight_data,
+    std::vector<float>& bias_data) {
   /**
    * OpTester's atol/rtol check is too strict for our testing cases. Imagine expected value is 4.7683704451628728e-07,
-   * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail.
+   * real value is 0, even we set rtol=1e-1, atol = 1e-4. The check still fail with the following check:
    * The difference between expected[i] and output[i] is 4.7683704451628728e-07,
    * which exceeds *(params.relative_error_) * std::abs(expected[i])
    * (params.relative_error_) * std::abs(expected[i]) evaluates to 4.7683705872714199e-08.
@@ -1050,7 +1050,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>({8}, log_prob_dims, index_dims, weight_dims, dX_dims,
                                                             "none", -1, 5e-2, false /*has_bias*/);
 
-  // // Just test ignore_index for small tensor because it will increase test time a lot with little verification gain.
+  //  Just test ignore_index for small tensor because it will increase test time a lot with little verification gain.
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
                                                             dX_dims, "mean", 0, 5e-2, false /*has_bias*/);
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
