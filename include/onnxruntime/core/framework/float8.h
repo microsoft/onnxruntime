@@ -273,7 +273,7 @@ struct FloatE5M2 {
 
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-    return Eigen::half_to_float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
+    return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
 #else
     uint32_t res;
     if (val >= 253) {
