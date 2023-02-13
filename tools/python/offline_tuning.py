@@ -3,7 +3,6 @@
 
 import argparse
 import copy
-import itertools
 import json
 import sys
 from collections import OrderedDict
@@ -14,22 +13,22 @@ import onnx
 
 TuningResults = Dict[str, Any]
 
-_tuning_results_key = "tuning_results"
+_TUNING_RESULTS_KEY = "tuning_results"
 
 
 def _find_tuning_results_in_props(metadata_props):
     for idx, prop in enumerate(metadata_props):
-        if prop.key == _tuning_results_key:
+        if prop.key == _TUNING_RESULTS_KEY:
             return idx
     return -1
 
 
-def extract(onnx: onnx.ModelProto):
-    idx = _find_tuning_results_in_props(onnx.metadata_props)
+def extract(model: onnx.ModelProto):
+    idx = _find_tuning_results_in_props(model.metadata_props)
     if idx < 0:
         return None
 
-    tuning_results_prop = onnx.metadata_props[idx]
+    tuning_results_prop = model.metadata_props[idx]
     return json.loads(tuning_results_prop.value)
 
 
@@ -41,7 +40,7 @@ def embed(model: onnx.ModelProto, tuning_results: List[TuningResults], overwrite
         model.metadata_props.pop(idx)
 
     entry = model.metadata_props.add()
-    entry.key = _tuning_results_key
+    entry.key = _TUNING_RESULTS_KEY
     entry.value = json.dumps(tuning_results)
     return model
 
@@ -118,13 +117,13 @@ def parse_args():
     return args
 
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
     if args.cmd == "extract":
         tuning_results = extract(onnx.load_model(args.input_onnx))
         if tuning_results is None:
             sys.stderr.write(f"{args.input_onnx} does not have tuning results embedded!\n")
-            exit(-1)
+            sys.exit(-1)
         json.dump(tuning_results, open(args.output_json, "w"))
     elif args.cmd == "embed":
         model = onnx.load_model(args.input_onnx)
@@ -143,6 +142,7 @@ if __name__ == "__main__":
         try:
             tuning_results = json.load(open(args.json_or_onnx, "r"))
         except:
+            # it might be an onnx file otherwise, try it latter
             pass
 
         if tuning_results is None:
@@ -151,15 +151,19 @@ if __name__ == "__main__":
                 tuning_results = extract(model)
                 if tuning_results is None:
                     sys.stderr.write(f"{args.input_onnx} does not have tuning results embedded!\n")
-                    exit(-1)
+                    sys.exit(-1)
             except:
                 pass
 
         if tuning_results is None:
             sys.stderr.write(f"{args.json_or_onnx} is not a valid tuning results file or onnx file!")
-            exit(-1)
+            sys.exit(-1)
 
         pprint(tuning_results)
     else:
         # invalid choice will be handled by the parser
         pass
+
+
+if __name__ == "__main__":
+    main()

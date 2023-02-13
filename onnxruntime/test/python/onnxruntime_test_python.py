@@ -429,7 +429,7 @@ class TestInferenceSession(unittest.TestCase):
             sess.set_tuning_results([invalid_unkonwn_ep])
             with self.assertRaises(RuntimeError) as context:
                 sess.set_tuning_results([invalid_unkonwn_ep], error_on_invalid=True)
-            self.assertTrue("Cannot find execution provider UnknownEP" in str(context.exception))
+            self.assertIn("Cannot find execution provider UnknownEP", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
             # missing validator key will be rejected
@@ -438,8 +438,8 @@ class TestInferenceSession(unittest.TestCase):
             sess.set_tuning_results([mismatched_validator_key_missing])
             with self.assertRaises(RuntimeError) as context:
                 sess.set_tuning_results([mismatched_validator_key_missing], error_on_invalid=True)
-            self.assertTrue("ORT_VERSION" in str(context.exception))
-            self.assertTrue("is not provided for validation" in str(context.exception))
+            self.assertIn("ORT_VERSION", str(context.exception))
+            self.assertIn("is not provided for validation", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
             mismatched_validator_key_extra = copyTuningResultsWithProbe(tuning_results)
@@ -447,8 +447,8 @@ class TestInferenceSession(unittest.TestCase):
             sess.set_tuning_results([mismatched_validator_key_extra])
             with self.assertRaises(RuntimeError) as context:
                 sess.set_tuning_results([mismatched_validator_key_extra], error_on_invalid=True)
-            self.assertTrue("NOT_A_VALIDATOR_KEY" in str(context.exception))
-            self.assertTrue("is unable to consume it" in str(context.exception))
+            self.assertIn("NOT_A_VALIDATOR_KEY", str(context.exception))
+            self.assertIn("is unable to consume it", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
             validation_faliure = copyTuningResultsWithProbe(tuning_results)
@@ -456,8 +456,8 @@ class TestInferenceSession(unittest.TestCase):
             sess.set_tuning_results([validation_faliure])
             with self.assertRaises(RuntimeError) as context:
                 sess.set_tuning_results([validation_faliure], error_on_invalid=True)
-            self.assertTrue("Failed to load TuningResults" in str(context.exception))
-            self.assertTrue("version mismatch" in str(context.exception))
+            self.assertIn("Failed to load TuningResults", str(context.exception))
+            self.assertIn("version mismatch", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
             loadable = copyTuningResultsWithProbe(tuning_results)
