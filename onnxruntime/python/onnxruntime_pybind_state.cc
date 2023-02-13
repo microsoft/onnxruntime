@@ -1690,15 +1690,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           TuningResults trs;
           trs.ep = py_trs["ep"].cast<py::str>();
 
-          for (const auto& [py_op_sig, py_kernel_map]: py_trs["results"].cast<py::dict>()) {
+          for (const auto [py_op_sig, py_kernel_map]: py_trs["results"].cast<py::dict>()) {
             KernelMap kernel_map;
-            for (const auto& [py_params_sig, py_kernel_id]: py_kernel_map.cast<py::dict>()) {
+            for (const auto [py_params_sig, py_kernel_id]: py_kernel_map.cast<py::dict>()) {
               kernel_map[py_params_sig.cast<py::str>()] = py_kernel_id.cast<py::int_>();
             }
             trs.results[py_op_sig.cast<py::str>()] = kernel_map;
           }
 
-          for (const auto& [k, v]: py_trs["validators"].cast<py::dict>()) {
+          for (const auto [k, v]: py_trs["validators"].cast<py::dict>()) {
             trs.validators[k.cast<py::str>()] = v.cast<py::str>();
           }
 
