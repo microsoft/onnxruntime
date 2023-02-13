@@ -325,7 +325,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   onnxruntime::AllocatorManager allocator_manager;
   auto cuda_provider = DefaultCudaExecutionProvider();
   cuda_provider->RegisterAllocator(allocator_manager);
-  auto cpu_allocator = cuda_provider->GetAllocator(0, OrtMemTypeCPU);
+  auto cpu_allocator = cuda_provider->GetAllocator(OrtMemTypeCPU);
   std::vector<int64_t> dims_op_x = {12, 256, 256};
   std::vector<float> values_op_x(1.0f, 786432); // 786432=12*256*256
   OrtValue ml_value_x;
