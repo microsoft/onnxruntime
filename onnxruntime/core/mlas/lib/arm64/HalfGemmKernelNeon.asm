@@ -283,7 +283,7 @@ M6N16LoopK_Epilogue
 M6N16OutterLoopNTail
         subs    x1,x1,16                // N -= 16
         ldr     x8,[sp,#HGemmKernelFrame_B]
-        b.LO    M6StoreRemainderN       // remaining k < 16
+        b.LO    M6StoreRemainderN       // remaining N < 16
 
         cbnz    x19,M6N16SkipAccumulateOutput
         ldp     q0,q1,[x3]

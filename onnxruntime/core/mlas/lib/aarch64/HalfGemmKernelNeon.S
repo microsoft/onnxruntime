@@ -283,7 +283,7 @@ x7  |v5.h[0]..v5.h[3]|  |v30.h[0]..v30.h[7] v31.h[0]..v31.h[7]|  x4
 .LM6N16OutterLoopNTail:
         subs    x1,x1,16                // N -= 16
         ldr     x8,[sp,#.LHGemmKernelFrame_B]
-        b.LO    .LM6StoreRemainderN     // remaining k < 16
+        b.LO    .LM6StoreRemainderN     // remaining N < 16
 
         cbnz    x19,.LM6N16SkipAccumulateOutput
         ldp     q0,q1,[x3]

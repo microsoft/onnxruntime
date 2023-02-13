@@ -615,7 +615,7 @@ MlasGemm(
 // Currently only supported in ARM64
 //
 #if defined(MLAS_TARGET_ARM64)
-constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 15;
+constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 30;
 #else
 constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 0;
 #endif
