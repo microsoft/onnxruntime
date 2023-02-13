@@ -22,7 +22,6 @@ using StreamT = void*;
 
 constexpr static const char* kTestKey = "THE_TEST_KEY";
 constexpr static const char* kValidTestValue = "THE_VALID_TEST_VALUE";
-constexpr static const char* kInvalidTestValue = "A_INVALID_TEST_VALUE";
 
 static std::string GetTestValue() {
   return kValidTestValue;
