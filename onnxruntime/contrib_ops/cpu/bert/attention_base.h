@@ -18,7 +18,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* extra_add_qk,
+                     const Tensor* relative_position_bias,
                      void* parameters,
                      const int max_threads_per_block,  // for CUDA
                      const Tensor* past_seq_len = nullptr) const;
@@ -61,7 +61,7 @@ class AttentionBase {
                      const TensorShape& bias_shape,
                      const Tensor*& mask_index,  // Dummy mask of shape (1 or batch_size, 1) will be updated to nullptr.
                      const Tensor* past,
-                     const Tensor* extra_add_qk,
+                     const Tensor* relative_position_bias,
                      void* parameters,
                      const Tensor* past_seq_len = nullptr) const;
 

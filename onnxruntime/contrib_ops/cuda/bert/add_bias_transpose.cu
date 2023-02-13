@@ -367,6 +367,39 @@ __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* outp
 }
 
 template <typename T>
+__global__ void AddBiasUnpack(int M, const T* input, const T* biases, T* output) {
+  // Format 4 to unpack TRT packed input format for memory efficient attention.
+  //     Input:  BxSxNxMxH
+  //     Output: MxBxSxNxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  int in_offset = m * head_size + n * M * H + (s * NH + b * NHS) * M;
+  const int out_offset = n * head_size + s * NH + b * NHS + m * NHS * batch_size;
+
+  const int h = threadIdx.x;
+  if (h < head_size) {
+    if (biases != nullptr) {
+      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    } else {
+      output[out_offset + h] = input[in_offset + h];
+    }
+  }
+}
+
+template <typename T>
 __global__ void AddBiasTransposeCutlass(int M, const T* input, const T* biases, T* output) {
   // Format 3 for cutlass memory efficient attention
   //     Input:  BxSxMxNxH
@@ -481,12 +514,12 @@ __global__ void AddBiasTransposeLarge(const int head_size, const T* input, const
   }
 }
 
-
 template <typename T>
 void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count) {
+  assert(num_heads <= max_threads_per_block);
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (qk_head_size * num_heads <= max_threads_per_block) {
     const dim3 block(qk_head_size, num_heads, 1);
@@ -506,11 +539,13 @@ void InvokeAddBiasTranspose(
         ORT_ENFORCE(total_matrix_count == 3);
         AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
       }
-    } else { // format == 0
+    } else if (format == 4) {  // format == 4
+      AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+    } else {  // format == 0
       AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
   } else {
-    const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+    const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
     if (format == 2) {
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     } else if (format == 1) {
@@ -528,6 +563,8 @@ void InvokeAddBiasTranspose(
       } else {
         ORT_THROW("AddBiasTranspose (format 3) not implemented for hidden_size > max_threads_per_block when qk_head_size != v_head_size");
       }
+    } else if (format == 4) {  // format == 4
+      ORT_THROW("AddBiasTranspose (format 4) not implemented for hidden_size > max_threads_per_block");
     } else {  // format 0
       AddBiasTransposeLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     }
@@ -541,7 +578,7 @@ void LaunchAddBiasTranspose(
     const half* input, const half* biases, half* output,
     bool enable_half4, const int v_head_size, half* qkv_add_bias, int total_matrix_count) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-  if (enable_half4 && 0 == (qk_head_size % 4) && 0 == (v_head_size % 4)) {
+  if (enable_half4 && 0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
     const int H = qk_head_size / 4;
     const int H_v = v_head_size / 4;
     const Half4* input2 = reinterpret_cast<const Half4*>(input);
@@ -551,7 +588,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2,
                                   qkv_add_bias2, H_v, total_matrix_count);
-  } else if (0 == (qk_head_size & 1) && 0 == (v_head_size % 1)) {
+  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
     const half2* input2 = reinterpret_cast<const half2*>(input);
@@ -576,7 +613,7 @@ void LaunchAddBiasTranspose(
     const float* input, const float* biases, float* output,
     bool /*enable_half4*/, const int v_head_size, float* qkv_add_bias, int total_matrix_count) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
-  if (0 == (qk_head_size % 4) && 0 == (v_head_size % 4)) {
+  if (0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
     const int H = qk_head_size / 4;
     const float4* input2 = reinterpret_cast<const float4*>(input);
     const float4* biases2 = reinterpret_cast<const float4*>(biases);
@@ -586,7 +623,7 @@ void LaunchAddBiasTranspose(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, H, input2, biases2, output2,
         qkv_add_bias2, v_head_size / 4, total_matrix_count);
-  } else if (0 == (qk_head_size & 1) && 0 == (v_head_size & 1)) {
+  } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
     const int H = qk_head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
     const float2* biases2 = reinterpret_cast<const float2*>(biases);
@@ -610,7 +647,6 @@ void InvokeAddBiasTransposeTrt(
     const int batch_size, const int sequence_length, const int num_heads, const int head_size,
     const T* biases, const T* query, const T* key, const T* value, T* output,
     bool is_cross_attention, int kv_sequence_length) {
-
   if (!is_cross_attention) {
     ORT_ENFORCE(sequence_length == kv_sequence_length);
     constexpr int num_matrices = 3;
@@ -619,7 +655,7 @@ void InvokeAddBiasTransposeTrt(
       const dim3 block(head_size, num_heads, 1);
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, key, value, biases, output);
     } else {
-      const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, key, value, biases, output);
     }
   } else {  // cross attention
@@ -631,7 +667,7 @@ void InvokeAddBiasTransposeTrt(
         const dim3 block(head_size, num_heads, 1);
         AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, output);
       } else {
-        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
         AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, output);
       }
     }
@@ -645,7 +681,7 @@ void InvokeAddBiasTransposeTrt(
         const dim3 block(head_size, num_heads, 1);
         AddBiasTransposeTrtKV<T><<<grid, block, 0, stream>>>(key, value, biases, packed_kv);
       } else {
-        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
+        const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
         AddBiasTransposeTrtKVLarge<T><<<grid, block, 0, stream>>>(head_size, key, value, biases, packed_kv);
       }
     }
@@ -696,52 +732,52 @@ void LaunchAddBiasTransposeTrt(
   }
 }
 
-
 template <typename T>
 void InvokeAddBias(
     cudaStream_t stream, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int kv_sequence_length,
     const int num_heads, const int head_size, const int v_head_size,
     const T* biases, const T* query, const T* key, const T* value, T* q, T* k, T* v) {
-    constexpr int num_matrices = 1;
-    // Q
-    {
-      const dim3 grid(sequence_length, batch_size, num_matrices);
-      if (head_size * num_heads <= max_threads_per_block) {
-        const dim3 block(head_size, num_heads, 1);
-        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, q);
-      } else {
-        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, q);
-      }
+  assert(num_heads <= max_threads_per_block);
+  constexpr int num_matrices = 1;
+  // Q
+  {
+    const dim3 grid(sequence_length, batch_size, num_matrices);
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(query, biases, q);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, query, biases, q);
     }
-    // K
-    {
-      const dim3 grid(kv_sequence_length, batch_size, num_matrices);
-      const T* biases_k = biases + num_heads * head_size;
+  }
+  // K
+  {
+    const dim3 grid(kv_sequence_length, batch_size, num_matrices);
+    const T* biases_k = biases + num_heads * head_size;
 
-      if (head_size * num_heads <= max_threads_per_block) {
-        const dim3 block(head_size, num_heads, 1);
-        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(key, biases_k, k);
-      } else {
-        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, key, biases_k, k);
-      }
+    if (head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(head_size, num_heads, 1);
+      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(key, biases_k, k);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(head_size, key, biases_k, k);
     }
+  }
 
-    // V
-    {
-      const dim3 grid(kv_sequence_length, batch_size, num_matrices);
+  // V
+  {
+    const dim3 grid(kv_sequence_length, batch_size, num_matrices);
 
-      const T* biases_v = biases + 2 * num_heads * head_size;
-      if (v_head_size * num_heads <= max_threads_per_block) {
-        const dim3 block(v_head_size, num_heads, 1);
-        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(value, biases_v, v);
-      } else {
-        const dim3 block(CeilDiv(max_threads_per_block, num_heads), num_heads, 1);
-        AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(v_head_size, value, biases_v, v);
-      }
+    const T* biases_v = biases + 2 * num_heads * head_size;
+    if (v_head_size * num_heads <= max_threads_per_block) {
+      const dim3 block(v_head_size, num_heads, 1);
+      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(value, biases_v, v);
+    } else {
+      const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
+      AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(v_head_size, value, biases_v, v);
     }
+  }
 }
 
 template <>
@@ -750,7 +786,7 @@ void LaunchAddBias(
     const int batch_size, const int sequence_length, const int kv_sequence_length,
     const int num_heads, const int head_size, const int v_head_size,
     const float* biases, const float* query, const float* key, const float* value, float* q, float* k, float* v) {
-if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
+  if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
     const int H = head_size / 4;
     const int H_v = v_head_size / 4;
     const float4* query2 = reinterpret_cast<const float4*>(query);
@@ -761,8 +797,8 @@ if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
     float4* k2 = reinterpret_cast<float4*>(k);
     float4* v2 = reinterpret_cast<float4*>(v);
     InvokeAddBias<float4>(stream, max_threads_per_block,
-                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
-                         biases2, query2, key2, value2, q2, k2, v2);
+                          batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                          biases2, query2, key2, value2, q2, k2, v2);
   } else if (0 == (head_size & 1) && 0 == (v_head_size & 1)) {
     const int H = head_size / 2;
     const int H_v = v_head_size / 2;
@@ -774,14 +810,13 @@ if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
     float2* k2 = reinterpret_cast<float2*>(k);
     float2* v2 = reinterpret_cast<float2*>(v);
     InvokeAddBias<float2>(stream, max_threads_per_block,
-                         batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
-                         biases2, query2, key2, value2, q2, k2, v2);
+                          batch_size, sequence_length, kv_sequence_length, num_heads, H, H_v,
+                          biases2, query2, key2, value2, q2, k2, v2);
   } else {
     InvokeAddBias<float>(stream, max_threads_per_block,
-                        batch_size, sequence_length, kv_sequence_length, num_heads, head_size, v_head_size,
-                        biases, query, key, value, q, k, v);
+                         batch_size, sequence_length, kv_sequence_length, num_heads, head_size, v_head_size,
+                         biases, query, key, value, q, k, v);
   }
-
 }
 
 template <>
@@ -790,8 +825,7 @@ void LaunchAddBias(
     const int batch_size, const int sequence_length, const int kv_sequence_length,
     const int num_heads, const int head_size, const int v_head_size,
     const half* biases, const half* query, const half* key, const half* value, half* q, half* k, half* v) {
-
-    if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
+  if (0 == (head_size % 4) && 0 == (v_head_size % 4)) {
     const int H = head_size / 4;
     const int H_v = v_head_size / 4;
     const Half4* query2 = reinterpret_cast<const Half4*>(query);

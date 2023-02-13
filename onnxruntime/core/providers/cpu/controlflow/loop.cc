@@ -319,7 +319,7 @@ common::Status Loop::SetupSubgraphExecutionInfo(const SessionState& session_stat
   // 'cond' is first output and we need it to be on CPU so we can read the latest value
   const auto& cpu_allocator_info = session_state.GetExecutionProviders()
                                        .Get(onnxruntime::kCpuExecutionProvider)
-                                       ->GetAllocator(0, OrtMemTypeDefault)
+                                       ->GetAllocator(OrtMemTypeDefault)
                                        ->Info();
   fetch_locations.push_back(&cpu_allocator_info);
 
@@ -411,7 +411,7 @@ Status LoopImpl::Initialize() {
   // these need to be on CPU
   auto cpu_allocator = session_state_.GetExecutionProviders()
                            .Get(onnxruntime::kCpuExecutionProvider)
-                           ->GetAllocator(0, OrtMemTypeDefault);
+                           ->GetAllocator(OrtMemTypeDefault);
   iter_num_mlvalue_ = MakeScalarMLValue<int64_t>(cpu_allocator, 0, iter_num_rank != 0);
   condition_mlvalue_ = MakeScalarMLValue<bool>(cpu_allocator, condition_, condition_rank != 0);
 

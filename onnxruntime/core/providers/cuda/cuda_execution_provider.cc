@@ -220,7 +220,8 @@ void OverrideTunableOpInfoByEnv(CUDAExecutionProviderInfo& info) {
 
 CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCudaExecutionProvider},
-      info_{info} {
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
@@ -271,18 +272,8 @@ CUDAExecutionProvider::~CUDAExecutionProvider() {
   }
 }
 
-void CUDAExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void CUDAExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for CUDA Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool CUDAExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* CUDAExecutionProvider::GetTuningContext() const {
+  return const_cast<cuda::tunable::CudaTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> CUDAExecutionProvider::GetProfiler() {
@@ -358,9 +349,9 @@ void CUDAExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr CUDAExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
-    auto cuda_alloc = IExecutionProvider::GetAllocator(id, mem_type);
+    auto cuda_alloc = IExecutionProvider::GetAllocator(mem_type);
     if (!cuda_alloc) {
       // this means the program invoke GetAllocator before RegsiterAllocators,
       // which only happnens in some UTs.
@@ -371,7 +362,7 @@ AllocatorPtr CUDAExecutionProvider::GetAllocator(int id, OrtMemType mem_type) co
     }
   }
 
-  return IExecutionProvider::GetAllocator(id, mem_type);
+  return IExecutionProvider::GetAllocator(mem_type);
 }
 
 Status CUDAExecutionProvider::Sync() const {
@@ -2446,7 +2437,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
   // NOTE: We call IExecutionProvider::GetAllocator as CUDAExecutionProvider::GetAllocator will return
   //       a per-thread allocator for OrtMemTypeDefault.
-  auto cuda_alloc = IExecutionProvider::GetAllocator(cuda_device.Id(), OrtMemTypeDefault);
+  auto cuda_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!cuda_alloc) {
     // use shared allocator if available
     cuda_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cuda_device);
@@ -2464,7 +2455,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!cuda_pinned_alloc) {
     cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2488,7 +2479,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- op place the input on CPU and will not be accessed by CUDA kernel, no sync issue
-  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!cuda_cpu_alloc) {
     cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2516,25 +2507,15 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-  if (use_ep_level_unified_stream_)
-    RegisterCudaStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().CudnnHandle(),
-                              GetPerThreadContext().CublasHandle());
-  else
-    RegisterCudaStreamHandles(stream_handle_registry,
-                              OrtDevice::GPU,
-                              allocator,
-                              !IsGraphCaptureEnabled(),
-                              stream_,
-                              use_ep_level_unified_stream_,
-                              GetPerThreadContext().CudnnHandle(),
-                              GetPerThreadContext().CublasHandle());
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterCudaStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            !IsGraphCaptureEnabled(),
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().CudnnHandle(),
+                            GetPerThreadContext().CublasHandle());
 }
 
 }  // namespace onnxruntime
