@@ -627,7 +627,11 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // get axes attributes
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::cout << "attributes: " << attributes << std::endl;
+    std::cout << "attributes: " << std::endl;
+    for auto(key_value : attributes) {
+      std::cout << "key: " << key_value.first << std::endl;
+      std::cout << "value: " << key_value.second << std::endl;
+    }
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
       std::cout << "axes found!" << std::endl;
