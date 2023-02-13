@@ -3,8 +3,8 @@
 #pragma once
 
 #include "endian.h"
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-//#include "cuda_bf16.h"
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+#include "cuda_fp8.h"
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
@@ -70,7 +70,7 @@ struct FloatE4M3 {
 
   inline ORT_HOST_DEVICE FloatE4M3(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    val = __floate4m3_as_ushort(__float2floate4m3(v));
+    val = __nv_cvt_float_to_fp8(v);
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -119,8 +119,8 @@ struct FloatE4M3 {
   }
 
   inline ORT_HOST_DEVICE float ToFloat() const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    return __floate4m32float(*reinterpret_cast<const __nv_floate4m3*>(&val));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+    return __half2float(__nv_cvt_fp8_to_halfraw(val, __NV_E4M3));
 #else
     uint32_t res;
     if (val == 255) {
@@ -168,9 +168,9 @@ struct FloatE4M3 {
 
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  ORT_HOST_DEVICE FloatE4M3(const __nv_floate4m3& value) { val = *reinterpret_cast<const unsigned short*>(&value); }
-  explicit ORT_HOST_DEVICE operator __nv_floate4m3() const { return *reinterpret_cast<const __nv_floate4m3*>(&val); }
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_HOST_DEVICE FloatE4M3(const __nv_fp8_e4m3& value) { val = *reinterpret_cast<const unsigned char*>(&value); }
+  explicit ORT_HOST_DEVICE operator __nv_fp8_e4m3() const { return *reinterpret_cast<const __nv_fp8_e4m3*>(&val); }
 #endif
 };
 
@@ -180,7 +180,7 @@ inline ORT_HOST_DEVICE bool operator<(const FloatE4M3& left, const FloatE4M3& ri
 
 
 // User defined suffixes to make it easier to declare
-// initializers with MLFloatE4M3 and FloatE4M3 from unsigned short
+// initializers with MLFloatE4M3 and FloatE4M3 from unsigned char
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
@@ -225,7 +225,7 @@ struct FloatE5M2 {
 
   inline ORT_HOST_DEVICE FloatE5M2(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    val = __floate5m2_as_ushort(__float2floate5m2(v));
+    val = __fe5m2_as_uchar(__float2fe5m2(v));
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -272,8 +272,8 @@ struct FloatE5M2 {
   }
 
   inline ORT_HOST_DEVICE float ToFloat() const {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-    return __floate5m22float(*reinterpret_cast<const __nv_floate5m2*>(&val));
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+    return Eigen::half_to_float(__nv_cvt_fp8_to_halfraw(val, __NV_E5M2));
 #else
     uint32_t res;
     if (val >= 253) {
@@ -321,9 +321,9 @@ struct FloatE5M2 {
 
   inline ORT_HOST_DEVICE operator float() const { return ToFloat(); }
 
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  ORT_HOST_DEVICE FloatE5M2(const __nv_floate5m2& value) { val = *reinterpret_cast<const unsigned short*>(&value); }
-  explicit ORT_HOST_DEVICE operator __nv_floate5m2() const { return *reinterpret_cast<const __nv_floate5m2*>(&val); }
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
+  ORT_HOST_DEVICE FloatE5M2(const __nv_fp8_e5m2& value) { val = *reinterpret_cast<const unsigned char*>(&value); }
+  explicit ORT_HOST_DEVICE operator __nv_fp8_e5m2() const { return *reinterpret_cast<const __nv_fp8_e5m2*>(&val); }
 #endif
 };
 
@@ -332,7 +332,7 @@ inline ORT_HOST_DEVICE bool operator!=(const FloatE5M2& left, const FloatE5M2& r
 inline ORT_HOST_DEVICE bool operator<(const FloatE5M2& left, const FloatE5M2& right) { return left.val < right.val; }
 
 // User defined suffixes to make it easier to declare
-// initializers with MLFloatE5M2 and FloatE5M2 from unsigned short
+// initializers with MLFloatE5M2 and FloatE5M2 from unsigned char
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
