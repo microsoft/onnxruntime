@@ -25,17 +25,29 @@ The machine learning model used in this tutorial is based on the one used in the
 
 We provide a convenient Python script that exports the PyTorch model into ONNX format and adds pre and post processing.
 
-To run this script, install the following python packages first.
+1. Before running this script, install the following python packages:
 
-```bash
-pip install pytorch
-pip install onnxruntime
-pip install onnxruntime-extensions
-pip install pillow
-python -m onnxruntime-extensions.tools superresolution_e2e.py
-```
+    ```bash
+    pip install pytorch
+    pip install onnxruntime
+    pip install onnxruntime-extensions
+    pip install pillow
+    ```
 
-After the script runs, you should see two ONNX files in the folder where you ran the script.
+2. Then download the script and test image from the onnxruntime-extensions GitHub repository (if you have not already cloned this repository):
+
+    ```bash
+    curl https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/superresolution_e2e.py > superresolution_e2e.py
+    curl https://raw.githubusercontent.com/microsoft/onnxruntime-extensions/main/tutorials/data/super_res_input.png > data/super_res_input.png
+    ```
+
+3. Run the script to export the core model and add pre and post processing to it
+
+    ```bash
+    python superresolution_e2e.py 
+    ```
+
+After the script runs, you should see two ONNX files in the folder in the location that you ran the script:
 
 ```bash
 pytorch_superresolution.onnx
@@ -43,6 +55,15 @@ pytorch_superresolution_with_pre_and_post_proceessing.onnx
 ```
 
 If you load the second model into netron you can see its inputs and outputs: both image bytes.
+
+![ONNX model without pre and post processing](../../../images/mobile-superres-before-model.png)
+
+![ONNX model inputs and outputs without pre and post processing](../../../images/mobile-superres-before-model-io.png)
+
+![ONNX model with pre and post processing](../../../images/mobile-superres-after-model.png)
+
+![ONNX model inputs and outputs with pre and post processing](../../../images/mobile-superres-after-model-io.png)
+
 
 Now it's time to write the application code.
 
