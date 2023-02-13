@@ -12,19 +12,6 @@
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger();
 
-// This is the helper function to get the plugin fields that is currently being used
-void IterateTensorRTPluginFields(const nvinfer1::PluginFieldCollection* plugin_field_collection) {
-  if (plugin_field_collection == nullptr) {
-    return;
-  }
-  LOGS_DEFAULT(VERBOSE) << "plugin fields:";
-  for (int i = 0; i < plugin_field_collection->nbFields; ++i) {
-    auto plugin_field = plugin_field_collection->fields[i];
-    std::string plugin_field_name(plugin_field.name);
-    LOGS_DEFAULT(VERBOSE) << "\t" << plugin_field_name ;
-  }  
-}
-
 /*
  * Create custom op domain list for TRT plugins.
  *
@@ -54,9 +41,6 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
     auto plugin_creator = plugin_creators[i];
     std::string plugin_name(plugin_creator->getPluginName());
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
-
-    //auto plugin_field_collection = plugin_creator->getFieldNames();
-    //IterateTensorRTPluginFields(plugin_field_collection);
 
     // plugin has different versions and we only register once
     if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
