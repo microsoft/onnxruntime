@@ -264,6 +264,7 @@ class PosixThread : public EnvThread {
       // Ignore exceptions
       std::cout << "caught posix thread exception during creation: " << ex.what() << std::endl;
     }
+    pthread_exit(0);
     return nullptr;
   }
   static void CustomThreadMain(void* param) {
