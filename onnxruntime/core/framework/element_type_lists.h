@@ -9,6 +9,7 @@
 #include "boost/mp11.hpp"
 
 #include "core/common/type_list.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 
 namespace onnxruntime {
@@ -45,6 +46,8 @@ using AllFixedSize =
         uint8_t,
         MLFloat16,
         BFloat16,
+        FloatE4M3,
+        FloatE5M2,
         bool>;
 
 using All =
@@ -61,7 +64,9 @@ using AllIeeeFloat =
     TypeList<
         float,
         double,
-        MLFloat16>;
+        MLFloat16,
+        FloatE4M3,
+        FloatE5M2>;
 
 using AllNumeric =
     TypeList<
@@ -76,7 +81,9 @@ using AllNumeric =
         int8_t,
         uint8_t,
         MLFloat16,
-        BFloat16>;
+        BFloat16,
+        FloatE4M3,
+        FloatE5M2>;
 
 }  // namespace element_type_lists
 

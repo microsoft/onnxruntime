@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <string>
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/graph/graph.h"
 #include "core/util/math.h"
@@ -268,6 +269,14 @@ class GradientBuilderBase {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
 
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3) {
+      return ConstantScalarNode(FloatE4M3(value), {1}, arg_name);
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2) {
+      return ConstantScalarNode(FloatE5M2(value), {1}, arg_name);
+    }
+
     return ConstantScalarNode(value, {1}, arg_name);
   }
 
@@ -278,6 +287,14 @@ class GradientBuilderBase {
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16) {
       return ScalarTensorProto(BFloat16(value), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3) {
+      return ScalarTensorProto(FloatE4M3(value), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2) {
+      return ScalarTensorProto(FloatE5M2(value), {1});
     }
 
     return ScalarTensorProto(value, {1});

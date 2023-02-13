@@ -1,5 +1,6 @@
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/util/math.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 
 namespace ONNX_NAMESPACE {
@@ -76,6 +77,12 @@ TensorProto ToTensor(double value, TensorProto_DataType elem_type) {
       break;
     case TensorProto_DataType::TensorProto_DataType_BFLOAT16:
       t.add_int32_data(onnxruntime::BFloat16((float)value).val);
+      break;
+    case TensorProto_DataType::TensorProto_DataType_FLOATE4M3:
+      t.add_int32_data(onnxruntime::FloatE4M3((float)value).val);
+      break;
+    case TensorProto_DataType::TensorProto_DataType_FLOATE5M2:
+      t.add_int32_data(onnxruntime::FloatE5M2((float)value).val);
       break;
     default:
       assert(false);

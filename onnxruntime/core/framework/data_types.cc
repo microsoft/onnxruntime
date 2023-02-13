@@ -852,6 +852,10 @@ const char* DataTypeImpl::ToString(MLDataType type) {
         return "float16";
       case TensorProto_DataType_BFLOAT16:
         return "bfloat16";
+      case TensorProto_DataType_FLOATE4M3:
+        return "floate4m3";
+      case TensorProto_DataType_FLOATE5M2:
+        return "floate5m2";
       default:
         break;
     }

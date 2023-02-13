@@ -100,6 +100,26 @@ struct ToBFloat16<float> {
   }
 };
 
+template <typename T>
+struct ToFloatE4M3;
+
+template <>
+struct ToFloatE4M3<float> {
+  uint8_t operator()(float f) const {
+    return FloatE4M3(f).val;
+  }
+};
+
+template <typename T>
+struct ToFloatE5M2;
+
+template <>
+struct ToFloatE5M2<float> {
+  uint8_t operator()(float f) const {
+    return FloatE5M2(f).val;
+  }
+};
+
 template <>
 struct ToBFloat16<double> {
   uint16_t operator()(double d) const {

@@ -13,6 +13,7 @@
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #if !defined(ORT_MINIMAL_BUILD)

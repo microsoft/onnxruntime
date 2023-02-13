@@ -126,9 +126,11 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // skip placing on CPU if the data typs is float16 or bfloat16
+      // skip placing on CPU if the data typs is float16 or bfloat16 or floate4m3 or floate5m2
       if (input->Type() == DataTypeUtils::ToType("float16") ||
-          input->Type() == DataTypeUtils::ToType("bfloat16")) {
+          input->Type() == DataTypeUtils::ToType("bfloat16") ||
+          input->Type() == DataTypeUtils::ToType("floate4m3") ||
+          input->Type() == DataTypeUtils::ToType("floate5m2")) {
         place_in_cpu = false;
         break;
       }
