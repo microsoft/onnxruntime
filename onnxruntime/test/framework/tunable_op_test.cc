@@ -666,7 +666,7 @@ TEST(TuningContext, GetAndLoadTuningResults) {
   }
   ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(kTestKey)));
 
-  ASSERT_EQ(trs.results.size(), 1);
+  ASSERT_EQ(trs.results.size(), 1u);
   ASSERT_THAT(trs.results, ::testing::Contains(::testing::Key(op.Signature())));
   ASSERT_THAT(trs.results[op.Signature()], ::testing::Contains(::testing::Key(params.Signature())));
   ASSERT_EQ(trs.results[op.Signature()][params.Signature()], tuning::TunableVecAddSelectFast::kFastFullId);
