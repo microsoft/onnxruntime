@@ -9,10 +9,6 @@
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
 
-#ifndef NDEBUG
-//#define DEBUG_GENERATION 1  // uncomment it for debugging beam search
-#endif
-
 namespace onnxruntime {
 
 namespace concurrency {
@@ -57,13 +53,16 @@ struct IBeamSearchCpuState {
 
 template <typename T>
 struct IGreedySearchState {
-  gsl::span<int64_t> next_tokens_cpu;   // shape (batch_size)
-  gsl::span<int32_t> sequences_space;   // shape (2, batch_size, max_length)
-  gsl::span<int32_t> sequence_lengths;  // shape (batch_size)
-  gsl::span<int32_t> next_positions;    // shape (batch_size, num_beams). Next position value for position_ids.
-  gsl::span<bool> eos_meet;             // shape (batch_size)
-  gsl::span<T> next_token_scores;       // shape (batch_size, vocab_size)
-  gsl::span<int32_t> next_tokens;       // shape (batch_size)
+  gsl::span<int32_t> sequences_space;          // shape (2, batch_size, max_length)
+  gsl::span<int32_t> sequence_lengths;         // shape (batch_size)
+  gsl::span<int32_t> next_positions;           // shape (batch_size, num_beams). Next position value for position_ids.
+  gsl::span<bool> eos_meet;                    // shape (batch_size)
+  gsl::span<T> next_token_scores;              // shape (batch_size, vocab_size)
+  gsl::span<int32_t> next_tokens;              // shape (batch_size)
+  gsl::span<T> temp_topk_scores_buffer;        // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1 (GPU only)
+  gsl::span<int32_t> temp_topk_tokens_buffer;  // shape (batch_size, parts_of_vocab), temp buffer for topk stage 1(GPU only)
+  gsl::span<T> topk_scores_buffer;             // shape (batch_size), output buffer for topk stage 2 (GPU only)
+  gsl::span<int32_t> topk_tokens_buffer;       // shape (batch_size), output buffer for topk stage 2 (GPU only)
 };
 
 template <typename T>
@@ -77,7 +76,7 @@ struct ISamplingState {
   gsl::span<float> h_softmaxed_score;
   gsl::span<float> d_sampled;
   gsl::span<float> h_sampled_all;
-  gsl::span<int64_t> d_indices;
+  gsl::span<int32_t> d_indices;
   gsl::span<int> d_presence_mask;
 
   BufferUniquePtr storage_buffer;
@@ -164,6 +163,26 @@ struct IGenerationParameters {
   bool custom_sampling = false;
 };
 
+// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+#ifdef DEBUG_GENERATION
+#define DUMP_TENSOR_LEVEL 2
+#else
+#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
+#endif
+
+#if DUMP_TENSOR_LEVEL > 0
+#define DUMP_TENSOR_INIT() transformers::CudaTensorConsoleDumper dumper
+#define DUMP_TENSOR(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR(...)
+#endif
+#if DUMP_TENSOR_LEVEL > 1
+#define DUMP_TENSOR_D(...) dumper.Print(__VA_ARGS__)
+#else
+#define DUMP_TENSOR_D(...)
+#endif
+
 class IConsoleDumper {
  public:
   IConsoleDumper() : is_enabled_(true) {}
@@ -172,6 +191,7 @@ class IConsoleDumper {
   bool IsEnabled() const { return is_enabled_; }
   virtual void Print(const char* name, const float* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const = 0;
+  virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;

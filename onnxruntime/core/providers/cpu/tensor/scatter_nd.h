@@ -18,7 +18,9 @@ class ScatterND final : public OpKernel {
   enum class Reduction : int {
     None = 0,
     Add,
-    Mul
+    Mul,
+    Min,
+    Max,
   };
 
   explicit ScatterND(const OpKernelInfo& info) : OpKernel(info) {
@@ -30,6 +32,10 @@ class ScatterND final : public OpKernel {
         reduction_ = Reduction::Add;
       else if (reduction == "mul")
         reduction_ = Reduction::Mul;
+      else if (reduction == "min")
+        reduction_ = Reduction::Min;
+      else if (reduction == "max")
+        reduction_ = Reduction::Max;
     }
   }
 

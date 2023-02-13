@@ -24,6 +24,8 @@ namespace tvm {
 
   void TVMSetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
   void TVM_VM_SetInputs(TvmModule& mod, std::vector<size_t>& inds, std::vector<DLTensor>& inputs);
+  void TVMSetOutputsZeroCopy(TvmModule& mod, std::vector<DLTensor>& outputs);
+  void TVM_VM_SetOutputsZeroCopy(TvmModule& mod, std::vector<DLTensor>& outputs);
   void TVMGetOutputs(TvmModule& mod, std::vector<DLTensor>& outputs);
   void TVM_VM_GetOutputs(TvmModule& mod, std::vector<DLTensor>& outputs);
   void TVMGetOutputShapes(TvmModule& mod,

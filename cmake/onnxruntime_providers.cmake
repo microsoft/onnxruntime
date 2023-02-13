@@ -147,6 +147,9 @@ endif()
 if (onnxruntime_USE_CANN)
   set(PROVIDERS_CANN onnxruntime_providers_cann)
 endif()
+if (onnxruntime_USE_AZURE)
+  set(PROVIDERS_AZURE onnxruntime_providers_azure)
+endif()
 
 source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_common_srcs} ${onnxruntime_providers_srcs})
 
@@ -380,6 +383,11 @@ if (onnxruntime_USE_CUDA)
         "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/aten_ops/aten_op.cc"
       )
     endif()
+    if (NOT onnxruntime_USE_NCCL)
+      list(REMOVE_ITEM onnxruntime_cuda_contrib_ops_cc_srcs
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/collective/nccl_kernels.cc"
+      )
+    endif()
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
     source_group(TREE ${ONNXRUNTIME_ROOT} FILES ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
     list(APPEND onnxruntime_providers_cuda_src ${onnxruntime_cuda_contrib_ops_cc_srcs} ${onnxruntime_cuda_contrib_ops_cu_srcs})
@@ -468,7 +476,9 @@ if (onnxruntime_USE_CUDA)
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers)
   if (onnxruntime_ENABLE_TRAINING_OPS)
     onnxruntime_add_include_to_target(onnxruntime_providers_cuda onnxruntime_training)
-    target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+    if (onnxruntime_ENABLE_TRAINING)
+      target_link_libraries(onnxruntime_providers_cuda PRIVATE onnxruntime_training)
+    endif()
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_add_include_to_target(onnxruntime_providers_cuda Python::Module)
     endif()
@@ -479,6 +489,12 @@ if (onnxruntime_USE_CUDA)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()
+
+  if (onnxruntime_USE_FLASH_ATTENTION)
+    include(cutlass)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples)
+  endif()
+
   target_include_directories(onnxruntime_providers_cuda PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}  ${eigen_INCLUDE_DIRS} ${TVM_INCLUDES} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
   set_target_properties(onnxruntime_providers_cuda PROPERTIES LINKER_LANGUAGE CUDA)
@@ -496,14 +512,15 @@ if (onnxruntime_USE_CUDA)
 
   if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${ORTTRAINING_ROOT} ${MPI_CXX_INCLUDE_DIRS})
-    if(onnxruntime_USE_MPI)
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    endif()
+  endif()
 
-    if (onnxruntime_USE_NCCL)
-      target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
-      target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
-    endif()
+  if(onnxruntime_USE_MPI)
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${MPI_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  endif()
+
+  if (onnxruntime_USE_NCCL)
+    target_include_directories(onnxruntime_providers_cuda PRIVATE ${NCCL_INCLUDE_DIRS})
+    target_link_libraries(onnxruntime_providers_cuda PRIVATE ${NCCL_LIBRARIES})
   endif()
 
   if (WIN32)
@@ -576,6 +593,11 @@ if (onnxruntime_USE_DNNL)
   # Needed for the provider interface, as it includes training headers when training is enabled
   if (onnxruntime_ENABLE_TRAINING_OPS)
     target_include_directories(onnxruntime_providers_dnnl PRIVATE ${ORTTRAINING_ROOT})
+  endif()
+
+  # Needed for threadpool handling
+  if(onnxruntime_BUILD_JAVA)
+    add_compile_definitions(DNNL_JAVA)
   endif()
 
   if(APPLE)
@@ -667,9 +689,10 @@ if (onnxruntime_USE_TENSORRT)
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
       target_compile_options(nvonnxparser PRIVATE /FIio.h /wd4100)
     endif()
-    include_directories(${TENSORRT_INCLUDE_DIR})
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
+
+  include_directories(${TENSORRT_INCLUDE_DIR})
 
   set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
@@ -688,11 +711,10 @@ if (onnxruntime_USE_TENSORRT)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS})
-    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${TENSORRT_INCLUDE_DIR} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   else()
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} cudart ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS})
-    target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   endif()
+  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDNN_HOME}/include)
   endif()
@@ -1126,6 +1148,7 @@ if (onnxruntime_USE_DML)
 
   target_add_dml(onnxruntime_providers_dml)
   target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_dml PRIVATE onnxruntime_framework)
   onnxruntime_add_include_to_target(onnxruntime_providers_dml onnxruntime_common)
   if (GDK_PLATFORM STREQUAL Scarlett)
     target_link_libraries(onnxruntime_providers_dml PRIVATE ${gdk_dx_libs})
@@ -1335,12 +1358,6 @@ if (onnxruntime_USE_ROCM)
 
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
-    if (NOT onnxruntime_ENABLE_ATEN)
-      list(REMOVE_ITEM onnxruntime_rocm_contrib_ops_cc_srcs
-        "${ONNXRUNTIME_ROOT}/contrib_ops/rocm/aten_ops/aten_op.cc"
-      )
-    endif()
-
     hipify("onnxruntime/contrib_ops" contrib_ops_excluded_files onnxruntime_rocm_generated_contrib_ops_cc_srcs onnxruntime_rocm_generated_contrib_ops_cu_srcs)
 
     # add using ONNXRUNTIME_ROOT so they show up under the 'contrib_ops' folder in Visual Studio
@@ -1432,8 +1449,20 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
-  include(composable_kernel)
-  target_link_libraries(onnxruntime_providers_rocm PRIVATE onnxruntime_composable_kernel_includes device_gemm_instance)
+  if (onnxruntime_USE_COMPOSABLE_KERNEL)
+    include(composable_kernel)
+    target_link_libraries(onnxruntime_providers_rocm PRIVATE
+      onnxruntime_composable_kernel_includes
+      # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
+      # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
+      # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
+      device_gemm_instance
+      device_gemm_add_fastgelu_instance
+      device_gemm_fastgelu_instance
+      device_batched_gemm_instance
+    )
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
+  endif()
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
@@ -1584,6 +1613,27 @@ if (onnxruntime_USE_CANN)
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if (onnxruntime_USE_AZURE)
+
+  file(GLOB_RECURSE onnxruntime_providers_azure_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/azure/*.cc"
+  )
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_azure_src})
+  onnxruntime_add_static_library(onnxruntime_providers_azure ${onnxruntime_providers_azure_src})
+  add_dependencies(onnxruntime_providers_azure ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  onnxruntime_add_include_to_target(onnxruntime_providers_azure onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers Boost::mp11)
+  target_link_libraries(onnxruntime_providers_azure PRIVATE onnx onnxruntime_common onnxruntime_framework)
+  set_target_properties(onnxruntime_providers_azure PROPERTIES FOLDER "ONNXRuntime")
+  set_target_properties(onnxruntime_providers_azure PROPERTIES LINKER_LANGUAGE CXX)
+
+  install(TARGETS onnxruntime_providers_azure
+          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+          FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

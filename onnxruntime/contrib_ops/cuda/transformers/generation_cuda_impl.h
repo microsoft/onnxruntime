@@ -103,7 +103,7 @@ void LaunchFilterLogitsKernel(float* d_sorted_logits_in,
 
 void TorchMultinomialKernelLauncher(float* d_input,
                                     float* d_sampled,
-                                    int64_t* d_output,
+                                    int32_t* d_output,
                                     int batch_size,
                                     int vocab_size,
                                     int* d_presence_mask,

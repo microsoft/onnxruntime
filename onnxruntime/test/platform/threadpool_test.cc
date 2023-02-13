@@ -608,7 +608,8 @@ TEST(ThreadPoolTest, TestAffinityStringWellShaped) {
     auto non_default_tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(),
                                                         tp_params,
                                                         concurrency::ThreadPoolType::INTRA_OP);
-    ASSERT_TRUE(concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get()) == 3);
+    auto DOP = concurrency::ThreadPool::DegreeOfParallelism(non_default_tp.get());
+    ASSERT_TRUE(DOP >= 3 && DOP % 3 == 0); // for hybrid cpu, dop is a multiple of 3
   }
 }
 

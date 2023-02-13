@@ -1,5 +1,8 @@
 FROM rocm/pytorch:rocm5.4_ubuntu20.04_py3.7_pytorch_1.12.1
 
+# MIGraphX version should be the same as ROCm version
+ARG MIGRAPHX_VERSION=rocm-5.4.0
+
 ENV DEBIAN_FRONTEND noninteractive
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 
@@ -21,8 +24,6 @@ RUN cd /opt/mpi_install/ucx/build &&\
       make -j $(nproc) &&\
       make install
 
-
-
 RUN apt-get update &&\
     apt-get install -y half libnuma-dev
 
@@ -31,7 +32,7 @@ RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.
 
 # Install MIGraphX from source
 RUN mkdir -p /migraphx
-RUN cd /migraphx && git clone --depth=1 --branch migraphx_for_ort https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
+RUN cd /migraphx && git clone --depth=1 --branch ${MIGRAPHX_VERSION} https://github.com/ROCmSoftwarePlatform/AMDMIGraphX src
 RUN cd /migraphx && rbuild package --cxx /opt/rocm/llvm/bin/clang++ -d /migraphx/deps -B /migraphx/build -S /migraphx/src/ -DPYTHON_EXECUTABLE=/usr/bin/python3
 RUN dpkg -i /migraphx/build/*.deb
 RUN rm -rf /migraphx

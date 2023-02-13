@@ -112,16 +112,20 @@ void CPUAllocator::Free(void* p) {
   AllocatorDefaultFree(p);
 }
 
-void* AllocateBufferWithOptions(std::shared_ptr<IAllocator>& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
+void* AllocateBufferWithOptions(IAllocator& alloc, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn) {
   if (use_reserve)
-    return alloc->Reserve(size);
-  if (stream && alloc->Info().alloc_type == OrtArenaAllocator) {
-    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*static_cast<BFCArena*>(alloc.get()));
+    return alloc.Reserve(size);
+  if (stream && alloc.Info().alloc_type == OrtArenaAllocator) {
+#ifdef ORT_ENABLE_STREAM
+    auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(static_cast<BFCArena&>(alloc));
     if (stream_aware_alloc) {
       return stream_aware_alloc->AllocOnStream(size, stream, wait_fn);
     }
+#else
+  ORT_UNUSED_PARAMETER(wait_fn);
+#endif  // ORT_ENABLE_STREAM
   }
-  return alloc->Alloc(size);
+  return alloc.Alloc(size);
 }
 }  // namespace onnxruntime
 
