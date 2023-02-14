@@ -342,10 +342,11 @@ class FusionTulrAttention(FusionAttention):
 # Input(2, "key_length", "The length of key.", "U")
 # Output(0, "output", "4D output tensor with shape (1, num_heads, sequence_length, sequence_length)", "T")
 class FusionRelativePositionBiasBlock(Fusion):
-    def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: int):
+    def __init__(self, model: OnnxModel, max_distance: int, is_bidirectional: int, num_heads: int):
         super().__init__(model, "RelativePositionBias", "GatherElements")
         self.max_distance = max_distance
         self.is_bidirectional = is_bidirectional
+        self.num_heads = num_heads
 
     def fuse_large(self, node, input_name_to_nodes, output_name_to_node):
         stem_nodes = self.model.match_parent_path(
@@ -430,8 +431,12 @@ class FusionRelativePositionBiasBlock(Fusion):
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
-        self.fuse_large(node, input_name_to_nodes, output_name_to_node)
-        self.fuse_base(node, input_name_to_nodes, output_name_to_node)
+        if self.num_heads == 16:
+            self.fuse_large(node, input_name_to_nodes, output_name_to_node)
+        elif self.num_heads == 12:
+            self.fuse_base(node, input_name_to_nodes, output_name_to_node)
+        else:
+            raise ValueError("Unsupported number of heads: {}".format(self.num_heads))
 
 # Attr("num_heads", "Number of attention heads", AttributeProto::INT)
 # Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
@@ -489,7 +494,7 @@ class TulrOnnxModel(BertOnnxModel):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionTulrAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
-        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128, True)
+        self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128, True, self.num_heads)
         self.gru_fusion = FusionGRUGate(self, self.num_heads)
 
     def fuse_attention(self):
