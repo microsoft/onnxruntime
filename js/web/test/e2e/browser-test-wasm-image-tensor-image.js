@@ -16,7 +16,7 @@ function getRndColor() {
 it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
 
   // Creating Image HTML Image Element
-  var img = new Image();
+  let img = new Image();
   img.crossOrigin = 'Anonymous';
 
   // Creating canvas element
@@ -55,8 +55,7 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
   }
 
   // Copying the canavas data to the image as Data URL
-  var image = new Image();
-  image = canvas.toDataURL();
+  let image = canvas.toDataURL();
 
   // Testing Data URL --> Tensor --> Data URL --> Tensor
   // Data URL to tensor API -
