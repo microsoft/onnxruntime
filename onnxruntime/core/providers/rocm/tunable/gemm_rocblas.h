@@ -140,7 +140,7 @@ class IndexedRocBlasGemmOp {
 };
 
 template <typename T>
-class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
+class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   RocBlasGemmTunableOp() {
     // Ensure that the default implementation is always present

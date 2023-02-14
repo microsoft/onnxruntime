@@ -100,8 +100,8 @@ void SessionState::SetupAllocators() {
       } else {
         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
         // in order to support scenarios such as the CUDA EP's per-thread allocator.
-        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-          return provider->GetAllocator(id, mem_type);
+        allocators_[memory_info] = [&provider](OrtMemType mem_type) {
+          return provider->GetAllocator(mem_type);
         };
       }
     }
@@ -112,7 +112,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
   AllocatorPtr result;
   auto entry = allocators_.find(location);
   if (entry != allocators_.cend()) {
-    result = entry->second(location.id, location.mem_type);
+    result = entry->second(location.mem_type);
   }
 
   return result;
@@ -121,7 +121,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
   for (const auto& iter : allocators_) {
     if (iter.first.device == device) {
-      return iter.second(device.Id(), iter.first.mem_type);
+      return iter.second(iter.first.mem_type);
     }
   }
   return nullptr;
@@ -451,7 +451,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   }
 
                 } else {  // caching of pre-packed weights' turned OFF
-                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
                                                       session_cpu_alloc,  // use allocator tied to this session
                                                       is_packed,
@@ -1004,7 +1004,7 @@ Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
-      if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+      if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider && ep != kRocmExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;

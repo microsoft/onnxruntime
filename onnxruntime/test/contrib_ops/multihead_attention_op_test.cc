@@ -221,12 +221,15 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
     }
 
 #if USE_FLASH_ATTENTION
-    kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
-    if (!SkipAttentionKernel(data, kernel_type)) {
-      RunMultiHeadAttentionKernel(
-          data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
-          data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
-          data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
+    if (data.sequence_length >= contrib::attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
+        data.kv_sequence_length >= contrib::attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) {
+      kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
+      if (!SkipAttentionKernel(data, kernel_type)) {
+        RunMultiHeadAttentionKernel(
+            data.query_data, data.key_data, data.value_data, data.bias_data, data.key_padding_mask_data, data.mask_type,
+            data.fp32_output_data, data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length,
+            data.hidden_size, data.v_hidden_size, kernel_type, use_float16);
+      }
     }
 #endif
 

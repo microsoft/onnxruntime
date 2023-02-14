@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <stddef.h> // needed for size_t on some platforms
+
 namespace onnxruntime {
 
 constexpr const char* kNoOp = "NoOp";
@@ -22,6 +24,10 @@ constexpr const char* kMSDmlDomain = "com.microsoft.dml";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kMIGraphXDomain = "";
 constexpr const char* kVitisAIDomain = "com.xilinx";
+
+// This is moved from the OrtApis::GetAvailableProviders implementation
+// where it is enforced
+constexpr size_t kMaxExecutionProviderNameLen = 30;
 
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";

@@ -11,18 +11,18 @@ namespace contrib {
 namespace cuda {
 namespace transformers {
 
-#ifdef DEBUG_GENERATION
+#if DUMP_TENSOR_LEVEL > 0
 template <typename T>
 class PinnedHostBuffer {
  public:
   PinnedHostBuffer(size_t length)
       : buffer_(nullptr) {
-    cudaHostAlloc(&buffer_, length * sizeof(T), cudaHostAllocDefault);
+    CUDA_CALL_THROW(cudaHostAlloc((void**)&buffer_, length * sizeof(T), cudaHostAllocDefault));
   }
 
   virtual ~PinnedHostBuffer() {
     if (buffer_) {
-      cudaFreeHost(buffer_);
+      CUDA_CALL_THROW(cudaFreeHost(buffer_));
     }
   }
 
@@ -46,8 +46,9 @@ void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, bool i
   // In that case, we copy tensor data as well. It is not needed, but it keeps code simple.
   int num_items = dim0 * dim1;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
-  cudaDeviceSynchronize();
-  cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost);
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
+
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -64,8 +65,8 @@ template <typename T>
 void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2, bool is_gpu_tensor) {
   int num_items = dim0 * dim1 * dim2;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
-  cudaDeviceSynchronize();
-  cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost);
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;
@@ -82,8 +83,8 @@ template <typename T>
 void DumpGpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2, int dim3, bool is_gpu_tensor) {
   int num_items = dim0 * dim1 * dim2 * dim3;
   auto data = std::make_shared<PinnedHostBuffer<T>>(num_items);
-  cudaDeviceSynchronize();
-  cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost);
+  CUDA_CALL_THROW(cudaDeviceSynchronize());
+  CUDA_CALL_THROW(cudaMemcpy(*data, tensor, num_items * sizeof(T), is_gpu_tensor ? cudaMemcpyDeviceToHost : cudaMemcpyHostToHost));
 
   if (nullptr != name) {
     std::cout << std::string(name) << std::endl;

@@ -269,12 +269,13 @@ export class Tensor implements TensorInterface {
     if (isHTMLImageEle) {
       // HTMLImageElement - image object - format is RGBA by default
       const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
       const pixels2DContext = canvas.getContext('2d');
 
       if (pixels2DContext != null) {
-        let height = image.naturalHeight;
-        let width = image.naturalWidth;
-
+        let height = image.height;
+        let width = image.width;
         if (options !== undefined && options.resizedHeight !== undefined && options.resizedWidth !== undefined) {
           height = options.resizedHeight;
           width = options.resizedWidth;
@@ -303,10 +304,7 @@ export class Tensor implements TensorInterface {
           tensorConfig.width = width;
         }
 
-        canvas.width = width;
-        canvas.height = height;
-
-        pixels2DContext.drawImage(image, 0, 0, width, height);
+        pixels2DContext.drawImage(image, 0, 0);
         data = pixels2DContext.getImageData(0, 0, width, height).data;
       } else {
         throw new Error('Can not access image data');

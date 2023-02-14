@@ -1782,6 +1782,34 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+def test_aten_upsample_bilinear():
+    class _NeuralNetUpsampleBilinear(torch.nn.Module):
+        def __init__(self):
+            super(_NeuralNetUpsampleBilinear, self).__init__()
+
+        def forward(self, input):
+            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleBilinear().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 4, 6, 8], dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
         def __init__(self, D):
@@ -5577,6 +5605,61 @@ def test_kwargs_dict_input():
     x_copy = copy.deepcopy(x)
 
     _test_helpers.assert_values_are_close(pt_model(x, batch=batch), ort_model(x_copy, batch=batch_copy))
+
+
+def test_named_kwargs_dict_input():
+    class DictNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, *args, named_kwarg, **kwargs):
+            a = named_kwarg["named_one"]
+            b = named_kwarg["named_two"]["named_three"]
+            c = named_kwarg["named_two"]["named_four"]
+            d = named_kwarg["named_five"]["named_six"]
+            e = named_kwarg["named_five"]["named_seven"]["named_eight"]
+            batch = kwargs["batch"]
+            f = batch["one_value"]
+            g = batch["two_value"]["three_value"]
+            h = batch["two_value"]["four_value"]
+            i = batch["five_value"]["six_value"]
+            j = batch["five_value"]["seven_value"]["eight_value"]
+            return self.dummy + a + b + c + d + e + f + g + h + i + j
+
+    device = "cuda"
+    N, D_in = 64, 784
+    pt_model = DictNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    named_kwarg = {
+        "named_one": torch.randn(N, D_in, device=device),
+        "named_two": {
+            "named_three": torch.randn(N, D_in, device=device),
+            "named_four": torch.randn(N, D_in, device=device),
+        },
+        "named_five": {
+            "named_six": torch.randn(N, D_in, device=device),
+            "named_seven": {"named_eight": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch = {
+        "one_value": torch.randn(N, D_in, device=device),
+        "two_value": {
+            "three_value": torch.randn(N, D_in, device=device),
+            "four_value": torch.randn(N, D_in, device=device),
+        },
+        "five_value": {
+            "six_value": torch.randn(N, D_in, device=device),
+            "seven_value": {"eight_value": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch_copy = copy.deepcopy(batch)
+    x_copy = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(
+        pt_model(x, named_kwarg=named_kwarg, batch=batch), ort_model(x_copy, named_kwarg=named_kwarg, batch=batch_copy)
+    )
 
 
 @pytest.mark.parametrize("training_mode", [False, True])
