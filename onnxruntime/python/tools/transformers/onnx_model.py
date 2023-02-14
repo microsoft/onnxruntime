@@ -1038,7 +1038,7 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
-        return numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)
+        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
     def remove_duplicated_initializer(self):
         """Remove initializers with duplicated values, and only keep the first one.
