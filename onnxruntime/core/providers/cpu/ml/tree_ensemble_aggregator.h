@@ -15,7 +15,7 @@ namespace detail {
 struct TreeNodeElementId {
   int64_t tree_id;
   int64_t node_id;
-  TreeNodeElementId() { }
+  TreeNodeElementId() {}
   TreeNodeElementId(int64_t tid, int64_t nid) {
     tree_id = tid;
     node_id = nid;

@@ -238,8 +238,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } */
 
     node.flags |= static_cast<uint8_t>(cmodes[i]);
-    node.truenode_inc_or_first_weight = 0;      // nodes_truenodeids[i] if not a leaf
-    node.falsenode_inc_or_n_weights = 0;        // nodes_falsenodeids[i] if not a leaf
+    node.truenode_inc_or_first_weight = 0;  // nodes_truenodeids[i] if not a leaf
+    node.falsenode_inc_or_n_weights = 0;    // nodes_falsenodeids[i] if not a leaf
 
     if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
       node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
@@ -287,7 +287,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // Initialize the leaves.
   TreeNodeElementId ind;
   SparseValue<ThresholdType> w;
-  for (size_t indi = 0; indi < target_class_nodeids.size(); ++indi) {
+  size_t indi;
+  for (indi = 0, limit = target_class_nodeids.size(); indi < limit; ++indi) {
     ind = indices[indi].first;
     i = indices[indi].second;
     if (idi.find(ind) == idi.end()) {
@@ -316,7 +317,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Initialize all the nodes but the leaves.
   int64_t previous = -1;
-  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
+  for (i = 0, limit = n_nodes_; i < limit; ++i) {
     if ((previous == -1) || (previous != node_tree_ids[i].tree_id))
       roots_.push_back(&(nodes_[idi[node_tree_ids[i]]]));
     previous = node_tree_ids[i].tree_id;
