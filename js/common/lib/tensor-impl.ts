@@ -203,12 +203,12 @@ export class Tensor implements TensorInterface {
     const outputformat = options.tensorFormat !== undefined ?
         (options.tensorFormat !== undefined ? options.tensorFormat : 'RGB') :
         'RGB';
-    const offset = height * width;
-    const float32Data = outputformat === 'RGBA' ? new Float32Array(offset * 4) : new Float32Array(offset * 3);
+    const stride = height * width;
+    const float32Data = outputformat === 'RGBA' ? new Float32Array(stride * 4) : new Float32Array(stride * 3);
 
     // Default pointer assignments
     let step = 4, rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
-    let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
+    let rTensorPointer = 0, gTensorPointer = stride, bTensorPointer = stride * 2, aTensorPointer = -1;
 
     // Updating the pointer assignments based on the input image format
     if (inputformat === 'RGB') {
@@ -221,18 +221,18 @@ export class Tensor implements TensorInterface {
 
     // Updating the pointer assignments based on the output tensor format
     if (outputformat === 'RGBA') {
-      aTensorPointer = offset * 3;
+      aTensorPointer = stride * 3;
     } else if (outputformat === 'RBG') {
       rTensorPointer = 0;
-      bTensorPointer = offset;
-      gTensorPointer = offset * 2;
+      bTensorPointer = stride;
+      gTensorPointer = stride * 2;
     } else if (outputformat === 'BGR') {
       bTensorPointer = 0;
-      gTensorPointer = offset;
-      rTensorPointer = offset * 2;
+      gTensorPointer = stride;
+      rTensorPointer = stride * 2;
     }
 
-    for (let i = 0; i < offset;
+    for (let i = 0; i < stride;
          i++, rImagePointer += step, bImagePointer += step, gImagePointer += step, aImagePointer += step) {
       float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias) / normMean;
       float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias) / normMean;
@@ -252,7 +252,7 @@ export class Tensor implements TensorInterface {
   static async fromImage(imageData: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(bitmap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(url: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(string: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
       Promise<Tensor> {
@@ -260,7 +260,7 @@ export class Tensor implements TensorInterface {
     const isHTMLImageEle = typeof (HTMLImageElement) !== 'undefined' && image instanceof HTMLImageElement;
     const isImageDataEle = typeof (ImageData) !== 'undefined' && image instanceof ImageData;
     const isImageBitmap = typeof (ImageBitmap) !== 'undefined' && image instanceof ImageBitmap;
-    const isURL = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
+    const isString = typeof (String) !== 'undefined' && (image instanceof String || typeof image === 'string');
 
     let data: Uint8ClampedArray|undefined;
     let tensorConfig: TensorFromImageOptions = {};
@@ -394,7 +394,7 @@ export class Tensor implements TensorInterface {
         throw new Error('Can not access image data');
       }
 
-    } else if (isURL) {
+    } else if (isString) {
       return new Promise((resolve, reject) => {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
@@ -445,10 +445,10 @@ export class Tensor implements TensorInterface {
     const pixels2DContext = canvas.getContext('2d');
 
     const image = this.toImageData(options);
-    if (pixels2DContext!==null){
-     pixels2DContext.putImageData(image, 0, 0);
-     return canvas.toDataURL();
-    }else{
+    if (pixels2DContext !== null) {
+      pixels2DContext.putImageData(image, 0, 0);
+      return canvas.toDataURL();
+    } else {
       throw new Error('Can not access image data');
     }
   }
@@ -465,7 +465,7 @@ export class Tensor implements TensorInterface {
       const inputformat = options !== undefined ? (options.format !== undefined ? options.format : 'RGB') : 'RGB';
       const normMean = options !== undefined ? (options.norm?.mean !== undefined ? options.norm.mean : 255) : 255;
       const normBias = options !== undefined ? (options.norm?.bias !== undefined ? options.norm.bias : 0) : 0;
-      const offset = height * width;
+      const stride = height * width;
 
       if (options !== undefined) {
         if (options.height !== undefined && options.height !== height) {
@@ -483,22 +483,22 @@ export class Tensor implements TensorInterface {
       // Default pointer assignments
       const step = 4;
       let rImagePointer = 0, gImagePointer = 1, bImagePointer = 2, aImagePointer = 3;
-      let rTensorPointer = 0, gTensorPointer = offset, bTensorPointer = offset * 2, aTensorPointer = -1;
+      let rTensorPointer = 0, gTensorPointer = stride, bTensorPointer = stride * 2, aTensorPointer = -1;
 
       // Updating the pointer assignments based on the input image format
       if (inputformat === 'RGBA') {
         rTensorPointer = 0;
-        gTensorPointer = offset;
-        bTensorPointer = offset * 2;
-        aTensorPointer = offset * 3;
+        gTensorPointer = stride;
+        bTensorPointer = stride * 2;
+        aTensorPointer = stride * 3;
       } else if (inputformat === 'RGB') {
         rTensorPointer = 0;
-        gTensorPointer = offset;
-        bTensorPointer = offset * 2;
+        gTensorPointer = stride;
+        bTensorPointer = stride * 2;
       } else if (inputformat === 'RBG') {
         rTensorPointer = 0;
-        bTensorPointer = offset;
-        gTensorPointer = offset * 2;
+        bTensorPointer = stride;
+        gTensorPointer = stride * 2;
       }
 
       image = pixels2DContext.createImageData(width, height);
