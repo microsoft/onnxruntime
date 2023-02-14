@@ -227,13 +227,14 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } else {
       node.value = nodes_values_as_tensor[i];
     }
-    /* hitrates is not used for inference
+
+    /* hitrates is not used for inference, they are ignored.
     if (nodes_hitrates_as_tensor.empty()) {
       node.hitrates = static_cast<ThresholdType>(i < nodes_hitrates.size() ? nodes_hitrates[i] : -1);
     } else {
       node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
-    }
-    */
+    } */
+
     node.flags |= static_cast<uint8_t>(cmodes[i]);
     node.truenode_inc = 0;   // nodes_truenodeids[i];
     node.falsenode_inc = 0;  // nodes_falsenodeids[i];
@@ -271,17 +272,6 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     falsenode_ids[i] = (coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0;
   }
 
-  int64_t previous = -1;
-  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
-    if ((previous == -1) || (previous != node_tree_ids[i].tree_id))
-      roots_.push_back(&(nodes_[idi[node_tree_ids[i]]]));
-    previous = node_tree_ids[i].tree_id;
-    ORT_ENFORCE(truenode_ids[i] == 0 || truenode_ids[i] > i);
-    nodes_[i].truenode_inc = truenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(truenode_ids[i] - i);
-    ORT_ENFORCE(falsenode_ids[i] == 0 || falsenode_ids[i] > i);
-    nodes_[i].falsenode_inc = falsenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(falsenode_ids[i] - i);
-  }
-
   TreeNodeElementId ind;
   SparseValue<ThresholdType> w;
   for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
@@ -296,7 +286,32 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     } else {
       w.value = target_class_weights_as_tensor[i];
     }
+    if (nodes_[idi[ind]].is_not_leaf()) {
+      ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
+    }
     nodes_[idi[ind]].weights.push_back(w);
+  }
+
+  int64_t previous = -1;
+  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
+    if ((previous == -1) || (previous != node_tree_ids[i].tree_id))
+      roots_.push_back(&(nodes_[idi[node_tree_ids[i]]]));
+    previous = node_tree_ids[i].tree_id;
+    ORT_ENFORCE(truenode_ids[i] == 0 || truenode_ids[i] > i);
+    nodes_[i].truenode_inc = truenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(truenode_ids[i] - i);
+    ORT_ENFORCE(falsenode_ids[i] == 0 || falsenode_ids[i] > i);
+    nodes_[i].falsenode_inc = falsenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(falsenode_ids[i] - i);
+    if (nodes_[i].is_not_leaf()) {
+      if (nodes_[i].weights.size() > 0) {
+        ORT_THROW("Node ", node_tree_ids[i].tree_id, "-", node_tree_ids[i].node_id, " is not a leaf but has weights.");
+      }
+    } else {
+      ORT_ENFORCE(nodes_[i].truenode_inc == 0);
+      ORT_ENFORCE(nodes_[i].falsenode_inc == 0);
+      if (nodes_[i].weights.size() == 0) {
+        ORT_THROW("Node ", node_tree_ids[i].tree_id, "-", node_tree_ids[i].node_id, " is a leaf but has no weight.");
+      }
+    }
   }
 
   n_trees_ = roots_.size();
