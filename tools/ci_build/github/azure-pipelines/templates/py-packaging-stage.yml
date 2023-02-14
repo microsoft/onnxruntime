@@ -435,7 +435,7 @@ stages:
           export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
           python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
           sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --config Release --skip_tests --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64 --build_wheel ${{ parameters.build_py_parameters }}
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --osx_arch=arm64 --config Release --skip_tests --build_wheel ${{ parameters.build_py_parameters }}
         displayName: 'Command Line Script'
 
       - script: |
