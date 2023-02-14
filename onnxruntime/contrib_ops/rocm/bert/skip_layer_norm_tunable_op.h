@@ -49,8 +49,8 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
       !((params->ld <= 1024 && params->ld % VecSize == 0 &&
          params->ld <= ThreadsPerBlock * VecSize && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)));
   SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
-                                                                      dim3(ThreadsPerBlock),
-                                                                      0, params->stream>>>(
+                                                          dim3(ThreadsPerBlock),
+                                                          0, params->stream>>>(
       params->ld, params->input, params->skip,
       params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output,
       (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
@@ -64,8 +64,8 @@ Status SkipLayerNormRegularOp(const SkipLayerNormParams<T>* params) {
          (params->ld >= ThreadsPerBlock * VecSize ||
           (params->ld < GPU_WARP_SIZE && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)))));
   SkipLayerNormKernelVec<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
-                                                                    dim3(ThreadsPerBlock),
-                                                                    0, params->stream>>>(
+                                                        dim3(ThreadsPerBlock),
+                                                        0, params->stream>>>(
       params->ld, params->input, params->skip,
       params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output,
       (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);

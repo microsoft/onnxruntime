@@ -66,7 +66,18 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     y_d = ke.DeviceArray(output_y)
     f = getattr(ke, func)
 
-    my_op = f(y_d, output_optional, input_d, skip_d, gamma_d, beta_d, bias_d, epsilon, hidden_size, batch_size * seq_len * hidden_size)
+    my_op = f(
+        y_d,
+        output_optional,
+        input_d,
+        skip_d,
+        gamma_d,
+        beta_d,
+        bias_d,
+        epsilon,
+        hidden_size,
+        batch_size * seq_len * hidden_size,
+    )
     if my_op.IsSupported():
         my_op.Run()
 
