@@ -18,8 +18,9 @@ TVMRunner::TVMRunner(const TvmEPOptions& options,
   runner_ = getTVMRunnerImpl(mod, options, inputs_info, output_tensors);
 }
 
-common::Status TVMRunner::operator()(FunctionState state, const OrtApi* api, OrtKernelContext* context) {
-  return runner_->run(api, context);
+common::Status TVMRunner::operator()(FunctionState state, const OrtApi* /*api*/, OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+  return runner_->run(ctx);
 }
 
 }   // namespace tvm

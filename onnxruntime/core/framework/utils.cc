@@ -20,6 +20,8 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/TensorSeq.h"
+#include "core/framework/run_options.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #ifdef USE_AZURE
 #include "core/framework/cloud_executor.h"
 #endif
@@ -793,13 +795,14 @@ common::Status ExecuteGraph(const SessionState& session_state,
                                   logger);
   }
 #endif
+  bool synchronize_execution_providers = run_options.config_options.GetConfigOrDefault(kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
   return ExecuteGraph(session_state,
                       feeds_fetches_manager,
                       feeds, fetches,
                       execution_mode,
                       run_options.terminate,
                       logger,
-                      run_options.synchronize_execution_providers,
+                      synchronize_execution_providers,
                       run_options.only_execute_path_to_fetches);
 }
 

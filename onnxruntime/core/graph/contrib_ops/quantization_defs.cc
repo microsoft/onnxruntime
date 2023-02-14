@@ -1140,7 +1140,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-Current version does not support past/present, extra_add and qkv_hidden_sizes.
+Current version does not support past/present, relative_position_bias and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
@@ -1202,7 +1202,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(18, "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
                "Q", OpSchema::Optional)
-        .Input(19, "extra_add",
+        .Input(19, "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S",
                OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")

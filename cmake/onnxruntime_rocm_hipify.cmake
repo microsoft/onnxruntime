@@ -15,6 +15,10 @@ set(contrib_ops_excluded_files
   "bert/fast_gelu_impl.h"
   "bert/fast_gelu.cc"
   "bert/fast_gelu.h"
+  "bert/relative_attn_bias.cc"
+  "bert/relative_attn_bias.h"
+  "bert/relative_attn_bias_impl.cu"
+  "bert/relative_attn_bias_impl.h"
   "bert/skip_layer_norm.cc"
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"
@@ -94,6 +98,9 @@ set(contrib_ops_excluded_files
 if (NOT onnxruntime_ENABLE_ATEN)
   list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
 endif()
+if (NOT onnxruntime_USE_NCCL)
+  list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
@@ -115,6 +122,7 @@ set(provider_excluded_files
   "math/softmax_impl.cu"
   "math/softmax_warpwise_impl.cuh"
   "math/softmax_common.cc"
+  "math/softmax_common.h"
   "math/softmax.cc"
   "nn/conv.cc"
   "nn/conv.h"
