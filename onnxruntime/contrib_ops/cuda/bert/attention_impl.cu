@@ -46,20 +46,60 @@ limitations under the License.
 using namespace onnxruntime::cuda;
 using namespace cub;
 
-#define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
-#define CUDA_MEMORY_ALIGNMENT 256
-
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+constexpr size_t kMemoryAlignment = 256;
+constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
 static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
 }
 
 size_t AlignSize(size_t bytes) {
-  const size_t bytesAligned = AlignTo(bytes, CUDA_MEMORY_ALIGNMENT);
+  const size_t bytesAligned = AlignTo(bytes, kMemoryAlignment);
   return bytesAligned;
+}
+
+Status CumulatedSequenceLengthCache::Allocate(int32_t max_batch_size) {
+  if (this->max_batch_size == 0) {
+    void* cudaMem{nullptr};
+    CUDA_RETURN_IF_ERROR(cudaMalloc(&cudaMem, sizeof(int32_t) * (max_batch_size + 1)));
+    make_cuda_shared(buffer, cudaMem);
+    this->max_batch_size = max_batch_size;
+  }
+
+  return Status::OK();
+}
+
+void CumulatedSequenceLengthCache::Initialize(int32_t sequence_length, cudaStream_t stream) {
+  if (this->sequence_length != sequence_length) {
+    LaunchTrtSequenceOffset(reinterpret_cast<int32_t*>(buffer.get()), nullptr, this->max_batch_size, sequence_length, stream);
+    this->sequence_length = sequence_length;
+  }
+}
+
+int* GetCumulatedSequenceLength(CumulatedSequenceLengthCache* cache,
+                                const int* mask_index,
+                                int batch_size,
+                                int sequence_length,
+                                cudaStream_t stream,
+                                void* scratch_buffer) {
+  if (mask_index == nullptr && cache != nullptr) {
+    if (cache->max_batch_size == 0) {
+      ORT_THROW_IF_ERROR(cache->Allocate(kCumulatedSequenceLengthCacheMaxBatchSize));
+    }
+
+    if (batch_size <= cache->max_batch_size) {
+      cache->Initialize(sequence_length, stream);
+      return reinterpret_cast<int*>(cache->buffer.get());
+    }
+  }
+
+  int* sequence_offset = reinterpret_cast<int*>(scratch_buffer);
+  LaunchTrtSequenceOffset(sequence_offset, mask_index, batch_size, sequence_length, stream);
+  return sequence_offset;
 }
 
 size_t GetAttentionScratchSize(
@@ -264,7 +304,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
   T* qkv = data.workspace;
 
-  bool use_fused_kernel = (nullptr != fused_runner && data.bias != nullptr && !parameters.is_unidirectional);
+  bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   // Default format for memory efficient attention.
@@ -272,6 +312,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   DUMP_TENSOR_INIT();
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
+      assert(nullptr == fused_runner);
       // For quantized attention, bias has been added so only need transpose here.
       // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
       assert(qk_head_size == v_head_size);
@@ -303,6 +344,31 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv,
                              true, v_head_size, qkv_add_bias, 3);
     }
+  } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
+    assert(data.bias == nullptr);
+    assert(qk_head_size == v_head_size);
+
+    DUMP_TENSOR_D("packed_qkv", data.query, batch_size * sequence_length, num_heads, 3, qk_head_size);
+
+    if (use_memory_efficient_attention) {
+      // unpack qkv to BSNH. Note that there is no bias so we need not output query to q.
+      constexpr int format = 4;
+      T* qkv_add_bias = nullptr;
+      LaunchAddBiasTranspose(stream, 3, format, max_threads_per_block,
+                             batch_size, sequence_length, num_heads, qk_head_size,
+                             data.query, data.bias, qkv,
+                             true, v_head_size, qkv_add_bias, 3);
+      DUMP_TENSOR_D("k(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+    } else {
+      if (!use_fused_kernel) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "packed QKV format is not implemented for current GPU. Please disable it in fusion options.");
+      }
+
+      qkv_format = AttentionQkvFormat::QKV_BSN3H;
+    }
   } else if (data.value == nullptr) {  // gemm_buffer == nullptr and packed kv
     // TODO: unpack kv to BNSH for unfused kernel so that we can remove the following constraint.
     // CheckInputs verified this constraint.
@@ -330,7 +396,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
       qkv_format = AttentionQkvFormat::Q_KV_BSNH_BSN2H;
     }
-  } else {  // gemm_buffer == nullptr and not packed kv
+  } else {  // gemm_buffer == nullptr and not packed
     assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
 
     DUMP_TENSOR_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
@@ -507,18 +573,21 @@ Status QkvToContext(
 
   if (data.fused_cross_attention_kernel != nullptr) {
     assert(qkv_format == AttentionQkvFormat::Q_KV_BSNH_BSN2H);
-    int* q_sequence_offset = reinterpret_cast<int*>(scratch1);
-    LaunchTrtSequenceOffset(q_sequence_offset, nullptr, batch_size, sequence_length, stream);
-    CUDA_RETURN_IF_ERROR(cudaGetLastError());
-
-    DUMP_TENSOR_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
 
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(data.mask_index == nullptr);
 
+    int* q_sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+                                                        data.mask_index, batch_size, sequence_length, stream,
+                                                        scratch1);
+
+    DUMP_TENSOR_D("q_sequence_offset", q_sequence_offset, 1, batch_size + 1);
+
     int* kv_sequence_offset = q_sequence_offset + (GetSequenceOffsetSize(batch_size, false) / sizeof(int));
-    LaunchTrtSequenceOffset(kv_sequence_offset, data.mask_index, batch_size, kv_sequence_length, stream);
+    kv_sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_kv_cache,
+                                                    data.mask_index, batch_size, kv_sequence_length, stream,
+                                                    kv_sequence_offset);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     DUMP_TENSOR_D("kv_sequence_offset", kv_sequence_offset, 1, batch_size + 1);
@@ -558,7 +627,9 @@ Status QkvToContext(
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
       LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     } else {
-      LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
+      sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
+                                                   data.mask_index, batch_size, sequence_length, stream,
+                                                   sequence_offset);
     }
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
@@ -573,7 +644,14 @@ Status QkvToContext(
 
     if (use_fused_kernel) {
       assert(qkv_format == AttentionQkvFormat::QKV_BSN3H);
-      fused_fp16_runner->run(qkv, sequence_offset, data.output, stream);
+
+      // When there is no bias, we can directly use packed qkv from inputs. TODO: not need qkv in workspace
+      void const* packed_qkv = qkv;
+      if (data.query != nullptr && data.key == nullptr && data.bias == nullptr) {
+        packed_qkv = data.query;
+      }
+
+      fused_fp16_runner->run(packed_qkv, sequence_offset, data.output, stream);
       DUMP_TENSOR("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     } else {
       assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
@@ -593,7 +671,9 @@ Status QkvToContext(
     const void* query = q;
     const void* key = k;
     const void* value = v;
-    if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
+    // For packed KV, we can use query input directly.
+    if (data.gemm_buffer == nullptr && data.key != nullptr && data.value == nullptr) {
+      assert(data.bias == nullptr);
       query = data.query;
     }
 
@@ -781,15 +861,15 @@ Status DecoderQkvToContext(
 
   if (has_layer_state) {
     if (use_past && static_kv) {
-      CHECK_CUDA(cudaMemcpyAsync(new_key_cache, key_cache, kv_sequence_length * BHN * sizeof(T),
-                                 cudaMemcpyDeviceToDevice, stream));
-      CHECK_CUDA(cudaMemcpyAsync(new_value_cache, value_cache, kv_sequence_length * BHN * sizeof(T),
-                                 cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_key_cache, key_cache, kv_sequence_length * BHN * sizeof(T),
+                                           cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_value_cache, value_cache, kv_sequence_length * BHN * sizeof(T),
+                                           cudaMemcpyDeviceToDevice, stream));
     } else {
-      CHECK_CUDA(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T),
-                                 cudaMemcpyDeviceToDevice, stream));
-      CHECK_CUDA(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T),
-                                 cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_key_cache, k, kv_sequence_length * BHN * sizeof(T),
+                                           cudaMemcpyDeviceToDevice, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(new_value_cache, v, kv_sequence_length * BHN * sizeof(T),
+                                           cudaMemcpyDeviceToDevice, stream));
     }
   }
 

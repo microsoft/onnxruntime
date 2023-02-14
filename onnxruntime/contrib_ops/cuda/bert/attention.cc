@@ -210,6 +210,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.cumulated_sequence_length_q_cache = nullptr;
+  data.cumulated_sequence_length_kv_cache = nullptr;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

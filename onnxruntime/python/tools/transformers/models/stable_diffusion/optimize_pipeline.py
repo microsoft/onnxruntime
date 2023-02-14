@@ -130,12 +130,13 @@ def optimize_sd_pipeline(
         # Right now, onnxruntime does not save >2GB model so we use script to optimize unet instead.
         logger.info(f"Optimize {onnx_model_path}...")
 
-        # There are some optimizations that are not avaiable in v1.14 or older version
-        has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
-
         fusion_options = FusionOptions(model_type)
-        fusion_options.enable_packed_kv = float16
-        fusion_options.enable_bias_add = has_all_optimizations
+        if model_type in ["unet"]:
+            # There are some optimizations that are not avaiable in v1.14 or older version
+            has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
+            fusion_options.enable_packed_kv = float16
+            fusion_options.enable_packed_qkv = float16 and has_all_optimizations
+            fusion_options.enable_bias_add = has_all_optimizations
 
         m = optimize_model(
             str(onnx_model_path),

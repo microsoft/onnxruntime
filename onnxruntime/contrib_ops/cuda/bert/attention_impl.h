@@ -11,7 +11,36 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionScratchSize(
+template <typename T>
+struct CudaDeleter {
+  void operator()(T* buf) {
+    cudaFree(buf);  // do not throw error since it's OK for cudaFree to fail during shutdown
+  }
+};
+
+template <typename T>
+using cuda_unique_ptr = std::unique_ptr<T, CudaDeleter<T>>;
+
+template <typename T>
+using cuda_shared_ptr = std::shared_ptr<T>;
+
+template <typename T>
+void make_cuda_shared(cuda_shared_ptr<T>& ptr, void* cuda_memory) {
+  ptr.reset(static_cast<T*>(cuda_memory), CudaDeleter<T>());
+}
+
+struct CumulatedSequenceLengthCache {
+  cuda_shared_ptr<void> buffer;
+  int32_t max_batch_size;
+  int32_t sequence_length;
+
+  CumulatedSequenceLengthCache() : max_batch_size(0), sequence_length(0) {}
+  Status Allocate(int32_t max_batch_size);
+  void Initialize(int32_t sequence_length, cudaStream_t stream);
+};
+
+size_t
+GetAttentionScratchSize(
     size_t element_size,
     size_t batch_size,
     size_t num_heads,
@@ -51,6 +80,9 @@ struct AttentionData {
   const void* fused_cross_attention_kernel;
 
   bool use_memory_efficient_attention;
+
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache;
 };
 
 template <typename T>
