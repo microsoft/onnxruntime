@@ -60,7 +60,6 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     # enforce nullptr in the backend
     output_optional = np.empty((0), dtype=dtype)
 
-
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
     bias_d = ke.DeviceArray(bias)
