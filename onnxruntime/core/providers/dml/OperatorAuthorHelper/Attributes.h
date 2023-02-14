@@ -111,6 +111,9 @@ namespace AttrName
     static constexpr const char* FusedGamma = "fused_gamma";
     static constexpr const char* FusedRatio = "fused_ratio";
 
+    static constexpr const char* GraphFusedActivation = "activation";
+    static constexpr const char* GraphFusedAxis = "activation_axis";
+
 } // namespace AttrName
 
 namespace AttrValue
