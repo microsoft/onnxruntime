@@ -57,13 +57,13 @@ Status LaunchSkipLayerNormKernel(
 }
 
 template Status LaunchSkipLayerNormKernel<float>(
-    RocmTuningContext* tuning_ctx, hipStream_t stream, float* output, const float* input,
+    RocmTuningContext* tuning_ctx, hipStream_t stream, float* output, float* skip_input_bias_add_output, const float* input,
     const float* skip, const float* gamma, const float* beta,
     const float* bias, float epsilon, int ld,
     int element_count);
 
 template Status LaunchSkipLayerNormKernel<half>(
-    RocmTuningContext* tuning_ctx, hipStream_t stream, half* output, const half* input,
+    RocmTuningContext* tuning_ctx, hipStream_t stream, half* output, half* skip_input_bias_add_output, const half* input,
     const half* skip, const half* gamma, const half* beta,
     const half* bias, float epsilon, int ld,
     int element_count);
