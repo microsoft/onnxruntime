@@ -67,7 +67,7 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     optional_d = ke.DeviceArray(output_optional)
     f = getattr(ke, func)
 
-    # output_optional is newly added optional output tensor for SkipLayerNorm 
+    # output_optional is newly added optional output tensor for SkipLayerNorm
     # Right now we are not testing the tensor like we do for output_y
     # the test for output_optional could be considered in future as needed
     my_op = f(
