@@ -32,7 +32,7 @@ BiasAdd<T>::BiasAdd(const OpKernelInfo& op_info) : CudaKernel(op_info) {
 template <typename T>
 Status BiasAdd<T>::ComputeInternal(OpKernelContext* context) const {
   // Input:  [batch_size, height*width, channels]
-  // Bias:   [hidden_size]
+  // Bias:   [channels]
   // Skip:   [batch_size, height*width, channels]
   // Output: [batch_size, height*width, channels]
 

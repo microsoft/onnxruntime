@@ -202,8 +202,10 @@ def convert_float_to_float16(
     value_info_list = []
     node_list = []
 
-    # List of Resize or GroupNorm nodes that is not in block list
-    resize_node_list = []
+    # Some operators (Like Resize or GroupNorm) have data type fixed as float for some input.
+    # When it is converted to float16, there are mixed types: some inputs are float32 and some are float16.
+    # This list keeps track of such nodes that are not in block list.
+    mixed_float_type_node_list = []
 
     # type inference on input model
     if func_infer_shape is not None:
@@ -303,7 +305,7 @@ def convert_float_to_float16(
                             for attr in n.attribute:
                                 next_level.append(attr)
                         else:
-                            resize_node_list.append(n)
+                            mixed_float_type_node_list.append(n)
 
             # if q is model.graph.node.attribute, push q.g and q.graphs (GraphProto)
             # and process node.attribute.t and node.attribute.tensors (TensorProto)
@@ -344,8 +346,8 @@ def convert_float_to_float16(
                     )
                 )
 
-    # Some operators has data type fixed as float for some input. Add a float16 to float cast for those inputs.
-    for node in resize_node_list:
+    # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
+    for node in mixed_float_type_node_list:
         for i, input_name in enumerate(node.input):
             if i not in ALWAYS_FLOAT_INPUTS[node.op_type]:
                 continue

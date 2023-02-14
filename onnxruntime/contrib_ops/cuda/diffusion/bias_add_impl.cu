@@ -23,6 +23,8 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/diffusion/bias_add_impl.h"
 
+using namespace onnxruntime::cuda;
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -34,11 +36,7 @@ __global__ void BiasAddKernel(T const* input, T const* bias, T const* residual, 
 
 #pragma unroll
   for (int32_t i = 0; i < C / TPB; ++i) {
-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530)
     output[base_offset] = input[base_offset] + bias[bias_offset] + residual[base_offset];
-#else
-    output[base_offset] = static_cast<T>(float(input[base_offset]) + float(bias[bias_offset]) + float(residual[base_offset]));
-#endif
     base_offset += TPB;
     bias_offset += TPB;
   }
