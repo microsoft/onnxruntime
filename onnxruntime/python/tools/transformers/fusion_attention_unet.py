@@ -92,9 +92,6 @@ class FusionAttentionUnet(Fusion):
             q_matmul (NodeProto): MatMul node in fully connection for Q
             k_matmul (NodeProto): MatMul node in fully connection for K
             v_matmul (NodeProto): MatMul node in fully connection for V
-            q_add (NodeProto): Add bias node in fully connection for Q
-            k_add (NodeProto): Add bias node in fully connection for K
-            v_add (NodeProto): Add bias node in fully connection for V
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             input (str): input name

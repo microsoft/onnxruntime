@@ -202,6 +202,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "GroupNorm": self._infer_GroupNorm,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "BiasAdd": self._infer_BiasAdd,
             "NhwcConv": self._infer_NhwcConv,
         }
         self.aten_op_dispatcher_ = {
@@ -439,6 +440,7 @@ class SymbolicShapeInference:
             "MultiHeadAttention",
             "GroupNorm",
             "BiasSplitGelu",
+            "BiasAdd",
             "NhwcConv",
         ]
 
@@ -2099,6 +2101,9 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[0]]
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
+
+    def _infer_BiasAdd(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")
