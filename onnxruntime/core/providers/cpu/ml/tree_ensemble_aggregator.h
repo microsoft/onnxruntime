@@ -80,18 +80,20 @@ struct TreeNodeElement {
   T value_or_unique_weight;
 
   // onnx specification says hitrates is used to store information about the node,
-  // but this information is not used for inference
+  // but this information is not used for inference.
   // T hitrates;  
 
-  // True node, false node are obtained by computing this + truenode_inc,
-  // this + falsenode_inc, this implementation assumes a tree has less than 2^21 nodes,
+  // True node, false node are obtained by computing `this + truenode_inc_or_first_weight`,
+  // `this + falsenode_inc_or_n_weights` if the node is not a leaf.
+  // In case of a leaf, these attributes are used to indicate the position of the weight
+  // in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one,
+  // the weight is also stored in `value_or_unique_weight`.
+  // This implementation assumes a tree has less than 2^21 nodes,
   // and the total number of leave in the set of trees is below 2^21.
-  // This attribute could be removed if the true or false node is always placed at the next position.
-  // In case of a leave, the following attribute is used to indicate the false node index or the position of the weight
-  // in array TreeEnsembleCommon::weights_.
   uint32_t truenode_inc_or_first_weight;
-  // In case of a leave, the following attribute indicates the number of weights
-  // in array TreeEnsembleCommon::weights_.
+  // In case of a leaf, the following attribute indicates the number of weights
+  // in array `TreeEnsembleCommon::weights_`. If not a leaf, it indicates
+  // `this + falsenode_inc_or_n_weights` is the false node.
   uint32_t falsenode_inc_or_n_weights;
   uint8_t flags;
 

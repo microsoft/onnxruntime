@@ -42,9 +42,9 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
  protected:
   std::vector<ThresholdType> base_values_;
   std::vector<TreeNodeElement<ThresholdType>> nodes_;
-  // Type of weights should a vector of OutputType. Onnx specifications says it must be float.
+  // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
-  // it ThresholdType (double as well for lightgbl) and not OutputType.
+  // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
   std::vector<SparseValue<ThresholdType>> weights_;    
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
@@ -297,8 +297,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
     TreeNodeElement<ThresholdType>& leaf = nodes_[idi[ind]];
     if (leaf.is_not_leaf()) {
-      // An exception should be raised in that case. This case may happen in old
-      // models. There weights are ignored.
+      // An exception should be raised in that case. But this case may happen in
+      // models converted with an old version of onnxmltools. There weights are ignored.
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");      
       continue;
     }
