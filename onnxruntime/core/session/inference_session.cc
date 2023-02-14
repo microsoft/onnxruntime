@@ -1500,6 +1500,14 @@ common::Status InferenceSession::Initialize() {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       }
     }
+
+    std::vector<TuningResults> tuning_results;
+    bool found_tuning_results = false;
+    ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
+        model_metadata_, tuning_results, found_tuning_results));
+    if (found_tuning_results) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results));
+    }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     // Resolve memory pattern flags of the main graph and subgraph session states
@@ -1549,16 +1557,6 @@ common::Status InferenceSession::Initialize() {
       }
     }
   }
-
-#if !defined(ORT_MINIMAL_BUILD)
-  std::vector<TuningResults> tuning_results;
-  bool found_tuning_results = false;
-  ORT_RETURN_IF_ERROR(inference_session_utils::ParseTuningResultsFromModelMetadata(
-      model_metadata_, tuning_results, found_tuning_results));
-  if (found_tuning_results) {
-    ORT_RETURN_IF_ERROR(SetTuningResults(tuning_results));
-  }
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   return status;
 }
