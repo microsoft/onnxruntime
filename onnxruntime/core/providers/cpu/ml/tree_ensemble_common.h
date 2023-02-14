@@ -217,7 +217,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
   max_feature_id_ = 0;
 
-  for (i = 0, limit = n_nodes_; i < limit; ++i) {
+  for (i = 0, limit = static_cast<size_t>(n_nodes_); i < limit; ++i) {
     TreeNodeElement<ThresholdType>& node = nodes_[i];
     TreeNodeElementId& node_tree_id = node_tree_ids[i];
     node_tree_id.tree_id = static_cast<int>(nodes_treeids[i]);
