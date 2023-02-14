@@ -51,9 +51,8 @@ class FusionOptions:
         )
 
         # options for stable diffusion
-        if model_type in ["unet", "vae"]:
+        if model_type in ["unet", "vae", "clip"]:
             self.enable_group_norm = True
-        if model_type in ["unet"]:
             self.enable_bias_splitgelu = True
             self.enable_packed_qkv = True
             self.enable_packed_kv = True
@@ -100,11 +99,9 @@ class FusionOptions:
         if args.no_attention_mask:
             options.disable_attention_mask()
 
-        if args.model_type in ["unet", "vae"]:
+        if args.model_type in ["unet", "vae", "clip"]:
             if args.disable_group_norm:
                 options.enable_group_norm = False
-
-        if args.model_type in ["unet"]:
             if args.disable_packed_kv:
                 options.enable_packed_kv = False
             if args.disable_packed_qkv:
@@ -240,7 +237,7 @@ class FusionOptions:
             "--disable_packed_kv",
             required=False,
             action="store_true",
-            help="not use packed kv in cross attention. Only works for model_type=unet",
+            help="not use packed kv for cross attention in MultiHeadAttention. Only works for model_type=unet",
         )
         parser.set_defaults(disable_packed_kv=False)
 
@@ -248,6 +245,22 @@ class FusionOptions:
             "--disable_packed_qkv",
             required=False,
             action="store_true",
-            help="not use packed qkv in self attention. Only works for model_type=unet",
+            help="not use packed qkv for self attention in MultiHeadAttention. Only works for model_type=unet",
         )
         parser.set_defaults(disable_packed_qkv=False)
+
+        parser.add_argument(
+            "--disable_bias_add",
+            required=False,
+            action="store_true",
+            help="not fuse BiasAdd. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_bias_add=False)
+
+        parser.add_argument(
+            "--disable_bias_splitgelu",
+            required=False,
+            action="store_true",
+            help="not fuse BiasSplitGelu. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_bias_splitgelu=False)
