@@ -317,7 +317,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Initialize all the nodes but the leaves.
   int64_t previous = -1;
-  for (i = 0, limit = n_nodes_; i < limit; ++i) {
+  for (i = 0, limit = static_cast<uint32_t>(n_nodes_); i < limit; ++i) {
     if ((previous == -1) || (previous != node_tree_ids[i].tree_id))
       roots_.push_back(&(nodes_[idi[node_tree_ids[i]]]));
     previous = node_tree_ids[i].tree_id;
