@@ -17,6 +17,7 @@
 /* Modifications Copyright (c) Microsoft. */
 
 // The code below is mostly copied from Pytorch PersistentSoftmax.cuh
+#include <stdio.h>
 #include "hip/hip_runtime.h"
 
 #include "core/providers/rocm/cu_inc/common.cuh"
@@ -34,7 +35,7 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const
                                          int softmax_elements_stride, int batch_count, RocmTuningContext* tuning_ctx) {
   SoftmaxParams<InputT, OutputT> params(tuning_ctx, stream, dst, src, softmax_elements, softmax_elements_stride,
                                         softmax_elements_stride, batch_count, IsLogSoftmax);
-  if (tuning_ctx->IsTunableOpEnabled()) {
+  if (tuning_ctx != nullptr && tuning_ctx->IsTunableOpEnabled()) {
     static SoftmaxTunableOp<InputT, OutputT, AccT> op;
     return op(&params);
   }
@@ -61,7 +62,7 @@ Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output,
                                           int batch_count, RocmTuningContext* tuning_ctx) {
   SoftmaxParams<InputT, OutputT> params(tuning_ctx, stream, output, input, softmax_elements, input_stride,
                                         output_stride, batch_count, IsLogSoftmax);
-  if (tuning_ctx->IsTunableOpEnabled()) {
+  if (tuning_ctx != nullptr && tuning_ctx->IsTunableOpEnabled()) {
     static SoftmaxTunableOp<InputT, OutputT, AccT> op;
     return op(&params);
   }
