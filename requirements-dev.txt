@@ -6,7 +6,7 @@ isort
 jinja2
 numpy
 --extra-index-url https://test.pypi.org/simple/
-onnx==1.13.1rc1
+onnx==1.13.1rc2
 onnxmltools
 packaging
 pandas
