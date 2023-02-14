@@ -67,7 +67,7 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
     //! Writes the node name and null terminator into a char buffer.
     STDMETHOD(GetUtf8Name)(
         uint32_t bufferSizeInBytes,
-        _Out_writes_(bufferSizeInBytes) char* name
+        _Out_writes_bytes_(bufferSizeInBytes) char* name
         ) const noexcept PURE;
 
     //! Gets the minimum size of a wchar buffer to store the node name (including null terminator).
@@ -77,7 +77,7 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
     //! Writes the node name and null terminator into a wchar buffer.
     STDMETHOD(GetWideName)(
         uint32_t bufferSizeInBytes,
-        _Out_writes_(bufferSizeInBytes) wchar_t* name
+        _Out_writes_bytes_(bufferSizeInBytes) wchar_t* name
         ) const noexcept PURE;
 };
 

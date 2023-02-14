@@ -124,18 +124,18 @@ const std::vector<std::string>& IOBinding::GetInputNames() const { return feed_n
 
 const std::vector<OrtValue>& IOBinding::GetInputs() const { return feeds_; }
 
-AllocatorPtr IOBinding::GetCPUAllocator(int id, onnxruntime::ProviderType provider_type) const {
+AllocatorPtr IOBinding::GetCPUAllocator(onnxruntime::ProviderType provider_type) const {
   auto& exec_providers = session_state_.GetExecutionProviders();
   auto* p_provider = exec_providers.Get(provider_type);
   ORT_ENFORCE(p_provider);
-  auto allocator = p_provider->GetAllocator(id, OrtMemTypeCPU);
+  auto allocator = p_provider->GetAllocator(OrtMemTypeCPU);
 
   // if the provider does not implement CPU allocator, fall back to CPU
   if (allocator)
     return allocator;
 
   auto* cpu_provider = exec_providers.Get(onnxruntime::kCpuExecutionProvider);
-  return cpu_provider->GetAllocator(0, OrtMemTypeDefault);
+  return cpu_provider->GetAllocator(OrtMemTypeDefault);
 }
 
 }  // namespace onnxruntime

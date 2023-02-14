@@ -2708,6 +2708,10 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
     RegisterNchwcSchemas();
   }
 #endif
+
+#ifdef USE_MPI
+  RegisterCollectiveOps();
+#endif
 }
 
 }  // namespace contrib

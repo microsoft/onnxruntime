@@ -462,7 +462,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_SNPE)
-    include(find_snpe.cmake)
+    include(external/find_snpe.cmake)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 

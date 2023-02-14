@@ -11,18 +11,6 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T, typename I>
-void LaunchBatchTopKKernel(
-    const T* topk_scores,
-    const I* topk_indices,
-    int32_t* next_indices,
-    int32_t* next_tokens,
-    T* next_scores,
-    int32_t batch_size,
-    int32_t num_beams,
-    int32_t k,
-    cudaStream_t stream);
-
 template <typename T>
 void BeamSearchTopK(
     const T* input,
