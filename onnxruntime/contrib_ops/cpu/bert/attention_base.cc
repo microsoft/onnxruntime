@@ -23,7 +23,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   M:    max_sequence_length
   //   T:    total_sequence_length = past_sequence_length + kv_sequence_length
   //   N:    num_heads
-  //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
+  //   H:    head size for Q and K, aka q_head_size or k_head_size or qk_head_size
   //   H_v:  v_head_size
   //   D_i:  input hidden size
   //   D:    hidden size for Q and K (D = N * H), aka q_hidden_size or k_hidden_size or qk_hidden_size

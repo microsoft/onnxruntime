@@ -69,7 +69,7 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
-  Tensor* output = context->Output(0, {1, 2, 1, 3});
+  Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
       2, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
@@ -105,23 +105,17 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   parameters.k = reinterpret_cast<CudaT*>(gemm_buffer.get()) + parameters.hidden_size;
   parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * parameters.hidden_size;
 
-  cudaDeviceSynchronize();
-  std::vector<float> before(768 * 3, 0);
-  cudaMemcpy(before.data(), gemm_buffer.get(), 768 * 3 * 4, cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
-
   const T* bias_data = bias->Data<T>();
   parameters.q_bias = const_cast<T*>(bias_data);
   parameters.k_bias = const_cast<T*>(bias_data + parameters.hidden_size);
   parameters.v_bias = const_cast<T*>(bias_data + 2 * parameters.hidden_size);
 
+  // Half of the past/present buffer correspond to K
+  // The other half is V.
+  auto k_size = present->Shape().Size() / 2;
   parameters.k_cache = present->MutableDataRaw();
-  parameters.temp_data = output->MutableDataRaw();
-
-  cudaDeviceSynchronize();
-  std::vector<float> past_host(1 * 2 * 4 * 64, 0);
-  cudaMemcpy(past_host.data(), past->DataRaw(), 1 * 2 * 4 * 64 * 4, cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
+  parameters.v_cache = present->MutableData<T>() + k_size;
+  parameters.out = output->MutableDataRaw();
 
   switch (parameters.head_size) {
   case 64:
@@ -131,16 +125,6 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   default:
       ORT_THROW("Unsupported head size");
   }
-
-  cudaDeviceSynchronize();
-  std::vector<float> after(768 * 3, 0);
-  cudaMemcpy(after.data(), gemm_buffer.get(), 768 * 3 * 4, cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
-
-  cudaDeviceSynchronize();
-  std::vector<float> present_host(1 * 2 * 4 * 64, 0);
-  cudaMemcpy(present_host.data(), present->MutableDataRaw(), 1 * 2 * 4 * 64 * 4, cudaMemcpyDeviceToHost);
-  cudaDeviceSynchronize();
 
   return Status::OK();
 }
