@@ -576,6 +576,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     const Node* p_div_input_node_0 = graph.GetProducerNode(p_div_input->Name());
     const Node* p_pow_input_node_0 = graph.GetProducerNode(p_pow_input->Name());
 
+    if (!p_pow_input_node_0 || !p_div_input_node_0) {
+      continue;
+    }
+
     std::cout << "p_div_input: " << p_div_input << std::endl;
     std::cout << "OpType:" << p_div_input_node_0->OpType() << "Node Name:" << p_div_input_node_0->Name() << "NodeArg Name:" << p_div_input->Name() << std::endl;
     std::cout << "p_pow_input: " << p_pow_input << std::endl;
