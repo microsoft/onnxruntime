@@ -573,13 +573,13 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
 
-    const Node* p_div_input_node = gradient_graph.GetProducerNode(p_div_input->Name());
-    const Node* p_pow_input_node = gradient_graph.GetProducerNode(p_pow_input->Name());
+    const Node* p_div_input_node_0 = graph.GetProducerNode(p_div_input->Name());
+    const Node* p_pow_input_node_0 = graph.GetProducerNode(p_pow_input->Name());
 
     std::cout << "p_div_input: " << p_div_input << std::endl;
-    std::cout << "OpType:" << p_div_input_node->OpType() << "Node Name:" << p_div_input_node->Name() << "NodeArg Name:" << p_div_input->Name() << std::endl;
+    std::cout << "OpType:" << p_div_input_node_0->OpType() << "Node Name:" << p_div_input_node_0->Name() << "NodeArg Name:" << p_div_input->Name() << std::endl;
     std::cout << "p_pow_input: " << p_pow_input << std::endl;
-    std::cout << "OpType:" << p_pow_input_node->OpType() << "Node Name:" << p_pow_input_node->Name() << "NodeArg Name:" << p_pow_input->Name() << std::endl;
+    std::cout << "OpType:" << p_pow_input_node_0->OpType() << "Node Name:" << p_pow_input_node_0->Name() << "NodeArg Name:" << p_pow_input->Name() << std::endl;
 
     if (!p_pow_input || !p_div_input || p_div_input != p_pow_input) {
       continue;
