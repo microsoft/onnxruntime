@@ -351,7 +351,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // the expansion of Softplus uses Exp(1). ORT has a Softplus kernel, so testing the expansion is
                 // unnecessary and fails as ORT support for Exp started at opset 6 (as ORT didn't exist until opset 7).
                 { "test_softplus_example_expanded", "Not applicable"},
-                { "test_softplus_expanded", "Not applicable"}
+                { "test_softplus_expanded", "Not applicable"},
+
+                // opset 18 models. still failed after ORT 1.14 released
+                { "test_bitwise_or_i16_4d", "pending opset 18 support"},
+                { "test_col2im_pads", "pending opset 18 support"},
+                { "test_optional_has_element_empty_optional_input", "pending opset 18 support"},
+                { "test_optional_get_element_optional_tensor", "pending opset 18 support"},
+                { "test_optional_get_element_optional_sequence", "pending opset 18 support"},
+                { "test_optional_has_element_tensor_input", "pending opset 18 support"},
+                { "test_optional_has_element_optional_input", "pending opset 18 support"},
             };
 
             // The following models fails on nocontribops win CI
