@@ -568,8 +568,19 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Check Div and Pow has same input, and if this input is a Cast, we can also remove it.
     const NodeArg* p_div_input = div_node.MutableInputDefs()[0];
     const NodeArg* p_pow_input = pow_node.MutableInputDefs()[0];
+
+    if (!p_pow_input || !p_div_input) {
+      continue;
+    }
+
+    const Node* p_div_input_node = gradient_graph.GetProducerNode(p_div_input->Name());
+    const Node* p_pow_input_node = gradient_graph.GetProducerNode(p_pow_input->Name());
+
     std::cout << "p_div_input: " << p_div_input << std::endl;
+    std::cout << "OpType:" << p_div_input_node->OpType() << "Node Name:" << p_div_input_node->Name() << "NodeArg Name:" << p_div_input->Name() << std::endl;
     std::cout << "p_pow_input: " << p_pow_input << std::endl;
+    std::cout << "OpType:" << p_pow_input_node->OpType() << "Node Name:" << p_pow_input_node->Name() << "NodeArg Name:" << p_pow_input->Name() << std::endl;
+
     if (!p_pow_input || !p_div_input || p_div_input != p_pow_input) {
       continue;
     }
