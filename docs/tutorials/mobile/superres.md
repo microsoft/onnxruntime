@@ -13,7 +13,7 @@ Learn how to build an application to improve image resolution using ONNX Runtime
 
 You can use this tutorial to build the application for Android or iOS.
 
-The application takes an input input, performs the super resolution operation when the button is clicked and displays the image with improved resolution below, as in the following screenshot.
+The application takes an image input, performs the super resolution operation when the button is clicked and displays the image with improved resolution below, as in the following screenshot.
 
 ![Super resolution on a cat](../../../images/mobile-superres-cat.png)
 
@@ -33,10 +33,13 @@ We provide a convenient Python script that exports the PyTorch model into ONNX f
 
     ```bash
     pip install torch
+    pip install onnx
     pip install onnxruntime
     pip install onnxruntime-extensions
     pip install pillow
     ```
+
+   A note on versions: the best super resolution results are achieved with ONNX opset 18 (with its support for the Resize operator with anti-aliasing), which is supported by onnx 1.13.0 and onnxruntime 1.14.0 and later.
 
 2. Then download the script and test image from the onnxruntime-extensions GitHub repository (if you have not already cloned this repository):
 
@@ -67,7 +70,6 @@ If you load the second model into netron you can see its inputs and outputs: bot
 ![ONNX model with pre and post processing](../../../images/mobile-superres-after-model.png)
 
 ![ONNX model inputs and outputs with pre and post processing](../../../images/mobile-superres-after-model-io.png)
-
 
 Now it's time to write the application code.
 
