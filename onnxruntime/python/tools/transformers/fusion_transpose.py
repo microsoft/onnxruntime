@@ -25,6 +25,9 @@ class FusionTranspose(Fusion):
         output_name_to_node: Dict[str, NodeProto],
     ):
         """
+        Note that onnxruntime will do comprehensive transpose optimization after loading model.
+        The purpose of this fusion is to make graph clean before running onnxruntime.
+
         Case 1:
               (input)-->Transpose(perm=a)-->Transpose(perm=b)-->
         After:
@@ -38,8 +41,6 @@ class FusionTranspose(Fusion):
               (input)-->Transpose(perm=a)-->  (this path can be removed if the output is not used anymore)
                 |
                 +----->Cast --> Transpose(perm=a*b)-->
-
-
         """
         transpose_b = transpose_node
         if transpose_b.input[0] not in output_name_to_node:
