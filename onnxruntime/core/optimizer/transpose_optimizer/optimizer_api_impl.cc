@@ -861,6 +861,11 @@ CostCheckResult OrtDefaultCostCheck(const api::GraphRef& graph, const api::NodeR
 
 namespace layout_transformer {
 
+// Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
+// data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
+// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
+// Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
+// as many of the layout transposes as possible.
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
