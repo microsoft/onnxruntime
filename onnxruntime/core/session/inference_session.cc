@@ -468,6 +468,7 @@ InferenceSession::~InferenceSession() {
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
 #endif
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  std::cout << "InferenceSession::~InferenceSession" << __LINE__ << std::endl;
   GetMemoryProfiler().GenerateMemoryProfile();
 #endif
 }
