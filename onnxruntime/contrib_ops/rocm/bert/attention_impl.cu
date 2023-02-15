@@ -74,87 +74,70 @@ size_t GetAttentionWorkspaceSize(
                                                 sequence_length, past_sequence_length + sequence_length);
 }
 
-template <typename T>
-Status QkvToContext(
-    const hipDeviceProp_t& prop,
-    RocmTuningContext* tuning_ctx,
-    rocblas_handle& rocblas,
-    hipStream_t stream,
-    const int batch_size,
-    const int sequence_length,
-    const int num_heads,
-    const int head_size,
-    const size_t element_size,
-    const T* input,
-    T* output,
-    T* workspace,
-    const int* mask_index,
-    gsl::span<const int64_t> mask_index_dims,
-    const float mask_filter_value,
-    bool is_unidirectional,
-    int past_sequence_length,
-    const T* past,
-    const T* relative_position_bias,
-    T* present,
-    bool use_persistent_softmax) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
-  const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length, all_sequence_length);
-  T* scratch1 = workspace;
-  T* scratch2 = scratch1 + (bytes / element_size);
-  T* scratch3 = scratch2 + (bytes / element_size);
 
-  const int max_threads_per_block = prop.maxThreadsPerBlock;
+template<typename T>
+struct GemmSoftmaxGemmPermutePararms : onnxruntime::rocm::tunable::OpParams {
+  // - GEMM1 [m,k] * [n,k]' -> [m,n]
+  // - Apply softmax along n dimension
+  // - GEMM2 [m,n] * [n,o] -> [m,o]
+  // - Permute 0213
 
-  // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
-  ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 3, sequence_length, batch_size, head_size, num_heads,
-                      max_threads_per_block, false, input, scratch3));
-
-  // now scratch3 has Q, K, V: each has size BxNxSxH
-  const int batches = batch_size * num_heads;
-  const int size_per_batch = sequence_length * head_size;
-  const int total_size = batches * size_per_batch;
-
-  const T* q = scratch3;
-  const T* k = q + total_size;
-  const T* v = k + total_size;
-
-  rocblas_set_stream(rocblas, stream);
-
-  // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
-  // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
-  // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
-  const int present_size_per_batch = all_sequence_length * head_size;
-  if (nullptr != present) {
-    ORT_RETURN_IF_ERROR(
-      LaunchConcatPastToPresent(stream, all_sequence_length, sequence_length, batch_size, head_size, num_heads,
-                                   max_threads_per_block, past, k, present));
-
-    // update pointers to present_k and present_v.
-    k = present;
-    v = present + batches * present_size_per_batch;
+  std::string Signature() const override {
+    return MakeString("M", m, "_N", n, "_K",k, "_O", o, "_B", batch);
   }
 
+  void FillShape(const AttentionParameters& attention) {
+    batch = attention.batch_size * attention.num_heads;
+    m = attention.sequence_length;
+    n = attention.past_sequence_length + attention.sequence_length;
+    k = attention.head_size;
+    o = attention.head_size;
+  }
+
+  rocblas_handle handle;
+
+  int batch;
+  int m;
+  int n;
+  int k;
+  int o;
+  float scale;
+  const T* q_buffer;
+  const T* k_buffer;
+  const T* v_buffer;
+  T* out_buffer;
+};
+
+template <typename T>
+Status GemmSoftmaxGemmPermuteGeneric(
+    const GemmSoftmaxGemmPermutePararms<T>& params,
+    const AttentionParameters& attn,
+    const int max_threads_per_block,
+    T* gemm1_out,
+    T* softmax_out,
+    T* gemm2_out,
+    const int* mask_index,
+    gsl::span<const int64_t> mask_index_dims,
+    const T* relative_position_bias,
+    bool use_persistent_softmax) {
+  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
 
-  // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
-  // Q: BxNxSxH, K (present_k): BxNxS*xH, Q*K': BxNxSxS*
-  const float rsqrt_head_size = 1.f / sqrt(static_cast<float>(head_size));
-  const int temp_matrix_size = sequence_length * all_sequence_length;
-
-  ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-      tuning_ctx, stream, rocblas,
-      blas::BlasOp::Trans, blas::BlasOp::NonTrans,
-      all_sequence_length, sequence_length, head_size,
-      // For raw attention mask, the scalar if 1/sqrt(H) is moved to softmax computation.
-      /*alpha=*/use_raw_attention_mask ? 1.0f : rsqrt_head_size,
-      k, head_size, present_size_per_batch,
-      q, head_size, size_per_batch,
+  // GEMM1 [m,k] * [n,k]' -> [m,n]
+  ORT_RETURN_IF_ERROR(blas::row_major::StridedBatchedGemm(
+      params.TuningContext(), params.Stream(), params.handle,
+      blas::BlasOp::NonTrans, blas::BlasOp::Trans,
+      params.m, params.n, params.k,
+      // For raw attention mask, the scalar is moved to softmax computation.
+      /*alpha=*/use_raw_attention_mask ? 1.0f : params.scale,
+      params.q_buffer, params.k, params.m * params.k,
+      params.k_buffer, params.k, params.n * params.k,
       /*beta=*/0.0f,
-      scratch1, all_sequence_length, temp_matrix_size,
-      batches));
+      gemm1_out, params.n, params.m * params.n,
+      params.batch));
 
-  // apply softmax and store result P to scratch2: BxNxSxS*
+  // Softmax on [m,n] along the n dimension.
+  int all_sequence_length = attn.past_sequence_length + attn.sequence_length;
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
     auto* mask = mask_index;
@@ -163,46 +146,51 @@ Status QkvToContext(
     if (mask_dimension == 2) {
       strides = {all_sequence_length, 0, 0, 1};
     } else if (mask_dimension == 3) {
-      strides = {sequence_length * all_sequence_length, 0, all_sequence_length, 1};
+      strides = {attn.sequence_length * all_sequence_length, 0, all_sequence_length, 1};
     } else if (mask_dimension == 4) {
       int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims[3]) : 0;
       strides = {max_sequence_length * max_sequence_length, max_sequence_length, max_sequence_length, 1};
       // offset to skip past sequence part, so that we can index it with [batch_index, 0, sequence_index, token_index]
-      mask = mask + past_sequence_length * max_sequence_length;
+      mask = mask + attn.past_sequence_length * max_sequence_length;
     }
 
-    T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place if persistent softmax is selected.
-    ORT_RETURN_IF_ERROR(
-        ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                     strides, mask, nullptr, relative_position_bias, scratch1, scratch2,
-                                     is_unidirectional, rsqrt_head_size,
-                                     use_persistent_softmax, persistent_softmax_workspace, mask_filter_value));
+    T* persistent_softmax_workspace = gemm1_out;  // replace Q*K' in place if persistent softmax is selected.
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
+        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        strides, mask, nullptr, relative_position_bias, gemm1_out, softmax_out,
+        attn.is_unidirectional, /* FIXME: this must not be attn.scale! */params.scale,
+        use_persistent_softmax, persistent_softmax_workspace, attn.mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
-    const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
-    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, mask_start, relative_position_bias, scratch1, scratch2, is_unidirectional));
+    const int* mask_start = (mask_index_dims[0] > attn.batch_size) ? mask_index + attn.batch_size : nullptr;
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
+        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        mask_index, mask_start, relative_position_bias, gemm1_out, softmax_out, attn.is_unidirectional));
   } else {  // no mask
-    ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                           relative_position_bias, scratch1, scratch2, is_unidirectional));
+    ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(
+        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        relative_position_bias, gemm1_out, softmax_out, attn.is_unidirectional));
   }
 
-  // compute P*V (as V*P), and store in scratch3: BxNxSxH
-  ORT_RETURN_IF_ERROR(blas::column_major::StridedBatchedGemm(
-      tuning_ctx, stream, rocblas,
+  // GEMM2 [m,n] * [n,o] -> [m,o]
+  // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus BxNxSxH.
+  ORT_RETURN_IF_ERROR(blas::row_major::StridedBatchedGemm(
+      params.TuningContext(), params.Stream(), params.handle,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      head_size, sequence_length, all_sequence_length,
+      params.m, params.o, params.n,
       /*alpha=*/1.0f,
-      v, head_size, present_size_per_batch,
-      scratch2, all_sequence_length, temp_matrix_size,
+      softmax_out, params.n, params.m * params.n,
+      params.v_buffer, params.o, params.n * params.o,
       /*beta=*/0.0f,
-      scratch3, head_size, size_per_batch,
-      batches));
+      gemm2_out, params.o, params.m * params.o,
+      params.batch));
 
-  // scratch3 is BxNxSxH, transpose to output BxSxNxH
-  return LaunchTransCtx(stream, sequence_length, batch_size, head_size, num_heads,
-                        max_threads_per_block, false, scratch3, output);
+  // Permute 0213
+  // gemm2_out is BxNxSxH, transpose to out_buffer as BxSxNxH
+  return LaunchTransCtx(params.Stream(),
+                        attn.sequence_length, attn.batch_size, attn.head_size, attn.num_heads,
+                        max_threads_per_block, false, gemm2_out, params.out_buffer);
 }
 
 template <typename T>
@@ -567,24 +555,78 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
+  const int all_sequence_length = parameters.past_sequence_length + parameters.sequence_length;
+  const size_t bytes = GetAttentionScratchSize(element_size, parameters.batch_size, parameters.num_heads,
+                                               parameters.sequence_length, all_sequence_length);
+  HipT* scratch1 = reinterpret_cast<HipT*>(workspace.get());
+  HipT* scratch2 = scratch1 + (bytes / element_size);
+  HipT* scratch3 = scratch2 + (bytes / element_size);
+
+  // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
+  ORT_RETURN_IF_ERROR(LaunchTransQkv(Stream(context), 3, parameters.sequence_length, parameters.batch_size, parameters.head_size, parameters.num_heads,
+                      device_prop.maxThreadsPerBlock, false, reinterpret_cast<HipT*>(gemm_buffer.get()), scratch3));
+
+  // now scratch3 has Q, K, V: each has size BxNxSxH
+  const int batches = parameters.batch_size * parameters.num_heads;
+  const int size_per_batch = parameters.sequence_length * parameters.head_size;
+  const int total_size = batches * size_per_batch;
+
+  const HipT* q_buffer = scratch3;
+  const HipT* k_buffer = q_buffer + total_size;
+  const HipT* v_buffer = k_buffer + total_size;
+
+  rocblas_set_stream(rocblas, Stream(context));
+
+  // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
+  // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
+  // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
+  const int present_size_per_batch = all_sequence_length * parameters.head_size;
+  if (nullptr != present) {
+    ORT_RETURN_IF_ERROR(
+      LaunchConcatPastToPresent(Stream(context), all_sequence_length,
+                                parameters.sequence_length,
+                                parameters.batch_size,
+                                parameters.head_size,
+                                parameters.num_heads,
+                                device_prop.maxThreadsPerBlock,
+                                nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
+                                k_buffer,
+                                reinterpret_cast<HipT*>(present->MutableDataRaw())));
+
+    // update pointers to present_k and present_v.
+    k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
+    v_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw()) + batches * present_size_per_batch;
+  }
+
   // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
   const TransformerOptions* options = TransformerOptions::GetInstance();
   bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
 
-  return QkvToContext(
-      device_prop, GetTuningContext(), rocblas, Stream(context),
-      parameters.batch_size, parameters.sequence_length, parameters.num_heads, parameters.head_size, element_size,
-      reinterpret_cast<const HipT*>(gemm_buffer.get()),
-      reinterpret_cast<HipT*>(output->MutableDataRaw()),
-      reinterpret_cast<HipT*>(workspace.get()),
+  GemmSoftmaxGemmPermutePararms<HipT> gemm_softmax_gemm_permute_params;
+  {
+    auto& params = gemm_softmax_gemm_permute_params;
+    params.tuning_ctx = GetTuningContext();
+    params.stream = Stream(context);
+    params.handle = rocblas;
+    params.FillShape(parameters);
+    // FIXME: the params.scale seems to be different from AttentionParameters::scale;
+    params.scale = 1.0f / sqrt(static_cast<float>(parameters.head_size));
+    params.q_buffer = q_buffer;
+    params.k_buffer = k_buffer;
+    params.v_buffer = v_buffer;
+    params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
+  }
+
+  return GemmSoftmaxGemmPermuteGeneric(
+      gemm_softmax_gemm_permute_params,
+      parameters,
+      device_prop.maxThreadsPerBlock,
+      scratch1,
+      scratch2,
+      scratch3,
       nullptr == mask_index ? nullptr : mask_index->Data<int>(),
       nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-      mask_filter_value_,
-      is_unidirectional_,
-      parameters.past_sequence_length,
-      nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
       nullptr == relative_position_bias ? nullptr : reinterpret_cast<const HipT*>(relative_position_bias->DataRaw()),
-      nullptr == present ? nullptr : reinterpret_cast<HipT*>(present->MutableDataRaw()),
       use_persistent_softmax);
 }
 
