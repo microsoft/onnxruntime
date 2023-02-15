@@ -154,7 +154,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
 
 3. Add the `onCreate()` method
 
-   This is where we initialize the ONNX Runtime session. A session holds a reference to the model used to perform inference in the application. It also takes a session options parameter, which is where you can specify different execution providers (hardware accelerators such as NNAPI). In this case, we default to running on CPU. We do however register the custom op library where the image encoding and decoding operators at the input and output of the model are found.
+   This is where we initialize the [ONNX Runtime session](https://onnxruntime.ai/docs/api/java/ai/onnxruntime/OrtSession.html). A session holds a reference to the model used to perform inference in the application. It also takes a session options parameter, which is where you can specify different execution providers (hardware accelerators such as NNAPI). In this case, we default to running on CPU. We do however register the custom op library where the image encoding and decoding operators at the input and output of the model are found.
 
    ```kotlin
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -279,17 +279,16 @@ Create a file called `SuperResPerformer.kt` and add the following snippets of co
 
    This class and its main function `upscale` are where most of the calls to ONNX Runtime live.
 
-   * The `OrtEnvironment` singleton maintains properties of the environment and configured logging levels
-   * `OnnxTensor.createTensor()` is used to create a tensor made up of the input image bytes, suitable as input to the model
-   * `OnnxJavaType.UINT8` is the data type of the input tensor
-   * `OrtSession.run()` run the inference (prediction) on the model to get the output upscaled image
+   * The [OrtEnvironment](https://onnxruntime.ai/docs/api/java/ai/onnxruntime/OrtEnvironment.html) singleton maintains properties of the environment and configured logging levels
+   * [OnnxTensor.createTensor()](https://onnxruntime.ai/docs/api/java/ai/onnxruntime/OnnxTensor.html#createTensor(ai.onnxruntime.OrtEnvironment,java.nio.ByteBuffer,long%5B%5D,ai.onnxruntime.OnnxJavaType)) is used to create a tensor made up of the input image bytes, suitable as input to the model
+   * [OnnxJavaType.UINT8](https://onnxruntime.ai/docs/api/java/ai/onnxruntime/OnnxJavaType.html) is the data type of the ByteBuffer of the input tensor
+   * [OrtSession.run()](https://onnxruntime.ai/docs/api/java/ai/onnxruntime/OrtSession.html#run(java.util.Map)) run the inference (prediction) on the model to get the output upscaled image
 
    ```kotlin
    internal class SuperResPerformer(
-    private val ortSession: OrtSession
    ) {
 
-       fun upscale(inputStream: InputStream, ortEnv: OrtEnvironment): Result {
+       fun upscale(inputStream: InputStream, ortEnv: OrtEnvironment, ortSession: OrtSession): Result {
            var result = Result()
 
            // Step 1: convert image into byte array (raw image bytes)
@@ -298,6 +297,12 @@ Create a file called `SuperResPerformer.kt` and add the following snippets of co
            // Step 2: get the shape of the byte array and make ort tensor
            val shape = longArrayOf(rawImageBytes.size.toLong())
 
+           val inputTensor = OnnxTensor.createTensor(
+               ortEnv,
+               ByteBuffer.wrap(rawImageBytes),
+               shape,
+               OnnxJavaType.UINT8
+           )
            inputTensor.use {
                // Step 3: call ort inferenceSession run
                val output = ortSession.run(Collections.singletonMap("image", inputTensor))
@@ -314,11 +319,6 @@ Create a file called `SuperResPerformer.kt` and add the following snippets of co
            }
            return result
        }
-
-       private fun byteArrayToBitmap(data: ByteArray): Bitmap {
-           return BitmapFactory.decodeByteArray(data, 0, data.size)
-       }
-   }
    ```
 
 ### Build and run the app
@@ -335,10 +335,10 @@ The app runs in the device emulator. Connect to your Android device to run the a
 ### Pre-requisites
 
 * Install Xcode 13.0 and above (preferably latest version)
-* A valid Apple Developer ID
 * An iOS device or iOS simulator
 * Xcode command line tools `xcode-select --install`
 * CocoaPods `sudo gem install cocoapods`
+* A valid Apple Developer ID (if you are planning to run on device)
 
 ### Sample code
 
@@ -361,7 +361,7 @@ To run the app from source code:
 
 3. Open the generated `ORTSuperResolution.xcworkspace` file in XCode
 
-   Select your development team
+   (Optional: only required if you are running on device) Select your development team
 
 4. Run the application
 
@@ -375,7 +375,7 @@ To develop the app, step by step, follow the following sections.
 
 #### Create project
 
-Create a new project in XCode
+Create a new project in XCode using the APP template
 
 #### Dependencies
 
@@ -401,7 +401,7 @@ Install the following pods:
 
 #### Main app
 
-Create a file called `ORTSuperResolutionApp.swift` and add the following code:
+Open the file called `ORTSuperResolutionApp.swift` and add the following code:
 
 ```swift
 import SwiftUI
@@ -418,7 +418,7 @@ struct ORTSuperResolutionApp: App {
 
 #### Content view
 
-Create a file called `ContentView.swift` and add the following code:
+Open the file called `ContentView.swift` and add the following code:
 
 ```swift
 import SwiftUI
