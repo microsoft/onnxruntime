@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # pylint: disable=C0116,W0212,R1720,C0114
 
-# -*- coding: UTF-8 -*-
+import copy
 import gc
 import os
 import platform
@@ -386,6 +386,89 @@ class TestInferenceSession(unittest.TestCase):
             # create session from scratch, but constrain it to only use the CPU.
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
+
+    def testGetAndSetTuningResults(self):
+        def getTuningResultsForEp(sess, ep):  # without the outer list
+            tuning_results = sess.get_tuning_results()
+            self.assertGreaterEqual(len(tuning_results), 1)
+            tuning_results_for_this_ep = [t for t in tuning_results if t.get("ep") == ep]
+            self.assertEqual(len(tuning_results_for_this_ep), 1)
+            return tuning_results_for_this_ep[0]
+
+        probe_op_sig = "probe_but_not_an_op_signature"
+        probe_params_sig = "probe_but_not_an_params_signature"
+        probe_value = 10000000
+
+        def copyTuningResultsWithProbe(tr):
+            tr = copy.deepcopy(tr)
+            tr["results"][probe_op_sig] = {probe_params_sig: probe_value}
+            return tr
+
+        def assertTuningResultsLoaded(sess, ep):
+            tr = getTuningResultsForEp(sess, ep)
+            self.assertIn(probe_op_sig, tr["results"])
+            self.assertEqual(tr["results"][probe_op_sig], {probe_params_sig: probe_value})
+
+        def assertTuningResultsNotLoaded(sess, ep):
+            tr = getTuningResultsForEp(sess, ep)
+            self.assertNotIn(probe_op_sig, tr["results"])
+
+        def doTestGetAndSetTuningResults(ep):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep])
+            tuning_results = getTuningResultsForEp(sess, ep)
+
+            self.assertIn("ep", tuning_results)
+            self.assertIn("results", tuning_results)
+            self.assertIn("validators", tuning_results)
+            self.assertIn("ORT_VERSION", tuning_results["validators"])
+            self.assertNotIn("NOT_A_VALIDATOR_KEY", tuning_results["validators"])
+
+            # invalid EP will be rejected
+            invalid_unknown_ep = copyTuningResultsWithProbe(tuning_results)
+            invalid_unknown_ep["ep"] = "UnknownEP"
+            sess.set_tuning_results([invalid_unknown_ep])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([invalid_unknown_ep], error_on_invalid=True)
+            self.assertIn("Cannot find execution provider UnknownEP", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            # missing validator key will be rejected
+            mismatched_validator_key_missing = copyTuningResultsWithProbe(tuning_results)
+            mismatched_validator_key_missing["validators"].pop("ORT_VERSION")
+            sess.set_tuning_results([mismatched_validator_key_missing])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_missing], error_on_invalid=True)
+            self.assertIn("ORT_VERSION", str(context.exception))
+            self.assertIn("is not provided for validation", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            mismatched_validator_key_extra = copyTuningResultsWithProbe(tuning_results)
+            mismatched_validator_key_extra["validators"]["NOT_A_VALIDATOR_KEY"] = "NOT_USED"
+            sess.set_tuning_results([mismatched_validator_key_extra])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_extra], error_on_invalid=True)
+            self.assertIn("NOT_A_VALIDATOR_KEY", str(context.exception))
+            self.assertIn("is unable to consume it", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            validation_failure = copyTuningResultsWithProbe(tuning_results)
+            validation_failure["validators"]["ORT_VERSION"] = "This is not a proper ORT_VERSION value!"
+            sess.set_tuning_results([validation_failure])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([validation_failure], error_on_invalid=True)
+            self.assertIn("Failed to load TuningResults", str(context.exception))
+            self.assertIn("version mismatch", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            loadable = copyTuningResultsWithProbe(tuning_results)
+            sess.set_tuning_results([loadable], error_on_invalid=True)
+            assertTuningResultsLoaded(sess, ep)
+
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            doTestGetAndSetTuningResults("CUDAExecutionProvider")
+
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+            doTestGetAndSetTuningResults("ROCMExecutionProvider")
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)

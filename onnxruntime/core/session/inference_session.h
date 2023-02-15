@@ -18,6 +18,7 @@
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
+#include "core/framework/tuning_results.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
@@ -447,6 +448,23 @@ class InferenceSession {
     @return the profiler object
     */
   const profiling::Profiler& GetProfiling() const;
+
+#if !defined(ORT_MINIMAL_BUILD)
+  /**
+   * Get the TuningResults of TunableOp for every execution providers.
+   * @return The TuningResults of each execution provider.
+   */
+  std::vector<TuningResults> GetTuningResults() const;
+
+  /**
+   * Set the TuningResults back to each execution provider. Mainly for offline tuning.
+   * @param trs is the list of TuningResults to be loaded.
+   * @param error_on_invalid otherwise, validation faliure is not an error, only a warning log will be produced.
+   * @return OK if success.
+   */
+  Status SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid = false);
+#endif
+
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   MemoryProfiler& GetMemoryProfiler() {
