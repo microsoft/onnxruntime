@@ -6,36 +6,20 @@
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-template <typename T>
-struct CudaDeleter {
-  void operator()(T* buf) {
-    cudaFree(buf);  // do not throw error since it's OK for cudaFree to fail during shutdown
-  }
-};
-
-template <typename T>
-using cuda_unique_ptr = std::unique_ptr<T, CudaDeleter<T>>;
-
-template <typename T>
-using cuda_shared_ptr = std::shared_ptr<T>;
-
-template <typename T>
-void make_cuda_shared(cuda_shared_ptr<T>& ptr, void* cuda_memory) {
-  ptr.reset(static_cast<T*>(cuda_memory), CudaDeleter<T>());
-}
+constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
 struct CumulatedSequenceLengthCache {
-  cuda_shared_ptr<void> buffer;
+  onnxruntime::IAllocatorUniquePtr<void> buffer;
   int32_t max_batch_size;
   int32_t sequence_length;
 
   CumulatedSequenceLengthCache() : max_batch_size(0), sequence_length(0) {}
-  Status Allocate(int32_t max_batch_size);
   void Initialize(int32_t sequence_length, cudaStream_t stream);
 };
 

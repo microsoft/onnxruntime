@@ -51,7 +51,6 @@ namespace contrib {
 namespace cuda {
 
 constexpr size_t kMemoryAlignment = 256;
-constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
 static size_t AlignTo(size_t a, size_t b) {
   return CeilDiv(a, b) * b;
@@ -62,19 +61,9 @@ size_t AlignSize(size_t bytes) {
   return bytesAligned;
 }
 
-Status CumulatedSequenceLengthCache::Allocate(int32_t max_batch_size) {
-  if (this->max_batch_size == 0) {
-    void* cudaMem{nullptr};
-    CUDA_RETURN_IF_ERROR(cudaMalloc(&cudaMem, sizeof(int32_t) * (max_batch_size + 1)));
-    make_cuda_shared(buffer, cudaMem);
-    this->max_batch_size = max_batch_size;
-  }
-
-  return Status::OK();
-}
-
 void CumulatedSequenceLengthCache::Initialize(int32_t sequence_length, cudaStream_t stream) {
   if (this->sequence_length != sequence_length) {
+    ORT_ENFORCE(buffer.get() != nullptr && this->max_batch_size > 0);
     LaunchTrtSequenceOffset(reinterpret_cast<int32_t*>(buffer.get()), nullptr, this->max_batch_size, sequence_length, stream);
     this->sequence_length = sequence_length;
   }
@@ -87,10 +76,6 @@ int* GetCumulatedSequenceLength(CumulatedSequenceLengthCache* cache,
                                 cudaStream_t stream,
                                 void* scratch_buffer) {
   if (mask_index == nullptr && cache != nullptr) {
-    if (cache->max_batch_size == 0) {
-      ORT_THROW_IF_ERROR(cache->Allocate(kCumulatedSequenceLengthCacheMaxBatchSize));
-    }
-
     if (batch_size <= cache->max_batch_size) {
       cache->Initialize(sequence_length, stream);
       return reinterpret_cast<int*>(cache->buffer.get());
