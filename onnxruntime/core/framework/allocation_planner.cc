@@ -1332,7 +1332,7 @@ class PlannerImpl {
     context_ = backup_context;
 
 #ifdef ORT_ENABLE_STREAM
-    ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
+    //ORT_RETURN_IF_ERROR(OptimizeReusePlanForMultiStream());
 #endif
 
     return Status::OK();
