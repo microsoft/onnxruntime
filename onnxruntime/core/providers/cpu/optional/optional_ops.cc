@@ -70,7 +70,6 @@ static void CopySequenceTensor(AllocatorPtr alloc,
   }
 
   tgt->SetType(src->DataType());
-  tgt->SetElements({});
   tgt->Reserve(src->Size());
 
   auto in_tensor = src->begin();

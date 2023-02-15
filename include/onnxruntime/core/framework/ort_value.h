@@ -15,14 +15,10 @@ namespace onnxruntime {
 #if !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
+class TensorSeq;
 }  // namespace onnxruntime
 
 #endif
-
-namespace onnxruntime {
-// Forward declaration
-class TensorSeq;
-}  // namespace onnxruntime
 
 /**
    Represents both tensors and non-tensors.

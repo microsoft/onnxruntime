@@ -849,6 +849,7 @@ struct ProviderHost {
   virtual const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) = 0;
   virtual const OrtValue& TensorSeq__GetAt(const TensorSeq* p, size_t i) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, const OrtValue& tensor) = 0;
+  virtual void TensorSeq__Add(TensorSeq* p, OrtValue&& tensor) = 0;
   virtual void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) = 0;
   virtual void TensorSeq__Reserve(TensorSeq* p, size_t capacity) = 0;
 

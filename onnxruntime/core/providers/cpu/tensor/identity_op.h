@@ -15,6 +15,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/TensorSeq.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/utils.h"
 
 namespace onnxruntime {
@@ -52,7 +53,7 @@ class IdentityOp final : public OpKernel {
 
       const void* source = X->DataRaw(X_type);
       void* target = Y->MutableDataRaw(X_type);
-      //If source and target pointers are not equal, we need to copy the data.
+      // If source and target pointers are not equal, we need to copy the data.
       if (target != source) {
         if (!X->IsDataTypeString()) {
           memcpy(target, source, SafeInt<size_t>(shape.Size()) * X_type->Size());
@@ -100,9 +101,8 @@ class IdentityOp final : public OpKernel {
 
         for (auto it = X->begin(), end = X->end(); it != end; ++it) {
           auto& it_tensor = it->Get<Tensor>();
-          Tensor tmp(it_tensor.DataType(), onnxruntime::TensorShape(it_tensor.Shape()), alloc);
-          size_t bytes = it_tensor.SizeInBytes();
-          memcpy(tmp.MutableDataRaw(), it_tensor.DataRaw(), bytes);
+          Tensor tmp(it_tensor.DataType(), it_tensor.Shape(), alloc);
+          CopyCpuTensor(&it_tensor, &tmp);
           output->Add(std::move(tmp));
         }
       }
@@ -112,4 +112,4 @@ class IdentityOp final : public OpKernel {
   }
 };
 
-}  //namespace onnxruntime
+}  // namespace onnxruntime

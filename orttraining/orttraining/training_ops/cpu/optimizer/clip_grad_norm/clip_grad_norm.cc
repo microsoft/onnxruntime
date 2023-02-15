@@ -28,7 +28,8 @@ template <typename T>
 void ClipGradNorm(T total_norm, T max_norm, TensorSeq& gradients) {
   const T clip_coefficient = std::min(max_norm / (total_norm + static_cast<T>(Epsilon)), static_cast<T>(1.0f));
 
-  for (size_t i = 0; i < gradients.Size(); i++)
+  auto gradients_size = gradients.Size();
+  for (size_t i = 0; i < gradients_size); i++)
   {
     const auto& grad = gradients.Get(i);
     auto& tensor = const_cast<Tensor&>(grad);
@@ -46,8 +47,10 @@ Status PopulateOutput(OpKernelContext* ctx, const TensorSeq* gradients, TensorSe
 
   clipped_gradients->SetType(gradients->DataType());
   clipped_gradients->SetElements({});
-  clipped_gradients->Reserve(gradients->Size());
-  for (size_t i = 0; i < gradients->Size(); i++)
+
+  auto gradients_size = gradients.Size();
+  clipped_gradients->Reserve(gradients_size);
+  for (size_t i = 0; i < gradients_size; i++)
   {
     const auto& grad = gradients->Get(i);
     Tensor target_tensor(grad.DataType(), grad.Shape(), alloc);

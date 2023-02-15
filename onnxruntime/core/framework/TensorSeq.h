@@ -20,6 +20,7 @@ class TensorSeq {
   }
 
   using const_iterator = std::vector<OrtValue>::const_iterator;
+  using iterator = std::vector<OrtValue>::iterator;
 
   // Sets the element type after construction.
   // Expects sequence to be empty at the time.
@@ -58,6 +59,14 @@ class TensorSeq {
     return tensors_.cend();
   }
 
+  iterator begin() noexcept {
+    return tensors_.begin();
+  }
+
+  iterator end() noexcept {
+    return tensors_.end();
+  }
+
   // Get onnxruntime::Tensor by index
   const Tensor& Get(size_t i) const {
     return GetAt(i).Get<Tensor>();
@@ -75,12 +84,32 @@ class TensorSeq {
     tensors_.push_back(tensor);
   }
 
+  void Add(OrtValue&& tensor) {
+    ORT_ENFORCE(IsSameDataType(tensor.Get<Tensor>()),
+                "TensorSeq: tensor to be added has a different data type.");
+    tensors_.push_back(std::move(tensor));
+  }
+
   void Add(Tensor&& tensor) {
     ORT_ENFORCE(IsSameDataType(tensor),
                 "TensorSeq: tensor to be added has a different data type.");
-    auto ml_tensor = TensorTypeBase::Type();
-    auto tensor_ptr = std::make_unique<Tensor>(std::move(tensor));
-    Add(OrtValue(tensor_ptr.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
+    OrtValue ort_value;
+    Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), tensor.MutableDataRaw(), tensor.Location(), ort_value);
+    Add(std::move(ort_value));
+  }
+
+  static void InitOrtValue(const TensorSeq& source_tensor_seq, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
+    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
+    target_tensor_seq->Reserve(source_tensor_seq.Size());
+    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
+      const Tensor& tensor = iter->Get<Tensor>();
+      OrtValue value;
+      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(), allocator, value);
+      target_tensor_seq->Add(std::move(value));
+    }
+
+    auto ml_tensor_seq = SequenceTensorTypeBase::Type();
+    ort_value.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
   }
 
   void Reserve(size_t capacity) {

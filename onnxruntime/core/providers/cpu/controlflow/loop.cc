@@ -545,13 +545,12 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
         // as operator inputs are read-only. Hence, we need to make a copy.
         auto& data = input.Get<TensorSeq>();
         output->SetType(data.DataType());
-        output->SetElements({});
         output->Reserve(data.Size());
 
         AllocatorPtr alloc;
         ORT_RETURN_IF_ERROR(context_.GetTempSpaceAllocator(&alloc));
         for (auto it = data.begin(), end = data.end(); it != end; ++it) {
-          Tensor tmp(it->Get<Tensor>().DataType(), onnxruntime::TensorShape(it->Get<Tensor>().Shape()), alloc);
+          Tensor tmp(it->Get<Tensor>().DataType(), it->Get<Tensor>().Shape(), alloc);
           // Safely use the IDataTransfer abstraction as we only allow using
           // Loop on CUDA if the copy stream is the same as the compute stream.
           // So there is no explicit sync required between the compute and copy streams

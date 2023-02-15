@@ -219,7 +219,6 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   Y->SetType(S->DataType());
-  Y->SetElements({});
   Y->Reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
 
   for (int i = 0; i < num_tensors_input_seq; ++i) {

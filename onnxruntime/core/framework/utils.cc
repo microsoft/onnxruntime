@@ -117,16 +117,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 #endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
-    target_tensor_seq->Reserve(source_tensor_seq.Size());
-    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      const Tensor& tensor = iter->Get<Tensor>();
-      OrtValue value;
-      Tensor::InitOrtValue(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), allocator, value);
-      target_tensor_seq->Add(value);
-    }
-    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
-    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+    TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
   }
@@ -214,12 +205,12 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>()), stream});
+        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), stream});
       } else {
         if (stream)
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>()), *stream));
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
         else
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_iter->Get<Tensor>(), const_cast<Tensor&>(target_iter->Get<Tensor>())));
+          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
       }
       ++source_iter;
       ++target_iter;
