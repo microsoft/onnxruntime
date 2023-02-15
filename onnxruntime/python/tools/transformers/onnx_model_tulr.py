@@ -502,6 +502,6 @@ class TulrOnnxModel(BertOnnxModel):
 
     def postprocess(self):
         self.rpb_fusion.apply()
-        #self.gru_fusion.apply()
+        self.gru_fusion.apply()
         self.clean_graph()
         self.prune_graph()
