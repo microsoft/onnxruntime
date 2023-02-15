@@ -13,6 +13,10 @@ Learn how to build an application to improve image resolution using ONNX Runtime
 
 You can use this tutorial to build the application for Android or iOS.
 
+The application takes an input input, performs the super resolution operation when the button is clicked and displays the image with improved resolution below, as in the following screenshot.
+
+![Super resolution on a cat](../../../images/mobile-superres-cat.png)
+
 ## Contents
 {: .no_toc }
 
@@ -28,7 +32,7 @@ We provide a convenient Python script that exports the PyTorch model into ONNX f
 1. Before running this script, install the following python packages:
 
     ```bash
-    pip install pytorch
+    pip install torch
     pip install onnxruntime
     pip install onnxruntime-extensions
     pip install pillow
@@ -80,7 +84,7 @@ Now it's time to write the application code.
 
 You can find full [source code for the Android super resolution app](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile/examples/super_resolution/android) in GitHub.
 
-To run the app from source code, clone the above repo and load the android project into Android studio, build and run!
+To run the app from source code, clone the above repo and load the `build.gradle` file into Android studio, build and run!
 
 To build the app, step by step, follow the following sections.
 
@@ -104,7 +108,7 @@ implementation files('libs/onnxruntime-extensions-android-0.6.0.aar')
 
 1. Add the model file as a raw resource
 
-   Create a folder called `raw` in the `resources` folder and move or copy the ONNX model into the raw folder.
+   Create a folder called `raw` in the `src/main/res` folder and move or copy the ONNX model into the raw folder.
 
 2. Add the test image as an asset
 
@@ -140,6 +144,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    class MainActivity : AppCompatActivity() {
        private var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
        private lateinit var ortSession: OrtSession
+       private var inputImage: ImageView? = null
        private var outputImage: ImageView? = null
        private var superResolutionButton: Button? = null
 
@@ -147,7 +152,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
    }
    ```
 
-3. Add the onCreate method
+3. Add the `onCreate()` method
 
    This is where we initialize the ONNX Runtime session. A session holds a reference to the model used to perform inference in the application. It also takes a session options parameter, which is where you can specify different execution providers (hardware accelerators such as NNAPI). In this case, we default to running on CPU. We do however register the custom op library where the image encoding and decoding operators at the input and output of the model are found.
 
@@ -156,8 +161,12 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        inputImage = findViewById(R.id.imageView1)
         outputImage = findViewById(R.id.imageView2);
         superResolutionButton = findViewById(R.id.super_resolution_button)
+        inputImage?.setImageBitmap(
+            BitmapFactory.decodeStream(readInputImage())
+        );
 
         // Initialize Ort Session and register the onnxruntime extensions package that contains the custom operators.
         // Note: These are used to decode the input image into the format the original model requires,
@@ -167,8 +176,15 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
         ortSession = ortEnv.createSession(readModel(), sessionOptions)
 
         superResolutionButton?.setOnClickListener {
-            performSuperResolution(ortSession)
-            Toast.makeText(baseContext, "Super resolution performed!", Toast.LENGTH_SHORT).show()
+            try {
+                performSuperResolution(ortSession)
+                Toast.makeText(baseContext, "Super resolution performed!", Toast.LENGTH_SHORT)
+                    .show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Exception caught when perform super resolution", e)
+                Toast.makeText(baseContext, "Failed to perform super resolution", Toast.LENGTH_SHORT)
+                    .show()
+            }
         }
     }
    ```
@@ -187,10 +203,10 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
 5. Add the updateUI method
 
    ```kotlin
-    private fun updateUI(result: Result) {
-        outputImage?.setImageBitmap(result.outputBitmap)
-    }
-    ```
+   private fun updateUI(result: Result) {
+       outputImage?.setImageBitmap(result.outputBitmap)
+   }
+   ```
 
 6. Add the readModel method
 
@@ -198,7 +214,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
 
    ```kotlin
    private fun readModel(): ByteArray {
-       val modelID = R.raw.pt_super_resolution_op16
+       val modelID = R.pytorch_superresolution_with_pre_post_processing_op18
        return resources.openRawResource(modelID).readBytes()
    }   
    ```
@@ -215,7 +231,7 @@ Create a file called MainActivity.kt and add the following pieces of code to it.
 
 8. Add the method to perform inference
 
-   This method is calls the heart of the application: `SuperResPerformer.upscale()`, which is the method that runs inference on the model. The code for this is shown in the next section.
+   This method calls the method that is at the heart of the application: `SuperResPerformer.upscale()`, which is the method that runs inference on the model. The code for this is shown in the next section.
 
    ```kotlin
     private fun performSuperResolution(ortSession: OrtSession) {
