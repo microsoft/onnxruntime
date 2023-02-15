@@ -174,10 +174,14 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   }
 }
 
+// Note about the attention_mask_strides and attention_mask/key_padding_mask
+// attention_mask accepts 2D, 3D or 4D tensor, but it will be viewed as 4D tensor uniformally and it will be indexed
+// as [batch_index, 0, sequence_index, token_index].
 template <typename T, unsigned TPB>
 __global__ void SoftmaxWithRawMaskSmallKernel(
     const int all_sequence_length,
     const int sequence_length,
+    const int4 attention_mask_strides,
     const int* attention_mask,  // 2D, 3D or 4D attention mask
     const bool* key_padding_mask,
     const T* add_before_softmax,
@@ -185,8 +189,6 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
     T* output,
     const bool is_unidirectional,
     const float rsqrt_head_size,
-    const int mask_dimension,
-    const int max_sequence_length,
     const bool skip_softmax,
     const float mask_filter_value) {
   using BlockReduce = hipcub::BlockReduce<float, TPB>;
@@ -217,16 +219,11 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
       }
     }
 
-    int mask_offset = 0;
     const int batch_index = blockIdx.y;
-    if (mask_dimension == 2) {
-      mask_offset = batch_index * all_sequence_length + threadIdx.x;
-    } else if (mask_dimension == 3) {
-      mask_offset = (batch_index * sequence_length + sequence_index) * all_sequence_length + threadIdx.x;
-    } else if (mask_dimension == 4) {
-      int from_index = all_sequence_length - sequence_length + sequence_index;
-      mask_offset = (batch_index * max_sequence_length + from_index) * max_sequence_length + threadIdx.x;
-    }
+    int mask_offset = attention_mask_strides.x * batch_index +
+                      attention_mask_strides.y * 0 +
+                      attention_mask_strides.z * sequence_index +
+                      attention_mask_strides.w * threadIdx.x;
 
     if (nullptr == key_padding_mask) {
       const int& mask = attention_mask[mask_offset];
@@ -417,31 +414,30 @@ Status ComputeSoftmaxWithMask1D(
 
 template <typename T>
 Status ComputeSoftmaxWithRawMask(hipStream_t stream,
-                               const int all_sequence_length,
-                               const int sequence_length,
-                               const int batch_size,
-                               const int num_heads,
-                               const int* attention_mask,
-                               const bool* key_padding_mask,
-                               const T* add_before_softmax,
-                               const T* input,
-                               T* output,
-                               const bool is_unidirectional,
-                               const float rsqrt_head_size,
-                               const int mask_dimension,
-                               const int max_sequence_length,
-                               const bool use_persistent_softmax,
-                               T* persistent_softmax_workspace,
-                               const float mask_filter_value) {
+                                 const int all_sequence_length,
+                                 const int sequence_length,
+                                 const int batch_size,
+                                 const int num_heads,
+                                 const int4 attention_mask_strides,
+                                 const int* attention_mask,
+                                 const bool* key_padding_mask,
+                                 const T* add_before_softmax,
+                                 const T* input,
+                                 T* output,
+                                 const bool is_unidirectional,
+                                 const float rsqrt_head_size,
+                                 const bool use_persistent_softmax,
+                                 T* persistent_softmax_workspace,
+                                 const float mask_filter_value) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
 
 #define DISPATCH_KERNEL_SMALL_WITH_BLOCKSIZE(block_size)                         \
   SoftmaxWithRawMaskSmallKernel<T, block_size><<<grid, block_size, 0, stream>>>( \
-      all_sequence_length, sequence_length,                                      \
+      all_sequence_length, sequence_length, attention_mask_strides,              \
       attention_mask, key_padding_mask, add_before_softmax, input, out,          \
-      is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,   \
+      is_unidirectional, rsqrt_head_size,                                        \
       use_persistent_softmax, mask_filter_value);
 
   if (all_sequence_length <= 32) {

@@ -130,7 +130,6 @@ Status QkvToContext(
     v = present + batches * present_size_per_batch;
   }
 
-  // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
   bool use_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() >= 2);
 
   // compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxS*
@@ -152,15 +151,27 @@ Status QkvToContext(
 
   // apply softmax and store result P to scratch2: BxNxSxS*
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
+    // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
+    auto* mask = mask_index;
+    int4 strides;
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
-    const int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims[3]) : 0;
+    if (mask_dimension == 2) {
+      strides = {all_sequence_length, 0, 0, 1};
+    } else if (mask_dimension == 3) {
+      strides = {sequence_length * all_sequence_length, 0, all_sequence_length, 1};
+    } else if (mask_dimension == 4) {
+      int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims[3]) : 0;
+      strides = {max_sequence_length * max_sequence_length, max_sequence_length, max_sequence_length, 1};
+      // offset to skip past sequence part, so that we can index it with [batch_index, 0, sequence_index, token_index]
+      mask = mask + past_sequence_length * max_sequence_length;
+    }
 
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place if persistent softmax is selected.
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, all_sequence_length, sequence_length, batch_size, num_heads,
-                                      mask_index, nullptr, relative_position_bias, scratch1, scratch2,
-                                      is_unidirectional, rsqrt_head_size, mask_dimension, max_sequence_length,
-                                      use_persistent_softmax, persistent_softmax_workspace, mask_filter_value));
+                                     strides, mask, nullptr, relative_position_bias, scratch1, scratch2,
+                                     is_unidirectional, rsqrt_head_size,
+                                     use_persistent_softmax, persistent_softmax_workspace, mask_filter_value));
   } else if (nullptr != mask_index) {  // 1d mask index
     ORT_ENFORCE(mask_index_dims.size() == 1);
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
@@ -375,9 +386,11 @@ Status DecoderQkvToContext(
   }
 
   if (has_key_padding_mask) {
-    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(stream, kv_sequence_length, sequence_length, batch_size,
-                                      num_heads, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
-                                      false, 1, 2, static_cast<int>(0), false, nullptr, mask_filter_value));
+    int4 strides = {sequence_length, 0, 0, 1};
+    ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
+        stream, kv_sequence_length, sequence_length, batch_size, num_heads,
+        strides, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
+        false, 1.0f, false, nullptr, mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(stream, kv_sequence_length, sequence_length, batch_size,
                            num_heads, nullptr, scratch1, scratch2, false));
