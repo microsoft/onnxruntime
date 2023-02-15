@@ -507,7 +507,7 @@ Status QkvToContext(
     q = qkv;
     k = q + elements_q;
     v = k + elements_k;
-    scratch1 = qkv + elements_q + elements_k + elements_v;
+    scratch1 = v + elements_v;
   }
 
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
