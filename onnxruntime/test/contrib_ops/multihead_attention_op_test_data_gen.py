@@ -222,7 +222,7 @@ def run_cross_attention(
         packed_kv = packed_kv.reshape(batch_size, kv_sequence_length, num_heads, 2, q_head_size)
         print("packed_kv_5d", packed_kv)
 
-    output = mha.forward(
+    mha.forward(
         hidden_states,
         attention_mask=None,
         encoder_hidden_states=encoder_hidden_states,
@@ -304,7 +304,7 @@ def run_self_attention(
         packed_qkv = packed_qkv.reshape(batch_size, sequence_length, num_heads, 3, q_head_size)
         print("packed_qkv_5d", packed_qkv)
 
-    output = mha.forward(
+    mha.forward(
         hidden_states,
         attention_mask=None,
         encoder_hidden_states=None,

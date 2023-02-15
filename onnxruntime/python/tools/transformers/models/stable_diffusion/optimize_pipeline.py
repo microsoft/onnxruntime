@@ -132,7 +132,7 @@ def optimize_sd_pipeline(
 
         fusion_options = FusionOptions(model_type)
         if model_type in ["unet"]:
-            # There are some optimizations that are not avaiable in v1.14 or older version
+            # There are some optimizations that are not available in v1.14 or older version
             has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
             fusion_options.enable_packed_kv = float16
             fusion_options.enable_packed_qkv = float16 and has_all_optimizations

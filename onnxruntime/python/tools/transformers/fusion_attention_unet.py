@@ -154,8 +154,6 @@ class FusionAttentionUnet(Fusion):
                 return None
 
             qw_in_size = qw.shape[0]
-            kw_in_size = kw.shape[0]
-            vw_in_size = vw.shape[0]
 
             if hidden_size > 0 and hidden_size != qw_in_size:
                 raise ValueError(
@@ -171,7 +169,7 @@ class FusionAttentionUnet(Fusion):
             if self.enable_packed_qkv:
                 attention_node_name = self.model.create_node_name("MultiHeadAttention")
 
-                c = kw_in_size
+                c = qw_in_size
                 n = num_heads
                 h = qw_out_size // num_heads
 
