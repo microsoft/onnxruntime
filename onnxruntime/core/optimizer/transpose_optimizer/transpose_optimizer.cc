@@ -970,7 +970,7 @@ static void PermuteInput(api::GraphRef& graph, api::NodeRef& node, size_t i, con
   node.SetInput(i, gather_output);
 }
 
-static bool HandleResize(HandlerArgs& args) {
+static bool HandleResize([[maybe_unused]] HandlerArgs& args) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
   // The CUDA Resize kernel requires that the input is NCHW, so we can't push a Transpose through a Resize
   // in ORT builds with CUDA enabled.
