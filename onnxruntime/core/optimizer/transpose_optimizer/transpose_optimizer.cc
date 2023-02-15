@@ -1803,11 +1803,11 @@ static int CalculateCost(const api::GraphRef& graph, const api::NodeRef& node,
 }
 
 // Default cost check. Returns `true` if pushing the Transpose through the node is considered to be beneficial.
-static bool DefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
-                             const std::vector<int64_t>& perm,
-                             const std::unordered_set<std::string>& outputs_leading_to_transpose,
-                             const HandlerInfo& info,
-                             const std::vector<size_t> transposable_input_indices) {
+static bool ShouldPushTranspose(const api::GraphRef& graph, const api::NodeRef& node,
+                                const std::vector<int64_t>& perm,
+                                const std::unordered_set<std::string>& outputs_leading_to_transpose,
+                                const HandlerInfo& info,
+                                const std::vector<size_t> transposable_input_indices) {
   if (node.IsOp("Transpose")) {
     return true;
   }
@@ -1838,7 +1838,7 @@ bool ProcessTranspose(OptimizerCtx& ctx, api::NodeRef& transpose, api::NodeRef& 
   }
 
   if (cost == CostCheckResult::kFallThrough) {
-    cost = DefaultCostCheck(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices)
+    cost = ShouldPushTranspose(ctx.graph, node, perm, outputs_leading_to_transpose, *info, input_indices)
                ? CostCheckResult::kPushTranspose
                : CostCheckResult::kStop;
   }
