@@ -4,6 +4,7 @@
 #pragma once
 #include <hip/hip_runtime.h>
 #include <hip/hip_fp16.h>
+#include "core/framework/float8.h"
 #include "core/framework/float16.h"
 
 typedef __half half;

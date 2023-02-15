@@ -996,6 +996,10 @@ template <>
 inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDataType_MLFloat16(this); }
 template <>
 inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
+template <>
+inline bool Tensor::IsDataType<FloatE4M3>() const { return g_host->Tensor__IsDataType_FloatE4M3(this); }
+template <>
+inline bool Tensor::IsDataType<FloatE5M2>() const { return g_host->Tensor__IsDataType_FloatE5M2(this); }
 
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
@@ -1023,6 +1027,10 @@ template <>
 inline BFloat16* Tensor::MutableData<BFloat16>() { return g_host->Tensor__MutableData_BFloat16(this); }
 template <>
 inline MLFloat16* Tensor::MutableData<MLFloat16>() { return g_host->Tensor__MutableData_MLFloat16(this); }
+template <>
+inline FloatE4M3* Tensor::MutableData<FloatE4M3>() { return g_host->Tensor__MutableData_FloatE4M3(this); }
+template <>
+inline FloatE5M2* Tensor::MutableData<FloatE5M2>() { return g_host->Tensor__MutableData_FloatE5M2(this); }
 
 template <>
 inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
@@ -1050,6 +1058,10 @@ template <>
 inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__Data_BFloat16(this); }
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
+template <>
+inline const FloatE4M3* Tensor::Data<FloatE4M3>() const { return g_host->Tensor__Data_FloatE4M3(this); }
+template <>
+inline const FloatE5M2* Tensor::Data<FloatE5M2>() const { return g_host->Tensor__Data_FloatE5M2(this); }
 
 // SparseTensor
 #if !defined(DISABLE_SPARSE_TENSORS)

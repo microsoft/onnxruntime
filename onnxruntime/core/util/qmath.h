@@ -114,14 +114,6 @@ void ParQuantizeLinear(const float* Input,
                        size_t N,
                        float Scale,
                        OutputType ZeroPoint,
-                       concurrency::ThreadPool* thread_pool);
-
-template <typename OutputType>
-void ParQuantizeLinear(const float* Input,
-                       OutputType* Output,
-                       size_t N,
-                       float Scale,
-                       OutputType ZeroPoint,
                        concurrency::ThreadPool* thread_pool) {
   constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
@@ -134,12 +126,12 @@ void ParQuantizeLinear(const float* Input,
 }
 
 template<>
-void ParQuantizeLinear<FloatE4M3>(const float* Input,
+void ParQuantizeLinear(const float* Input,
                        FloatE4M3* Output,
                        size_t N,
                        float Scale,
                        FloatE4M3 ZeroPoint,
-                       concurrency::ThreadPool* thread_pool) {
+                       concurrency::ThreadPool* thread_pool);/* {
   constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
@@ -151,14 +143,16 @@ void ParQuantizeLinear<FloatE4M3>(const float* Input,
     }
   });
 }
+*/
 
 template<>
-void ParQuantizeLinear<FloatE5M2>(const float* Input,
+void ParQuantizeLinear(const float* Input,
                        FloatE5M2* Output,
                        size_t N,
                        float Scale,
                        FloatE5M2 ZeroPoint,
-                       concurrency::ThreadPool* thread_pool) {
+                       concurrency::ThreadPool* thread_pool);
+                       /* {
   constexpr std::ptrdiff_t block_size = 128;
   const std::ptrdiff_t num_blocks = (N + block_size - 1) / block_size;
   const TensorOpCost unit_cost{static_cast<double>(block_size * sizeof(float)), static_cast<double>(block_size * sizeof(uint8_t)), static_cast<double>(block_size) * 2.0};
@@ -170,5 +164,6 @@ void ParQuantizeLinear<FloatE5M2>(const float* Input,
     }
   });
 }
+*/
 
 }  // namespace onnxruntime

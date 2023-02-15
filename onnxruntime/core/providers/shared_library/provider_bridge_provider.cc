@@ -156,6 +156,10 @@ MLDataType DataTypeImpl::GetType<BFloat16>() { return Provider_GetHost()->DataTy
 template <>
 MLDataType DataTypeImpl::GetType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_MLFloat16(); }
 template <>
+MLDataType DataTypeImpl::GetType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetType_FloatE4M3(); }
+template <>
+MLDataType DataTypeImpl::GetType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_FloatE5M2(); }
+template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
@@ -183,6 +187,10 @@ template <>
 MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_MLFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_FloatE4M3(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_FloatE5M2(); }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -213,6 +221,10 @@ template <>
 MLDataType DataTypeImpl::GetSparseTensorType<BFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_BFloat16(); }
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_FloatE4M3(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_FloatE5M2(); }
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {

@@ -166,6 +166,16 @@ class CUDAExecutionProvider : public IExecutionProvider {
           constant_ones_bfloat16_ = cuda::CreateConstantOnes<BFloat16>();
         }
         return reinterpret_cast<const T*>(constant_ones_bfloat16_->GetBuffer(stream, count));
+      } else if (std::is_same<T, FloatE4M3>::value) {
+        if (!constant_ones_floate4m3_) {
+          constant_ones_floate4m3_ = cuda::CreateConstantOnes<FloatE4M3>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_floate4m3_->GetBuffer(stream, count));
+      } else if (std::is_same<T, FloatE5M2>::value) {
+        if (!constant_ones_floate5m2_) {
+          constant_ones_floate5m2_ = cuda::CreateConstantOnes<FloatE5M2>();
+        }
+        return reinterpret_cast<const T*>(constant_ones_floate5m2_->GetBuffer(stream, count));
       } else {
         return nullptr;
       }
@@ -189,6 +199,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::unique_ptr<cuda::IConstantBuffer<double>> constant_ones_double_;
     std::unique_ptr<cuda::IConstantBuffer<half>> constant_ones_half_;
     std::unique_ptr<cuda::IConstantBuffer<BFloat16>> constant_ones_bfloat16_;
+    std::unique_ptr<cuda::IConstantBuffer<FloatE4M3>> constant_ones_floate4m3_;
+    std::unique_ptr<cuda::IConstantBuffer<FloatE5M2>> constant_ones_floate5m2_;
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 10000
     // Cuda graph with multi threads will be supported in the future, so cuda_graph_

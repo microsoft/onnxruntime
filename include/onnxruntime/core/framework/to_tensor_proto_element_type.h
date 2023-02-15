@@ -77,14 +77,6 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<MLFloatE4M3>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3;
-}
-template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<MLFloatE5M2>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2;
-}
-template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<FloatE4M3>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3;
 }

@@ -21,40 +21,6 @@ namespace onnxruntime {
 #define ORT_HOST_DEVICE
 #endif
 
-// MLFloatE4M3
-struct MLFloatE4M3 {
-  uint8_t val{0};
-
-  MLFloatE4M3() = default;
-  explicit constexpr MLFloatE4M3(uint8_t x) : val(x) {}
-  explicit MLFloatE4M3(float f);
-
-  float ToFloat() const;
-
-  operator float() const { return ToFloat(); }
-};
-
-inline bool operator==(const MLFloatE4M3& left, const MLFloatE4M3& right) { return left.val == right.val; }
-inline bool operator!=(const MLFloatE4M3& left, const MLFloatE4M3& right) { return left.val != right.val; }
-inline bool operator<(const MLFloatE4M3& left, const MLFloatE4M3& right) { return left.val < right.val; }
-
-// MLFloatE5M2
-struct MLFloatE5M2 {
-  uint8_t val{0};
-
-  MLFloatE5M2() = default;
-  explicit constexpr MLFloatE5M2(uint8_t x) : val(x) {}
-  explicit MLFloatE5M2(float f);
-
-  float ToFloat() const;
-
-  operator float() const { return ToFloat(); }
-};
-
-inline bool operator==(const MLFloatE5M2& left, const MLFloatE5M2& right) { return left.val == right.val; }
-inline bool operator!=(const MLFloatE5M2& left, const MLFloatE5M2& right) { return left.val != right.val; }
-inline bool operator<(const MLFloatE5M2& left, const MLFloatE5M2& right) { return left.val < right.val; }
-
 // FloatE4M3
 struct FloatE4M3 {
   uint8_t val{0};
@@ -70,7 +36,7 @@ struct FloatE4M3 {
 
   inline ORT_HOST_DEVICE FloatE4M3(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    val = __nv_cvt_float_to_fp8(v);
+    val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -135,11 +101,6 @@ struct FloatE4M3 {
       if (expo == 0) {
         if (mant > 0) {
           expo = 0x7F - 7;
-          if ((mant & 0x4) == 0) {
-            mant &= 0x3;
-            mant <<= 1;
-            expo -= 1;
-          }
           if ((mant & 0x4) == 0) {
             mant &= 0x3;
             mant <<= 1;
@@ -225,7 +186,7 @@ struct FloatE5M2 {
 
   inline ORT_HOST_DEVICE FloatE5M2(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    val = __fe5m2_as_uchar(__float2fe5m2(v));
+    val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E5M2);
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -292,11 +253,6 @@ struct FloatE5M2 {
       if (expo == 0) {
         if (mant > 0) {
           expo = 0x7F - 15;
-          if ((mant & 0x2) == 0) {
-            mant &= 0x1;
-            mant <<= 1;
-            expo -= 1;
-          }
           if ((mant & 0x2) == 0) {
             mant &= 0x1;
             mant <<= 1;

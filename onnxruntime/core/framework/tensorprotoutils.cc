@@ -66,6 +66,44 @@ TensorProto ToTensor<onnxruntime::BFloat16>(const std::vector<onnxruntime::BFloa
   return t;
 }
 
+template <>
+TensorProto ToTensor<onnxruntime::FloatE4M3>(const onnxruntime::FloatE4M3& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_FLOATE4M3);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::FloatE4M3>(const std::vector<onnxruntime::FloatE4M3>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_FLOATE4M3);
+  for (const onnxruntime::FloatE4M3& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::FloatE5M2>(const onnxruntime::FloatE5M2& value) {
+  TensorProto t;
+  t.set_data_type(TensorProto_DataType_FLOATE5M2);
+  t.add_int32_data(value.val);
+  return t;
+}
+
+template <>
+TensorProto ToTensor<onnxruntime::FloatE5M2>(const std::vector<onnxruntime::FloatE5M2>& values) {
+  TensorProto t;
+  t.clear_int32_data();
+  t.set_data_type(TensorProto_DataType_FLOATE5M2);
+  for (const onnxruntime::FloatE5M2& val : values) {
+    t.add_int32_data(val.val);
+  }
+  return t;
+}
+
 bool operator==(const ONNX_NAMESPACE::TensorShapeProto_Dimension& l,
                 const ONNX_NAMESPACE::TensorShapeProto_Dimension& r) {
   if (l.has_dim_value()) {
@@ -229,6 +267,8 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(FloatE4M3)
+INSTANTIATE_UNPACK_EXTERNAL_TENSOR(FloatE5M2)
 
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& /*tensor*/,
@@ -403,6 +443,76 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   return Status::OK();
 }
 
+// UnpackTensor<FloatE4M3>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ FloatE4M3* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = FloatE4M3(static_cast<uint16_t>(v), FloatE4M3::FromBits());
+  }
+
+  return Status::OK();
+}
+
+// UnpackTensor<FloatE5M2>
+template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
+                    /*out*/ FloatE5M2* p_data, size_t expected_size) {
+  if (nullptr == p_data) {
+    const size_t size = raw_data != nullptr ? raw_data_len : tensor.int32_data_size();
+    if (size == 0)
+      return Status::OK();
+
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+  if (ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2 != tensor.data_type()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+  }
+
+  if (raw_data != nullptr) {
+    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+  }
+
+  if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  "UnpackTensor: the pre-allocate size does not match the size in proto");
+
+  constexpr int max_value = std::numeric_limits<uint8_t>::max();
+  for (int i = 0; i < static_cast<int>(expected_size); i++) {
+    int v = tensor.int32_data()[i];
+    if (v < 0 || v > max_value) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "data overflow");
+    }
+    p_data[i] = FloatE5M2(static_cast<uint16_t>(v), FloatE5M2::FromBits());
+  }
+
+  return Status::OK();
+}
+
 // UnpackTensor from raw data, external data or the type specific data field.
 // Uses the model path to construct the full path for loading external data. In case when model_path is empty
 // it uses current directory.
@@ -445,6 +555,8 @@ INSTANTIATE_UNPACK_TENSOR(bool)
 INSTANTIATE_UNPACK_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_TENSOR(BFloat16)
 INSTANTIATE_UNPACK_TENSOR(std::string)
+INSTANTIATE_UNPACK_TENSOR(FloatE4M3)
+INSTANTIATE_UNPACK_TENSOR(FloatE5M2)
 
 #define CASE_PROTO_TRACE(X, Y)                                                                     \
   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                             \
@@ -480,6 +592,8 @@ common::Status GetSizeInBytesFromTensorProto(const ONNX_NAMESPACE::TensorProto& 
     CASE_PROTO_TRACE(FLOAT16, MLFloat16);
     CASE_PROTO_TRACE(BFLOAT16, BFloat16);
     CASE_PROTO_TRACE(STRING, std::string);
+    CASE_PROTO_TRACE(FLOATE4M3, FloatE4M3);
+    CASE_PROTO_TRACE(FLOATE5M2, FloatE5M2);
     default:
       return common::Status(common::ONNXRUNTIME, common::NOT_IMPLEMENTED);
   }
@@ -714,6 +828,8 @@ Status TensorProtoToTensor(const Env& env, const ORTCHAR_T* model_path,
     CASE_PROTO(UINT64, uint64_t);
     CASE_PROTO(FLOAT16, MLFloat16);
     CASE_PROTO(BFLOAT16, BFloat16);
+    CASE_PROTO(FLOATE4M3, FloatE4M3);
+    CASE_PROTO(FLOATE5M2, FloatE5M2);
     case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_STRING:
       ORT_RETURN_IF_ERROR(UnpackTensor<std::string>(tensor_proto, raw_data, raw_data_len,
                                                     static_cast<std::string*>(preallocated),
@@ -789,6 +905,8 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
+    CASE_TYPE(FLOATE4M3)
+    CASE_TYPE(FLOATE5M2)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
@@ -1332,6 +1450,8 @@ Status UnpackInitializerData(const onnx::TensorProto& initializer,
     CASE_UNPACK(UINT64, uint64_t, uint64_data_size);
     CASE_UNPACK(FLOAT16, onnxruntime::MLFloat16, int32_data_size);
     CASE_UNPACK(BFLOAT16, onnxruntime::BFloat16, int32_data_size);
+    CASE_UNPACK(FLOATE4M3, onnxruntime::FloatE4M3, int32_data_size);
+    CASE_UNPACK(FLOATE5M2, onnxruntime::FloatE5M2, int32_data_size);
     default:
       break;
   }

@@ -192,6 +192,16 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64;
 }
 
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<FloatE4M3>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE4M3;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<FloatE5M2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE5M2;
+}
+
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
 #ifdef ENABLE_TRAINING_CORE

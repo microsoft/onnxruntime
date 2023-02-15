@@ -20,6 +20,8 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
+using onnxruntime::FloatE4M3;
+using onnxruntime::FloatE5M2;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
@@ -219,6 +221,10 @@ const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
       return DataTypeImpl::GetType<MLFloat16>();
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetType<BFloat16>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3:
+      return DataTypeImpl::GetType<FloatE4M3>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2:
+      return DataTypeImpl::GetType<FloatE5M2>();
 
     default:
       ORT_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");

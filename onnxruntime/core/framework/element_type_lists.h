@@ -62,7 +62,9 @@ using AllIeeeFloat =
     TypeList<
         float,
         double,
-        MLFloat16>;
+        MLFloat16,
+        FloatE4M3,
+        FloatE5M2>;
 
 using AllNumeric =
     TypeList<

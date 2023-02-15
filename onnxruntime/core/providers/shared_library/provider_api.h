@@ -83,7 +83,9 @@ enum Version : int {
   IR_VERSION_2019_1_22 = 4,
   IR_VERSION_2019_3_18 = 5,
   IR_VERSION_2019_9_19 = 6,
-  IR_VERSION = 7
+  IR_VERSION_2020_5_8 = 7,
+  IR_VERSION_2021_7_31 = 8,
+  IR_VERSION = 9
 };
 
 enum OperatorStatus : int {

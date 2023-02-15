@@ -164,6 +164,12 @@ Status SequenceEmpty::Compute(OpKernelContext* context) const {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       seq_dtype = DataTypeImpl::GetType<BFloat16>();
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3:
+      seq_dtype = DataTypeImpl::GetType<FloatE4M3>();
+      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2:
+      seq_dtype = DataTypeImpl::GetType<FloatE5M2>();
+      break;
     default:
       ORT_THROW("Unsupported 'dtype' value: ", dtype_);
   }
