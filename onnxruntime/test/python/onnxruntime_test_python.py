@@ -451,11 +451,11 @@ class TestInferenceSession(unittest.TestCase):
             self.assertIn("is unable to consume it", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
 
-            validation_faliure = copyTuningResultsWithProbe(tuning_results)
-            validation_faliure["validators"]["ORT_VERSION"] = "This is not a proper ORT_VERSION value!"
-            sess.set_tuning_results([validation_faliure])
+            validation_failure = copyTuningResultsWithProbe(tuning_results)
+            validation_failure["validators"]["ORT_VERSION"] = "This is not a proper ORT_VERSION value!"
+            sess.set_tuning_results([validation_failure])
             with self.assertRaises(RuntimeError) as context:
-                sess.set_tuning_results([validation_faliure], error_on_invalid=True)
+                sess.set_tuning_results([validation_failure], error_on_invalid=True)
             self.assertIn("Failed to load TuningResults", str(context.exception))
             self.assertIn("version mismatch", str(context.exception))
             assertTuningResultsNotLoaded(sess, ep)
