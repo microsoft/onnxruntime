@@ -53,7 +53,7 @@ Here is an example model, viewed using Netron, with a symbolic dimension called 
 We will update that to use the fixed value of 1.
 
 
-![Model with symbolic dimension in input shape](../../../images/model-with-symbolic-input-dim.png)
+![Model with symbolic dimension in input shape](../../images/model-with-symbolic-input-dim.png)
 
 ```
 
@@ -63,7 +63,7 @@ python -m onnxruntime.tools.make_dynamic_shape_fixed --dim_param batch --dim_val
 
 After replacement you should see that the shape for 'input:0' is now 'fixed' with a value of [1, 36, 36, 3]
 
-![Model with symbolic dimension in input shape replaced with fixed value](../../../images/model-with-symbolic-input-dim-fixed.png)
+![Model with symbolic dimension in input shape replaced with fixed value](../../images/model-with-symbolic-input-dim-fixed.png)
 
 
 ## Making an input shape fixed
@@ -71,7 +71,7 @@ After replacement you should see that the shape for 'input:0' is now 'fixed' wit
 Here is an example model that has unnamed dynamic dimensions for the 'x' input. Netron represents these with '?'. 
 As there is no name for the dimension, we need to update the shape using the `--input_shape` option.
 
-![Model with dynamic input shape](../../../images/model-with-dynamic-inputs.png)
+![Model with dynamic input shape](../../images/model-with-dynamic-inputs.png)
 
 ```
 
@@ -81,5 +81,5 @@ python -m onnxruntime.tools.make_dynamic_shape_fixed --input_name x --input_shap
 
 After replacement you should see that the shape for 'x' is now 'fixed' with a value of [1, 3, 960, 960]
 
-![Updated model with dynamic input shape now having fixed values](../../../images/model-with-dynamic-inputs-fixed.png)
+![Updated model with dynamic input shape now having fixed values](../../images/model-with-dynamic-inputs-fixed.png)
 

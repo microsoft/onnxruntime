@@ -1,13 +1,14 @@
 ---
 title: Build a web app with ONNX Runtime
 description: Considerations and options for building a web application with ONNX Runtime
-parent: Reference
+parent: ORT Web
 has_children: false
-nav_order: 6
+nav_order: 1
+redirect_from: /docs/reference/build-web-app
+
 ---
 
 # Build a web application with ONNX Runtime
-{: .no_toc}
 
 ## Contents
 {: .no_toc}
