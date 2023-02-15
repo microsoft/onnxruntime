@@ -114,6 +114,7 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner,
+    bool use_fused_cross_attention,
     bool use_memory_efficient_attention) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_bytes = element_size * batch_size * num_heads *
@@ -133,8 +134,11 @@ size_t GetAttentionWorkspaceSize(
 #endif
 
   if (fused_runner != nullptr) {
-    size_t sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);
-    return qkv_bytes + sequence_offset_bytes;
+    return qkv_bytes + GetSequenceOffsetSize(static_cast<int>(batch_size), true);
+  }
+
+  if (use_fused_cross_attention) {
+    return qkv_bytes + 2 * GetSequenceOffsetSize(static_cast<int>(batch_size), true);
   }
 
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
@@ -486,26 +490,31 @@ Status QkvToContext(
   assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) + int(data.fused_cross_attention_kernel != nullptr) <= 1);
 
   const int batches = batch_size * num_heads;
-  const int size_per_batch_q = sequence_length * qk_head_size;
-  const int size_per_batch_k = kv_sequence_length * qk_head_size;
-  const int size_per_batch_v = kv_sequence_length * v_head_size;
-  const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
-  const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
-  const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
 
-  // Q, K and V pointers when fused attention is not used
-  T* qkv = data.workspace;
-  T* q = qkv;
-  T* k = q + elements_q;
-  T* v = k + elements_k;
+  T* qkv = nullptr;
+  T* q = nullptr;
+  T* k = nullptr;
+  T* v = nullptr;
+  T* scratch1 = data.workspace;
+  if (data.has_qkv_workspace) {
+    const int size_per_batch_q = sequence_length * qk_head_size;
+    const int size_per_batch_k = kv_sequence_length * qk_head_size;
+    const int size_per_batch_v = kv_sequence_length * v_head_size;
+    const size_t elements_q = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_q);
+    const size_t elements_k = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_k);
+    const size_t elements_v = static_cast<size_t>(batches) * static_cast<size_t>(size_per_batch_v);
+    qkv = data.workspace;
+    q = qkv;
+    k = q + elements_q;
+    v = k + elements_k;
+    scratch1 = qkv + elements_q + elements_k + elements_v;
+  }
 
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
-
-  T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
   int present_size_per_batch_k = 0;
   int present_size_per_batch_v = 0;
@@ -533,6 +542,7 @@ Status QkvToContext(
     assert(!use_fused_kernel);
     assert(data.gemm_buffer != nullptr);
     assert(!data.use_memory_efficient_attention);
+    assert(data.has_qkv_workspace);
 
     if (data.present != data.past) {
       // For easy testing. Production should better avoid this path.
@@ -580,7 +590,7 @@ Status QkvToContext(
     FusedMultiHeadCrossAttentionKernel const* cross_attention_kernel =
         reinterpret_cast<FusedMultiHeadCrossAttentionKernel const*>(data.fused_cross_attention_kernel);
 
-    // When there is no bias, we can directly use q and packed kv from inputs. TODO: not need qkv in workspace.
+    // When there is no bias, we can directly use q and packed kv from inputs.
     void const* query = q;
     void const* packed_kv = k;
     if (data.value == nullptr && data.bias == nullptr) {
@@ -630,7 +640,7 @@ Status QkvToContext(
     if (use_fused_kernel) {
       assert(qkv_format == AttentionQkvFormat::QKV_BSN3H);
 
-      // When there is no bias, we can directly use packed qkv from inputs. TODO: not need qkv in workspace
+      // When there is no bias, we can directly use packed qkv from inputs.
       void const* packed_qkv = qkv;
       if (data.query != nullptr && data.key == nullptr && data.bias == nullptr) {
         packed_qkv = data.query;

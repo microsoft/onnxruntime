@@ -31,6 +31,8 @@ GetAttentionScratchSize(
     size_t sequence_length,
     size_t all_sequence_length);
 
+size_t GetSequenceOffsetSize(int batch_size, bool has_padding);
+
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
     size_t batchsize,
@@ -41,7 +43,8 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention = false);
+    bool use_fused_cross_attention,
+    bool use_memory_efficient_attention);
 
 template <typename T>
 struct AttentionData {
@@ -56,7 +59,9 @@ struct AttentionData {
   const T* past;
   const T* relative_position_bias;
 
+  bool has_qkv_workspace;
   T* workspace;
+
   T* output;
   T* present;
 

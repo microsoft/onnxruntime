@@ -164,18 +164,31 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   constexpr bool use_memory_efficient_attention = false;
 #endif
 
-  constexpr size_t element_size = sizeof(T);
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.v_head_size,
-                                                   parameters.sequence_length,
-                                                   parameters.kv_sequence_length,
-                                                   parameters.total_sequence_length,
-                                                   fused_runner,
-                                                   use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  // When packed kv or packed qkv is used, there is no needed for add bias transpose thus no qkv workspace.
+  bool no_qkv_workspace = nullptr == value &&
+                          (use_fused_cross_attention || (nullptr != fused_runner && nullptr == key)) &&
+                          nullptr == key_padding_mask &&
+                          nullptr == bias;
+
+  size_t workspace_bytes;
+  if (no_qkv_workspace) {
+    workspace_bytes = (parameters.batch_size > kCumulatedSequenceLengthCacheMaxBatchSize) ? 2 * GetSequenceOffsetSize(parameters.batch_size, true) : 0;
+  } else {
+    constexpr size_t element_size = sizeof(T);
+    workspace_bytes = GetAttentionWorkspaceSize(element_size,
+                                                parameters.batch_size,
+                                                parameters.num_heads,
+                                                parameters.head_size,
+                                                parameters.v_head_size,
+                                                parameters.sequence_length,
+                                                parameters.kv_sequence_length,
+                                                parameters.total_sequence_length,
+                                                fused_runner,
+                                                use_fused_cross_attention,
+                                                use_memory_efficient_attention);
+  }
+
+  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
@@ -188,6 +201,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
