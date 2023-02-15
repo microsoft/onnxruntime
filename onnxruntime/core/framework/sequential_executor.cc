@@ -626,6 +626,8 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Only flush memory info for the 2nd partial graph execution (since ORTModule run this function twice).
   session_scope.SetFlushMemoryInfoFlag(partial_graph_index == 1);
+#else
+  ORT_UNUSED_PARAMETER(partial_graph_index);
 #endif
 
   ctx.SetOrtValueCache(cache);
