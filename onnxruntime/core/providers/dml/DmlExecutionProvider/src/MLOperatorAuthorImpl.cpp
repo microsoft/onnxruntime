@@ -705,18 +705,20 @@ namespace Windows::AI::MachineLearning::Adapter
 
             *tensor = nullptr;
 
-            // Read the tensor if present, and wrap it in a IMLOperatorTensor.
-            const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
-            if (attributeProto)
+          // Read the tensor if present, and wrap it in a IMLOperatorTensor.
+          const onnx::AttributeProto* attributeProto = m_impl->TryGetAttribute(std::string(name));
+          if (attributeProto)
+          {
+            if (attributeProto->has_t())
             {
-                if (attributeProto->has_t())
-                {
-                    const onnx::TensorProto* tensorProto = &attributeProto->t();
-                    Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto));
-                    *tensor = tensorWrapper.Detach();
-                    return S_OK;
-                }
+              const onnx::TensorProto* tensorProto = &attributeProto->t();
+
+              // An empty path is used as external weights are not currently supported in this case
+              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), onnxruntime::Path());
+              *tensor = tensorWrapper.Detach();
+              return S_OK;
             }
+          }
 
             return E_INVALIDARG;  // The argument has no valid matching attribute.
         }
@@ -980,6 +982,88 @@ namespace Windows::AI::MachineLearning::Adapter
         m_abiExecutionObject.CopyTo(executionInterface);
     }
 
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8NameBufferSizeInBytes() const noexcept
+    {
+        // Include null terminator.
+        return static_cast<uint32_t>(m_impl->node().Name().size() + 1);
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetUtf8Name(uint32_t bufferSizeInBytes, char* outputName) const noexcept
+    {
+        if (bufferSizeInBytes == 0)
+        {
+            return E_INVALIDARG;
+        }
+
+        // Copy as many characters as possible, leaving room for the null terminator.
+        const auto& nodeName = m_impl->node().Name();
+        size_t charsCopied = nodeName.copy(outputName, bufferSizeInBytes - 1);
+
+        // Write the null terminator.
+        assert(charsCopied >= 0 && charsCopied < bufferSizeInBytes);
+        outputName[charsCopied] = '\0';
+
+        return S_OK;
+    }
+
+    uint32_t STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideNameBufferSizeInBytes() const noexcept
+    {
+        const auto& name = m_impl->node().Name(); 
+        if (name.empty())
+        {
+            // Include null terminator.
+            return sizeof(wchar_t);
+        }
+        
+        int requiredSizeInChars = MultiByteToWideChar(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), nullptr, 0);
+        assert(requiredSizeInChars > 0);
+
+        // Include null terminator.
+        return static_cast<uint32_t>((requiredSizeInChars + 1) * sizeof(wchar_t));
+    }
+
+    HRESULT STDMETHODCALLTYPE OpKernelInfoWrapper::GetWideName(uint32_t bufferSizeInBytes, wchar_t* outputName) const noexcept
+    {
+        // Buffer needs to be large enough to at least hold a null terminator.
+        if (bufferSizeInBytes < sizeof(wchar_t))
+        {
+            return E_INVALIDARG;
+        }
+
+        const auto& nodeName = m_impl->node().Name();
+        if (nodeName.empty())
+        {
+            outputName[0] = L'\0';
+            return S_OK;
+        }
+
+        uint32_t bufferSizeInChars = bufferSizeInBytes / sizeof(wchar_t);
+        int charsCopiedIfSucceeded = MultiByteToWideChar(CP_UTF8, 0, nodeName.data(), static_cast<int>(nodeName.size()), outputName, bufferSizeInChars);
+
+        if (charsCopiedIfSucceeded > 0)
+        {
+            // The return value is only > 0 if ALL characters copied successfully. 
+            // Write null terminator at the end of copied chars, which may not be at the end of the buffer.
+            outputName[charsCopiedIfSucceeded] = L'\0';
+            return S_OK;
+        }
+
+        // An error must have occurred in MultiByteToWideChar. 
+        assert(charsCopiedIfSucceeded <= 0);
+        auto lastError = GetLastError();
+
+        if (lastError == ERROR_INSUFFICIENT_BUFFER)
+        {
+            // The buffer was too small, but MultiByteToWideChar will have copied as many chars as possible. 
+            // Truncate and overwrite last char with null terminator. Don't treat this as an error.
+            outputName[bufferSizeInChars - 1] = L'\0';
+            return S_OK;
+        }
+
+        assert(lastError == ERROR_INVALID_PARAMETER || lastError == ERROR_NO_UNICODE_TRANSLATION);
+        return E_INVALIDARG;
+    }
+
     template <class NodeInfoImpl_t, class Base1_t, class Base2_t>
     uint32_t STDMETHODCALLTYPE OpNodeInfoWrapper<NodeInfoImpl_t, Base1_t, Base2_t>::GetInputCount() const noexcept
     {
@@ -1186,7 +1270,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl) : m_impl(impl)
+    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
         if (impl->has_raw_data())
@@ -1196,7 +1280,7 @@ namespace Windows::AI::MachineLearning::Adapter
         }
         else
         {
-            std::tie(m_unpackedTensor, m_tensorByteSize) = UnpackTensor(*impl);
+            std::tie(m_unpackedTensor, m_tensorByteSize) = UnpackTensor(*impl, modelPath);
             m_dataPtr = m_unpackedTensor.get();
         }
     }
@@ -2111,8 +2195,9 @@ namespace Windows::AI::MachineLearning::Adapter
         MLOperatorTensorGetter mlOperatorTensorGetter = MLOperatorTensorGetter(
             [ctx](uint32_t index)
             {
+                // An empty path is used as external weights are not currently supported in this case
                 Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
-                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)));
+                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), onnxruntime::Path());
                 return tensorWrapper;
             }
         );
@@ -2303,25 +2388,25 @@ namespace Windows::AI::MachineLearning::Adapter
         return false;
     }
 
-    std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(const onnx::TensorProto& initializer)
+    std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
+        const onnx::TensorProto& initializer, 
+        const onnxruntime::Path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;
 
-#define CASE_PROTO(X, Y, Z)                                                                            \
-    case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X:                               \
-    {                                                                                                  \
-        size_t elementCount = initializer.##Z();                                                       \
-        tensorByteSize = elementCount * sizeof(Y);                                                     \
-        unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
-        ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
-                                 initializer,                                                          \
-                                 initializer.has_raw_data() ? initializer.raw_data().data() : nullptr, \
-                                 initializer.has_raw_data() ? initializer.raw_data().size() : 0,       \
-                                 reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
-                                 .IsOK());                                                             \
-        break;                                                                                         \
-    }
+#define CASE_PROTO(X, Y, Z)                                                                        \
+  case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
+    size_t elementCount = initializer.##Z();                                                       \
+    tensorByteSize = elementCount * sizeof(Y);                                                     \
+    unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
+    ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
+                             initializer,                                                          \
+                             modelPath,                                                            \
+                             reinterpret_cast<Y*>(unpackedTensor.get()), elementCount)             \
+                             .IsOK());                                                             \
+    break;                                                                                         \
+  }
         switch (initializer.data_type())
         {
         CASE_PROTO(FLOAT, float, float_data_size);

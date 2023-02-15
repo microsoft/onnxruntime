@@ -202,7 +202,7 @@ add_dependencies(winml_lib_telemetry winml_api_native)
 add_dependencies(winml_lib_telemetry winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_telemetry PRIVATE wil)
+target_link_libraries(winml_lib_telemetry PRIVATE WIL::WIL)
 
 ###########################
 # Add winml_lib_ort
@@ -282,7 +282,7 @@ add_dependencies(winml_lib_ort winml_api_native_internal)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_ort)
 endif()
-target_link_libraries(winml_lib_ort PRIVATE wil)
+target_link_libraries(winml_lib_ort PRIVATE WIL::WIL)
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_api)
 target_link_libraries(winml_lib_ort INTERFACE winml_lib_telemetry)
 
@@ -321,7 +321,7 @@ set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 # Compiler definitions
-onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+onnxruntime_add_include_to_target(winml_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 target_include_directories(winml_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
@@ -339,7 +339,7 @@ set_target_properties(winml_adapter
   ${target_folder})
 
 # Link libraries
-target_link_libraries(winml_adapter PRIVATE wil)
+target_link_libraries(winml_adapter PRIVATE WIL::WIL)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_adapter)
 endif()
@@ -405,11 +405,8 @@ target_include_directories(winml_lib_image PRIVATE ${winml_lib_api_image_dir})
 target_include_directories(winml_lib_image PRIVATE ${winml_lib_common_dir}/inc)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})                                                        # for status.h
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
+onnxruntime_add_include_to_target(winml_lib_image onnx onnx_proto ${PROTOBUF_LIB} re2::re2 flatbuffers::flatbuffers Boost::mp11)
 target_include_directories(winml_lib_image PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows)
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_lib_image PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_lib_image PRIVATE ${GSL_INCLUDE_DIR})
 
@@ -426,7 +423,7 @@ add_dependencies(winml_lib_image winml_api_native)
 add_dependencies(winml_lib_image winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 wil winml_lib_common)
+target_link_libraries(winml_lib_image PRIVATE dxgi d3d11 d3d12 WIL::WIL winml_lib_common)
 
 get_target_property(winml_lib_image_include_directories winml_lib_image INCLUDE_DIRECTORIES)
 
@@ -512,21 +509,13 @@ target_include_directories(winml_lib_api PRIVATE ${winml_lib_telemetry_dir}/inc)
 target_include_directories(winml_lib_api PRIVATE ${winml_lib_common_dir}/inc)
 
 target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
-target_include_directories(winml_lib_api PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
-
 target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
 target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_api PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/eigen)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
 target_include_directories(winml_lib_api PRIVATE ${REPO_ROOT}/winml)
-target_include_directories(winml_lib_api PRIVATE ${GSL_INCLUDE_DIR})
+target_include_directories(winml_lib_api PRIVATE ${eigen_INCLUDE_DIRS})
+target_link_libraries(winml_lib_api PRIVATE ${GSL_TARGET} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto)
 
 # Properties
 set_target_properties(winml_lib_api
@@ -542,7 +531,7 @@ add_dependencies(winml_lib_api winml_api_native)
 add_dependencies(winml_lib_api winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_lib_api PRIVATE wil winml_lib_telemetry)
+target_link_libraries(winml_lib_api PRIVATE WIL::WIL winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api)
 endif(onnxruntime_USE_DML)
@@ -606,21 +595,14 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_teleme
 target_include_directories(winml_lib_api_experimental PRIVATE ${winml_lib_common_dir}/inc)
 
 target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
-target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
 
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/eigen)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
+target_include_directories(winml_lib_api_experimental PRIVATE ${eigen_INCLUDE_DIRS})
 target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/winml)
-target_include_directories(winml_lib_api_experimental PRIVATE ${GSL_INCLUDE_DIR})
+onnxruntime_add_include_to_target(winml_lib_api_experimental PRIVATE ${PROTOBUF_LIB} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto ${GSL_TARGET})
 
 # Properties
 set_target_properties(winml_lib_api_experimental
@@ -637,7 +619,7 @@ add_dependencies(winml_lib_api_experimental winml_api_native_internal)
 add_dependencies(winml_lib_api_experimental winml_api_experimental)
 
 # Link libraries
-target_link_libraries(winml_lib_api_experimental PRIVATE wil winml_lib_telemetry)
+target_link_libraries(winml_lib_api_experimental PRIVATE WIL::WIL winml_lib_telemetry)
 if (onnxruntime_USE_DML)
   target_add_dml(winml_lib_api_experimental)
 endif(onnxruntime_USE_DML)
@@ -666,7 +648,7 @@ onnxruntime_add_static_library(winml_lib_common
 set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD 17)
 set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD_REQUIRED ON)
 target_compile_options(winml_lib_common PRIVATE /GR- /await /bigobj /wd4238)
-target_link_libraries(winml_lib_common PRIVATE wil)
+target_link_libraries(winml_lib_common PRIVATE WIL::WIL)
 target_include_directories(winml_lib_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/winml_api)
 
 # Compiler flags
@@ -723,7 +705,6 @@ onnxruntime_add_shared_library(winml_dll
   ${winml_dll_dir}/pch.h
   ${winml_dll_dir}/module.cpp
 )
-
 # Compiler options
 target_compile_features(winml_dll PRIVATE cxx_std_17)
 target_compile_options(winml_dll PRIVATE /GR- /await /bigobj /wd4238)
@@ -768,22 +749,16 @@ target_include_directories(winml_dll PRIVATE ${winml_lib_telemetry_dir}/inc)
 target_include_directories(winml_dll PRIVATE ${winml_lib_common_dir}/inc)
 
 target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/date/include)
-target_include_directories(winml_dll PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/external/onnx)
 
 target_include_directories(winml_dll PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_dll PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
 target_include_directories(winml_dll PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_dll PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/onnx)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/protobuf/src)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/eigen)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/SafeInt)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/flatbuffers/include)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/cmake/external/mp11/include)
-target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/winml)
-target_include_directories(winml_dll PRIVATE ${GSL_INCLUDE_DIR})
 
+target_include_directories(winml_dll PRIVATE ${eigen_INCLUDE_DIRS})
+target_include_directories(winml_dll PRIVATE ${REPO_ROOT}/winml)
+target_link_libraries(winml_dll PRIVATE onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 ${GSL_TARGET})
+target_link_libraries(winml_dll PRIVATE debug Dbghelp)
 # Properties
 set_target_properties(winml_dll
   PROPERTIES
@@ -811,7 +786,7 @@ add_dependencies(winml_dll winml_api_native_internal)
 
 # Link libraries
 target_link_libraries(winml_dll PRIVATE re2)
-target_link_libraries(winml_dll PRIVATE wil)
+target_link_libraries(winml_dll PRIVATE WIL::WIL)
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 if (NOT winml_is_inbox)
   target_link_libraries(winml_dll PRIVATE winml_lib_api_experimental)
@@ -823,14 +798,6 @@ target_link_libraries(winml_dll PRIVATE winml_lib_telemetry)
 target_link_libraries(winml_dll PRIVATE RuntimeObject.lib)
 target_link_libraries(winml_dll PRIVATE windowsapp.lib)
 
-# Any project that links in debug_alloc.obj needs this lib.
-# unresolved external symbol __imp_SymSetOptions
-# ...                        __imp_SymGetLineFromAddr64
-# ...                        __imp_SymInitialize
-# ...                        __imp_SymFromAddr
-if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug" OR "${CMAKE_BUILD_TYPE}" STREQUAL "RelWithDebInfo")
-  target_link_libraries(winml_dll PRIVATE dbghelp.lib)
-endif()
 
 # 1 of 3 projects that fail in link with 'failed to do memory mapped file I/O' (Only release)
 # when using x86 hosted architecture. When using the LKG compiler this becomes a problem
@@ -842,9 +809,7 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
 endif("${CMAKE_BUILD_TYPE}" STREQUAL "Release")
 
 option(onnxruntime_BUILD_WINML_TESTS "Build WinML tests" ON)
-if (onnxruntime_BUILD_WINML_TESTS)
-  include(winml_unittests.cmake)
-endif()
+
 
 # This is needed to suppress warnings that complain that no imports are found for the delayloaded library cublas64*.lib
 # When cuda is enabled in the pipeline, it sets CMAKE_SHARED_LINKER_FLAGS which affects all targets including winml_dll.

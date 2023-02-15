@@ -646,6 +646,12 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
     graph.UpdateProducerNode(arg->Name(), node.Index());
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // add schema to make it equivalent with the other nodes in the graph created by Graph::Resolve()
+  // EPs may do kernel lookup during GetCapability which requires the schema
+  graph.SetOpSchemaFromRegistryForNode(node);
+#endif
+
   return node;
 }
 
@@ -844,7 +850,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {

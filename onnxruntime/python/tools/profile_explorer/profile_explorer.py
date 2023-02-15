@@ -73,6 +73,10 @@ def _json_to_df(profile_path, filter_matcher):
     if isinstance(data, dict):
         data = data["traceEvents"]
 
+    most_recent_kernel_launch_event = None
+    num_missing_kernel_launch_events = 0
+    total_kernel_events = 0
+
     for item in data:
         cat = item.get("cat")
         if cat is None:
@@ -92,6 +96,8 @@ def _json_to_df(profile_path, filter_matcher):
 
         if cat != "Kernel" and not name.endswith("kernel_time"):
             continue
+        elif name.endswith("kernel_time"):
+            most_recent_kernel_launch_event = item
 
         block_x = arg.get("block_x", -1)
         block_y = arg.get("block_y", -1)
@@ -107,17 +113,30 @@ def _json_to_df(profile_path, filter_matcher):
                     "duration": dur,
                     "dimensions": f"{block_x}_{block_y}_{block_z}_{grid_x}_{grid_y}_{grid_z}",
                     "op_name": op_name,
+                    "input_type_shape": (
+                        _shape_to_string(most_recent_kernel_launch_event["args"]["input_type_shape"])
+                        if most_recent_kernel_launch_event is not None
+                        else "unknown"
+                    ),
                 }
             )
+            total_kernel_events += 1
+            if gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]:
+                num_missing_kernel_launch_events += 1
         else:
             cpu_entries.append(
                 {
                     "name": item["args"]["op_name"],
                     "duration": dur,
-                    "input_shape": _shape_to_string(item["args"]["input_type_shape"]),
-                    "output_shape": _shape_to_string(item["args"]["output_type_shape"]),
+                    "input_type_shape": _shape_to_string(item["args"]["input_type_shape"]),
+                    "output_type_shape": _shape_to_string(item["args"]["output_type_shape"]),
                 }
             )
+
+    if num_missing_kernel_launch_events > 0:
+        print(
+            f"WARNNG: Could not resolve shapes for {num_missing_kernel_launch_events} of {total_kernel_events} kernels."
+        )
 
     cpu_df = pd.DataFrame(cpu_entries)
     gpu_df = pd.DataFrame(gpu_entries)
@@ -131,7 +150,10 @@ def _print_cpu_top_hitters(frame, args):
         print("No CPU entries found!")
         return
     top = args.count
-    group_key = ["name", "input_shape"] if args.shape_sensitive else ["name"]
+    group_key = ["name"]
+    if args.shape_sensitive:
+        group_key.append("input_type_shape")
+
     frame2 = frame[["duration", "count"]].sum()
     frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
     fields = group_key + ["duration", "pct", "count"]
@@ -150,7 +172,12 @@ def _print_gpu_top_hitters(frame, args):
         print("No GPU entries found!")
         return
     top = args.count
-    group_key = ["name", "dimensions"] if args.dimension_sensitive else ["name"]
+    group_key = ["name"]
+    if args.dimension_sensitive:
+        group_key.append("dimensions")
+    if args.shape_sensitive:
+        group_key.append("input_type_shape")
+
     frame2 = frame[["duration", "count"]].sum()
     frame["pct"] = 100 * (frame["duration"] / frame2["duration"])
     fields = group_key + ["duration", "pct", "count"]

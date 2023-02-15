@@ -126,7 +126,7 @@ static void TestDFTInvertible(bool complex) {
 
   RandomValueGenerator random(GetTestRandomSeed());
   // TODO(garymm, smk2007): Add tests for different dft_length values.
-  const int64_t num_batches = 2;
+  constexpr int64_t num_batches = 2;
   for (int64_t axis = 1; axis < 2; axis += 1) {
     for (int64_t signal_dim1 = 1; signal_dim1 <= 4; signal_dim1 += 1) {
       for (int64_t signal_dim2 = 1; signal_dim2 <= 4; signal_dim2 += 1) {

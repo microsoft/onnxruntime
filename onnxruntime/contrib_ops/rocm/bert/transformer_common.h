@@ -19,13 +19,10 @@ class TransformerOptions {
 
   bool DisableHalf2() const { return disable_half2_; }
 
-  bool IsTuningEnabled() const { return tuning_; }
-
   void Initialize(int value) {
     is_precision_mode_ = (value & 0x01) > 0;
     disable_persistent_softmax_ = (value & 0x02) > 0;
     disable_half2_ = (value & 0x04) > 0;
-    tuning_ = (value & 0x08) > 0;
     initialized_ = true;
   }
 
@@ -40,8 +37,6 @@ class TransformerOptions {
   bool disable_half2_{false};
 
   bool initialized_{false};
- 
-  bool tuning_{false};
 
   static TransformerOptions instance;
 };

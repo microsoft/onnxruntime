@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/tensor/unique.h"
-
 #include <map>
+#include <core/common/safeint.h>
 #include "core/common/gsl.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/providers/common.h"
@@ -116,10 +116,10 @@ class Subtensor {
   Subtensor(const gsl::span<const T>& data, const TensorShape& subtensor_shape,
             int64_t axis, int64_t n_axis, int64_t idx) {
     // rows and columns for the slice along axis, flattened to 2D by merging the dimensions before and after the axis
-    int64_t columns = subtensor_shape.SizeFromDimension(axis);
-    int64_t rows = subtensor_shape.SizeToDimension(axis);
-    items_.reserve(rows * columns);
-    size_t cur_data = idx * columns;  // offset into data for first row of slice
+    int64_t columns = subtensor_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
+    int64_t rows = subtensor_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
+    items_.reserve(SafeInt<size_t>(rows) * columns);
+    size_t cur_data = SafeInt<size_t>(idx) * columns;  // offset into data for first row of slice
 
     for (int r = 0; r < rows; ++r) {
       for (int c = 0; c < columns; ++c) {
@@ -127,7 +127,7 @@ class Subtensor {
         items_.push_back(data[cur_data + c]);
       }
 
-      cur_data += columns * n_axis;
+      cur_data += SafeInt<size_t>(columns) * n_axis;
     }
   }
 
@@ -169,14 +169,14 @@ static void CreateFlattenedOutput(OpKernelContext& context,
     auto unsorted_idx = offsets_iter->second;
     auto output_idx = sorted ? i : unsorted_idx;
 
-    Y_data[output_idx] = offsets_iter->first;
+    Y_data[onnxruntime::narrow<size_t>(output_idx)] = offsets_iter->first;
 
     if (indices_out) {
-      indices_data[output_idx] = indices[unsorted_idx].front();
+      indices_data[onnxruntime::narrow<size_t>(output_idx)] = indices[onnxruntime::narrow<size_t>(unsorted_idx)].front();
     }
 
     if (counts) {
-      counts_data[output_idx] = indices[unsorted_idx].size();
+      counts_data[onnxruntime::narrow<size_t>(output_idx)] = indices[onnxruntime::narrow<size_t>(unsorted_idx)].size();
     }
   }
 
@@ -184,14 +184,14 @@ static void CreateFlattenedOutput(OpKernelContext& context,
     if (sorted) {
       // need to convert unsorted entries in the inverse index to their sorted values
       std::vector<int64_t> unsorted_to_sorted;
-      unsorted_to_sorted.resize(num_unique);
+      unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
       for (const auto& offset : offsets) {
-        unsorted_to_sorted[offset.second] = sorted_idx++;
+        unsorted_to_sorted[onnxruntime::narrow<size_t>(offset.second)] = sorted_idx++;
       }
 
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
-        inverse_indices_data[i] = unsorted_to_sorted[inverse_index[i]];
+        inverse_indices_data[onnxruntime::narrow<size_t>(i)] = unsorted_to_sorted[onnxruntime::narrow<size_t>(inverse_index[i])];
       }
     } else {
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
@@ -212,8 +212,8 @@ static void CreateOutput(OpKernelContext& context,
   int64_t num_unique = static_cast<int64_t>(indices.size());
 
   // rows and columns for the slice along axis, flattened to 2D by merging the dimensions before and after the axis
-  int64_t num_cols = subtensor_shape.SizeFromDimension(axis);
-  int64_t num_rows = subtensor_shape.SizeToDimension(axis);
+  int64_t num_cols = subtensor_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
+  int64_t num_rows = subtensor_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
 
   auto subtensor_dims = subtensor_shape.GetDims();
   std::vector<int64_t> Y_dims;
@@ -222,7 +222,7 @@ static void CreateOutput(OpKernelContext& context,
     if (i == axis)
       Y_dims.push_back(num_unique);
     else
-      Y_dims.push_back(subtensor_dims[i]);
+      Y_dims.push_back(subtensor_dims[onnxruntime::narrow<size_t>(i)]);
   }
 
   Tensor& Y = *context.Output(0, TensorShape(std::move(Y_dims)));
@@ -255,23 +255,23 @@ static void CreateOutput(OpKernelContext& context,
     for (int64_t row = 0; row < num_rows; ++row) {
       // copy num_cols items from entries to output
       if (std::is_same<T, std::string>::value) {
-        std::copy(item, item + num_cols, &Y_data[out_offset]);
+        std::copy(item, item + onnxruntime::narrow<size_t>(num_cols), &Y_data[onnxruntime::narrow<size_t>(out_offset)]);
       } else {
-        std::copy_n(item, num_cols, &Y_data[out_offset]);
+        std::copy_n(item, onnxruntime::narrow<size_t>(num_cols), &Y_data[onnxruntime::narrow<size_t>(out_offset)]);
       }
 
-      item += num_cols;
+      item += onnxruntime::narrow<size_t>(num_cols);
       out_offset += num_unique * num_cols;
     }
 
     assert(item == items.cend());
 
     if (indices_out) {
-      indices_data[output_idx] = indices[unsorted_idx].front();
+      indices_data[onnxruntime::narrow<size_t>(output_idx)] = indices[onnxruntime::narrow<size_t>(unsorted_idx)].front();
     }
 
     if (counts) {
-      counts_data[output_idx] = indices[unsorted_idx].size();
+      counts_data[onnxruntime::narrow<size_t>(output_idx)] = indices[onnxruntime::narrow<size_t>(unsorted_idx)].size();
     }
   }
 
@@ -279,14 +279,14 @@ static void CreateOutput(OpKernelContext& context,
     if (sorted) {
       // need to convert unsorted entries in the inverse index to their sorted values
       std::vector<int64_t> unsorted_to_sorted;
-      unsorted_to_sorted.resize(num_unique);
+      unsorted_to_sorted.resize(onnxruntime::narrow<size_t>(num_unique));
       int64_t sorted_idx = 0;
       for (const auto& offset : offsets) {
-        unsorted_to_sorted[offset.second] = sorted_idx++;
+        unsorted_to_sorted[onnxruntime::narrow<size_t>(offset.second)] = sorted_idx++;
       }
 
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
-        inverse_indices_data[i] = unsorted_to_sorted[inverse_index[i]];
+        inverse_indices_data[i] = unsorted_to_sorted[onnxruntime::narrow<size_t>(inverse_index[i])];
       }
     } else {
       for (size_t i = 0, end = inverse_index.size(); i < end; ++i) {
@@ -316,16 +316,16 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     int64_t num_unique = 0;
 
     for (int64_t i = 0, end = input.Shape().Size(); i < end; ++i) {
-      auto entry = offsets.find(data[i]);
+      auto entry = offsets.find(data[onnxruntime::narrow<size_t>(i)]);
       if (entry == offsets.end()) {
-        offsets[data[i]] = num_unique;
+        offsets[data[onnxruntime::narrow<size_t>(i)]] = num_unique;
         inverse_index.push_back({num_unique});
         indices.push_back({i});
         ++num_unique;
       } else {
-        size_t indices_idx = entry->second;
+        size_t indices_idx = onnxruntime::narrow<size_t>(entry->second);
         indices[indices_idx].push_back(i);
-        inverse_index.push_back(indices_idx);
+        inverse_index.push_back(onnxruntime::narrow<int64_t>(indices_idx));
       }
     }
 
@@ -336,9 +336,9 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     const int64_t axis = HandleNegativeAxis(axis_, input_dims);
 
     std::vector<int64_t> subtensor_dims;
-    subtensor_dims.reserve(input_dims);
+    subtensor_dims.reserve(onnxruntime::narrow<size_t>(input_dims));
     for (int64_t i = 0; i < input_dims; ++i) {
-      subtensor_dims.push_back(i == axis ? 1 : input_shape[i]);
+      subtensor_dims.push_back(i == axis ? 1 : input_shape[onnxruntime::narrow<size_t>(i)]);
     }
 
     TensorShape subtensor_shape(std::move(subtensor_dims));
@@ -351,7 +351,7 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
     inverse_index.reserve(data.size());
 
     int64_t num_unique = 0;
-    int64_t n_axis = input_shape[axis];
+    int64_t n_axis = input_shape[onnxruntime::narrow<size_t>(axis)];
 
     for (int64_t i = 0; i < n_axis; ++i) {
       Subtensor<T> s(data, subtensor_shape, axis, n_axis, i);
@@ -363,9 +363,9 @@ Status Unique::ComputeImpl(OpKernelContext& context) const {
         indices.push_back({i});
         ++num_unique;
       } else {
-        size_t indices_idx = entry->second;
+        size_t indices_idx = onnxruntime::narrow<size_t>(entry->second);
         indices[indices_idx].push_back(i);
-        inverse_index.push_back(indices_idx);
+        inverse_index.push_back(onnxruntime::narrow<int64_t>(indices_idx));
       }
     }
 

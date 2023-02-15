@@ -18,6 +18,8 @@ class CudnnTensor final {
 
   Status Set(gsl::span<const int64_t> input_dims, cudnnDataType_t dataType);
   Status Set(const CudnnTensor& x_desc, cudnnBatchNormMode_t mode);
+  // Set 4D tensor format (for NHWC)
+  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int n, int c, int h, int w);
 
   operator cudnnTensorDescriptor_t() const { return tensor_; }
 
@@ -57,6 +59,9 @@ class CudnnFilterDescriptor final {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CudnnFilterDescriptor);
 
   Status Set(gsl::span<const int64_t> filter_dims, cudnnDataType_t data_typ);
+
+  // Set 4D filter where k is output channels, c is input channels, h and w is rows and columns per filter.
+  Status Set(cudnnTensorFormat_t format, cudnnDataType_t dataType, int k, int c, int h, int w);
 
   operator cudnnFilterDescriptor_t() const { return desc_; }
 
@@ -142,17 +147,17 @@ inline double ClampCudnnBatchNormEpsilon(double epsilon) {
 inline cudnnStatus_t
 BatchNormalizationForwardInferenceHelper(cudnnHandle_t handle,
                                          cudnnBatchNormMode_t mode,
-                                         const void *alpha,
-                                         const void *beta,
+                                         const void* alpha,
+                                         const void* beta,
                                          const cudnnTensorDescriptor_t xDesc,
-                                         const void *x,
+                                         const void* x,
                                          const cudnnTensorDescriptor_t yDesc,
-                                         void *y,
+                                         void* y,
                                          const cudnnTensorDescriptor_t bnScaleBiasMeanVarDesc,
-                                         const void *bnScale,
-                                         const void *bnBias,
-                                         const void *estimatedMean,
-                                         const void *estimatedVariance,
+                                         const void* bnScale,
+                                         const void* bnBias,
+                                         const void* estimatedMean,
+                                         const void* estimatedVariance,
                                          double epsilon) {
   return cudnnBatchNormalizationForwardInference(handle,
                                                  mode,
@@ -173,21 +178,21 @@ BatchNormalizationForwardInferenceHelper(cudnnHandle_t handle,
 inline cudnnStatus_t
 BatchNormalizationForwardTrainingHelper(cudnnHandle_t handle,
                                         cudnnBatchNormMode_t mode,
-                                        const void *alpha,
-                                        const void *beta,
+                                        const void* alpha,
+                                        const void* beta,
                                         const cudnnTensorDescriptor_t xDesc,
-                                        const void *x,
+                                        const void* x,
                                         const cudnnTensorDescriptor_t yDesc,
-                                        void *y,
+                                        void* y,
                                         const cudnnTensorDescriptor_t bnScaleBiasMeanVarDesc,
-                                        const void *bnScale,
-                                        const void *bnBias,
+                                        const void* bnScale,
+                                        const void* bnBias,
                                         double exponentialAverageFactor,
-                                        void *resultRunningMean,
-                                        void *resultRunningVariance,
+                                        void* resultRunningMean,
+                                        void* resultRunningVariance,
                                         double epsilon,
-                                        void *resultSaveMean,
-                                        void *resultSaveInvVariance) {
+                                        void* resultSaveMean,
+                                        void* resultSaveInvVariance) {
   return cudnnBatchNormalizationForwardTraining(handle,
                                                 mode,
                                                 alpha,
@@ -211,12 +216,12 @@ inline cudnnStatus_t
 LRNCrossChannelForwardHelper(cudnnHandle_t handle,
                              cudnnLRNDescriptor_t normDesc,
                              cudnnLRNMode_t lrnMode,
-                             const void *alpha,
+                             const void* alpha,
                              const cudnnTensorDescriptor_t xDesc,
-                             const void *x,
-                             const void *beta,
+                             const void* x,
+                             const void* beta,
                              const cudnnTensorDescriptor_t yDesc,
-                             void *y) {
+                             void* y) {
   return cudnnLRNCrossChannelForward(handle, normDesc, lrnMode, alpha, xDesc, x, beta, yDesc, y);
 }
 
@@ -232,12 +237,12 @@ SetLRNDescriptorHelper(cudnnLRNDescriptor_t normDesc,
 inline cudnnStatus_t
 PoolingForwardHelper(cudnnHandle_t handle,
                      const cudnnPoolingDescriptor_t poolingDesc,
-                     const void *alpha,
+                     const void* alpha,
                      const cudnnTensorDescriptor_t xDesc,
-                     const void *x,
-                     const void *beta,
+                     const void* x,
+                     const void* beta,
                      const cudnnTensorDescriptor_t yDesc,
-                     void *y) {
+                     void* y) {
   return cudnnPoolingForward(handle, poolingDesc, alpha, xDesc, x, beta, yDesc, y);
 }
 

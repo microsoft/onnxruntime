@@ -54,7 +54,7 @@ using EnabledDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExec
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
                                      const InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
-  int input_count = static_cast<int>(input_tensors.size());
+  size_t input_count = input_tensors.size();
 
   // Must have atleast one input to concat
   ORT_RETURN_IF_NOT(input_count >= 1, "Must have 1 or more inputs");
@@ -69,7 +69,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   bool all_inputs_are_empty = true;
 
-  for (int index = 0; index < input_count; ++index) {
+  for (size_t index = 0; index < input_count; ++index) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
 
@@ -81,7 +81,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
     if (num_elements > 0) {
       reference_dims = shape.AsShapeVector();
       reference_rank = reference_dims.size();
-      reference_tensor_index = index;
+      reference_tensor_index = onnxruntime::narrow<int>(index);
       input_tensor_sizes.push_back(num_elements);
       all_inputs_are_empty = false;
       break;
@@ -105,12 +105,12 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Handle and fix negative axis
   // In 'stack' mode, the accepted range depends on the output rank (which is one more than the input rank)
-  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_, !is_stack_
+  p.axis = static_cast<uint64_t>(HandleNegativeAxis(axis_,onnxruntime::narrow<int64_t>( !is_stack_
                                                                ? reference_rank
-                                                               : reference_rank + 1));
+                                                               : reference_rank + 1)));
 
   // Ensure all of the non concatenated axes match each other
-  for (int index = reference_tensor_index + 1; index < input_count; index++) {
+  for (size_t index = static_cast<size_t>(reference_tensor_index) + 1; index < input_count; index++) {
     const auto* input = input_tensors[index];
     ORT_ENFORCE(input != nullptr, "input count mismatch");
     const auto& input_shape = input->Shape();
@@ -169,11 +169,11 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
     // Calculate the size of the concatenated axis
     size_t concat_axis_size = 0;
-    for (int64_t index = 0; index < input_count; index++) {
-      concat_axis_size += input_tensors[index]->Shape()[static_cast<int>(p.axis)];
+    for (size_t index = 0; index < input_count; index++) {
+      concat_axis_size += onnxruntime::narrow<size_t>(input_tensors[index]->Shape()[onnxruntime::narrow<size_t>(p.axis)]);
     }
 
-    output_dims[p.axis] = concat_axis_size;
+    output_dims[onnxruntime::narrow<size_t>(p.axis)] = onnxruntime::narrow<int64_t>(concat_axis_size);
   } else {  // 'Stack' mode
     // While stacking, the rank of the output is one more than the input rank(s).
     // Stacking may be thought of as adding an unit dimension (of value 1) in the input tensors,
@@ -204,7 +204,7 @@ Status ConcatBase::PrepareForCompute(OpKernelContext* ctx,
 
   // Fill the 'Prepare' struct with available information
   p.inputs.reserve(input_count);
-  for (int input_index = 0; input_index < input_count; input_index++) {
+  for (size_t input_index = 0; input_index < input_count; input_index++) {
     const Tensor* data_n_ptr = input_tensors[input_index];
     auto& data_n = *data_n_ptr;
 
@@ -266,18 +266,19 @@ Status ConcatBase::ComputeImpl(Prepare& p, OpKernelContext* ctx) const {
     // parallel copy the data across
     auto status = DispatchStridedCopy<EnabledDataTypes>(ctx->GetOperatorThreadPool(),
                                                         *p.output_tensor,
-                                                        initial_output_offset,
+                                                        onnxruntime::narrow<ptrdiff_t>(initial_output_offset),
                                                         output_strides_for_copy,
                                                         prep.tensor->Shape(),
                                                         *prep.tensor,
+                                                        0,  // src_offset
                                                         StridesForTensor(*prep.tensor));
     ORT_RETURN_IF_ERROR(status);
 
     // advance along the axis that we are concatenating on (by the size of the axis of the tensor that we just copied)
     if (is_stack_) {
-      initial_output_offset += output_strides_full[p.axis];
+      initial_output_offset += output_strides_full[onnxruntime::narrow<size_t>(p.axis)];
     } else {
-      initial_output_offset += prep.tensor->Shape()[p.axis] * output_strides_for_copy[p.axis];
+      initial_output_offset += prep.tensor->Shape()[onnxruntime::narrow<size_t>(p.axis)] * output_strides_for_copy[onnxruntime::narrow<size_t>(p.axis)];
     }
   }
 

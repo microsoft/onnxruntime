@@ -74,7 +74,10 @@ struct FNVHash {
 
   void HashConvolutionDescriptor(miopenConvolutionDescriptor_t cdesc) {
     int spatial_dim = 1;
-    // Current MIOpen doesn't provide API to probe the dimension of a
+#if ROCM_VERSION >= 50500
+    miopenGetConvolutionDescriptorSize(cdesc, &spatial_dim);
+#else
+    // Previous versions of MIOpen doesn't provide API to probe the dimension of a
     // miopenConvolutionDescriptor_t, so we have to guess.
     // This algorithm is based on a specific behavior of miopenGetConvolutionNdDescriptor,
     //  which fails when requestedSpatialDim > the convolution's spatial dimension
@@ -113,6 +116,7 @@ struct FNVHash {
                   "miopenGetConvolutionNdDescriptor is supposed to fail before spatial_dim gets to ",
                   spatial_dim);
     }
+#endif
   }
  private:
   uint32_t value_ = BASIS;
@@ -159,12 +163,12 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     };
     auto& cached_item = plan_cache_.FindOrCreateFusionPlanCache(Hash(),
                                                                 factory);
-    bool should_try_fusion_api = cached_item.Validate(Base::MiopenHandle());
+    bool should_try_fusion_api = cached_item.Validate(this->GetMiopenHandle(context));
 
     typedef typename onnxruntime::rocm::ToHipType<T>::MappedType HipT;
     const auto alpha = onnxruntime::rocm::Consts<HipT>::One;
     const auto beta = onnxruntime::rocm::Consts<HipT>::Zero;
-    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace();
+    IAllocatorUniquePtr<void> workspace = Base::GetWorkSpace(context->GetComputeStream());
     miopenStatus_t fusion_status = miopenStatusNotInitialized;
 
     if (should_try_fusion_api) {
@@ -198,7 +202,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
                                                            relu_notused,
                                                            relu_notused));
       }
-      fusion_status = miopenExecuteFusionPlan(Base::MiopenHandle(),
+      fusion_status = miopenExecuteFusionPlan(this->GetMiopenHandle(context),
                                               fusion_info.plan,
                                               Base::s_.x_tensor,
                                               Base::s_.x_data,
@@ -207,7 +211,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
                                               fusion_info.fusion_args);
     }
     if (miopenStatusSuccess != fusion_status) {
-      MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(Base::MiopenHandle(),
+      MIOPEN_RETURN_IF_ERROR(miopenConvolutionForward(this->GetMiopenHandle(context),
                              &alpha,
                              Base::s_.x_tensor,
                              Base::s_.x_data,
@@ -221,18 +225,18 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
                              workspace.get(),
                              Base::s_.workspace_bytes));
       if (has_b) {
-          MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(Base::MiopenHandle(),
+          MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(this->GetMiopenHandle(context),
                                                   &alpha, Base::s_.b_tensor, Base::s_.b_data,
                                                   &alpha, Base::s_.y_tensor, Base::s_.y_data,
                                                   &beta));
       }
       if (has_z) {
-          MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(Base::MiopenHandle(),
+          MIOPEN_RETURN_IF_ERROR(_miopenAddTensor(this->GetMiopenHandle(context),
                                                   &alpha, Base::s_.z_tensor, Base::s_.z_data,
                                                   &alpha, Base::s_.y_tensor, Base::s_.y_data,
                                                   &beta));
       }
-      MIOPEN_RETURN_IF_ERROR(miopenActivationForward(Base::MiopenHandle(),
+      MIOPEN_RETURN_IF_ERROR(miopenActivationForward(this->GetMiopenHandle(context),
                                                      activation_desc_,
                                                      &alpha,
                                                      Base::s_.y_tensor,
@@ -243,7 +247,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T> {
     }
     if (Base::s_.post_slicing_required) {
       ORT_RETURN_IF_ERROR(onnxruntime::rocm::SliceOutUnwantedOutputSection(
-          this->Stream(),
+          this->Stream(context),
           Base::s_.y_data,
           Base::s_.y_dims_with_adjusted_pads,
           Base::s_.Y->MutableDataRaw(),

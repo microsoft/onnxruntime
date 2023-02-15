@@ -11,7 +11,7 @@ export CUDA_HOME=/usr/local/cuda
 export CUDNN_HOME=/usr/local/cuda
 export CUDACXX=$CUDA_HOME/bin/nvcc
 
-./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi --enable_training_torch_interop
+./build.sh --config RelWithDebInfo --use_cuda --enable_training --build_wheel --skip_tests --cuda_version=11.6 --parallel 8 --use_mpi
 ```
 
 Install the Python wheel.
@@ -32,7 +32,7 @@ Sample usage as below:
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule
++	from onnxruntime.training.ortmodule import ORTModule
 +	model = ORTModule(model)
 ```
 
@@ -44,7 +44,7 @@ More options for **developers**.
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule, DebugOptions, LogLevel
++	from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
 +	model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.VERBOSE, onnx_prefix="model_name"))
 ```
 Check [DebugOptions implementation](../orttraining/orttraining/python/training/ortmodule/debug_options.py) for more details.
@@ -124,6 +124,13 @@ Before full qualified name can be got from exporter, this environment variables 
 	export ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS="megatron.fp16.fp16.fused_kernels.GELUFunction"
 	```
 
+#### ORTMODULE_ENABLE_COMPUTE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
+the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
+debugging).
+
 ### 2.2 Memory Optimization
 
 Q: *Want to run a bigger batch size?*
@@ -189,7 +196,7 @@ Check [FP16_Optimizer implementation](../orttraining/orttraining/python/training
 ```diff
 	model = build_model()
 
-+	from onnxruntime.training import ORTModule
++	from onnxruntime.training.ortmodule import ORTModule
 +	model = ORTModule(model)
 
 -	optimizer = AdamW(model.parameters(), lr=1)

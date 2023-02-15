@@ -98,7 +98,7 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
                         OrtErrorCode::ORT_FAIL);                                                          \
     auto& data = tensor.field_name();                                                                     \
     for (auto data_iter = data.cbegin(); data_iter != data.cend(); ++data_iter)                           \
-      *p_data++ = *reinterpret_cast<const T*>(data_iter);                                                 \
+      *p_data++ = onnxruntime::narrow<T>(*data_iter);                                                     \
     return;                                                                                               \
   }
 

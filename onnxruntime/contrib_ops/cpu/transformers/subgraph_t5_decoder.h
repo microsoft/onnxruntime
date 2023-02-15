@@ -4,6 +4,7 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "contrib_ops/cpu/transformers/sequences.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -33,7 +34,10 @@ class T5DecoderSubgraph : public Subgraph {
       const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
       const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
       int num_beam,
-      void* stream);
+      Stream* stream,
+      bool use_sequence_as_input_ids,
+      int cur_len,
+      transformers::Sequences& sequences);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
                   const std::vector<const NodeArg*>& subgraph_outputs) override;

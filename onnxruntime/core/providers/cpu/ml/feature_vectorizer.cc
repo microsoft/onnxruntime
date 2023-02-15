@@ -44,7 +44,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
   Tensor* Y = context->Output(0, {N, total_dimensions_});
   auto Y_data = Y->MutableData<float>();
 
-  auto out = gsl::make_span(Y_data, Y->Shape().Size());
+  auto out = gsl::make_span(Y_data,onnxruntime::narrow<size_t>(Y->Shape().Size()));
 
   // init all to 0.f so we don't need to do that each loop if we have to add padding
   std::fill_n(out.data(), out.size(), 0.f);
@@ -59,7 +59,7 @@ Status FeatureVectorizer::Compute(OpKernelContext* context) const {
 
     auto feature_size = input_dimensions_[index];
 
-    auto cur_out = out.begin() + feature_offset;
+    auto cur_out = out.begin() + onnxruntime::narrow<size_t>(feature_offset);
 
     if (input_tensor.IsDataType<float>()) {
       // straight copy for float to float
@@ -98,18 +98,18 @@ static void VectorizeTensor(const Tensor& input_tensor, int64_t feature_size, in
   }
 
   auto data = input_tensor.Data<T>();
-  auto input = gsl::make_span(data, shape.Size());
+  auto input = gsl::make_span(data, onnxruntime::narrow<size_t>(shape.Size()));
   auto input_iter = input.begin();
 
   for (int i = 0; i < N;) {
     // copy each row to the output. iters are passed by value
-    CopyWithCast<T>(input_iter, input_iter + stride, out_iter);
+    CopyWithCast<T>(input_iter, input_iter + onnxruntime::narrow<size_t>(stride), out_iter);
 
     // skip to start of next input row, and start of next output
     // if we have more input. otherwise we go past then end of the input and the bounds checking errors out
     if (++i < N) {
-      input_iter += input_size;
-      out_iter += sum_input_dimensions;
+      input_iter += onnxruntime::narrow<size_t>(input_size);
+      out_iter += onnxruntime::narrow<size_t>(sum_input_dimensions);
     }
   }
 }

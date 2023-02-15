@@ -9,10 +9,17 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
+#include "onnx/onnx-ml.pb.h" // ?
+
+// Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
+// ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
+#if defined(_WIN32) && !defined(NDEBUG)
+#pragma warning(disable : 26426)
+#endif
 
 namespace ONNX_NAMESPACE {
 void RNNShapeInference(InferenceContext& ctx);
-
+void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
 void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
@@ -30,7 +37,8 @@ using ONNX_NAMESPACE::DbgOperatorSetTracker;
 #endif
 
 void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, int index,
-                                       ::google::protobuf::int32 expectedType, bool isScalar, int expectedTensorSize) {
+                                       ::google::protobuf::int32 expectedType,
+                                       QuantParamTensorType expectedScalar, int expectedTensorSize) {
   if (ctx.getNumInputs() > static_cast<size_t>(index)) {
     auto data_type = ctx.getInputType(index);
     if (nullptr == data_type) {
@@ -45,11 +53,14 @@ void ValidateTypeAndShapeForScaleAndZP(ONNX_NAMESPACE::InferenceContext& ctx, in
 
   if (hasInputShape(ctx, index)) {
     ONNX_NAMESPACE::TensorShapeProto shape = ctx.getInputType(index)->tensor_type().shape();
-    if (isScalar) {
+    if (expectedScalar == QuantParamTensorType::Scalar) {
       if (shape.dim_size() != 0) {
         fail_type_inference("Scale and Zero-point must be a scalar");
       }
     } else {
+      if (expectedScalar == QuantParamTensorType::Both && shape.dim_size() == 0) {
+        return;
+      }
       if (shape.dim_size() != 1) {
         fail_type_inference("Scale and Zero-point must be of rank 1");
       }
@@ -108,12 +119,12 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
       }
 
       // validate scale and zero points
-      ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-      ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), true);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 2, a_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 5, b_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+      ValidateTypeAndShapeForScaleAndZP(ctx, 7, a_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
       if (hasInputShape(ctx, 0) && hasInputShape(ctx, 3))
         bidirectionalBroadcastShapeInference(ctx.getInputType(0)->tensor_type().shape(),
@@ -357,8 +368,8 @@ C (int32) = (A - A_zero_point) * (B - B_zero_point)
             fail_type_inference("inputs are expected to have tensor type.");
           }
 
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), true);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, a_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 3, b_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
           if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
             bidirectionalBroadcastShapeInference(ctx.getInputType(0)->tensor_type().shape(),
@@ -492,10 +503,10 @@ This helps to improve accuracy as after ReduceMean operation the range of the ou
           }
 
           // validate scale and zero points
-          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, true);
-          ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), true);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 2, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 3, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 4, data_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
 
           int64_t keep_dims = 1;
           auto attr_proto = ctx.getAttribute("keepdims");
@@ -807,10 +818,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
           }
 
-          if (all_lengths_known) {
-            output_shape->mutable_dim(axis)->set_dim_value(total_length);
-          }
-        }));
+        if (all_lengths_known) {
+          output_shape->mutable_dim(axis)->set_dim_value(total_length);
+        }
+      }));
+
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
+    .SetDoc("Return elements, either from X or Y, depending on condition.")
+      .Input(0, "condition", " When True (nonzero), yield x, otherwise yield y", "B")
+      .Input(1, "X", "Y's zero point.", "T")
+      .Input(2, "x_scale", "X's scale.", "TF")
+      .Input(3, "x_zero_point", "X's zero point.", "T")
+      .Input(4, "Y", "Y's zero point.", "T")
+      .Input(5, "y_scale", "Y's scale.", "TF")
+      .Input(6, "y_zero_point", "Y's zero point.", "T")
+      .Input(7, "z_scale", "Z's scale.", "TF")
+      .Input(8, "z_zero_point", "Z's zero point.", "T")
+      .Output(0, "Z", "Tensor of shape equal to the broadcasted shape of condition, X, and Y", "T")
+      .TypeConstraint(
+        "B",
+        {"tensor(bool)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint(
+        "TF",
+        {"tensor(float)"},
+        "Constrain scale types to any float tensor type.")
+      .TypeConstraint(
+        "T",
+        {"tensor(uint8)", "tensor(int8)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasNInputShapes(ctx, 9)) {
+          std::vector<const onnx::TensorShapeProto*> shapes;
+          shapes.push_back(&ctx.getInputType(0)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(1)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(4)->tensor_type().shape());
+          multidirectionalBroadcastShapeInference(
+              shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+        }
+      }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QGemm, 1,
@@ -902,6 +949,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("unidirectional", "Whether every token can only attend to previous tokens. Default value is 0.",
               AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT, OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, input_hidden_size)", "T1")
         .Input(1, "weight",
                "2D input tensor with shape (input_hidden_size, 3 * hidden_size), hidden_size = num_heads * head_size",
@@ -1082,7 +1140,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-Current version does not support past/present, extra_add and qkv_hidden_sizes.
+Current version does not support past/present, relative_position_bias and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
@@ -1144,7 +1202,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(18, "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
                "Q", OpSchema::Optional)
-        .Input(19, "extra_add",
+        .Input(19, "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S",
                OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
@@ -1239,6 +1297,231 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("G", {"tensor(int32)"}, "Constrain to integer types")
         .TypeConstraint("F", {"tensor(float16)"}, "Be compatible with float version.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
+
+/*
+static void convTransposeShapeInference(InferenceContext& ctx,
+                                        std::array<int, 3>& input_remap) {
+  // Sometimes, the onnx shapeInfer function does supply the QlinearVersion of
+  // relavant Op. But there is not too much difference except input_idx.
+  // For example, ConvTranspose has 3 inputs (input,weight,bias),
+  // while QlinearConvTranspose has 7 inputs (input,scale_input,Zp,weight,
+  // scale_weight,Zp,output_scale,Zp,bias).
+  //That's why we need to remap the input index.
+  class InputIdxReMappingInferContext : public InferenceContext {
+   private:
+    InferenceContext& ctx_pa_;
+    std::array<int, 3>& input_map_;
+
+   public:
+    InputIdxReMappingInferContext(InferenceContext& ctx, std::array<int, 3>& input_map) : ctx_pa_(ctx),
+                                                                                       input_map_(input_map) {}
+    const onnx::TypeProto* getInputType(size_t index) const override {
+      return ctx_pa_.getInputType(input_map_[index]);
+    }
+    const AttributeProto* getAttribute(const std::string& name) const override {
+      return ctx_pa_.getAttribute(name);
+    }
+    size_t getNumInputs() const override {
+      return ctx_pa_.getNumInputs();
+    }
+    const onnx::TensorProto* getInputData(size_t index) const override {
+      return ctx_pa_.getInputData(input_map_[index]);
+    }
+    size_t getNumOutputs() const override {
+      return ctx_pa_.getNumOutputs();
+    }
+    onnx::TypeProto* getOutputType(size_t index) override {
+      return ctx_pa_.getOutputType(input_map_[index]);
+    }
+    onnx::GraphInferencer* getGraphAttributeInferencer(const std::string& attribute_name) override {
+      return ctx_pa_.getGraphAttributeInferencer(attribute_name);
+    }
+    const onnx::SparseTensorProto* getInputSparseData(size_t index) const override {
+      return ctx_pa_.getInputSparseData(input_map_[index]);
+    }
+    // Gets the shape inputs computed by partial data propagation.
+    const onnx::TensorShapeProto* getSymbolicInput(size_t index) const override {
+      return ctx_pa_.getSymbolicInput(input_map_[index]);
+    }
+  };
+
+  InputReMappingInferContext remapped_ctx(ctx, input_remap);
+  ONNX_NAMESPACE::convTransposeShapeInference(remapped_ctx);
+}
+*/
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    QLinearConvTranspose,
+    1,
+    OpSchema()
+        .SetDoc(R"DOC( Similar to ConvTranspose in onnx, but with quantization.
+The convolution transpose operator consumes an input tensor and a filter,
+and computes the output.
+
+If the pads parameter is provided the shape of the output is calculated via the following equation:
+
+  output_shape[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - pads[start_i] - pads[end_i]
+
+output_shape can also be explicitly specified in which case pads values are auto generated using these equations:
+
+  total_padding[i] = stride[i] * (input_size[i] - 1) + output_padding[i] + ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i]
+  If (auto_pads == SAME_UPPER): pads[start_i] = total_padding[i]/2; pads[end_i] = total_padding[i] - (total_padding[i]/2)
+  Else: pads[start_i] = total_padding[i] - (total_padding[i]/2); pads[end_i] = (total_padding[i]/2).
+
+    )DOC")
+        .Input(
+            0,
+            "x",
+            "Input data tensor from previous layer; has size (N x C x H x W)"
+            ", where N is the batch size, C is the number of channels, and"
+            " H and W are the height and width. Note that this is for the 2D image. "
+            "Otherwise the size is (N x C x D1 x D2 ... x Dn)",
+            "T1")
+        .Input(
+            1,
+            "x_scale",
+            "Scale tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+            "tensor(float)")
+        .Input(
+            2,
+            "x_zero_point",
+            "Zero point tensor for input 'x'. It's a scalar, which means a per-tensor/layer quantization.",
+            "T1")
+        .Input(
+            3,
+            "w",
+            "The weight tensor that will be used in the "
+            "convolutions; has size (C x M/group x kH x kW), where C "
+            "is the number of channels, and kH and kW are the "
+            "height and width of the kernel, and M is the number "
+            "of feature maps. ",
+            "T2")
+        .Input(
+            4,
+            "w_scale",
+            "Scale tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+            "tensor(float)")
+        .Input(
+            5,
+            "w_zero_point",
+            "Zero point tensor for input 'w'. It could be a scalar or a 1-D tensor, which means a per-tensor/layer or per output channel quantization. If it's a 1-D tensor, its number of elements should be equal to the number of output channels (M).",
+            "T2")
+        .Input(
+            6,
+            "y_scale",
+            "Scale tensor for output 'y'. It's a scalar, which means a per-tensor/layer quantization.",
+            "tensor(float)")
+        .Input(
+            7,
+            "y_zero_point",
+            "Zero point tensor for output 'y'. It's a scalar, which means a per-tensor/layer quantization.",
+            "T3")
+        .Input(
+            8,
+            "B",
+            "Optional 1D bias to be added to the convolution, has size of M. "
+            "Bias must be quantized using scale = x_scale * w_scale and zero_point = 0",
+            "T4",
+            OpSchema::Optional)
+        .Output(
+            0,
+            "y",
+            "Output data tensor that contains the result of the "
+            "convolution. The output dimensions are functions "
+            "of the kernel size, stride size, and pad lengths.",
+            "T3")
+        .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input type to 8-bit integer tensor.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain filter type to 8-bit integer tensor.")
+        .TypeConstraint("T3", {"tensor(int8)", "tensor(uint8)"}, "Constrain output type to 8-bit integer tensor.")
+        .TypeConstraint("T4", {"tensor(int32)"}, "Constrain bias type to 32-bit integer tensor.")
+        .Attr(
+            "kernel_shape",
+            "The shape of the convolution kernel. If not present, should be inferred from input W.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "output_shape",
+            "The shape of the output can be explicitly set which will cause pads values to be auto generated. If output_shape is specified "
+            "pads values are ignored. See doc for details for equations to generate pads",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "output_padding",
+            "Additional elements added to the side with higher coordinate indices in the output. "
+            "Each padding value in \"output_padding\" must be less than the corresponding stride/dilation dimension. "
+            "By default, this attribute is a zero vector. "
+            "Note that this attribute doesn't directly affect the computed output values. "
+            "It only controls the selection of the computed values, "
+            "so changing this attribute only adds or removes output elements. "
+            "If \"output_shape\" is explicitly provided, "
+            "\"output_padding\" does not contribute additional size to \"output_shape\" but "
+            "participates in the computation of the needed padding amount. "
+            "This is also called adjs or adjustment in some frameworks.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "dilations",
+            "dilation value along each spatial axis of the filter. If not present, the dilation defaults to 1 along each spatial axis.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr(
+            "strides",
+            "Stride along each spatial axis. If not present, the stride defaults to 1 along each spatial axis.",
+            AttributeProto::INTS,
+            OPTIONAL_VALUE)
+        .Attr("auto_pad",
+              "auto_pad must be either NOTSET, SAME_UPPER, SAME_LOWER or VALID. Where "
+              "default value is NOTSET",
+              AttributeProto::STRING, std::string("NOTSET"))
+        .Attr("pads", "Padding for the beginning and ending along each spatial axis", AttributeProto::INTS, OPTIONAL_VALUE)
+        .Attr(
+            "group",
+            "number of groups input channels and output channels are divided into.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          auto x_type = ctx.getInputType(0);
+          auto w_type = ctx.getInputType(3);
+          if (nullptr == x_type || nullptr == w_type || x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+              w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+            fail_type_inference("inputs are expected to have tensor type.");
+          }
+
+          auto x_zero_point_type = ctx.getInputType(2);
+          if (nullptr == x_zero_point_type ||
+              x_zero_point_type->tensor_type().elem_type() != x_type->tensor_type().elem_type()) {
+            fail_type_inference("input and zero_point pair is expected to have be same type.");
+          }
+
+          auto w_zero_point_type = ctx.getInputType(5);
+          if (nullptr == w_zero_point_type ||
+              w_zero_point_type->tensor_type().elem_type() != w_type->tensor_type().elem_type()) {
+            fail_type_inference("weight and zero_point pair is expected to have same type.");
+          }
+
+          if (nullptr == x_type || nullptr == w_type || x_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType ||
+              w_type->value_case() != ONNX_NAMESPACE::TypeProto::kTensorType) {
+            fail_type_inference("inputs are expected to have tensor type.");
+          }
+
+          // validate scale and zero points
+          // scale and zero points could be scalar or 1-D tensor which depends on quanization per-channel or per-tensor
+          ValidateTypeAndShapeForScaleAndZP(ctx, 1, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 2, x_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 4, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Both);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 5, w_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 6, ONNX_NAMESPACE::TensorProto::FLOAT, QuantParamTensorType::Scalar);
+          ValidateTypeAndShapeForScaleAndZP(ctx, 7, x_type->tensor_type().elem_type(), QuantParamTensorType::Scalar);
+
+          propagateElemTypeFromInputToOutput(ctx, 7, 0);
+
+          // TODO: uncomment this after we really need to infer the output shape.
+          // Since we haven't implemented QLinearConvTranspose in CPU EP yet,
+          // we just leverage ConvTranspose's shape inference.
+          // input, weight, bias
+          // std::array<int, 3> input_remap = {0, 3, 8};
+          // convTransposeShapeInference(ctx, input_remap);
+        }));
 
 }  // namespace contrib
 }  // namespace onnxruntime

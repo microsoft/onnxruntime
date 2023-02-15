@@ -41,7 +41,7 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
 }
@@ -115,10 +115,13 @@ struct TensorCheck<uint8_t> {
       output = output_tensor.Data<uint8_t>();
     }
 
-    // For uint8_t results, we only allow NNAPI EP to have an error tolerance, see below for the reason
+    // For uint8_t results, we only allow NNAPI/XNNPACK EP to have an error tolerance, see below for the reason
+    // XNNPACK EP will always round to larger. For example, 0.1 will be rounded to 1.0
     // For any other EPs, we still expect an exact match for the results
     // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
-    if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider) && (has_abs_err || has_rel_err)) {
+    if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider ||
+         provider_type == kXnnpackExecutionProvider) &&
+        (has_abs_err || has_rel_err)) {
       double threshold = has_abs_err
                              ? *(params.absolute_error_)
                              : 0.0;
@@ -336,8 +339,10 @@ struct TensorCheck<MLFloat16> {
     const bool has_rel_err = params.relative_error_.has_value();
 
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
+#elif defined(USE_DML)
+    threshold = 0.008f;
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
@@ -391,7 +396,7 @@ struct TensorCheck<BFloat16> {
     /// XXX: May need to adjust threshold as BFloat is coarse
     float abs_threshold = 0.0001f;
     float threshold = 0.001f;
-#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
+#if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML) || defined(USE_DNNL)
     threshold = 0.05f;  // expect at least 95% close
 #endif
 
@@ -907,9 +912,6 @@ std::vector<OrtValue> OpTester::ExecuteModel(
       size_t idx = 0;
       for (auto& expected_data : output_data_) {
         OrtValue& ort_value = fetches[idx];
-        if (ort_value.Fence())
-          ort_value.Fence()->BeforeUsingAsInput(
-              onnxruntime::kCpuExecutionProvider, 0);
 
         if (expected_data.def_.Exists()) {           // optional edges won't exist (so skip them)
           if (!expected_data.data_.IsAllocated()) {  // optional type output (None)
@@ -1357,7 +1359,7 @@ void OpTester::ExecuteModelForEps(
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
   if (try_assign_ep_for_nodes && !SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries)) {
     std::string providers;
-    for (const auto& ep: execution_providers) {
+    for (const auto& ep : execution_providers) {
       providers.append(ep->Type() + " ");
     }
     LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << "were unable to run the model.";
@@ -1461,6 +1463,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 }
 
 #ifdef ENABLE_TRAINING
+// Deprecated code. Remove this when training::TrainingSession is removed.
 template std::vector<OrtValue> OpTester::ExecuteModel<training::TrainingSession>(
     Model& model, training::TrainingSession& session_object,
     ExpectResult expect_result, const std::string& expected_failure_string,

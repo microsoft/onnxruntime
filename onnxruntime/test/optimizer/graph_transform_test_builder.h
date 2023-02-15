@@ -16,6 +16,24 @@
 #include "test/framework/test_utils.h"
 #include "test/util/include/inference_session_wrapper.h"
 
+#define TEST_RETURN_IF(condition)                                               \
+  do {                                                                          \
+    if (condition) {                                                            \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,  \
+                                           ::onnxruntime::common::FAIL,         \
+                                           #condition " is evaluated to true"); \
+    }                                                                           \
+  } while (false)
+
+#define TEST_RETURN_IF_NOT(condition)                                            \
+  do {                                                                           \
+    if (!(condition)) {                                                          \
+      return ::onnxruntime::common::Status(::onnxruntime::common::ONNXRUNTIME,   \
+                                           ::onnxruntime::common::FAIL,          \
+                                           #condition " is evaluated to false"); \
+    }                                                                            \
+  } while (false)
+
 namespace onnxruntime {
 namespace test {
 template <typename T>
@@ -32,6 +50,10 @@ class ModelTestBuilder {
   ModelTestBuilder(Graph& graph) : graph_(graph) {
   }
 
+  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
+    return graph_.DomainToVersionMap();
+  }
+
   template <typename T>
   NodeArg* MakeInput(const std::vector<int64_t>& shape, const std::vector<T>& data) {
     ONNX_NAMESPACE::TypeProto type_proto;
@@ -44,7 +66,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                      shape,
                      data,
                      &input_value);
@@ -338,6 +360,17 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        const std::function<void(SessionOptions&)>& add_session_options = {},
                        const InlinedHashSet<std::string>& disabled_optimizers = {});
 
+void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
+                       const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
+                       TransformerLevel baseline_level,
+                       TransformerLevel target_level,
+                       const std::vector<int64_t>& opset_versions,
+                       double per_sample_tolerance = 0.0,
+                       double relative_per_sample_tolerance = 0.0,
+                       std::unique_ptr<GraphTransformer> transformer = nullptr,  // must be null in this case.
+                       const std::function<void(SessionOptions&)>& add_session_options = {},
+                       const InlinedHashSet<std::string>& disabled_optimizers = {});
+
 /**
  * @brief Apply a GraphTransformer to a graph, and run graph checkers before and after applying the transformer.
  *
@@ -350,9 +383,27 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
  * @param pre_graph_checker The graph checker function before applying the transformer
  * @param post_graph_checker The graph checker function after applying the transformer
  */
-void TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
-                          const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
-                          TransformerLevel level, unsigned steps, const std::function<void(Graph&)>& pre_graph_checker,
-                          const std::function<void(Graph&)>& post_graph_checker);
+Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
+                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
+                            const std::function<Status(Graph&)>& post_graph_checker);
+
+/**
+ * @brief Apply a GraphTransformer to a graph, and run graph checkers before and after applying the transformer.
+ *
+ * @param build_test_case The function to build a graph for testing
+ * @param opset_versions A graph is created and tested for every opset in this set
+ * @param logger The logger
+ * @param transformer The GraphTransformer to be applied
+ * @param level The transformer level on which the transformer will be applied
+ * @param steps The step count of the GraphTransformerManager
+ * @param pre_graph_checker The graph checker function before applying the transformer
+ * @param post_graph_checker The graph checker function after applying the transformer
+ */
+Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
+                            const std::vector<int64_t>& opset_versions,
+                            const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
+                            TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
+                            const std::function<Status(Graph&)>& post_graph_checker);
 }  // namespace test
 }  // namespace onnxruntime

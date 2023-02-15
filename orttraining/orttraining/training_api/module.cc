@@ -6,9 +6,10 @@
 #include "core/framework/execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/utils.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 
@@ -148,6 +149,17 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
     : named_parameters_{named_parameters} {
+
+  // Enforce weight prepacking is disabled
+  // If user explicitly enabled weight prepacking then return error.
+  // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.
+  std::string disable_prepacking = "";
+  if (session_options.config_options.TryGetConfigEntry(kOrtSessionOptionsConfigDisablePrepacking, disable_prepacking)) {
+    ORT_ENFORCE(disable_prepacking == "1", "Prepacking is not supported for training scenarios.");
+  } else {
+    const_cast<SessionOptions&>(session_options).config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "1";
+  }
+
   train_sess_ = std::make_unique<onnxruntime::InferenceSession>(session_options, env);
   ORT_THROW_IF_ERROR(train_sess_->Load(train_model_path_or_bytes));
   for (const auto& provider : providers) {
@@ -181,6 +193,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
   gradients_.resize(grad_input_names.size());
 
   train_input_names_ = user_input_names;
+  train_user_input_count_ = user_input_names.size();
   train_input_names_.insert(train_input_names_.end(), param_input_names.begin(), param_input_names.end());
   train_input_names_.insert(train_input_names_.end(), grad_input_names.begin(), grad_input_names.end());
   train_input_names_.insert(train_input_names_.end(), reset_grad_name.begin(), reset_grad_name.end());
@@ -276,6 +289,7 @@ Module::Module(const std::string& train_model_path_or_bytes,
       }
     }
     eval_input_names_ = eval_user_input_names;
+    eval_user_input_count_ = eval_user_input_names.size();
     eval_input_names_.insert(eval_input_names_.end(), eval_param_input_names.begin(), eval_param_input_names.end());
 
     // Keep a copy of the eval model path to be able to later export the model for inferencing.
@@ -407,7 +421,7 @@ Status Module::CopyBufferToParameters(OrtValue& parameters_buffer, const bool tr
   return Status::OK();
 }
 
-Status Module::ResetGrad() {
+Status Module::LazyResetGrad() {
   accumulate_gradient_ = false;
   return Status::OK();
 }
@@ -477,6 +491,28 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
   ORT_THROW_IF_ERROR(Model::Save(*inference_model, inference_model_path));
 
   return Status::OK();
+}
+
+size_t Module::GetTrainingModelInputCount() const noexcept {
+  return train_user_input_count_;
+}
+
+size_t Module::GetEvalModelInputCount() const noexcept {
+  return eval_user_input_count_;
+}
+
+std::string Module::GetTrainingModelInputName(size_t index) const {
+  ORT_ENFORCE(index < train_user_input_count_,
+              "Train input name index out of range. Expected in range [0-", train_user_input_count_, "). Actual: ",
+              index);
+  return train_input_names_.at(index);
+}
+
+std::string Module::GetEvalModelInputName(size_t index) const {
+  ORT_ENFORCE(index < eval_user_input_count_,
+              "Eval input name index out of range. Expected in range [0-", eval_user_input_count_, "). Actual: ",
+              index);
+  return eval_input_names_.at(index);
 }
 
 }  // namespace api

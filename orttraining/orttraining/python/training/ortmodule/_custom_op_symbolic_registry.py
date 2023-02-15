@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
+
 import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging.version import Version
@@ -10,6 +12,27 @@ from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
 
 from onnxruntime.training import ortmodule
+
+
+def wrap_custom_export_function(original_func):
+    # Starting from PyTorch 1.11, there has been a change to symbolic function signature
+    # in terms of how additional context is accessed. More info at
+    # https://github.com/pytorch/pytorch/blob/6b02648479d3615fa3260961e24f38dd0f22da94/torch/onnx/symbolic_helper.py#L48
+    # This code can be cleaned up once support for PyTorch version < 1.11 is dropped.
+    try:
+        from torch.onnx import SymbolicContext
+
+        def _export_with_ctx(ctx: SymbolicContext, graph, *args, **kwargs):
+            node = ctx.cur_node
+            return original_func(graph, node, *args, **kwargs)
+
+        return _export_with_ctx
+    except ImportError:
+
+        def _export_with_no_ctx(graph, *args, **kwargs):
+            return original_func(graph, None, *args, **kwargs)
+
+        return _export_with_no_ctx
 
 
 class CustomOpSymbolicRegistry:
@@ -30,7 +53,7 @@ class CustomOpSymbolicRegistry:
             )
 
 
-def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None):
+def register_symbolic(name, domain="", torch_version_start=None, torch_version_end=None, need_node=False):
     def symbolic_wrapper(fn):
         need_register = True
         if torch_version_start is not None and Version(torch.__version__) < Version(torch_version_start):
@@ -38,35 +61,92 @@ def register_symbolic(name, domain="", torch_version_start=None, torch_version_e
         # torch_version_end is exclusive.
         if torch_version_end is not None and Version(torch.__version__) >= Version(torch_version_end):
             need_register = False
+
+        updated_fn = fn
+        if need_node is True:
+            updated_fn = wrap_custom_export_function(fn)
+
         if need_register:
-            CustomOpSymbolicRegistry.register(name, domain, fn)
-        return fn
+            CustomOpSymbolicRegistry.register(name, domain, updated_fn)
+        return updated_fn
 
     return symbolic_wrapper
 
 
-@register_symbolic("cross_entropy_loss")
-@parse_args("v", "v", "v", "i", "v", "v")
-def cross_entropy_loss(g, self, target, weight, reduction, ignore_index, label_smoothing=0.0):
+@register_symbolic("cross_entropy_loss", need_node=True)
+def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index, label_smoothing=0.0):
     label_smoothing = sym_help._maybe_get_const(label_smoothing, "f")
     if label_smoothing > 0.0:
         raise RuntimeError("Unsupported: ONNX does not support label_smoothing")
+
+    logits_casted = logits
+    weight_casted = weight
+    output_type = None
+
+    #####################################################################################################
+    # Workaround: cross_entropy_loss takes fp16 as input and generates fp32 output.
+    # sample aten graph:
+    #     %target : Long(16, strides=[1], requires_grad=0, device=cuda:0)
+    #     %input : Half(16, 3, strides=[3, 1], requires_grad=0, device=cuda:0) = aten::linear(%18, %13, %19)
+    #     Float(requires_grad=0, device=cuda:0) = aten::cross_entropy_loss(%input, %target, %21, %22, %23, %24)
+    # If ORT do the compute with the input data type, the scaled loss gradient will become inf (cannot represented
+    # with fp16). Here we try to cast the fp16 to fp32 based on the export context (if there is).
+    # Currently not all type promotion/demotion are considered, only fp16 to fp32 is considered. For others, they
+    # remain the same behavior as before, but leave a warning message.
+
+    if not node:
+        # For lower version torch we cannot get node output types, we do the type promotion for safety.
+        # Assume a failure will happen if a non-float32 result is expected.
+        if logits.type().scalarType() == "Half":
+            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        if not weight.node().mustBeNone() and weight.type().scalarType() == "Half":
+            weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+
+        output_type = logits_casted.type()
+    else:
+        # For higher version torch we can get node output types, only adding cast for known type promotion cases.
+        loss_output = list(node.outputs())[0]
+        loss_scalar_type = loss_output.type().scalarType()
+        logits_scalar_type = logits.type().scalarType()
+        if loss_scalar_type != logits_scalar_type and logits_scalar_type == "Half" and loss_scalar_type == "Float":
+            # TODO: remove the cast once SoftmaxCrossEntropyLossInternal supports fp16 input and fp32 output.
+            logits_casted = g.op("Cast", logits, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+            if not weight.node().mustBeNone():
+                if weight.type().scalarType() == "Half":
+                    weight_casted = g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+                else:
+                    warnings.warn(
+                        "Unsupported diverged input and output types for weight when export cross_entropy_loss."
+                        f"weight type: {weight.type().scalarType()}, loss type: {loss_scalar_type}"
+                    )
+
+        else:
+            warnings.warn(
+                "Unsupported diverged input and output types for logits when export cross_entropy_loss."
+                f"logits type: {logits_scalar_type}, loss type: {loss_scalar_type}"
+            )
+
+        output_type = loss_output.type()
+    # End of workaround
+    ##################################
 
     # reduction: 0->none, 1->mean, 2->sum
     reduction = sym_help._maybe_get_const(reduction, "i")
     reduction_vals = ["none", "mean", "sum"]
     reduction = reduction_vals[reduction]
+
     output, log_prob = g.op(
         "com.microsoft::SoftmaxCrossEntropyLossInternal",
-        self,
+        logits_casted,
         target,
-        weight,
+        weight_casted,
         ignore_index,
         reduction_s=reduction,
         outputs=2,
     )
-    output.setType(self.type())
-    log_prob.setType(self.type())
+    output.setType(output_type)
+    log_prob.setType(output_type)
     return output
 
 
@@ -719,3 +799,16 @@ def upsample_nearest2d(g, input, output_size, scale_factors):
 @register_symbolic("upsample_nearest3d")
 def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
+
+
+@register_symbolic("upsample_bilinear2d")
+def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
+    return g.op(
+        "org.pytorch.aten::ATen",
+        input,
+        output_size,
+        align_corners,
+        scale_factors,
+        operator_s="upsample_bilinear2d",
+        overload_name_s="vec",
+    )

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <exception>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -31,7 +32,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_tf_crop_and_resize) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {4}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales); // opset13 requires either 'sizes' or 'scales' must be provided, but not both of them
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {7.600004f, 7.9f, 8.2f,
@@ -361,7 +362,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_4DBilinear1_WithSizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, scales, scales_and_sizes_in_initializer);
+    test.AddInput<float>("", {0}, scales);
     test.AddInput<int64_t>("sizes", {4}, sizes, scales_and_sizes_in_initializer);
 
     std::vector<float> Y = {3.5f, 5.5f};
@@ -493,7 +494,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_2DBilinear_pytorch_half_pixel) {
 
   test.AddInput<float>("X", {H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {2}, sizes);
 
   std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
@@ -521,7 +522,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
 
   test.AddInput<uint8_t>("X", {N, H, W, C}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<uint8_t> Y = {1, 7, 12};
@@ -551,7 +552,7 @@ TEST(ResizeOpTest, NhwcResizeOpLinearDownSampleTest_4DBilinear_pytorch_half_pixe
 
   test.AddInput<int8_t>("X", {N, H, W, C}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<int8_t> Y = {0, 2, -9};
@@ -632,7 +633,10 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_uint8) {
         7, 8, 9, 10, 11, 11, 11, 11,
         7, 8, 9, 10, 11, 11, 11, 11};
 
-    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    // Due to Xnnpack EP has a different rounding behavior, we need to allow a tolerance of 1
+    // The tolerance only works for Xnnpack EP
+    test.AddOutput<uint8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
+                            Y, false, .0f, 1.0f);
     // CUDA: result mismatch due to not implementing NHWC support
     // ROCm: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
@@ -674,7 +678,8 @@ TEST(ResizeOpTest, NhwcResizeOpLinearUpSampleTest_4DBilinear_asymmetric_int8) {
         -7, -2, 2, 6, 11, 11, 11, 11,
         -7, -2, 2, 6, 11, 11, 11, 11};
 
-    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C}, Y);
+    test.AddOutput<int8_t>("Y", {N, static_cast<int64_t>(H * scales[1]), static_cast<int64_t>(W * scales[2]), C},
+                           Y, false, .0f, 1.0f);
     // TensorRT: results mismatch
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
   };
@@ -737,7 +742,7 @@ TEST(ResizeOpTest, ResizeOpLinearDownSampleTest_3DTrilinear_pytorch_half_pixel) 
 
   test.AddInput<float>("X", {D, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {3}, sizes);
 
   std::vector<float> Y = {1.6666666f, 7.0f, 12.333333f};
@@ -864,7 +869,7 @@ TEST(ResizeOpTest, ResizeOpNearestDownSampleTest_WithSizes) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {1.0f, 2.0f, 4.0f};
@@ -996,7 +1001,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSampleTest_WithSizes_CeilMode) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
@@ -1025,7 +1030,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample5dTest_WithSizes_CeilMode) {
 
   test.AddInput<float>("X", {1, N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {5}, sizes);
 
   std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
@@ -1201,7 +1206,7 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_Nearest2xOptimization_Sizes) {
 
     test.AddInput<float>("X", {N, C, H, W}, X);
     test.AddInput<float>("roi", {0}, roi);
-    test.AddInput<float>("scales", {0}, scales, sizes_in_initializer);
+    test.AddInput<float>("", {0}, scales);
     test.AddInput<int64_t>("sizes", {4}, sizes, sizes_in_initializer);
 
     std::vector<float> Y = {1.0f, 1.0f, 2.0f, 2.0f,
@@ -1408,7 +1413,7 @@ TEST(ResizeOpTest, ResizeOpCubicUpSampleTest_MultiChannel) {
 
   test.AddInput<float>("X", {N, C, H, W}, X);
   test.AddInput<float>("roi", {0}, roi);
-  test.AddInput<float>("scales", {0}, scales);
+  test.AddInput<float>("", {0}, scales);
   test.AddInput<int64_t>("sizes", {4}, sizes);
 
   std::vector<float> Y = {-0.543341f, -0.308515f, 0.0807175f, 0.644203f, 1.06533f, 1.48645f, 2.04994f, 2.43917f, 2.674f,
@@ -1721,7 +1726,7 @@ TEST(ResizeOpTest, ResizeOpTypeCheck_Ver_10) {
 }
 
 template <typename T>
-void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
+void ResizeOpTypeCheck_Ver_11_13_18(int opset_version) {
   OpTester test("Resize", opset_version);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 2.0f, 3.0f};
@@ -1745,17 +1750,439 @@ void ResizeOpTypeCheck_Ver_11_13(int opset_version) {
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver11) {
-  ResizeOpTypeCheck_Ver_11_13<float>(11);
-  ResizeOpTypeCheck_Ver_11_13<int32_t>(11);
-  ResizeOpTypeCheck_Ver_11_13<int8_t>(11);
-  ResizeOpTypeCheck_Ver_11_13<uint8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<float>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(11);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(11);
 }
 
 TEST(ResizeOpTest, ResizeOpTypeCheck_Ver13) {
-  ResizeOpTypeCheck_Ver_11_13<float>(13);
-  ResizeOpTypeCheck_Ver_11_13<int32_t>(13);
-  ResizeOpTypeCheck_Ver_11_13<int8_t>(13);
-  ResizeOpTypeCheck_Ver_11_13<uint8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<float>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(13);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(13);
+}
+
+TEST(ResizeOpTest, ResizeOpTypeCheck_Ver18) {
+  ResizeOpTypeCheck_Ver_11_13_18<float>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<int32_t>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<int8_t>(18);
+  ResizeOpTypeCheck_Ver_11_13_18<uint8_t>(18);
+}
+
+/*
+ * Most of TestCase against Anti-aliasing will have the attribute of "exclude_outside" as 1.
+ * It's as Pillow 's Resize is corresponding to ONNX op with exclude_outside equaling 1.
+ * Besides, for cubic mode, PIllow's one has a default value of 0.5 for "cubic_coeff_a",
+ * while ONNX op has a default value of 0.75.
+ */
+template <typename T, typename T1 = int64_t>
+void TestAntialiasing(std::map<std::string, std::string> attributes,
+                      std::vector<int64_t> input_shape,
+                      std::vector<T> input_data,
+                      std::vector<T1> output_shape_or_scale, std::vector<T> output_data) {
+  auto parse_attr = [](const std::string& str, auto typed_v) {
+    using Tdata = decltype(typed_v);
+    std::vector<Tdata> vect;
+
+    std::stringstream ss(str.substr(1, str.size() - 2));
+
+    for (Tdata i; ss >> i;) {
+      vect.push_back(i);
+      if (ss.peek() == ',')
+        ss.ignore();
+    }
+    return vect;
+  };
+
+  OpTester test("Resize", 18);
+  test.AddAttribute<int64_t>("antialias", 1LL);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> output_shape;
+
+  for (auto& [k, v] : attributes) {
+    if (k == "mode") {
+      test.AddAttribute("mode", v);
+    } else if (k == "exclude_outside") {
+      test.AddAttribute<int64_t>("exclude_outside", std::stoll(v));
+    } else if (k == "cubic_coeff_a") {
+      test.AddAttribute<float>("cubic_coeff_a", std::stof(v));
+    } else if (k == "axes") {
+      int64_t type = 0;
+      test.AddAttribute<std::vector<int64_t>>("axes", parse_attr(v, type));
+    } else if (k == "output_shape") {
+      int64_t type = 0;
+      output_shape = parse_attr(v, type);
+    } else if (k == "coordinate_transformation_mode") {
+      test.AddAttribute("coordinate_transformation_mode", v);
+    } else if (k == "policy") {
+      test.AddAttribute("keep_aspect_ratio_policy", v);
+    } else if (k == "extrapolation_value") {
+      test.AddAttribute<float>("extrapolation_value", std::stof(v));
+    } else if (k == "roi") {
+      roi = parse_attr(v, 0.0f);
+    } else {
+      throw std::invalid_argument("Unknown attribute");
+    }
+  }
+
+  test.AddInput<T>("X", input_shape, input_data);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+
+  if constexpr (std::is_same_v<T1, float>) {
+    test.AddInput<float>("scales", {int64_t(output_shape_or_scale.size())}, output_shape_or_scale, true);
+  } else {
+    test.AddInput<float>("", {0}, scales);
+    test.AddInput<int64_t>("sizes", {int64_t(output_shape_or_scale.size())}, output_shape_or_scale, true);
+    if (output_shape.empty()) {
+      output_shape = output_shape_or_scale;
+    }
+  }
+
+  test.AddOutput<T>("Y", output_shape, output_data);
+  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.  
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
+  std::vector<float> X(16);
+  std::iota(X.begin(), X.end(), 1.f);
+
+  std::vector<float> Y = {2.3636363f, 3.590909f, 4.818182f,
+                          7.2727275f, 8.5f, 9.727273f,
+                          12.181818f, 13.409091f, 14.636364f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+}
+
+// match pillow
+TEST(ResizeOpTest, Antialias_Bilinear_ExcludeOutside) {
+  std::vector<float> X(16);
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = {2.5f, 3.7f, 4.9f,
+                          7.3f, 8.5f, 9.7f,
+                          12.1f, 13.3f, 14.5f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Bilinear_Scale_Is_All_1) {
+  std::vector<float> X(3 * 4 * 5 * 6);
+  std::iota(X.begin(), X.end(), 1.f);
+  std::vector<float> Y = X;
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {3, 4, 5, 6}, X, {3, 4, 5, 6}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Bilinear_dtype) {
+  {
+    std::vector<uint8_t> X(16);
+    std::iota(X.begin(), X.end(), uint8_t(0));
+    std::vector<uint8_t> Y = {1, 3, 4,
+                              6, 8, 9,
+                              11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int8_t> X(16);
+    std::iota(X.begin(), X.end(), int8_t(0));
+    std::vector<int8_t> Y = {1, 3, 4,
+                             6, 8, 9,
+                             11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int32_t> X(16);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<int32_t> Y = {1, 3, 4,
+                              6, 8, 9,
+                              11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 1, 4, 4}, X, {1, 1, 3, 3}, Y);
+  }
+}
+
+TEST(ResizeOpTest, Antialias_NhwcBilinear) {
+  std::vector<float> X(3 * 5 * 8);
+  std::vector<float> X1(3 * 5 * 8);
+  std::iota(X1.begin(), X1.end(), 0.f);
+  for (size_t x = 0; x < 5; x++) {
+    for (size_t y = 0; y < 8; y++) {
+      for (size_t c = 0; c < 3; c++) {
+        X[x * 8 * 3 + y * 3 + c] = X1[c * 5 * 8 + x * 8 + y];
+      }
+    }
+  }
+  std::vector<float> Y = {2.409091f, 42.409092f, 82.40909f,
+                          3.925926f, 43.925926f, 83.92593f,
+                          5.5f, 45.5f, 85.5f,
+                          7.0740743f, 47.074074f, 87.07407f,
+                          8.590909f, 48.590908f, 88.59091f,
+                          11.742424f, 51.742424f, 91.742424f,
+                          13.259259f, 53.25926f, 93.25926f,
+                          14.833333f, 54.833332f, 94.833336f,
+                          16.407408f, 56.407406f, 96.40741f,
+                          17.924242f, 57.924244f, 97.92424f,
+                          21.075758f, 61.075756f, 101.07576f,
+                          22.592592f, 62.592594f, 102.59259f,
+                          24.166666f, 64.166664f, 104.166664f,
+                          25.74074f, 65.74074f, 105.74074f,
+                          27.257576f, 67.257576f, 107.257576f,
+                          30.40909f, 70.40909f, 110.40909f,
+                          31.925926f, 71.92593f, 111.92593f,
+                          33.5f, 73.5f, 113.5f,
+                          35.074074f, 75.07407f, 115.07407f,
+                          36.590908f, 76.59091f, 116.59091f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 5, 8, 3}, X, {1, 4, 5, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_NhwcBilinear_dtype) {
+  {
+    std::vector<uint8_t> X(16);
+    std::iota(X.begin(), X.end(), uint8_t(0));
+    std::vector<uint8_t> Y = {1, 3, 4,
+                              6, 8, 9,
+                              11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 4, 4, 1}, X, {1, 3, 3, 1}, Y);
+  }
+  {
+    std::vector<int8_t> X(16);
+    std::iota(X.begin(), X.end(), int8_t(0));
+    std::vector<int8_t> Y = {1, 3, 4,
+                             6, 8, 9,
+                             11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 4, 4, 1}, X, {1, 3, 3, 1}, Y);
+  }
+  {
+    std::vector<int32_t> X(16);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<int32_t> Y = {1, 3, 4,
+                              6, 8, 9,
+                              11, 13, 14};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {1, 4, 4, 1}, X, {1, 3, 3, 1}, Y);
+  }
+}
+
+TEST(ResizeOpTest, Antialias_Trilinear_No_ExcludeOutside) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {5.7272725f, 6.9545455f, 8.181818f, 10.636364f, 11.863636f,
+                          13.090909f, 15.545455f, 16.772728f, 18.f, 25.363636f,
+                          26.59091f, 27.818182f, 30.272728f, 31.5f, 32.727272f,
+                          35.18182f, 36.409092f, 37.636364f, 45.f, 46.227272f,
+                          47.454544f, 49.909092f, 51.136364f, 52.363636f, 54.81818f,
+                          56.045456f, 57.272728f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {4, 4, 4}, X, {3, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Trilinear_ExcludeOutside) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 4, 4}, X, {3, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Trilinear_Scale_Is_11s_and_1s1) {
+  std::vector<float> X(16 * 4 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  {
+    std::vector<float> Y = X;
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}}, {4, 1, 4, 4, 4}, X, {4, 1, 4, 4, 4}, Y);
+  }
+  {
+    std::vector<float> Y = {0.625f, 2.375f, 4.625f, 6.375f, 8.625f, 10.375f, 12.625f,
+                            14.375f, 16.625f, 18.375f, 20.625f, 22.375f, 24.625f, 26.375f,
+                            28.625f, 30.375f, 32.625f, 34.375f, 36.625f, 38.375f, 40.625f,
+                            42.375f, 44.625f, 46.375f, 48.625f, 50.375f, 52.625f, 54.375f,
+                            56.625f, 58.375f, 60.625f, 62.375f, 64.625f, 66.375f, 68.625f,
+                            70.375f, 72.625f, 74.375f, 76.625f, 78.375f, 80.625f, 82.375f,
+                            84.625f, 86.375f, 88.625f, 90.375f, 92.625f, 94.375f, 96.625f,
+                            98.375f, 100.625f, 102.375f, 104.625f, 106.375f, 108.625f, 110.375f,
+                            112.625f, 114.375f, 116.625f, 118.375f, 120.625f, 122.375f, 124.625f,
+                            126.375f, 128.625f, 130.375f, 132.625f, 134.375f, 136.625f, 138.375f,
+                            140.625f, 142.375f, 144.625f, 146.375f, 148.625f, 150.375f, 152.625f,
+                            154.375f, 156.625f, 158.375f, 160.625f, 162.375f, 164.625f, 166.375f,
+                            168.625f, 170.375f, 172.625f, 174.375f, 176.625f, 178.375f, 180.625f,
+                            182.375f, 184.625f, 186.375f, 188.625f, 190.375f, 192.625f, 194.375f,
+                            196.625f, 198.375f, 200.625f, 202.375f, 204.625f, 206.375f, 208.625f,
+                            210.375f, 212.625f, 214.375f, 216.625f, 218.375f, 220.625f, 222.375f,
+                            224.625f, 226.375f, 228.625f, 230.375f, 232.625f, 234.375f, 236.625f,
+                            238.375f, 240.625f, 242.375f, 244.625f, 246.375f, 248.625f, 250.375f,
+                            252.625f, 254.375f};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {4, 1, 4, 4, 4}, X, {4, 1, 4, 4, 2}, Y);
+  }
+  {
+    std::vector<float> Y = {2.5f, 3.5f, 4.5f, 5.5f, 9.5f, 10.5f, 11.5f, 12.5f, 18.5f,
+                            19.5f, 20.5f, 21.5f, 25.5f, 26.5f, 27.5f, 28.5f, 34.5f, 35.5f,
+                            36.5f, 37.5f, 41.5f, 42.5f, 43.5f, 44.5f, 50.5f, 51.5f, 52.5f,
+                            53.5f, 57.5f, 58.5f, 59.5f, 60.5f, 66.5f, 67.5f, 68.5f, 69.5f,
+                            73.5f, 74.5f, 75.5f, 76.5f, 82.5f, 83.5f, 84.5f, 85.5f, 89.5f,
+                            90.5f, 91.5f, 92.5f, 98.5f, 99.5f, 100.5f, 101.5f, 105.5f, 106.5f,
+                            107.5f, 108.5f, 114.5f, 115.5f, 116.5f, 117.5f, 121.5f, 122.5f, 123.5f,
+                            124.5f, 130.5f, 131.5f, 132.5f, 133.5f, 137.5f, 138.5f, 139.5f, 140.5f,
+                            146.5f, 147.5f, 148.5f, 149.5f, 153.5f, 154.5f, 155.5f, 156.5f, 162.5f,
+                            163.5f, 164.5f, 165.5f, 169.5f, 170.5f, 171.5f, 172.5f, 178.5f, 179.5f,
+                            180.5f, 181.5f, 185.5f, 186.5f, 187.5f, 188.5f, 194.5f, 195.5f, 196.5f,
+                            197.5f, 201.5f, 202.5f, 203.5f, 204.5f, 210.5f, 211.5f, 212.5f, 213.5f,
+                            217.5f, 218.5f, 219.5f, 220.5f, 226.5f, 227.5f, 228.5f, 229.5f, 233.5f,
+                            234.5f, 235.5f, 236.5f, 242.5f, 243.5f, 244.5f, 245.5f, 249.5f, 250.5f,
+                            251.5f, 252.5f};
+    TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "0"}}, {4, 1, 4, 4, 4}, X, {4, 1, 4, 2, 4}, Y);
+  }
+}
+
+TEST(ResizeOpTest, Antialias_Bicubic_No_ExcludeOutside) {
+  std::vector<float> X(48);
+  std::iota(X.begin(), X.end(), 1.0f);
+  std::vector<float> Y = {2.175381f, 3.655320f, 5.204702f, 6.684640f, 10.245370f,
+                          11.725308f, 13.274692f, 14.754630f, 18.315359f, 19.795298f,
+                          21.344681f, 22.824619f, 26.175381f, 27.655319f, 29.204702f,
+                          30.684641f, 34.245369f, 35.725307f, 37.274693f, 38.754631f,
+                          42.315361f, 43.795300f, 45.344681f, 46.824619f};
+  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 2, 4, 6}, X, {1, 2, 3, 4}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_NHWCBicubic_ExcludeOutside) {
+  std::vector<float> X(48);
+  std::vector<float> X1(48);
+  std::iota(X1.begin(), X1.end(), 1.0f);
+  for (size_t x = 0; x < 4; x++) {
+    for (size_t y = 0; y < 6; y++) {
+      for (size_t c = 0; c < 2; c++) {
+        X[x * 6 * 2 + y * 2 + c] = X1[c * 4 * 6 + x * 6 + y];
+      }
+    }
+  }
+  std::vector<float> Y = {
+      0.6125579f, 24.612558f, 2.0924962f, 26.092497f, 3.6418788f,
+      27.641878f, 5.121817f, 29.121817f, 2.393808f, 26.393808f,
+      3.8737462f, 27.873747f, 5.423129f, 29.423128f, 6.903067f,
+      30.903067f, 5.253183f, 29.253183f, 6.733121f, 30.733122f,
+      8.282504f, 32.282505f, 9.762443f, 33.762444f, 9.02662f,
+      33.02662f, 10.506558f, 34.506557f, 12.055942f, 36.055943f,
+      13.53588f, 37.53588f, 11.46412f, 35.46412f, 12.944058f,
+      36.944057f, 14.493442f, 38.493443f, 15.97338f, 39.97338f,
+      15.237557f, 39.237556f, 16.717497f, 40.717495f, 18.266878f,
+      42.26688f, 19.746817f, 43.74682f, 18.096933f, 42.09693f,
+      19.576872f, 43.57687f, 21.126253f, 45.126255f, 22.606192f,
+      46.606194f, 19.878183f, 43.87818f, 21.358122f, 45.35812f,
+      22.907503f, 46.907505f, 24.387442f, 48.387444f};
+  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "0"}}, {1, 4, 6, 2}, X, {1, 8, 4, 2}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Linear_AlignCorners) {
+  std::vector<float> X(256);
+  std::iota(X.begin(), X.end(), 0.0f);
+
+  std::vector<float> Y = {
+      3.9166667f, 6.4166665f, 13.916667f, 16.416666f, 25.25f,
+      27.75f, 35.25f, 37.75f, 46.583332f, 49.083332f,
+      56.583332f, 59.083332f, 67.916664f, 70.416664f, 77.916664f,
+      80.416664f, 89.25f, 91.75f, 99.25f, 101.75f,
+      110.583336f, 113.083336f, 120.583336f, 123.083336f, 131.91667f,
+      134.41667f, 141.91667f, 144.41667f, 153.25f, 155.75f,
+      163.25f, 165.75f, 174.58333f, 177.08333f, 184.58333f,
+      187.08333f, 195.91667f, 198.41667f, 205.91667f, 208.41667f,
+      217.25f, 219.75f, 227.25f, 229.75f, 238.58333f,
+      241.08333f, 248.58333f, 251.08333f};
+  TestAntialiasing(
+      {{"mode", "linear"}, {"exclude_outside", "0"}, {"coordinate_transformation_mode", "align_corners"}},
+      {4, 1, 4, 4, 4}, X, {4, 1, 3, 2, 2}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Bicubic_ExcludeOutside) {
+  std::vector<float> X(48);
+  std::iota(X.begin(), X.end(), 1.0f);
+  std::vector<float> Y = {2.222252f, 3.670954f, 5.259818f, 6.708520f, 10.256866f, 11.705568f,
+                          13.294432f, 14.743134f, 18.291479f, 19.740183f, 21.329046f,
+                          22.777748f, 26.222252f, 27.670954f, 29.259817f,
+                          30.708521f, 34.256866f, 35.705566f, 37.294434f, 38.743134f, 42.291481f,
+                          43.740181f, 45.329044f, 46.777748f};
+  TestAntialiasing({{"mode", "cubic"}, {"exclude_outside", "1"}}, {1, 2, 4, 6}, X, {1, 2, 3, 4}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Bicubic_Dtype) {
+  {
+    std::vector<uint8_t> X(36);
+    std::iota(X.begin(), X.end(), uint8_t(0));
+    std::vector<uint8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int8_t> X(36);
+    std::iota(X.begin(), X.end(), int8_t(0));
+    std::vector<int8_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
+  {
+    std::vector<int32_t> X(36);
+    std::iota(X.begin(), X.end(), 0);
+    std::vector<int32_t> Y = {4, 6, 7, 16, 18, 19, 28, 30, 31};
+    TestAntialiasing({{"mode", "cubic"}, {"cubic_coeff_a", "-0.5f"}, {"exclude_outside", "1"}}, {1, 1, 6, 6}, X, {1, 1, 3, 3}, Y);
+  }
+}
+
+// test new attributes
+TEST(ResizeOpTest, Antialias_Axes_and_Scale) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}}, {1, 1, 4, 4, 4}, X,
+                   std::vector<float>{3 / 4.0f, 3 / 4.0f, 3 / 4.0f}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Axes_and_Size) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}}, {1, 1, 4, 4, 4}, X,
+                   {3, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Axes_and_PolicyNoLarger) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"policy", "not_larger"}},
+                   {1, 1, 4, 4, 4}, X,
+                   {3, 4, 5}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Axes_and_PolicyNoSmaller) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {6.3f, 7.5f, 8.7f, 11.1f, 12.3f, 13.5f, 15.9f, 17.1f, 18.3f, 25.5f, 26.7f,
+                          27.9f, 30.3f, 31.5f, 32.7f, 35.1f, 36.3f, 37.5f, 44.7f, 45.9f, 47.1f, 49.5f,
+                          50.7f, 51.9f, 54.3f, 55.5f, 56.7f};
+  TestAntialiasing({{"mode", "linear"}, {"exclude_outside", "1"}, {"axes", "{2,3,4}"}, {"output_shape", "{1,1,3,3,3}"}, {"policy", "not_smaller"}},
+                   {1, 1, 4, 4, 4}, X,
+                   {1, 2, 3}, Y);
+}
+
+TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {4.5555553f, 5.4385967f, 6.1666665f, 9.888889f, 10.77193f,
+                          11.5f, 15.222222f, 16.105263f, 16.833334f, 16.20468f,
+                          17.08772f, 17.81579f, 21.538012f, 22.421053f, 23.149124f,
+                          26.871346f, 27.754387f, 28.482456f, 30.333334f, 31.216375f,
+                          31.944447f, 35.666668f, 36.54971f, 37.27778f, 41.,
+                          41.88304f, 42.61111f};
+  TestAntialiasing(
+      {{"mode", "linear"}, {"exclude_outside", "0"}, {"extrapolation_value", "1.1f"},
+
+       {"coordinate_transformation_mode", "tf_crop_and_resize"},
+       {"roi", "{0, 0, 0.4, 0.6, 1, 1}"},
+       {"axes", "{0,1,2}"}
+
+      },
+      {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
 }  // namespace test

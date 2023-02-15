@@ -1,12 +1,11 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 1993-2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,10 +23,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-// Multi Head Attention runner
+constexpr int kMinSequenceLengthFlashAttention = 385;
+
+// Multi-Head Attention runner
 class MHARunner {
  public:
-  MHARunner(const int32_t numHeads, const int32_t headSize, const int wordSize)
+  MHARunner(const int numHeads, const int headSize, const int wordSize, bool causal_mask, const float scale)
       : mS(0),
         mB(0),
         mOmatSize(0),
@@ -39,14 +40,17 @@ class MHARunner {
         mStrideQKV(0),
         mLdOut(0),
         mStrideOut(0),
-        mRsqrtHeadSize(1.F / sqrtf(static_cast<float>(headSize))) {
+        mScale(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(headSize))
+                      : scale),
+        mHasCausalMask(causal_mask) {
   }
 
   virtual ~MHARunner() = default;
 
-  virtual void setup(const int32_t S, const int32_t B) {
+  virtual void setup(const int S, const int B) {
     ORT_ENFORCE(S > 0);
     ORT_ENFORCE(B > 0);
+
     mB = B;
     mS = S;
 
@@ -59,48 +63,60 @@ class MHARunner {
     mNumMats = B * mNumHeads;
   }
 
-  virtual void run(const void* qkvPtr, const void* maskPtr, const void* seqLens,
-                   void* output, void* workspace, cudaStream_t stream) = 0;
+  virtual void run(const void* input, const void* cu_seqlens, void* output, cudaStream_t stream) = 0;
 
   virtual size_t getWorkspaceSize() const = 0;
 
-  virtual bool isValid(int32_t s) const = 0;
+  virtual bool isValid(int s) const = 0;
+
+  virtual int getSFromMaxSeqLen(const int max_seq_len) const = 0;
 
  protected:
-  int32_t mS;
-  int32_t mB;
-  int32_t mOmatSize;
-  int32_t mNumMats;
-  int32_t mNumHeads;
-  int32_t mHeadSize;
-  int32_t mWordSize;
-  int32_t mLdQKV;
-  int32_t mStrideQKV;
-  int32_t mLdOut;
-  int32_t mStrideOut;
+  int mS;
+  int mB;
+  int mOmatSize;
+  int mNumMats;
+  int mNumHeads;
+  int mHeadSize;
+  int mWordSize;
+  int mLdQKV;
+  int mStrideQKV;
+  int mLdOut;
+  int mStrideOut;
 
-  float mRsqrtHeadSize;
+  float mScale;
+  bool mHasCausalMask;
 };
 
 class FusedMHARunnerFP16v2 : public MHARunner {
  public:
-  FusedMHARunnerFP16v2(const int32_t numHeads, const int32_t headSize, const int32_t sm);
+  FusedMHARunnerFP16v2(const int numHeads,
+                       const int headSize,
+                       const int sm,
+                       bool causal_mask,
+                       bool enable_flash_attention,
+                       const float scale);
   ~FusedMHARunnerFP16v2() = default;  // for pimpl
 
-  void setup(const int32_t S, const int32_t B) override;
+  virtual void setup(const int S, const int B) override;
 
-  void run(const void* qkvPtr, const void* maskPtr, const void* seqLens,
-           void* output, void* workspace, cudaStream_t stream) override;
+  static bool is_supported(int sm, int head_size, int sequence_length, bool enable_flash_attention, bool causal);
+
+  void run(const void* input, const void* cu_seqlens, void* output, cudaStream_t stream) override;
 
   size_t getWorkspaceSize() const override;
 
-  bool isValid(int32_t s) const override;
+  bool isValid(int s) const override;
+
+  int getSFromMaxSeqLen(const int max_seq_len) const override;
 
  private:
-  int32_t mSm;
+  int mSm;
+  bool mEnableFlashAttention;
   class mhaImpl;
   std::unique_ptr<mhaImpl> pimpl;
 };
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -56,7 +56,7 @@ OrtValue create_ort_value(
   const T val) {
   OrtValue ort_val;
   onnxruntime::Tensor::InitOrtValue(onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({1}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
@@ -76,7 +76,7 @@ OrtValue create_ort_value(
   OrtValue ort_value;
   onnxruntime::Tensor::InitOrtValue(
       onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({(int64_t)values.size()}),
-      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_value);
+      invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ort_value);
   CopyVectorToTensor<T>(
     invoker,
     values.data(),
@@ -91,6 +91,17 @@ OrtValue create_ort_value(
   const at::ArrayRef<T> values) {
   std::vector<T> values_vector;
   values_vector.assign(values.begin(), values.end());
+  return create_ort_value(invoker, values_vector);
+}
+
+template<typename T>
+OrtValue create_ort_value(
+  onnxruntime::ORTInvoker& invoker,
+  const at::OptionalArrayRef<T> values) {
+  std::vector<T> values_vector;
+  if (values.has_value()) {
+    values_vector.assign(values.value().begin(), values.value().end());
+  }
   return create_ort_value(invoker, values_vector);
 }
 
@@ -112,7 +123,9 @@ bool IsSupportedType(at::Scalar scalar, const std::vector<at::ScalarType>& valid
 
 bool IsSupportedType(at::Tensor tensor, const std::vector<at::ScalarType>& valid_types);
 
-bool IsSupportedType(at::IntArrayRef arrary, const std::vector<at::ScalarType>& valid_types);
+bool IsSupportedType(at::IntArrayRef array, const std::vector<at::ScalarType>& valid_types);
+
+bool IsSupportedType(at::OptionalIntArrayRef array, const std::vector<at::ScalarType>& valid_types);
 
 bool IsSupportedType(int64_t val, const std::vector<at::ScalarType>& valid_types);
 

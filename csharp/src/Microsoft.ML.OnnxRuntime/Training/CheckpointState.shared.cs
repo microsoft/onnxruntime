@@ -5,7 +5,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_APIS__
     /// <summary>
     ///  Holds the Checkpoint State as generated/consumed by on-device training APIs
     /// </summary>
@@ -33,7 +33,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             else
             {
-                throw new InvalidOperationException("Training is disabled in the current build");
+                throw new InvalidOperationException("Training is disabled in the current build. Please build ONNXRuntime from source with the build flags enable_training_apis. \n");
             }
         }
 

@@ -25,9 +25,9 @@
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
     "react": "^18.1.0",
-    "react-native": "^0.69.1",
+    "react-native": "^0.69.7",
     "react-native-builder-bob": "^0.18.2",
-    "typescript": "^4.5.5"
+    "typescript": "^4.9.4"
   },
   "peerDependencies": {
     "react": "*",
@@ -38,7 +38,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [
@@ -99,5 +99,6 @@
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"
-  }
+  },
+  "packageManager": "yarn@1.22.19"
 }

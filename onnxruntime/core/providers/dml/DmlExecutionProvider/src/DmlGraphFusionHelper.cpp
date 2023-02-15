@@ -112,7 +112,6 @@ namespace DmlGraphFusionHelper
         onnxruntime::Graph& graph,
         _Out_ std::vector<bool>& inputsUsed,
         _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
-        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
         _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
         _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData)
@@ -164,20 +163,28 @@ namespace DmlGraphFusionHelper
             {
                 std::byte* tensorPtr = nullptr;
                 size_t tensorByteSize = 0;
+                std::vector<uint8_t> unpackedExternalTensor;
+
                 std::unique_ptr<std::byte[]> unpackedTensor;
 
                 //auto& initializer = iter->second;
                 auto* initializer = iter->second.first;
 
                 // The tensor may be stored as raw data or in typed fields.
-                if (initializer->has_raw_data())
+                if (initializer->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
+                {
+                    THROW_IF_NOT_OK(onnxruntime::utils::UnpackInitializerData(*initializer, graph.ModelPath(), unpackedExternalTensor));
+                    tensorPtr = reinterpret_cast<std::byte*>(unpackedExternalTensor.data());
+                    tensorByteSize = unpackedExternalTensor.size();
+                }
+                else if (initializer->has_raw_data())
                 {
                     tensorPtr = (std::byte*)(initializer->raw_data().c_str());
                     tensorByteSize = initializer->raw_data().size();
                 }
                 else
                 {
-                    std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer);
+                    std::tie(unpackedTensor, tensorByteSize) = Windows::AI::MachineLearning::Adapter::UnpackTensor(*initializer, graph.ModelPath());
                     tensorPtr = unpackedTensor.get();
 
                     // Free the initializer if this is the last usage of it.
@@ -285,7 +292,8 @@ namespace DmlGraphFusionHelper
     {
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
-            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get()};
+            auto& nodeInfo = graphDesc.nodes[i];
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{nodeInfo.op.Get(), nodeInfo.name.data()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }
 
@@ -390,7 +398,6 @@ namespace DmlGraphFusionHelper
         // Populate input bindings for operator initialization
         std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
         std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
-        std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initInputResources;  // For lifetime control
         std::vector<ComPtr<ID3D12Resource>> nonOwnedGraphInputsFromInitializers(fusedNodeInputCount);
 
         std::vector<bool> inputsUsed;
@@ -403,7 +410,6 @@ namespace DmlGraphFusionHelper
             graph,
             inputsUsed,
             initInputBindings,
-            initInputResources,
             nonOwnedGraphInputsFromInitializers,
             initializeResourceRefs,
             nullptr);

@@ -42,7 +42,7 @@ jobs:
   steps:
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -298,7 +298,7 @@ jobs:
               --build_shared_lib \
               --disable_ml_ops \
               --disable_exceptions \
-              --skip_tests
+              --skip_tests --path_to_protoc_exe /usr/bin/protoc
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/clean-agent-build-directory-step.yml

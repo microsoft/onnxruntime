@@ -17,70 +17,55 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* mean = ctx->Input<Tensor>(3);
   const Tensor* var = ctx->Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var, spatial_ == 1));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(X, scale, B, mean, var));
 
-  const TensorShape& x_shape = X->Shape();
-  const TensorShape& channel_shape = mean->Shape();
+  // There is only one output in inference mode
+  Tensor* Y = ctx->Output(0, X->Shape());
 
-  Tensor* Y = ctx->Output(0, x_shape);
-  Tensor* running_mean = ctx->Output(1, channel_shape);
-  Tensor* running_var = ctx->Output(2, channel_shape);
-  Tensor* saved_mean = ctx->Output(3, channel_shape);
-  Tensor* saved_var = ctx->Output(4, channel_shape);
+  IAllocatorUniquePtr<void> pbatch_mean = GetScratchBuffer<void>(mean->SizeInBytes());
+  IAllocatorUniquePtr<void> pbatch_variance = GetScratchBuffer<void>(var->SizeInBytes());
+  IAllocatorUniquePtr<void> preserver_space_1 = GetScratchBuffer<void>(mean->SizeInBytes());
+  IAllocatorUniquePtr<void> preserver_space_2 = GetScratchBuffer<void>(var->SizeInBytes());
 
   const aclDataType aclType = getACLType<T>();
-  aclFormat format = ACL_FORMAT_ND;
+  aclFormat format = ACL_FORMAT_NCHW;
 
   CannPreparation prepare;
 
-  CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "epsilon", epsilon_));
+  CANN_RETURN_IF_ERROR(aclopSetAttrFloat(prepare.opAttr_, "epsilon", epsilon_));
+  CANN_RETURN_IF_ERROR(aclopSetAttrString(prepare.opAttr_, "data_format", "NCHW"));
+  CANN_RETURN_IF_ERROR(aclopSetAttrBool(prepare.opAttr_, "is_training", is_training_mode_));
 
   ORT_TRY {
     CANN_PREPARE_INPUTDESC(prepare, aclType, X->Shape().NumDimensions(), X->Shape().GetDims().data(), format);
-    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, scale->Shape().NumDimensions(), scale->Shape().GetDims().data(), format);
-    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, B->Shape().NumDimensions(), B->Shape().GetDims().data(), format);
-    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, mean->Shape().NumDimensions(), mean->Shape().GetDims().data(), format);
-    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, var->Shape().NumDimensions(), var->Shape().GetDims().data(), format);
-    CANN_PREPARE_OUTPUTDESC(prepare, aclType, Y->Shape().NumDimensions(), Y->Shape().GetDims().data(), format);
-    if (running_mean && running_var && saved_mean && saved_var) {
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, running_mean->Shape().NumDimensions(),
-                              running_mean->Shape().GetDims().data(), format);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, running_var->Shape().NumDimensions(),
-                              running_var->Shape().GetDims().data(), format);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, saved_mean->Shape().NumDimensions(),
-                              saved_mean->Shape().GetDims().data(), format);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, saved_var->Shape().NumDimensions(),
-                              saved_var->Shape().GetDims().data(), format);
-    } else {
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_DT_UNDEFINED, 0, nullptr, ACL_FORMAT_UNDEFINED);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_DT_UNDEFINED, 0, nullptr, ACL_FORMAT_UNDEFINED);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_DT_UNDEFINED, 0, nullptr, ACL_FORMAT_UNDEFINED);
-      CANN_PREPARE_OUTPUTDESC(prepare, ACL_DT_UNDEFINED, 0, nullptr, ACL_FORMAT_UNDEFINED);
-    }
+    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, 1, scale->Shape().GetDims().data(), format);
+    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, 1, B->Shape().GetDims().data(), format);
+    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, 1, mean->Shape().GetDims().data(), format);
+    CANN_PREPARE_INPUTDESC(prepare, ACL_FLOAT, 1, var->Shape().GetDims().data(), format);
 
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(X->template Data<T>()), X->SizeInBytes());
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(scale->template Data<T>()), scale->SizeInBytes());
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(B->template Data<T>()), B->SizeInBytes());
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(mean->template Data<T>()), mean->SizeInBytes());
-    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<T*>(var->template Data<T>()), var->SizeInBytes());
-    CANN_PREPARE_OUTPUTBUFFER(prepare, Y->template MutableData<T>(), Y->SizeInBytes());
-    if (running_mean && running_var && saved_mean && saved_var) {
-      CANN_PREPARE_OUTPUTBUFFER(prepare, running_mean->template MutableData<T>(), running_mean->SizeInBytes());
-      CANN_PREPARE_OUTPUTBUFFER(prepare, running_var->template MutableData<T>(), running_var->SizeInBytes());
-      CANN_PREPARE_OUTPUTBUFFER(prepare, saved_mean->template MutableData<T>(), saved_mean->SizeInBytes());
-      CANN_PREPARE_OUTPUTBUFFER(prepare, saved_var->template MutableData<T>(), saved_var->SizeInBytes());
-    } else {
-      CANN_PREPARE_OUTPUTBUFFER(prepare, nullptr, 0);
-      CANN_PREPARE_OUTPUTBUFFER(prepare, nullptr, 0);
-      CANN_PREPARE_OUTPUTBUFFER(prepare, nullptr, 0);
-      CANN_PREPARE_OUTPUTBUFFER(prepare, nullptr, 0);
-    }
+    CANN_PREPARE_OUTPUTDESC(prepare, aclType, Y->Shape().NumDimensions(), Y->Shape().GetDims().data(), format);
+    CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, 1, mean->Shape().GetDims().data(), format);
+    CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, 1, var->Shape().GetDims().data(), format);
+    CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, 1, mean->Shape().GetDims().data(), format);
+    CANN_PREPARE_OUTPUTDESC(prepare, ACL_FLOAT, 1, var->Shape().GetDims().data(), format);
+
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(X->DataRaw()), X->SizeInBytes());
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(scale->DataRaw()), scale->SizeInBytes());
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(B->DataRaw()), B->SizeInBytes());
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(mean->DataRaw()), mean->SizeInBytes());
+    CANN_PREPARE_INPUTBUFFER(prepare, const_cast<void*>(var->DataRaw()), var->SizeInBytes());
+
+    CANN_PREPARE_OUTPUTBUFFER(prepare, Y->MutableData<T>(), Y->SizeInBytes());
+    CANN_PREPARE_OUTPUTBUFFER(prepare, pbatch_mean.get(), mean->SizeInBytes());
+    CANN_PREPARE_OUTPUTBUFFER(prepare, pbatch_variance.get(), var->SizeInBytes());
+    CANN_PREPARE_OUTPUTBUFFER(prepare, preserver_space_1.get(), mean->SizeInBytes());
+    CANN_PREPARE_OUTPUTBUFFER(prepare, preserver_space_2.get(), var->SizeInBytes());
   }
   ORT_CATCH(const std::exception& e) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what());
   }
 
-  CANN_RETURN_IF_ERROR(aclopCompileAndExecute("BatchNormalization",
+  CANN_RETURN_IF_ERROR(aclopCompileAndExecute("BatchNorm",
                                               prepare.inputDesc_.size(),
                                               prepare.inputDesc_.data(),
                                               prepare.inputBuffers_.data(),
@@ -137,7 +122,6 @@ Status BatchNorm<T>::ComputeInternal(OpKernelContext* ctx) const {
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()), \
       BatchNorm<T>);
 
-REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(float)
 
 }  // namespace cann

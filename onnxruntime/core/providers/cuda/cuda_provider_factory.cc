@@ -28,7 +28,7 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 cuda::INcclService& GetINcclService();
 }
@@ -89,8 +89,8 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream) override {
-    return std::make_unique<GPUDataTransfer>(static_cast<cudaStream_t>(stream));
+  std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
+    return std::make_unique<GPUDataTransfer>();
   }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override {
@@ -164,7 +164,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   cuda::INcclService& GetINcclService() override {
     return cuda::GetINcclService();
   }
@@ -198,9 +198,17 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
       return false;
     }
 
+    if (!onnxruntime::cuda::test::TestBeamSearchTopK()) {
+      return false;
+    }
+
+    if (!onnxruntime::cuda::test::TestGreedySearchTopOne()) {
+      return false;
+    }
+
     // TODO(wechi): brings disabled tests in onnxruntime/test/providers/cuda/*
     // back alive here.
-    return false;
+    return true;
   }
 #endif
 } g_info;
@@ -242,6 +250,7 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
+    info.tunable_op.enabled = params->tunable_op_enabled;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }

@@ -7,11 +7,15 @@
 #include <utility>
 #include <vector>
 
+#ifdef USE_COMPOSABLE_KERNEL
 #include "ck/ck.hpp"
+#include "ck/library/tensor_operation_instance/gpu/batched_gemm.hpp"
 #include "ck/library/tensor_operation_instance/gpu/gemm.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
+#include "ck/tensor_operation/gpu/device/device_batched_gemm.hpp"
 #include "ck/tensor_operation/gpu/device/device_gemm.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#endif
 
 #include "core/providers/rocm/tunable/gemm_common.h"
 
@@ -20,6 +24,8 @@ namespace rocm {
 namespace tunable {
 namespace blas {
 namespace internal {
+
+#ifdef USE_COMPOSABLE_KERNEL
 
 template <typename T>
 struct DataTypeAdaptor {
@@ -68,7 +74,7 @@ auto GetCKGemmTypeStringAndOps() {
     auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const GemmParams<T>* params) -> Status {
       auto one = ToHipType<T>::FromFloat(1.0f);
       auto zero = ToHipType<T>::FromFloat(0.0f);
-      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->alpha != one || params->beta != zero,
           impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
 
@@ -77,8 +83,8 @@ auto GetCKGemmTypeStringAndOps() {
                                            params->m, params->n, params->k,
                                            params->lda, params->ldb, params->ldc,
                                            nop, nop, nop);
-      TUNABLE_OP_RETURN_UNSUPPOTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
-                                               impl->GetTypeString(), " does not support ", params->Signature());
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                                impl->GetTypeString(), " does not support ", params->Signature());
       invoker->Run(arg.get(), StreamConfig{params->stream});
       return Status::OK();
     };
@@ -86,6 +92,49 @@ auto GetCKGemmTypeStringAndOps() {
   }
   return ret;
 }
+
+template <typename T, typename ALayout, typename BLayout>
+auto GetCKStridedBatchedGemmTypeStringAndOps() {
+  using CKDataType = typename DataTypeAdaptor<T>::type;
+  using DeviceStridedBatchedGemm = ck::tensor_operation::device::DeviceBatchedGemm<
+      ALayout, BLayout, Row,
+      CKDataType, CKDataType, CKDataType,
+      Nop, Nop, Nop>;
+  using InstanceFactory =
+      ck::tensor_operation::device::instance::DeviceOperationInstanceFactory<DeviceStridedBatchedGemm>;
+
+  std::vector<std::pair<std::string, Op<StridedBatchedGemmParams<T>>>> ret;
+  for (auto&& impl : InstanceFactory::GetInstances()) {
+    auto type_string = impl->GetTypeString();
+
+    auto invoker = impl->MakeInvokerPointer();
+    auto ck_gemm_op = [impl = std::move(impl), invoker = std::move(invoker)](const StridedBatchedGemmParams<T>* params) -> Status {
+      auto one = ToHipType<T>::FromFloat(1.0f);
+      auto zero = ToHipType<T>::FromFloat(0.0f);
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+          params->alpha != one || params->beta != zero,
+          impl->GetTypeString(), " only supports alpha == 1 and beta == 0", params->Signature());
+
+      auto nop = Nop{};
+      auto arg = impl->MakeArgumentPointer(params->a, params->b, params->c,
+                                           params->m, params->n, params->k,
+                                           params->lda, params->ldb, params->ldc,
+                                           params->stride_a, params->stride_b, params->stride_c,
+                                           params->batch,
+                                           nop, nop, nop);
+      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
+                                                impl->GetTypeString(), " does not support ", params->Signature());
+      invoker->Run(arg.get(), StreamConfig{params->stream});
+      return Status::OK();
+    };
+    ret.emplace_back(std::make_pair(std::move(type_string), std::move(ck_gemm_op)));
+  }
+  return ret;
+}
+#else
+struct Row {};
+struct Col {};
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace internal
 }  // namespace blas

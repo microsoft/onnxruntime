@@ -111,7 +111,7 @@ template <typename T, unsigned TPB>
 __global__ void EmbedLayerNormKernel(
     int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    const T epsilon, T* output, T* embedding_sum, const int* position_ids) {
+    const T epsilon, T* output, T* embedding_sum, const int* position_ids, const bool broadcast_position_ids) {
   KeyValuePairSum pair_sum;
   // 1. lookup word and segment of the block
   // blockIdx.x = position in the sequence
@@ -133,6 +133,8 @@ __global__ void EmbedLayerNormKernel(
     }
     if (nullptr == position_ids) {
       position_id = blockIdx.x;
+    } else if (broadcast_position_ids){
+      position_id = position_ids[sequence_position % gridDim.x];
     } else {
       position_id = position_ids[sequence_position];
     }
@@ -176,7 +178,8 @@ Status EmbedSkipLayerNorm(
     cudaStream_t stream, int hidden_size, int batch_size, int sequence_length,
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    const T epsilon, T* output, T* embedding_sum, const int* position_ids) {
+    const T epsilon, T* output, T* embedding_sum, const int* position_ids,
+    const bool broadcast_position_ids) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
@@ -184,7 +187,7 @@ Status EmbedSkipLayerNorm(
   EmbedLayerNormKernel<T, tpb>
       <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma,
                                    word_embedding, position_embedding, segment_embedding,
-                                   epsilon, output, embedding_sum, position_ids);
+                                   epsilon, output, embedding_sum, position_ids, broadcast_position_ids);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -207,7 +210,8 @@ Status LaunchEmbedLayerNormKernel(
     int sequence_length,
     const size_t element_size,
     void* embedding_sum,
-    const int* position_ids) {
+    const int* position_ids,
+    const bool broadcast_position_ids) {
   if (nullptr == input_mask) {
     CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
   } else {
@@ -221,14 +225,16 @@ Status LaunchEmbedLayerNormKernel(
         reinterpret_cast<const half*>(beta), reinterpret_cast<const half*>(gamma),
         reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding),
         reinterpret_cast<const half*>(segment_embedding), __float2half_rn(epsilon),
-        reinterpret_cast<half*>(output), reinterpret_cast<half*>(embedding_sum), position_ids);
+        reinterpret_cast<half*>(output), reinterpret_cast<half*>(embedding_sum), position_ids,
+        broadcast_position_ids);
   } else {
     return EmbedSkipLayerNorm<float>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
         reinterpret_cast<const float*>(beta), reinterpret_cast<const float*>(gamma),
         reinterpret_cast<const float*>(word_embedding), reinterpret_cast<const float*>(position_embedding),
         reinterpret_cast<const float*>(segment_embedding), epsilon,
-        reinterpret_cast<float*>(output), reinterpret_cast<float*>(embedding_sum), position_ids);
+        reinterpret_cast<float*>(output), reinterpret_cast<float*>(embedding_sum), position_ids,
+        broadcast_position_ids);
   }
 }
 

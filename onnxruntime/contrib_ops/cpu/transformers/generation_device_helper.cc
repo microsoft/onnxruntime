@@ -6,11 +6,13 @@
 #include <memory>
 #include "core/providers/cpu/math/top_k.h"
 #include "core/providers/cpu/math/softmax_shared.h"
+#include "core/providers/cpu/generator/random.h"
 #include "core/common/safeint.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
+#include "contrib_ops/cpu/transformers/sampling_cpu_helper.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 
@@ -20,7 +22,7 @@ namespace GenerationCpuDeviceHelper {
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
-            void* /*stream*/,
+            Stream* /*stream*/,
             onnxruntime::concurrency::ThreadPool* threadpool,
             Tensor& output_values,
             Tensor& output_indices) {
@@ -55,7 +57,7 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
   T* target = expanded_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * sequence_length, sizeof(T) * sequence_length);
+      memcpy(target, input_data + i * sequence_length, sizeof(T) * SafeInt<size_t>(sequence_length));
       target += sequence_length;
     }
   }
@@ -63,7 +65,7 @@ void ExpandInputs(const OrtValue& input, int num_beams, AllocatorPtr allocator, 
 
 // TODO(wy): Dispatch it to avoid passing multiple functions to interface.
 template <typename T>
-Status ExpandBuffer(void* stream,
+Status ExpandBuffer(Stream* stream,
                     const OrtValue& input,
                     int num_beams,
                     AllocatorPtr allocator,
@@ -95,7 +97,7 @@ Status ExpandBuffer(void* stream,
   T* target = expanded_data;
   for (int i = 0; i < batch_size; i++) {
     for (int j = 0; j < num_beams; j++) {
-      memcpy(target, input_data + i * chunk_size, sizeof(T) * chunk_size);
+      memcpy(target, input_data + i * chunk_size, sizeof(T) * SafeInt<size_t>(chunk_size));
       target += chunk_size;
     }
   }
@@ -175,6 +177,13 @@ Status CreateGptInputs(
 
   // Expand (batch_size, sequence_length) to (batch_size * num_beams, sequence_length)
   // TODO(tianleiwu): Try expand outputs after first subgraph call instead. That may get better performance.
+  if (num_beams == 1) {
+    expanded_input_ids = std::move(input_ids);
+    expanded_position_ids = std::move(position_ids);
+    expanded_attention_mask = std::move(attention_mask);
+    return Status::OK();
+  }
+
   ExpandInputs<int32_t>(input_ids, num_beams, allocator, expanded_input_ids);
   ExpandInputs<int32_t>(position_ids, num_beams, allocator, expanded_position_ids);
   ExpandInputs<int32_t>(attention_mask, num_beams, allocator, expanded_attention_mask);
@@ -183,6 +192,7 @@ Status CreateGptInputs(
 }
 
 Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
+                  Stream* /*ort_stream*/,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
                   IAllocatorUniquePtr<char>& /*buffer*/) {
@@ -200,7 +210,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
                    gsl::span<int32_t>& sequence_lengths,
                    int batch_size,
                    int num_beams,
-                   void* /*stream*/) {
+                   Stream* /*stream*/) {
   memset(beam_state->beam_scores.data(), 0, beam_state->beam_scores.size_bytes());
   memset(beam_state->next_token_logits.data(), 0, beam_state->next_token_logits.size_bytes());
   memset(beam_state->next_token_scores.data(), 0, beam_state->next_token_scores.size_bytes());
@@ -225,7 +235,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
 template <typename T>
 void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
                      gsl::span<int32_t>& sequence_lengths,
-                     void* /*stream*/) {
+                     Stream* /*stream*/) {
   memset(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes());
   memset(greedy_state->next_tokens.data(), 0, greedy_state->next_tokens.size_bytes());
   memset(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes());
@@ -242,9 +252,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
                      transformers::ILogitsProcessorList* logits_processors,  // logits processors
                      transformers::IBeamScorer* beam_scorer,                 // beam scorer
-                     const transformers::IBeamSearchParameters* parameters,  // parameters
+                     const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
-                     void* stream,                                           // cuda stream (for CUDA only)
+                     Stream* stream,                                         // cuda stream (for CUDA only)
                      const transformers::IConsoleDumper* dumper) {           // tensor dumper
   ORT_UNUSED_PARAMETER(cpu_state);
 #ifndef DEBUG_GENERATION
@@ -399,17 +409,16 @@ template <typename T>
 Status GreedySearchProcessLogits(
   const OrtValue& logits,                                     // logits output of subgraph
   transformers::IGreedySearchState<T>* greedy_state,          // state
+  transformers::ISamplingState<T>* sampling_state,        // sampling_state
   transformers::ISequences* sequences,                        // sequences
   AllocatorPtr& allocator,                                    // default allocator
   onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
   transformers::ILogitsProcessorList* logits_processors,      // logits processors
-  const transformers::IBeamSearchParameters* parameters,      // parameters
+  const transformers::IGenerationParameters* parameters,      // parameters
+  bool do_sampling,                                           // whether to do sampling
   int step,                                                   // iteration counter
-  void* stream,                                               // cuda stream (for CUDA only)
+  Stream* stream,                                             // cuda stream (for CUDA only)
   const transformers::IConsoleDumper* dumper) {               // tensor dumper
-#ifndef DEBUG_GENERATION
-  ORT_UNUSED_PARAMETER(dumper);
-#endif
 
   int batch_size = parameters->batch_size;
   int vocab_size = parameters->vocab_size;
@@ -447,6 +456,18 @@ Status GreedySearchProcessLogits(
   dumper->Print("next_token_scores after logits processor", next_token_scores.data(), batch_size, 1, vocab_size);
 #endif
 
+  if (do_sampling) {
+    ORT_RETURN_IF_ERROR(SamplingCpuHelper::Sample(allocator,
+                                                  thread_pool,
+                                                  next_token_scores,
+                                                  sampling_state,
+                                                  greedy_state,
+                                                  parameters,
+                                                  dumper));
+
+    return Status::OK();
+  }
+
   // next_tokens = torch.argmax(scores, dim=-1)
   int64_t next_token_scores_dims[] = {static_cast<int64_t>(batch_size), vocab_size};
   TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
@@ -459,36 +480,37 @@ Status GreedySearchProcessLogits(
                        next_token_scores_value);
   const Tensor& input = next_token_scores_value.Get<Tensor>();
 
-  constexpr int axis = 1;
   constexpr unsigned top_k = 1;
+  constexpr int axis = 1;
   constexpr bool largest = true;
   constexpr bool sorted = false;
 
   Tensor topk_scores;
   Tensor topk_indices;
-  ORT_RETURN_IF_ERROR(
-    TopK(&input,
-         axis,
-         top_k,
-         largest,
-         sorted,
-         allocator,
-         stream,
-         thread_pool,
-         topk_scores,
-         topk_indices));
+  ORT_RETURN_IF_ERROR(TopK(&input,
+                           axis,
+                           top_k,
+                           largest,
+                           sorted,
+                           allocator,
+                           stream,
+                           thread_pool,
+                           topk_scores,
+                           topk_indices));
 
 #ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", topk_scores);
-  dumper->Print("topk_indices", topk_indices);
+    dumper->Print("topk_scores", topk_scores);
+    dumper->Print("topk_indices", topk_indices);
 #endif
 
   gsl::span<const int64_t> next_token_indices = topk_indices.DataAsSpan<int64_t>();
-  gsl::copy(next_token_indices, greedy_state->next_tokens_cpu);
+  for (size_t i = 0; i < next_token_indices.size(); i++) {
+    greedy_state->next_tokens[i] = gsl::narrow_cast<int32_t>(next_token_indices[i]);
+  }
 
 #ifdef DEBUG_GENERATION
-  gsl::span<const int64_t> next_tokens(greedy_state->next_tokens_cpu.data(),
-                                       greedy_state->next_tokens_cpu.size());
+  gsl::span<const int32_t> next_tokens(greedy_state->next_tokens.data(),
+                                       greedy_state->next_tokens.size());
   dumper->Print("next_tokens before scorer", next_tokens.data(), batch_size, top_k);
 #endif
 
@@ -496,7 +518,7 @@ Status GreedySearchProcessLogits(
 }
 
 template <typename T>
-Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, void* /*stream*/, int /*copyDirection*/) {
+Status DeviceCopy(gsl::span<T> target, gsl::span<const T> source, Stream* /*stream*/, int /*copyDirection*/) {
   gsl::copy(source, target);
   return Status::OK();
 }
@@ -510,7 +532,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
                       int gpt_subgraph_first_present_output_idx,
                       AllocatorPtr allocator) {
   int num_present_tensors = static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx;
-  for (int i = 0; i < num_present_tensors; ++i) {
+  for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[gpt_subgraph_first_present_output_idx + i];
 
     // shape is like (2, batch_beam_size, 12, past_seq_len, 64)
@@ -524,16 +546,16 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
     auto past_type = DataTypeImpl::GetType<T>();
     Tensor::InitOrtValue(past_type, past_shape, allocator, past);
 
-    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
-    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
+    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
     for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
-      gsl::span<const T> present_key = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * block_size_per_beam,
-                                                              block_size_per_beam);
+      gsl::span<const T> present_key = present_span.subspan(beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<const T> present_value = present_span.subspan(past_key_size + beam_index * SafeInt<size_t>(block_size_per_beam),
+                                                              onnxruntime::narrow<size_t>(block_size_per_beam));
 
-      gsl::span<T> past_key = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
-      gsl::span<T> past_value = past_span.subspan(past_key_size + j * block_size_per_beam, block_size_per_beam);
+      gsl::span<T> past_key = past_span.subspan(j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<T> past_value = past_span.subspan(past_key_size + j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
       gsl::copy(present_key, past_key);
       gsl::copy(present_value, past_value);
     }
@@ -545,7 +567,7 @@ void PickGptPastState(const std::vector<OrtValue>& last_outputs,
 template <typename T>
 Status UpdateGptFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -555,7 +577,9 @@ Status UpdateGptFeeds(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx) {
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
@@ -601,8 +625,13 @@ Status UpdateGptFeeds(
   }
   next_inputs[2] = attention_mask;
 
-  // Update past state
-  if (num_beams == 1) {
+  if (past_present_share_buffer) {
+    int32_t* past_seq_len_data = const_cast<int32_t*>(next_inputs.back().Get<Tensor>().Data<int32_t>());
+    *past_seq_len_data = past_sequence_len;
+    return Status::OK();
+  }
+
+  if (num_beams == 1) {   // Update past state
     // feed present_* output to past_* inputs one by one
     const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
     for (size_t i = gpt_subgraph_first_present_output_idx; i < last_outputs.size(); ++i) {
@@ -698,7 +727,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
                      int t5_decoder_first_past_input_idx,
                      int t5_decoder_first_present_output_idx,
                      AllocatorPtr allocator) {
-  for (int i = 0; i < num_present_tensors; ++i) {
+  for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
     const OrtValue& present = last_outputs[t5_decoder_first_present_output_idx + i];
 
     // shape is like (batch_beam_size, 12, past_seq_len, 64)
@@ -710,12 +739,12 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
     OrtValue past;
     Tensor::InitOrtValue(DataTypeImpl::GetType<T>(), past_shape, allocator, past);
 
-    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), past_shape.Size());
-    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), past_shape.Size());
+    gsl::span<T> past_span = gsl::make_span<T>(past.GetMutable<Tensor>()->MutableData<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
+    gsl::span<const T> present_span = gsl::make_span<const T>(present.Get<Tensor>().Data<T>(), onnxruntime::narrow<size_t>(past_shape.Size()));
     for (size_t j = 0; j < beam_indices.size(); j++) {
       int32_t beam_index = beam_indices[j];
-      gsl::span<const T> present_beam = present_span.subspan(beam_index * block_size_per_beam, block_size_per_beam);
-      gsl::span<T> past_beam = past_span.subspan(j * block_size_per_beam, block_size_per_beam);
+      gsl::span<const T> present_beam = present_span.subspan(beam_index * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
+      gsl::span<T> past_beam = past_span.subspan(j * SafeInt<size_t>(block_size_per_beam), onnxruntime::narrow<size_t>(block_size_per_beam));
       gsl::copy(present_beam, past_beam);
     }
 
@@ -727,7 +756,7 @@ void PickT5PastState(const std::vector<OrtValue>& last_outputs,
 template <typename T>
 Status UpdateDecoderFeeds(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int num_present_tensors,
@@ -785,7 +814,7 @@ Status UpdateDecoderFeeds(
   // TODO(tianleiwu): remove num_beams==1 once GreedySearch operator is available.
   if (num_beams == 1) {
     // feed present_* output to past_* inputs one by one
-    for (int i = 0; i < num_present_tensors; ++i) {
+    for (ptrdiff_t i = 0; i < num_present_tensors; ++i) {
       next_inputs[t5_decoder_first_past_input_idx + i] =
           last_outputs[t5_decoder_first_present_output_idx + i];
     }
@@ -805,12 +834,12 @@ template void InitBeamState<float>(
     gsl::span<int32_t>& sequence_lengths,
     int batch_size,
     int num_beams,
-    void* stream);
+    Stream* stream);
 
 template void InitGreedyState<float>(
     transformers::IGreedySearchState<float>* greedy_state,
     gsl::span<int32_t>& sequence_lengths,
-    void* stream);
+    Stream* stream);
 
 template Status ProcessLogits<float>(
     const OrtValue& logits,
@@ -821,38 +850,40 @@ template Status ProcessLogits<float>(
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
     transformers::IBeamScorer* beam_scorer,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
     int step,
-    void* stream,
+    Stream* stream,
     const transformers::IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
     transformers::IGreedySearchState<float>* greedy_state,
+    transformers::ISamplingState<float>* sampling_state,
     transformers::ISequences* sequences,
     AllocatorPtr& allocator,
     onnxruntime::concurrency::ThreadPool* thread_pool,
     transformers::ILogitsProcessorList* logits_processors,
-    const transformers::IBeamSearchParameters* parameters,
+    const transformers::IGenerationParameters* parameters,
+    bool do_sampling,
     int step,
-    void* stream,
+    Stream* ort_stream,
     const transformers::IConsoleDumper* dumper);
 
 template Status DeviceCopy<float>(
     gsl::span<float> target,
     gsl::span<const float> source,
-    void* stream,
+    Stream* stream,
     int copyDirection);
 
 template Status DeviceCopy<int32_t>(
     gsl::span<int32_t> target,
     gsl::span<const int32_t> source,
-    void* stream,
+    Stream* stream,
     int copyDirection);
 
 template Status UpdateGptFeeds<float>(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int current_length,
@@ -862,11 +893,13 @@ template Status UpdateGptFeeds<float>(
     gsl::span<const int32_t> beam_indices,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
-    int gpt_subgraph_first_present_output_idx);
+    int gpt_subgraph_first_present_output_idx,
+    bool past_present_share_buffer,
+    int past_sequence_len);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
-    void* stream,
+    Stream* stream,
     const std::vector<OrtValue>& last_outputs,
     std::vector<OrtValue>& next_inputs,
     int num_present_tensors,
@@ -883,7 +916,7 @@ template Status UpdateDecoderFeeds<float>(
 template void ExpandInputs<int32_t>(const OrtValue& input, int num_beams, AllocatorPtr allocator, OrtValue& expanded);
 
 template Status ExpandBuffer<int32_t>(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,
@@ -891,7 +924,7 @@ template Status ExpandBuffer<int32_t>(
     bool only_copy_shape);
 
 template Status ExpandBuffer<float>(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,
@@ -899,7 +932,7 @@ template Status ExpandBuffer<float>(
     bool only_copy_shape);
 
 template Status ExpandBuffer<MLFloat16>(
-    void* stream,
+    Stream* stream,
     const OrtValue& input,
     int num_beams,
     AllocatorPtr allocator,

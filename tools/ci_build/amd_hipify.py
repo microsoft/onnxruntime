@@ -43,6 +43,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("CudaErrString", "RocmErrString")
     s = s.replace("CudaAsyncBuffer", "RocmAsyncBuffer")
     s = s.replace("CudaKernel", "RocmKernel")
+    s = s.replace("CudaStream", "RocmStream")
     s = s.replace("ToCudaType", "ToHipType")
     s = s.replace("CudaT", "HipT")
     s = s.replace("CUDA_LONG", "HIP_LONG")
@@ -58,6 +59,8 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace("GPU_WARP_SIZE = 32", "GPU_WARP_SIZE = 64")
     s = s.replace("std::exp", "expf")
     s = s.replace("std::log", "logf")
+    s = s.replace("WaitCudaNotificationOnDevice", "WaitRocmNotificationOnDevice")
+    s = s.replace("hipHostAlloc", "hipHostMalloc")
     s = s.replace(
         "#include <cub/device/device_radix_sort.cuh>",
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
@@ -65,6 +68,10 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
     s = s.replace(
         '#include "cub/device/device_radix_sort.cuh"',
         "#include <hipcub/hipcub.hpp>\n#include <hipcub/backend/rocprim/device/device_radix_sort.hpp>",
+    )
+    s = s.replace(
+        "#include <cub/device/device_segmented_radix_sort.cuh>",
+        "#include <hipcub/backend/rocprim/device/device_segmented_radix_sort.hpp>",
     )
     s = s.replace(
         "#include <cub/device/device_reduce.cuh>", "#include <hipcub/backend/rocprim/device/device_reduce.hpp>"
@@ -122,7 +129,7 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # NCCL -> RCCL
     # s = s.replace('NCCL_CALL', 'RCCL_CALL')
-    s = s.replace("#include <nccl.h>", "#include <rccl.h>")
+    s = s.replace("#include <nccl.h>", "#include <rccl/rccl.h>")
 
     # CUDNN -> MIOpen
     s = s.replace("CUDNN", "MIOPEN")
@@ -159,6 +166,11 @@ def hipify(hipify_perl_path, src_file_path, dst_file_path):
 
     # Deletions
     s = s.replace('#include "device_atomic_functions.h"', "")  # HIP atomics in main hip header already
+
+    # Fix warnings due to incorrect header paths, intentionally after all other hipify steps.
+    s = s.replace("#include <hiprand_kernel.h>", "#include <hiprand/hiprand_kernel.h>")
+    s = s.replace("#include <rocblas.h>", "#include <rocblas/rocblas.h>")
+    s = s.replace("#include <hipblas.h>", "#include <hipblas/hipblas.h>")
 
     with open(dst_file_path, "w") as f:
         f.write(s)

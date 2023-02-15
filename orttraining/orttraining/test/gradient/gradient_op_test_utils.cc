@@ -146,7 +146,7 @@ void GradientOpTester::Run(
         else if (entry->Type() == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
         else if (entry->Type() == onnxruntime::kDnnlExecutionProvider)
-          execution_provider = DefaultDnnlExecutionProvider(1);
+          execution_provider = DefaultDnnlExecutionProvider();
         else if (entry->Type() == onnxruntime::kTensorrtExecutionProvider)
           execution_provider = DefaultTensorrtExecutionProvider();
         // skip if execution provider is disabled

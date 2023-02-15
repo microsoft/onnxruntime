@@ -39,20 +39,6 @@ namespace DmlGraphFusionHelper
         ID3D12Resource** resource,
         uint64_t* allocId);
 
-    void ProcessInputData(
-        const ExecutionProviderImpl* providerImpl,
-        const std::vector<uint8_t>& isInputsUploadedByDmlEP,
-        std::vector<DML_INPUT_GRAPH_EDGE_DESC>& inputEdges,
-        const gsl::span<const std::string> subGraphInputArgNames,
-        const std::unordered_map<std::string, std::pair<const ONNX_NAMESPACE::TensorProto*, bool>>& isInitializerTransferable,
-        onnxruntime::Graph& graph,
-        _Out_ std::vector<bool>& inputsUsed,
-        _Inout_ std::vector<DML_BUFFER_BINDING>& initInputBindings,
-        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initInputResources,
-        _Inout_ std::vector<ComPtr<ID3D12Resource>>& nonOwnedGraphInputsFromInitializers,
-        _Inout_ std::vector<ComPtr<ID3D12Resource>>& initializeResourceRefs,
-        _Inout_opt_ std::vector<std::vector<std::byte>>* inputRawData);
-
     std::unordered_map<const onnx::TensorProto*, std::vector<uint32_t>>
     GetInitializerToPartitionMap(
         const onnxruntime::GraphViewer& graph,
@@ -71,7 +57,7 @@ namespace DmlGraphFusionHelper
         _Inout_ std::vector<DML_GRAPH_EDGE_DESC>& dmlIntermediateEdges);
 
     void CreateIDmlCompiledOperatorAndRegisterKernel(
-        onnxruntime::Graph& graph, 
+        onnxruntime::Graph& graph,
         const onnxruntime::IndexedSubGraph& indexedSubGraph,
         const onnxruntime::Node& fusedNode,
         const std::unordered_map<std::string, GraphNodeProperties>& partitionNodePropsMap,

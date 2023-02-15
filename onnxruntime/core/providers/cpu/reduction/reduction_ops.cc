@@ -116,22 +116,27 @@ namespace onnxruntime {
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL1, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL1, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceL2, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceL2, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSum, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSum, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSum, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSum, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSumExp, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSumExp, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSumExp, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceLogSumExp, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceLogSumExp, 18);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceLogSumExp, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceLogSumExp, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceLogSumExp, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceLogSumExp, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceLogSumExp, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMax, 1, 10);
@@ -146,18 +151,26 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMax, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMax, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMax, 12, 12);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMax, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMax, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMax, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMax, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMax, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMax, 13, 17);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMax, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMax, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMean, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMean, 18);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMean, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMean, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMean, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMean, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMean, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMin, 1, 10);
@@ -172,18 +185,26 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMin, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMin, 12, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMin, 12, 12);
 
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMin, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMin, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMin, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceMin, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceMin, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceMin, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ReduceMin, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_UINT8_ONLY(ReduceMin, 13, 17);
+
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT8_ONLY(ReduceMin, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_UINT8_ONLY(ReduceMin, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceProd, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceProd, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceProd, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceProd, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceProd, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceProd, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_INT64_ONLY(ReduceProd, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSum, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT64_ONLY(ReduceSum, 1, 10);
@@ -199,8 +220,10 @@ REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 11, 12);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 11, 12);
-REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 13);
-REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 13);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ReduceSumSquare, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 13, 17);
+REGISTER_UNARY_ELEMENTWISE_KERNEL(ReduceSumSquare, 18);
+REGISTER_UNARY_ELEMENTWISE_KERNEL_DOUBLE_ONLY(ReduceSumSquare, 18);
 
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL(ArgMax, 1, 10);
 REGISTER_UNARY_ELEMENTWISE_VERSIONED_KERNEL_INT8_ONLY(ArgMax, 1, 10)
@@ -295,20 +318,20 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   }
   int64_t projection_size = 1;
   for (auto a : reduced_axes) {
-    projection_size *= new_input_shape[a];
+    projection_size *= new_input_shape[onnxruntime::narrow<size_t>(a)];
   }
 
   int last_reduced_axis = static_cast<int>(reduced_axes.size()) - 1;
   int loop_reduced_axis = 1;
-  results.last_loop_red_size = new_input_shape[reduced_axes[last_reduced_axis]];
-  results.last_loop_red_inc = cumulative_shape[reduced_axes[last_reduced_axis]];
-  projection_size /= new_input_shape[reduced_axes[last_reduced_axis]];
+  results.last_loop_red_size = new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(last_reduced_axis)])];
+  results.last_loop_red_inc = cumulative_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(last_reduced_axis)])];
+  projection_size /= new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(last_reduced_axis)])];
   --last_reduced_axis;
   while (last_reduced_axis >= 0) {
     if (reduced_axes[last_reduced_axis] != reduced_axes[last_reduced_axis + 1] - 1)
       break;
-    results.last_loop_red_size *= new_input_shape[reduced_axes[last_reduced_axis]];
-    projection_size /= new_input_shape[reduced_axes[last_reduced_axis]];
+    results.last_loop_red_size *= new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(last_reduced_axis)])];
+    projection_size /= new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(last_reduced_axis)])];
     --last_reduced_axis;
     ++loop_reduced_axis;
   }
@@ -318,7 +341,7 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   if (reduced_axes_size == 0) {
     results.projected_index.resize(1, 0);
   } else {
-    results.projected_index.resize(projection_size);
+    results.projected_index.resize(onnxruntime::narrow<size_t>(projection_size));
     TensorShapeVector projected_indices(reduced_axes_size, 0);
     int64_t current_index = 0;
     size_t current_pos = 0;
@@ -326,14 +349,14 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
     for (current_pos = 0; current_pos < results.projected_index.size(); ++current_pos) {
       results.projected_index[current_pos] = current_index;
       ++projected_indices[projected_indices.size() - 1];
-      current_index += cumulative_shape[reduced_axes[reduced_axes_size - 1]];
+      current_index += cumulative_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(reduced_axes_size - 1)])];
       for (j = reduced_axes_size - 1; j > 0; --j) {
-        if (projected_indices[j] < new_input_shape[reduced_axes[j]])
+        if (projected_indices[onnxruntime::narrow<size_t>(j)] < new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(j)])])
           break;
-        projected_indices[j] -= new_input_shape[reduced_axes[j]];
-        current_index -= new_input_shape[reduced_axes[j]] * cumulative_shape[reduced_axes[j]];
+        projected_indices[j] -= new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(j)])];
+        current_index -= new_input_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(j)])] * cumulative_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(j)])];
         ++projected_indices[j - 1];
-        current_index += cumulative_shape[reduced_axes[j - 1]];
+        current_index += cumulative_shape[onnxruntime::narrow<size_t>(reduced_axes[onnxruntime::narrow<size_t>(j - 1)])];
       }
     }
   }
@@ -347,7 +370,7 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
   }
   int64_t unprojection_size = 1;
   for (auto a : unreduced_axes) {
-    unprojection_size *= new_input_shape[a];
+    unprojection_size *= new_input_shape[onnxruntime::narrow<size_t>(a)];
   }
   if (unprojection_size == 0) {
     return;
@@ -356,10 +379,10 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
 
   // The last index is usually an image size.
   // We differently process the last unprojected dimension.
-  results.last_loop_size = new_input_shape[unreduced_axes[unreduced_axes.size() - 1]];
+  results.last_loop_size = new_input_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(unreduced_axes.size() - 1)])];
   int64_t unprojection_size_before_last = unprojection_size / results.last_loop_size;
-  results.unprojected_index.reserve(unprojection_size_before_last);
-  results.last_loop_inc = cumulative_shape[unreduced_axes[unreduced_axes.size() - 1]];
+  results.unprojected_index.reserve(onnxruntime::narrow<size_t>(unprojection_size_before_last));
+  results.last_loop_inc = cumulative_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(unreduced_axes.size() - 1)])];
   if (unprojected_indices.size() <= 1) {
     results.unprojected_index.push_back(0);
   } else {
@@ -368,14 +391,14 @@ void NoTransposePrepareForReduce(const TensorShape& new_input_shape,
     for (int64_t pos = 0; pos < unprojection_size_before_last; ++pos) {
       results.unprojected_index.push_back(current_index);
       ++unprojected_indices[unprojected_indices.size() - 2];
-      current_index += cumulative_shape[unreduced_axes[unreduced_axes.size() - 2]];
+      current_index += cumulative_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(unreduced_axes.size() - 2)])];
       for (j = static_cast<int>(unreduced_axes.size()) - 2; j > 0; --j) {
-        if (unprojected_indices[j] < new_input_shape[unreduced_axes[j]])
+        if (unprojected_indices[j] < new_input_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(j)])])
           break;
-        unprojected_indices[j] -= new_input_shape[unreduced_axes[j]];
-        current_index -= new_input_shape[unreduced_axes[j]] * cumulative_shape[unreduced_axes[j]];
+        unprojected_indices[j] -= new_input_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(j)])];
+        current_index -= new_input_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(j)])] * cumulative_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(j)])];
         ++unprojected_indices[j - 1];
-        current_index += cumulative_shape[unreduced_axes[j - 1]];
+        current_index += cumulative_shape[onnxruntime::narrow<size_t>(unreduced_axes[onnxruntime::narrow<size_t>(j - 1)])];
       }
     }
   }
@@ -429,7 +452,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
     const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
     int64_t main_index = first / last_results.last_loop_size;
     int64_t loop = first % last_results.last_loop_size;
-    int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+    int64_t origin = last_results.unprojected_index[onnxruntime::narrow<size_t>(main_index)] + loop * last_results.last_loop_inc;
     for (int64_t main_index_last_loop = first; main_index_last_loop < end; ++main_index_last_loop) {
       AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
       for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
@@ -445,7 +468,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
         loop = 0;
         ++main_index;
         if (main_index < static_cast<int64_t>(last_results.unprojected_index.size())) {
-          origin = last_results.unprojected_index[main_index];
+          origin = last_results.unprojected_index[onnxruntime::narrow<size_t>(main_index)];
         }
       } else {
         origin += last_results.last_loop_inc;
@@ -456,7 +479,7 @@ void NoTransposeReduce1Loop(Tensor* output, const TensorShape& new_input_shape, 
   auto cost = ParallelReduceFastCost(1,
                                      last_results.projected_index.size() * last_results.last_loop_red_size,
                                      sizeof(typename AGG::input_type), 6);
-  concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
+  concurrency::ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(count), cost, fn);
 }
 
 template <typename AGG>
@@ -494,7 +517,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
     const ResultsNoTransposePrepareForReduce& last_results = *data.last_results;
     int64_t main_index = first / last_results.last_loop_size;
     int64_t loop = first % last_results.last_loop_size;
-    int64_t origin = last_results.unprojected_index[main_index] + loop * last_results.last_loop_inc;
+    int64_t origin = last_results.unprojected_index[onnxruntime::narrow<size_t>(main_index)] + loop * last_results.last_loop_inc;
     for (int64_t main_index_last_loop = first; main_index_last_loop < end; ++main_index_last_loop) {
       AGG accumulator(data.denominator, data.from_data[origin + last_results.projected_index[0]]);
       for (auto it = last_results.projected_index.begin(); it != last_results.projected_index.end(); ++it) {
@@ -517,7 +540,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
         loop = 0;
         ++main_index;
         if (main_index < static_cast<int64_t>(last_results.unprojected_index.size())) {
-          origin = last_results.unprojected_index[main_index];
+          origin = last_results.unprojected_index[onnxruntime::narrow<size_t>(main_index)];
         }
       } else {
         origin += last_results.last_loop_inc;
@@ -528,7 +551,7 @@ void NoTransposeReduce2Loops(Tensor* output, const TensorShape& new_input_shape,
   auto cost = ParallelReduceFastCost(1,
                                      last_results.projected_index.size() * last_results.last_loop_red_size,
                                      sizeof(typename AGG::input_type), 8);
-  concurrency::ThreadPool::TryParallelFor(tp, count, cost, fn);
+  concurrency::ThreadPool::TryParallelFor(tp, onnxruntime::narrow<std::ptrdiff_t>(count), cost, fn);
 }
 
 void DropDimensions(const gsl::span<const int64_t>& input_shape,
@@ -536,7 +559,7 @@ void DropDimensions(const gsl::span<const int64_t>& input_shape,
                     TensorShapeVector& dropped_axes) {
   TensorShapeVector dropped_dims = ToShapeVector(input_shape);
   for (auto i : axes) {
-    dropped_dims[i] = -1;
+    dropped_dims[onnxruntime::narrow<size_t>(i)] = -1;
   }
   for (auto it = dropped_dims.begin(); it != dropped_dims.end(); ++it) {
     if (*it != -1) {
@@ -571,17 +594,17 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
   }
 
   fast_output_shape.clear();
-  fast_output_shape.reserve(input_shape_size);
+  fast_output_shape.reserve(onnxruntime::narrow<size_t>(input_shape_size));
   bool empty_reduce = false;
-  InlinedVector<bool> reduce(input_shape_size);
+  InlinedVector<bool> reduce(onnxruntime::narrow<size_t>(input_shape_size));
   for (int64_t i = 0; i < input_shape_size; ++i) {
-    reduce[i] = axes.find(i) != axes.end();
-    if (reduce[i]) {
-      empty_reduce |= input_shape[i] == 0;
+    reduce[onnxruntime::narrow<size_t>(i)] = axes.find(i) != axes.end();
+    if (reduce[onnxruntime::narrow<size_t>(i)]) {
+      empty_reduce |= input_shape[onnxruntime::narrow<size_t>(i)] == 0;
       if (keep_dims)
-        fast_output_shape.push_back(input_shape[i] > 0 ? 1 : 0);
+        fast_output_shape.push_back(input_shape[onnxruntime::narrow<size_t>(i)] > 0 ? 1 : 0);
     } else {
-      fast_output_shape.push_back(input_shape[i]);
+      fast_output_shape.push_back(input_shape[onnxruntime::narrow<size_t>(i)]);
     }
   }
 
@@ -601,7 +624,7 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
       return FastReduceKind::kK;
     } else {
       if (keep_dims) {
-        fast_output_shape.resize(input_shape_size, 1);
+        fast_output_shape.resize(onnxruntime::narrow<size_t>(input_shape_size), 1);
       } else {
         fast_output_shape.clear();
       }
@@ -613,20 +636,20 @@ FastReduceKind OptimizeShapeForFastReduce(gsl::span<const int64_t> input_shape,
 
   fast_shape.clear();
   fast_axes.clear();
-  fast_shape.reserve(input_shape_size);
+  fast_shape.reserve(onnxruntime::narrow<size_t>(input_shape_size));
   fast_axes.reserve(reduced_axes.size());
 
   fast_shape.push_back(input_shape[0]);
   if (reduce[0])
     fast_axes.push_back(0);
   for (int64_t i = 1; i < input_shape_size; ++i) {
-    if (reduce[i] == reduce[i - 1]) {
-      fast_shape[fast_shape.size() - 1] *= input_shape[i];
+    if (reduce[onnxruntime::narrow<size_t>(i)] == reduce[onnxruntime::narrow<size_t>(i - 1)]) {
+      fast_shape[onnxruntime::narrow<size_t>(fast_shape.size()- 1)] *= input_shape[onnxruntime::narrow<size_t>(i)];
     } else {
-      if (reduce[i]) {
-        fast_axes.push_back(fast_shape.size());
+      if (reduce[onnxruntime::narrow<size_t>(i)]) {
+        fast_axes.push_back(onnxruntime::narrow<int64_t>(fast_shape.size()));
       }
-      fast_shape.push_back(input_shape[i]);
+      fast_shape.push_back(input_shape[onnxruntime::narrow<size_t>(i)]);
     }
   }
   if (fast_shape.size() == 1) {

@@ -723,14 +723,14 @@ flatbuffers::Offset<fbs::NodeEdge> Node::SaveEdgesToOrtFormat(flatbuffers::FlatB
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
-                               bool can_use_flatbuffer_for_initializers,
+                               const OrtFormatLoadOptions& load_options,
                                const logging::Logger& logger, std::unique_ptr<Node>& node) {
   node = std::make_unique<Node>(fbs_node.index(), graph);
-  return node->LoadFromOrtFormat(fbs_node, can_use_flatbuffer_for_initializers, logger);
+  return node->LoadFromOrtFormat(fbs_node, load_options, logger);
 }
 
 Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
-                               bool can_use_flatbuffer_for_initializers,
+                               const OrtFormatLoadOptions& load_options,
                                const logging::Logger& logger) {
   auto LoadNodeArgsFromOrtFormat =
       [&](const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* fbs_node_arg_names,
@@ -769,8 +769,7 @@ Status Node::LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
       AttributeProto attr_proto;
       std::unique_ptr<Graph> subgraph;
       ORT_RETURN_IF_ERROR(
-          fbs::utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this,
-                                             can_use_flatbuffer_for_initializers, logger));
+          fbs::utils::LoadAttributeOrtFormat(*fbs_attr, attr_proto, subgraph, *graph_, *this, load_options, logger));
 
       // If we have a sub graph in this attributes, it will be loaded into subgraph ptr
       // while the attribute proto contains the sub graph will have the empty g() field
@@ -1631,7 +1630,7 @@ Status Graph::BuildConnections(std::unordered_set<std::string>& outer_scope_node
             // (they're internally available to the fused node but removed from the Graph instance).
             // Fusion happens after the model was loaded in full so we know the inputs were valid originally.
             bool check = node.NodeType() != Node::Type::Fused;
-#if defined(ENABLE_TRAINING)
+#if defined(ENABLE_TRAINING_CORE)
             // Only check initial model load for training as graph modifications there also render inputs 'invalid'.
             check = check && num_resolves_ == 0;
 #endif
@@ -3844,7 +3843,7 @@ Node& Graph::CreateFusedSubGraphNode(const IndexedSubGraph& sub_graph, const std
                 "Schema was not found for fused node. Domain:", fused_node.Domain(), " OpType:", fused_node.OpType());
   } else if (IndexedSubGraph::SourceOfSchema::REUSE_OR_CREATE == sub_graph.schema_source) {
     auto schema_key = GenerateSchemaKey(sub_graph);
-    if (!reusable_fused_schema_map_.contains(schema_key)) {
+    if (reusable_fused_schema_map_.count(schema_key) == 0) {
       fused_schemas_containers_.push_back(
           function_utils::CreateSchema(*this, sub_graph, /*allow_aggregated_tensor_type=*/true));
       reusable_fused_schema_map_.emplace(schema_key, *fused_schemas_containers_.back());
@@ -4200,7 +4199,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 #if !defined(ORT_MINIMAL_BUILD)
                                 IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-                                bool can_use_flatbuffer_for_initializers,
+                                const OrtFormatLoadOptions& load_options,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   graph = std::make_unique<Graph>(owning_model, domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
@@ -4210,7 +4209,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   // Assume anything in ORT format has already been validated.
                                   false);
 
-  ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph, can_use_flatbuffer_for_initializers));
+  ORT_RETURN_IF_ERROR(graph->LoadFromOrtFormat(fbs_graph, load_options));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // in a full build we need to run Resolve to fully populate ResolveContext and Node::op_,
@@ -4226,7 +4225,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
 
 Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                 Graph& parent_graph, const Node& parent_node,
-                                bool can_use_flatbuffer_for_initializers,
+                                const OrtFormatLoadOptions& load_options,
                                 const logging::Logger& logger, std::unique_ptr<Graph>& graph) {
   graph = std::make_unique<Graph>(parent_graph.owning_model_,
                                   parent_graph.domain_to_version_,
@@ -4238,7 +4237,7 @@ Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   // Assume anything in ORT format has already been validated.
                                   false);
 
-  return graph->LoadFromOrtFormat(fbs_graph, can_use_flatbuffer_for_initializers);
+  return graph->LoadFromOrtFormat(fbs_graph, load_options);
 }
 
 Graph::Graph(const Model& owning_model,
@@ -4268,7 +4267,7 @@ Graph::Graph(const Model& owning_model,
 }
 
 common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
-                                        bool can_use_flatbuffer_for_initializers) {
+                                        const OrtFormatLoadOptions& load_options) {
   // We deserialize the graph from ORT format in the following order:
   // 1. Deserialize the initializers and sparse initializers. Convert sparse to dense.
   // 2. Deserialize the NodeArgs
@@ -4298,8 +4297,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_tensor : *fbs_initializers) {
       ORT_RETURN_IF(nullptr == fbs_tensor, "Initializer tensor is missing. Invalid ORT format model.");
       TensorProto* initializer = deserialized_proto_data_.add_initializer();
-      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer,
-                                                               can_use_flatbuffer_for_initializers));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadInitializerOrtFormat(*fbs_tensor, *initializer, load_options));
       auto p = name_to_initial_tensor_.emplace(initializer->name(), initializer);
       if (!p.second) {
         LOGS(logger_, WARNING) << "Duplicate initializer (dense or ConstantNode): '" << initializer->name()
@@ -4318,7 +4316,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_sparse_tensor : *fbs_sparse_initializers) {
       ORT_RETURN_IF(nullptr == fbs_sparse_tensor, "Sparse Initializer tensor is missing. Invalid ORT format model.");
       SparseTensorProto sparse_initializer;
-      ORT_RETURN_IF_ERROR(fbs::utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer));
+      ORT_RETURN_IF_ERROR(fbs::utils::LoadSparseInitializerOrtFormat(*fbs_sparse_tensor, sparse_initializer,
+                                                                     load_options));
       TensorProto& initializer = *deserialized_proto_data_.add_initializer();
       ORT_RETURN_IF_ERROR(utils::SparseTensorProtoToDenseTensorProto(sparse_initializer, model_path, initializer));
       auto p = name_to_initial_tensor_.emplace(initializer.name(), &initializer);
@@ -4359,8 +4358,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
     for (const auto* fbs_node : *fbs_nodes) {
       ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
       std::unique_ptr<Node> node;
-      ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, can_use_flatbuffer_for_initializers, logger_,
-                                                  node));
+      ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, load_options, logger_, node));
       ORT_RETURN_IF(node->Index() >= fbs_graph.max_node_index(), "Node index is out of range");
       nodes_[node->Index()] = std::move(node);
       ++num_of_nodes_;
@@ -4407,9 +4405,11 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   ORT_RETURN_IF_ERROR(PopulateNodeArgToProducerConsumerLookupsFromNodes());
 
   // runtime optimizations
-  if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
-    if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
-      ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
+  if (!load_options.ignore_saved_runtime_optimizations) {
+    if (const auto* fbs_runtime_optimizations = fbs_graph.runtime_optimizations()) {
+      if (const auto* fbs_runtime_optimization_records = fbs_runtime_optimizations->records()) {
+        ORT_RETURN_IF_ERROR(MutableRuntimeOptimizations().LoadFromOrtFormat(*fbs_runtime_optimization_records));
+      }
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

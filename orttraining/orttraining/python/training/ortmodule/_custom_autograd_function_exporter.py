@@ -91,7 +91,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             # FIXME: using privated modules
             from torch.onnx import _globals
 
-            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9, training_mode is still a bool type
+            # before https://github.com/pytorch/pytorch/commit/c8b9b6266b505328e503b12f6a42fd88c56374f9,
+            # training_mode is still a bool type
             if isinstance(_globals.GLOBALS.training_mode, bool):
                 training_mode = _globals.GLOBALS.training_mode
             else:

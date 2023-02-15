@@ -16,11 +16,8 @@ using namespace onnxruntime::rocm;
 template <typename T>
 class FastGelu final : public RocmKernel {
  public:
-  FastGelu(const OpKernelInfo& op_kernel_info);
+  FastGelu(const OpKernelInfo& op_kernel_info) : RocmKernel(op_kernel_info) {}
   Status ComputeInternal(OpKernelContext* ctx) const override;
-
- private:
-  bool tuning_;
 };
 
 }  // namespace rocm

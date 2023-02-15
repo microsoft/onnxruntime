@@ -62,12 +62,12 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   // Set all axes indices to 1 in output_dims and check for duplicates
   for (int64_t axis : axes) {
     // Valid axis range is [0, output_rank - 1]
-    axis = HandleNegativeAxis(axis, output_dims.size());
+    axis = HandleNegativeAxis(axis, onnxruntime::narrow<int64_t>(output_dims.size()));
     if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has an out of range axis");
-    if (output_dims[axis] != 0)
+    if (output_dims[onnxruntime::narrow<size_t>(axis)] != 0)
       return Status(ONNXRUNTIME, INVALID_ARGUMENT, "'axes' has a duplicate axis");
-    output_dims[axis] = 1;
+    output_dims[onnxruntime::narrow<size_t>(axis)] = 1;
   }
 
   // Now fill in the zero entries with the existing shape

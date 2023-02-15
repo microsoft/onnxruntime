@@ -8,10 +8,6 @@ set(WINML_TEST_INC_DIR
   ${REPO_ROOT}/winml/lib/Common/inc
   ${REPO_ROOT}/onnxruntime
   ${REPO_ROOT}/onnxruntime/core/providers/dml/DmlExecutionProvider/src/External/D3DX12
-  ${REPO_ROOT}/cmake/external/googletest/googletest/include
-  ${REPO_ROOT}/cmake/external/protobuf/src
-  ${REPO_ROOT}/cmake/external/wil/include
-  ${REPO_ROOT}/cmake/external/SafeInt
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api
   ${CMAKE_CURRENT_BINARY_DIR}/winml_api/comp_generated
@@ -183,8 +179,10 @@ add_dependencies(winml_test_common
   winml_api
   winml_dll
 )
-onnxruntime_add_include_to_target(winml_test_common onnx_proto ${GSL_TARGET})
+
+onnxruntime_add_include_to_target(winml_test_common onnx_proto gtest ${PROTOBUF_LIB} WIL::WIL safeint_interface ${GSL_TARGET})
 onnxruntime_add_static_library(winml_google_test_lib ${WINML_TEST_SRC_DIR}/common/googletest/main.cpp)
+onnxruntime_add_include_to_target(winml_google_test_lib gtest)
 set_winml_target_properties(winml_google_test_lib)
 
 set_winml_target_properties(winml_test_common)
@@ -269,7 +267,7 @@ target_include_directories(winml_test_adapter PRIVATE ${winml_lib_common_dir}/in
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT})
 
-onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers)
+onnxruntime_add_include_to_target(winml_test_adapter onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11)
 target_include_directories(winml_test_adapter PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS})
 add_dependencies(winml_test_adapter ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(winml_test_adapter PRIVATE ${winml_adapter_dir})

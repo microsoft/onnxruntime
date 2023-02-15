@@ -52,8 +52,8 @@ class DeepCpuGruOp final : public OpKernel {
                                                      activation_func_betas);
 
     layout_ = info.GetAttrOrDefault("layout", static_cast<int64_t>(0));
-    ORT_ENFORCE(layout_ == 0, 
-        "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
+    ORT_ENFORCE(layout_ == 0,
+                "Batchwise recurrent operations (layout == 1) are not supported. If you need support create a github issue with justification.");
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -61,15 +61,35 @@ class DeepCpuGruOp final : public OpKernel {
   ~DeepCpuGruOp() override = default;
 
  private:
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
+  bool TryPackInputWeights(const Tensor& weight, AllocatorPtr& alloc);
+
+  bool TryPackRecurrentWeights(const Tensor& weights, AllocatorPtr& alloc);
+
   rnn::detail::Direction direction_;
   int num_directions_;
 
-  int hidden_size_ {};
+  int hidden_size_{};
   float clip_;
-  int linear_before_reset_ {};
+  int linear_before_reset_{};
   int64_t layout_;
 
   rnn::detail::ActivationFuncs activation_funcs_;
+
+  // This kernel supports either forward or bidirectional
+  // This is split in half for bidirectional, but we prepack it in the same buffer
+  rnn::detail::PackedWeights pre_packed_input_weights_;
+  // recurrent_weights_ZR_ fwd, followed by bwd
+  rnn::detail::PackedWeights pre_packed_recurrent_ZR_;
+  // recurrent_weights_H_ fwd, followed by bwd
+  rnn::detail::PackedWeights pre_packed_recurrent_H_;
 
   template <typename T>
   Status ComputeImpl(OpKernelContext& context) const;

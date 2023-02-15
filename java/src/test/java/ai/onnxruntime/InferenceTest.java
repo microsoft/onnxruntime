@@ -59,6 +59,10 @@ public class InferenceTest {
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
+  public static Path getResourcePath(String path) {
+    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
+  }
+
   @Test
   public void environmentTest() {
     // Checks that the environment instance is the same.
@@ -683,6 +687,24 @@ public class InferenceTest {
     return skipModels;
   }
 
+  private static String getCustomOpLibraryName() {
+    String customLibraryName = "";
+    String osName = System.getProperty("os.name").toLowerCase();
+    if (osName.contains("windows")) {
+      // In windows we start in the wrong working directory relative to the custom_op_library.dll
+      // So we look it up as a classpath resource and resolve it to a real path
+      customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
+    } else if (osName.contains("mac")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
+    } else if (osName.contains("linux")) {
+      customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
+    } else {
+      fail("Unknown os/platform '" + osName + "'");
+    }
+
+    return customLibraryName;
+  }
+
   public static List<String[]> getModelsForTest() throws IOException {
     File modelsDir = getTestModelsDir();
     Map<String, String> skipModels = getSkippedModels();
@@ -1012,19 +1034,7 @@ public class InferenceTest {
   public void testLoadCustomLibrary() throws OrtException {
     // This test is disabled on Android.
     if (!OnnxRuntime.isAndroid()) {
-      String customLibraryName = "";
-      String osName = System.getProperty("os.name").toLowerCase();
-      if (osName.contains("windows")) {
-        // In windows we start in the wrong working directory relative to the custom_op_library.dll
-        // So we look it up as a classpath resource and resolve it to a real path
-        customLibraryName = TestHelpers.getResourcePath("/custom_op_library.dll").toString();
-      } else if (osName.contains("mac")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.dylib").toString();
-      } else if (osName.contains("linux")) {
-        customLibraryName = TestHelpers.getResourcePath("/libcustom_op_library.so").toString();
-      } else {
-        fail("Unknown os/platform '" + osName + "'");
-      }
+      String customLibraryName = getCustomOpLibraryName();
       String customOpLibraryTestModel =
           TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
 
@@ -1064,6 +1074,55 @@ public class InferenceTest {
             assertArrayEquals(flatOutput, resultArray);
           }
           OnnxValue.close(container);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testLoadCustomOpsUsingFunction() throws OrtException {
+    // This test is disabled on Android.
+    if (!OnnxRuntime.isAndroid()) {
+      String customLibraryName = getCustomOpLibraryName();
+      String customOpLibraryTestModel =
+          TestHelpers.getResourcePath("/custom_op_library/custom_op_test.onnx").toString();
+
+      try (SessionOptions options = new SessionOptions()) {
+        String osName = System.getProperty("os.name").toLowerCase();
+        boolean isWindows = osName.contains("windows");
+        boolean isMac = osName.contains("mac");
+
+        // on Windows and mac, Java.System.load will make the symbols from the loaded library
+        // available.
+        // on other platforms the dlsym uses RTLD_LOCAL so they're not. Would need to use something
+        // like
+        // https://github.com/java-native-access/jna to achieve that.
+        // As we have unit tests that validate the custom op registration across all platforms, we
+        // settle for just
+        // making sure the ORT API function can be called and behaves as expected.
+        try {
+          // manually load the library. typically we'd expect the user to link against the library,
+          // but doing that here would conflict with testLoadCustomLibrary needing to test ORT
+          // loading
+          // the library.
+          System.load(customLibraryName);
+          options.registerCustomOpsUsingFunction("RegisterCustomOps");
+
+          if (isWindows || isMac) {
+            if (OnnxRuntime.extractCUDA()) {
+              options.addCUDA();
+            }
+            try (OrtSession session = env.createSession(customOpLibraryTestModel, options)) {
+              // if model was loaded the op registration was successful
+            }
+          } else {
+            fail("Expected to throw OrtException due System.load not using RTLD_GLOBAL");
+          }
+        } catch (OrtException e) {
+          System.out.println(e.getMessage());
+          assertTrue(
+              !(isWindows || isMac), "Expected to not throw OrtException on Windows or macOS");
+          assertTrue(e.getMessage().contains("Failed to get symbol RegisterCustomOps"));
         }
       }
     }

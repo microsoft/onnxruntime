@@ -93,15 +93,50 @@ class FusionAttention(Fusion):
         hidden_size: int,
         num_heads: int,
         attention_mask: AttentionMask,
+        use_multi_head_attention: bool = False,
     ):
-        super().__init__(model, "Attention", ["SkipLayerNormalization", "LayerNormalization"])
+        attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
+        super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
+        self.use_multi_head_attention = use_multi_head_attention
+        self.mask_filter_value = None
 
         # Flags to show warning only once
         self.num_heads_warning = True
         self.hidden_size_warning = True
+
+    def get_num_heads_and_hidden_size_from_concat(self, concat: NodeProto) -> Tuple[int, int]:
+        """
+        Detect num_heads and hidden_size from Concat node in the following subgraph:
+
+        SkipLayerNormalization or EmbedLayerNormalization
+                        /        |
+                     MatMul    Shape
+                        |        |
+                       Add     Gather(indices=0)
+                        |        |
+                        |      Unsqueeze
+                        |        |
+                        |     Concat (*, -1, 12, 64)
+                        |     /
+                       Reshape
+                          |
+                       Transpose
+        """
+        if len(concat.input) == 4:
+            num_heads = self.model.get_constant_value(concat.input[2])
+            head_size = self.model.get_constant_value(concat.input[3])
+            if (
+                isinstance(num_heads, np.ndarray)
+                and num_heads.size == 1
+                and isinstance(head_size, np.ndarray)
+                and head_size.size == 1
+            ):
+                return num_heads[0], num_heads[0] * head_size[0]
+
+        return self.num_heads, self.hidden_size
 
     def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
         """Detect num_heads and hidden_size from a reshape node.
@@ -112,10 +147,12 @@ class FusionAttention(Fusion):
         Returns:
             Tuple[int, int]: num_heads and hidden_size
         """
-
         # we assume that reshape fusion has done, so the shape is a tensor like [0, 0, num_heads, head_size]
         q_shape = self.model.get_initializer(reshape_q.input[1])
         if q_shape is None:
+            concat = self.model.get_parent(reshape_q, 1)
+            if concat is not None and concat.op_type == "Concat":
+                return self.get_num_heads_and_hidden_size_from_concat(concat)
             logger.debug(f"{reshape_q.input[1]} is not initializer.")
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
@@ -274,17 +311,18 @@ class FusionAttention(Fusion):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        weight = helper.make_tensor(
-            name=attention_node_name + "_qkv_weight",
-            data_type=TensorProto.FLOAT,
-            dims=[qw_in_size, qkv_weight_dim],
-            vals=qkv_weight.flatten().tolist(),
-        )
+        if not self.use_multi_head_attention:
+            weight = helper.make_tensor(
+                name=attention_node_name + "_qkv_weight",
+                data_type=TensorProto.FLOAT,
+                dims=[qw_in_size, qkv_weight_dim],
+                vals=qkv_weight.flatten().tolist(),
+            )
 
-        # Sometimes weights and bias are stored in fp16
-        if q_weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
-        self.model.add_initializer(weight, self.this_graph_name)
+            # Sometimes weights and bias are stored in fp16
+            if q_weight.data_type == 10:
+                weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
+            self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
             name=attention_node_name + "_qkv_bias",
@@ -296,26 +334,48 @@ class FusionAttention(Fusion):
             bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
         self.model.add_initializer(bias, self.this_graph_name)
 
-        attention_inputs = [
-            input,
-            attention_node_name + "_qkv_weight",
-            attention_node_name + "_qkv_bias",
-        ]
-        if mask_index is not None:
-            attention_inputs.append(mask_index)
+        # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
+        if self.use_multi_head_attention:
+            if add_qk_str is not None:
+                logger.debug("MultiHeadAttention does not support relative_position_bias: cannot fuse the attention.")
+                return None
+
+            attention_inputs = [
+                q_matmul.output[0],
+                k_matmul.output[0],
+                v_matmul.output[0],
+                attention_node_name + "_qkv_bias",
+            ]
+            if mask_index is not None:
+                attention_inputs.append(mask_index)
+
+            attention_node = helper.make_node(
+                "MultiHeadAttention",
+                inputs=attention_inputs,
+                outputs=[output],
+                name=attention_node_name,
+            )
         else:
-            attention_inputs.append("")
+            attention_inputs = [
+                input,
+                attention_node_name + "_qkv_weight",
+                attention_node_name + "_qkv_bias",
+            ]
+            if mask_index is not None:
+                attention_inputs.append(mask_index)
+            else:
+                attention_inputs.append("")
 
-        if add_qk_str is not None:
-            attention_inputs.append("")
-            attention_inputs.append(add_qk_str)
+            if add_qk_str is not None:
+                attention_inputs.append("")  # no past
+                attention_inputs.append(add_qk_str)
 
-        attention_node = helper.make_node(
-            "Attention",
-            inputs=attention_inputs,
-            outputs=[output],
-            name=attention_node_name,
-        )
+            attention_node = helper.make_node(
+                "Attention",
+                inputs=attention_inputs,
+                outputs=[output],
+                name=attention_node_name,
+            )
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
@@ -323,6 +383,9 @@ class FusionAttention(Fusion):
             attention_node.attribute.extend(
                 [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])]
             )
+
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
         return attention_node
 
@@ -510,6 +573,11 @@ class FusionAttention(Fusion):
             logger.debug("fuse_attention: failed to match mask path")
             return
 
+        if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+            _, mul_val = self.model.get_constant_input(mask_nodes[0])
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
+
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
@@ -562,10 +630,11 @@ class FusionAttention(Fusion):
 
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
-            self.nodes_to_remove.extend(q_nodes)
-            self.nodes_to_remove.extend(k_nodes)
-            self.nodes_to_remove.extend(v_nodes)
+
+            # For MultiHeadAttention operator, MatMul nodes for Q/K/V projection shall not be fused.
+            self.nodes_to_remove.extend(q_nodes if not self.use_multi_head_attention else q_nodes[:-1])
+            self.nodes_to_remove.extend(k_nodes if not self.use_multi_head_attention else k_nodes[:-1])
+            self.nodes_to_remove.extend(v_nodes if not self.use_multi_head_attention else v_nodes[:-1])
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
-            # self.nodes_to_remove.extend(mask_nodes)
             self.prune_graph = True

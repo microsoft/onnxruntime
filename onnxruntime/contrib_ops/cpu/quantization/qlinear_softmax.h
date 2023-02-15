@@ -26,7 +26,7 @@ class QLinearSoftmax final : public OpKernel {
                          int axis, concurrency::ThreadPool* thread_pool) const;
 
   Status ComputeImplOpset13(OpKernelContext* context, const Tensor& input, Tensor& output,
-                            gsl::span<const EXP_OUT_DTYPE> lookup_table,
+                            gsl::span<const EXP_OUT_DTYPE> lookup_table, int axis,
                             concurrency::ThreadPool* thread_pool) const;
 
  private:

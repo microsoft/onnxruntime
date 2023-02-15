@@ -82,7 +82,7 @@ common::Status ComputeByType(OpKernelContext* context,
   }
 
   const T* x_data = X.Data<T>();
-  size_t x_size = x_shape.Size();
+  size_t x_size = onnxruntime::narrow<size_t>(x_shape.Size());
   int64_t stride = dims.size() == 1 ? dims[0] : dims[1];
 
   Tensor* Y = context->Output(0, x_shape);

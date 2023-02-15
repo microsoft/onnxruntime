@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-This is the master msbuild project file for all csharp components. 
+This is the master msbuild project file for all csharp components.
 This is created so that the NuGet dependencies are restored before the projects are built during a CI build.
 CMake creates a target to this project
 -->
 
 <Project DefaultTargets="Build">
-  
+
   <PropertyGroup>
     <OrtPackageId Condition=" '$(OrtPackageId)' == '' ">Microsoft.ML.OnnxRuntime</OrtPackageId>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -54,7 +54,7 @@ CMake creates a target to this project
    <Target Name="ObtainPackageVersion" BeforeTargets="Build;CreatePackage;CreateWindowsAIPackage">
     <ReadLinesFromFile File="..\VERSION_NUMBER">
       <Output TaskParameter="Lines" ItemName="MajorVersionNumber"/>
-    </ReadLinesFromFile>   
+    </ReadLinesFromFile>
     <Exec Command="git rev-parse --short HEAD" ConsoleToMSBuild="true">
         <Output TaskParameter="ConsoleOutput" PropertyName="GitCommitHashShort" />
     </Exec>
@@ -72,7 +72,7 @@ CMake creates a target to this project
     </ConvertToAbsolutePath>
     <ConvertToAbsolutePath Paths="$(OnnxRuntimeSourceDirectory)">
       <Output TaskParameter="AbsolutePaths" PropertyName="OnnxRuntimeSourceDirectoryAbs"/>
-    </ConvertToAbsolutePath>    
+    </ConvertToAbsolutePath>
     <PropertyGroup>
       <CurrentDate>$([System.DateTime]::UtcNow.ToString(yyyyMMdd))</CurrentDate>
       <CurrentTime>$([System.DateTime]::UtcNow.ToString(hhmm))</CurrentTime>
@@ -82,12 +82,12 @@ CMake creates a target to this project
     </PropertyGroup>
     <Message Importance="High" Text="PackageVersion=$(PackageVersion)" />
   </Target>
-  
+
   <Target Name="CreatePackage">
     <Message Importance="High" Text="Bundling managed assemblies into a NuGet package ..." />
     <MSBuild Projects="src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
              Targets="CopyMiscFiles;Pack"
-            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);SelectedTargets=All"/> 
+            Properties="NoBuild=true;Platform=AnyCPU;PackageVersion=$(PackageVersion);OrtPackageId=$(OrtPackageId);SelectedTargets=All"/>
 
     <Message Importance="High" Text="Generating nuspec for the native Nuget package ..." />
     <Exec ContinueOnError="False" Command="python $(GenerateNuspecScript) --package_version $(PackageVersion) --package_name $(OrtPackageId) --target_architecture $(TargetArchitecture) --build_config $(Configuration) --native_build_path $(NativeBuildOutputDirAbs) --packages_path $(OnnxRuntimePackagesDirectoryAbs) --ort_build_path $(OnnxRuntimeBuildDirectoryAbs) --sources_path $(OnnxRuntimeSourceDirectoryAbs) --commit_id $(GitCommitHash) --is_release_build $(IsReleaseBuild) --execution_provider $(ExecutionProvider)" ConsoleToMSBuild="true">
@@ -105,7 +105,7 @@ CMake creates a target to this project
 
     <Copy
     SourceFiles="$(NativeBuildOutputDirAbs)\$(OrtPackageId).$(PackageVersion).nupkg"
-    DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-artifacts"
+    DestinationFolder="$(NativeBuildOutputDirAbs)\nuget-local-artifacts"
     />
   </Target>
 
@@ -113,7 +113,7 @@ CMake creates a target to this project
     <LicenseFile Include="$(OnnxRuntimeSourceDirectory)\LICENSE"/>
   </ItemGroup>
 
-  <Target Name="CreateWindowsAIPackage">  
+  <Target Name="CreateWindowsAIPackage">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeSourceDirectory)\%(Filename).txt')"/>
 
     <Message Importance="High" Text="Generating nuspec for the Microsoft.AI.MachineLearning Nuget package ..." />

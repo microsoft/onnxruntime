@@ -2,6 +2,8 @@
 // Copyright (c) Huawei. All rights reserved.
 // Licensed under the MIT License.
 
+#pragma once
+
 #include "core/providers/cann/cann_kernel.h"
 
 namespace onnxruntime {
@@ -15,7 +17,6 @@ class Flatten final : public CannKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-  Status Prepare(OpKernelContext* ctx, CannPreparation& prepare) const;
 
  private:
   int64_t axis_;

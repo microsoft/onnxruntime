@@ -29,6 +29,8 @@ class Node;
 #include "core/framework/allocatormgr.h"
 #include "core/framework/func_api.h"
 #include "core/framework/provider_options.h"
+#include "core/framework/stream_handles.h"
+#include "core/framework/tuning_context.h"
 
 namespace onnxruntime {
 
@@ -76,7 +78,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -137,7 +139,7 @@ class IExecutionProvider {
   /**
      Get the device id of current execution provider
   */
-  virtual int GetDeviceId() const { return -1; };
+  virtual int GetDeviceId() const { return 0; };
 
   /**
      Get execution provider's configuration options.
@@ -208,9 +210,6 @@ class IExecutionProvider {
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
-
-  virtual common::Status SetComputeStream(void*) { return Status::OK(); }
-  virtual void* GetComputeStream() const { return nullptr; }
 
   void InsertAllocator(AllocatorPtr allocator);
   void ReplaceAllocator(AllocatorPtr allocator);
@@ -296,9 +295,18 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
   virtual bool ConcurrentRunSupported() const { return true; }
+
+  /**
+   * Return the tuning context which holds all TunableOp state.
+   */
+  virtual ITuningContext* GetTuningContext() const {
+    return nullptr;
+  }
 
  private:
   const std::string type_;

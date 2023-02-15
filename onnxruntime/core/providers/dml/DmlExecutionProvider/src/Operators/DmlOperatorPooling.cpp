@@ -20,8 +20,21 @@ public:
         PoolingHelperBase(kernelInfo, kernelInfo.GetTensorShapeDescription(), useGlobalPooling),
         m_function(function)
     {
-        DmlOperator::Initialize(kernelInfo);
+        const bool hasDilations =
+            std::any_of(
+                m_kernel.dilations,
+                m_kernel.dilations + m_kernel.spatialDimensionCount,
+                [](auto d) {return d != 1; }
+            );
+        const bool hasOutputIndices = (kernelInfo.GetOutputCount() > 1 && kernelInfo.IsOutputValid(1));
+        std::vector<std::optional<uint32_t>> kernelOutputIndices = {0};
 
+        if (function == DML_OPERATOR_MAX_POOLING2 && (hasOutputIndices || hasDilations))
+        {
+            kernelOutputIndices.emplace_back(1);
+        }
+        DmlOperator::Initialize(kernelInfo, std::nullopt, kernelOutputIndices);
+        
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
         ML_CHECK_VALID_ARGUMENT(inputDescs.size() >= 1, "MaxPool input count must be >=1.");
@@ -32,13 +45,6 @@ public:
         // The below attributes are temporarily not supported:
         int storageOrder = kernelInfo.GetOptionalAttribute<int>(AttrName::StorageOrder, 0);
         ORT_THROW_HR_IF(E_NOTIMPL, storageOrder != 0);
-
-        const bool hasDilations =
-            std::any_of(
-                m_kernel.dilations,
-                m_kernel.dilations + m_kernel.spatialDimensionCount,
-                [](auto d) {return d != 1; }
-            );
 
         // DML requires that DimensionCount be equal to Input.DimCount - 2 for Pooling
         uint32_t expectedSpatialDimCount = m_inputTensorDescs[0].GetDimensionCount() - 2;
@@ -104,7 +110,6 @@ public:
             case DML_OPERATOR_MAX_POOLING1:
             case DML_OPERATOR_MAX_POOLING2:
             {
-                bool hasOutputIndices = (outputDescs.size() > 1 && outputDescs[1].Desc != nullptr);
                 if (hasOutputIndices || hasDilations)
                 {
                     DML_MAX_POOLING2_OPERATOR_DESC desc = {};

@@ -1,7 +1,7 @@
 # packages used by transformers tool test
-protobuf==3.18.3
-numpy==1.21.6
+packaging
+protobuf==3.20.2
+numpy==1.24.0
 coloredlogs==15.0
-transformers==4.6.1
-onnxconverter-common==1.8.1
+transformers==4.24.0
 psutil

@@ -30,8 +30,8 @@ Status ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, float epsilon, boo
 
   const TensorShape& x_shape = X->Shape();
   const int64_t axis = HandleNegativeAxis(orig_axis, x_shape.NumDimensions());
-  auto norm_count = x_shape.SizeToDimension(axis);
-  auto norm_size = x_shape.SizeFromDimension(axis);
+  auto norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
+  auto norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;

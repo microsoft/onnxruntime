@@ -14,11 +14,33 @@ namespace blas {
 
 #define GEMM(T, ScalarT)                                                         \
   common::Status Gemm(                                                           \
-      bool tunable, hipStream_t stream, rocblas_handle handle,                   \
+      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle,  \
       BlasOp opa, BlasOp opb,                                                    \
       std::int64_t m, std::int64_t n, std::int64_t k,                            \
       ScalarT alpha, const T* a, std::int64_t lda, const T* b, std::int64_t ldb, \
       ScalarT beta, T* c, std::int64_t ldc)
+
+#define BATCHED_GEMM(T, ScalarT)                                                \
+  common::Status BatchedGemm(                                                   \
+      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle, \
+      BlasOp opa, BlasOp opb,                                                   \
+      std::int64_t m, std::int64_t n, std::int64_t k,                           \
+      ScalarT alpha,                                                            \
+      const T** as, std::int64_t lda,                                           \
+      const T** bs, std::int64_t ldb,                                           \
+      ScalarT beta,                                                             \
+      T** cs, std::int64_t ldc, std::int64_t batch)
+
+#define STRIDED_BATCHED_GEMM(T, ScalarT)                                        \
+  common::Status StridedBatchedGemm(                                            \
+      RocmTuningContext* tuning_ctx, hipStream_t stream, rocblas_handle handle, \
+      BlasOp opa, BlasOp opb,                                                   \
+      std::int64_t m, std::int64_t n, std::int64_t k,                           \
+      ScalarT alpha,                                                            \
+      const T* a, std::int64_t lda, std::int64_t stride_a,                      \
+      const T* b, std::int64_t ldb, std::int64_t stride_b,                      \
+      ScalarT beta,                                                             \
+      T* c, std::int64_t ldc, std::int64_t stride_c, std::int64_t batch)
 
 namespace row_major {
 
@@ -29,6 +51,22 @@ GEMM(BFloat16, BFloat16);
 GEMM(double, float);
 GEMM(half, float);
 GEMM(BFloat16, float);
+
+BATCHED_GEMM(double, double);
+BATCHED_GEMM(float, float);
+BATCHED_GEMM(half, half);
+BATCHED_GEMM(BFloat16, BFloat16);
+BATCHED_GEMM(double, float);
+BATCHED_GEMM(half, float);
+BATCHED_GEMM(BFloat16, float);
+
+STRIDED_BATCHED_GEMM(double, double);
+STRIDED_BATCHED_GEMM(float, float);
+STRIDED_BATCHED_GEMM(half, half);
+STRIDED_BATCHED_GEMM(BFloat16, BFloat16);
+STRIDED_BATCHED_GEMM(double, float);
+STRIDED_BATCHED_GEMM(half, float);
+STRIDED_BATCHED_GEMM(BFloat16, float);
 
 }  // namespace row_major
 
@@ -45,6 +83,22 @@ GEMM(BFloat16, BFloat16);
 GEMM(double, float);
 GEMM(half, float);
 GEMM(BFloat16, float);
+
+BATCHED_GEMM(double, double);
+BATCHED_GEMM(float, float);
+BATCHED_GEMM(half, half);
+BATCHED_GEMM(BFloat16, BFloat16);
+BATCHED_GEMM(double, float);
+BATCHED_GEMM(half, float);
+BATCHED_GEMM(BFloat16, float);
+
+STRIDED_BATCHED_GEMM(double, double);
+STRIDED_BATCHED_GEMM(float, float);
+STRIDED_BATCHED_GEMM(half, half);
+STRIDED_BATCHED_GEMM(BFloat16, BFloat16);
+STRIDED_BATCHED_GEMM(double, float);
+STRIDED_BATCHED_GEMM(half, float);
+STRIDED_BATCHED_GEMM(BFloat16, float);
 
 }  // namespace column_major
 

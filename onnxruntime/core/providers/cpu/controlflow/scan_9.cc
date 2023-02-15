@@ -167,14 +167,14 @@ void Scan<9>::Init(const OpKernelInfo& info) {
   auto num_loop_state_vars = info.GetInputCount() - num_scan_inputs_;
   auto num_scan_outputs = info.GetOutputCount() - num_loop_state_vars;
 
-  ReadDirections(info, "scan_input_directions", input_directions_, num_scan_inputs_);
-  ReadDirections(info, "scan_output_directions", output_directions_, num_scan_outputs);
+  ReadDirections(info, "scan_input_directions", input_directions_, onnxruntime::narrow<size_t>(num_scan_inputs_));
+  ReadDirections(info, "scan_output_directions", output_directions_, onnxruntime::narrow<size_t>(num_scan_outputs));
 
   if (info.GetAttrs("scan_input_axes", input_axes_).IsOK()) {
     ORT_ENFORCE(gsl::narrow_cast<int64_t>(input_axes_.size()) == num_scan_inputs_,
                 "Number of entries in 'scan_input_axes' was ", input_axes_.size(), " but expected ", num_scan_inputs_);
   } else {
-    input_axes_.resize(num_scan_inputs_, 0);
+    input_axes_.resize(onnxruntime::narrow<size_t>(num_scan_inputs_), 0);
   }
 
   if (info.GetAttrs("scan_output_axes", output_axes_).IsOK()) {
@@ -182,11 +182,11 @@ void Scan<9>::Init(const OpKernelInfo& info) {
                 "Number of entries in 'scan_output_axes' was ", output_axes_.size(), " but expected ",
                 num_scan_outputs);
   } else {
-    output_axes_.resize(num_scan_outputs, 0);
+    output_axes_.resize(onnxruntime::narrow<size_t>(num_scan_outputs), 0);
   }
 
   device_helpers_.transpose_func = [](const gsl::span<const size_t>& permutations, const Tensor& input,
-                                      Tensor& output) -> Status {
+                                      Tensor& output, Stream* /*no stream needed for cpu*/) -> Status {
     return TransposeBase::DoTranspose(permutations, input, output);
   };
 
@@ -282,7 +282,7 @@ Status ScanImpl::ValidateSubgraphInput(int start_input, int end_input,
                              " dimensions or more but input had shape of ", input_shape);
 
     auto seq_len_dim = input_axes_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables];
-    auto this_seq_len = input_shape[seq_len_dim];
+    auto this_seq_len = input_shape[onnxruntime::narrow<size_t>(seq_len_dim)];
 
     if (sequence_len_ < 0) {
       sequence_len_ = this_seq_len;
@@ -356,7 +356,8 @@ Status ScanImpl::SetupInputs() {
 
       OrtValue transpose_output = scan::detail::AllocateTensorInMLValue(input_tensor.DataType(), new_shape, alloc);
 
-      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>());
+      status = device_helpers_.transpose_func(permutations, input_tensor, *transpose_output.GetMutable<Tensor>(),
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
 
       inputs_.push_back(transpose_output);
@@ -485,7 +486,8 @@ Status ScanImpl::TransposeOutput() {
       Tensor* output = context_.Output(output_index, new_shape);
       ORT_ENFORCE(output, "Outputs from Scan are not optional and should never be null.");
 
-      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output);
+      status = device_helpers_.transpose_func(permutations, temporary_output_tensor, *output, 
+                                              context_.GetComputeStream());
       ORT_RETURN_IF_ERROR(status);
     }
   }

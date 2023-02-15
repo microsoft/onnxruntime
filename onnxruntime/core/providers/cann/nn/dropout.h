@@ -4,25 +4,27 @@
 
 #pragma once
 
+#include <memory>
 #include "core/providers/cann/cann_kernel.h"
+#include "core/framework/random_generator.h"
 
 namespace onnxruntime {
 namespace cann {
 
+template <typename T1, typename T2>
 class Dropout final : public CannKernel {
  public:
   Dropout(const OpKernelInfo& info) : CannKernel(info) {
     int64_t seed = 0;
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
-      seed_ = seed;
+      generator_ = std::make_unique<RandomGenerator>(seed);
     }
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int64_t seed_;
-  static constexpr float default_ratio_ = 0.5f;
+  mutable std::unique_ptr<RandomGenerator> generator_;
 };
 
 }  // namespace cann

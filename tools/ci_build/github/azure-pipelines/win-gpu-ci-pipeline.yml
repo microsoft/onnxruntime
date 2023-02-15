@@ -31,7 +31,7 @@ stages:
 - stage: cuda
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -43,12 +43,13 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-T4
 
 - stage: training
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -60,13 +61,14 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: CUDA
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-training-T4
         isTraining: true
 
 - stage: dml
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
@@ -78,13 +80,14 @@ stages:
         RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
         RunStaticCodeAnalysis: false
         ORT_EP_NAME: DML
+        WITH_CACHE: true
         # DirectML cannot run on T4 GPUs.
         MachinePool: onnxruntime-Win2019-GPU-dml
 
 - stage: kernelDocumentation
   dependsOn: []
   jobs:
-    - template: templates/win-gpu-ci.yml
+    - template: templates/win-ci-vs-2019.yml
       parameters:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda_11.bat
@@ -98,4 +101,5 @@ stages:
         RunStaticCodeAnalysis: false
         GenerateDocumentation: true
         ORT_EP_NAME: CUDA # It doesn't really matter which EP is selected here since this stage is for documentation.
+        WITH_CACHE: true
         MachinePool: onnxruntime-Win2019-GPU-T4

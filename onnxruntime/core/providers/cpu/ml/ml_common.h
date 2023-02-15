@@ -189,38 +189,40 @@ static inline float ErfInv(float x) {
 static inline void multiclass_probability(int64_t classcount,
                                           const gsl::span<const float>& r,
                                           const gsl::span<float>& p) {
-  int64_t sized2 = classcount * classcount;
+  auto safe_int_classcount = SafeInt<size_t>(classcount);
+  size_t sized2 = safe_int_classcount * classcount;
   std::vector<float> Q;
   std::vector<float> Qp;
   Q.assign(sized2, 0.f);
-  Qp.assign(classcount, 0.f);
+  Qp.assign(safe_int_classcount, 0.f);
 
   float eps = 0.005f / static_cast<float>(classcount);
-  for (int64_t i = 0; i < classcount; i++) {
-    p[i] = 1.0f / static_cast<float>(classcount);  // Valid if k = 1
-    for (int64_t j = 0; j < i; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = Q[j * classcount + i];
+
+  for (size_t i = 0; i < safe_int_classcount; i++) {
+    p[i] = 1.0f / onnxruntime::narrow<float>(classcount);  // Valid if k = 1
+    for (size_t j = 0; j < i; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = Q[j * safe_int_classcount + i];
     }
-    for (int64_t j = i + 1; j < classcount; j++) {
-      Q[i * classcount + i] += r[j * classcount + i] * r[j * classcount + i];
-      Q[i * classcount + j] = -r[j * classcount + i] * r[i * classcount + j];
+    for (size_t j = i + 1; j < safe_int_classcount; j++) {
+      Q[i * safe_int_classcount + i] += r[j * safe_int_classcount + i] * r[j * safe_int_classcount + i];
+      Q[i * safe_int_classcount + j] = -r[j * safe_int_classcount + i] * r[i * safe_int_classcount + j];
     }
   }
 
-  for (int64_t loop = 0; loop < 100; loop++) {
+  for (size_t loop = 0; loop < 100; loop++) {
     // stopping condition, recalculate QP,pQP for numerical accuracy
     float pQp = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       Qp[i] = 0;
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[i] += Q[i * classcount + j] * p[j];
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[i] += Q[i * safe_int_classcount + j] * p[j];
       }
       pQp += p[i] * Qp[i];
     }
 
     float max_error = 0;
-    for (int64_t i = 0; i < classcount; i++) {
+    for (size_t i = 0; i < safe_int_classcount; i++) {
       float error = std::fabs(Qp[i] - pQp);
       if (error > max_error) {
         max_error = error;
@@ -230,12 +232,12 @@ static inline void multiclass_probability(int64_t classcount,
     if (max_error < eps)
       break;
 
-    for (int64_t i = 0; i < classcount; i++) {
-      float diff = (-Qp[i] + pQp) / Q[i * classcount + i];
+    for (size_t i = 0; i < safe_int_classcount; i++) {
+      float diff = (-Qp[i] + pQp) / Q[i * safe_int_classcount + i];
       p[i] += diff;
-      pQp = (pQp + diff * (diff * Q[i * classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
-      for (int64_t j = 0; j < classcount; j++) {
-        Qp[j] = (Qp[j] + diff * Q[i * classcount + j]) / (1 + diff);
+      pQp = (pQp + diff * (diff * Q[i * safe_int_classcount + i] + 2 * Qp[i])) / (1 + diff) / (1 + diff);
+      for (size_t j = 0; j < safe_int_classcount; j++) {
+        Qp[j] = (Qp[j] + diff * Q[i * safe_int_classcount + j]) / (1 + diff);
         p[j] /= (1 + diff);
       }
     }
@@ -439,7 +441,7 @@ void batched_update_scores_inplace(gsl::span<T> scores, int64_t num_batches_in, 
         }
 
         if (use_mlas) {
-          MlasComputeSoftmax(s, s, num_batches, batch_size, false, threadpool);
+          MlasComputeSoftmax(s, s, num_batches, onnxruntime::narrow<size_t>(batch_size), false, threadpool);
         } else {
           while (s < s_end) {
             gsl::span<float> scores_for_batch(s, s + batch_size);

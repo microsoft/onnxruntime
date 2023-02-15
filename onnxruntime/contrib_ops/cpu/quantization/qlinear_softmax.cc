@@ -70,9 +70,6 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
   auto input_defs = node.InputDefs();
   auto input_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   is_signed_ = (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT8);
-  const auto* x_shape = input_defs[0]->Shape();
-  ORT_ENFORCE(x_shape != nullptr && x_shape->dim_size() > 0, "input_shape of QLinearSoftmax must be existed");
-  int rank = x_shape->dim_size();
 
   int64_t opset = -1;
   Status status = info.GetAttr<int64_t>("opset", &opset);
@@ -89,12 +86,15 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
     axis_ = opset_ < OPSET13 ? 1 : -1;
   }
 
-  axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(rank)));
-  auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
-  int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
-  // reduce_size could be negative if input-shape has a dynamic axis
-  if (reduce_size > 0) {
-    BuildLookupTableIfFixed(info, fixed_lookup_table_, reduce_size, is_signed_);
+  const auto* x_shape = input_defs[0]->Shape();
+  if (x_shape != nullptr && x_shape->dim_size() > 0) {
+    axis_ = static_cast<int>(HandleNegativeAxis(axis_, int64_t(x_shape->dim_size())));
+    auto input_shape = utils::GetTensorShapeFromTensorShapeProto(*x_shape);
+    int64_t reduce_size = opset_ < OPSET13 ? input_shape.SizeFromDimension(axis_) : input_shape[axis_];
+    // reduce_size could be negative if input-shape has a dynamic axis
+    if (reduce_size > 0) {
+      BuildLookupTableIfFixed(info, fixed_lookup_table_, onnxruntime::narrow<size_t>(reduce_size), is_signed_);
+    }
   }
 }
 
@@ -102,21 +102,24 @@ QLinearSoftmax::QLinearSoftmax(const OpKernelInfo& info)
 Status QLinearSoftmax::Compute(OpKernelContext* ctx) const {
   const auto* X = ctx->Input<Tensor>(0);
   const auto& X_shape = X->Shape();
-  auto* Y = ctx->Output(0, X_shape);
-
   // edge case. one or more dims with value of 0. nothing to do
   if (X_shape.Size() == 0) {
     return Status::OK();
   }
+
+  auto axis = static_cast<int>(HandleNegativeAxis(axis_, int64_t(X_shape.NumDimensions())));
+
+  auto* Y = ctx->Output(0, X_shape);
+
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
-  const size_t D = opset_ < OPSET13 ? X_shape.SizeFromDimension(axis_) : X_shape[axis_];
+  const size_t D = onnxruntime::narrow<size_t>(opset_ < OPSET13 ? X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)) : X_shape[onnxruntime::narrow<size_t>(axis)]);
   EXP_OUT_DTYPE tmp_lookup_table[256];
   gsl::span<const EXP_OUT_DTYPE> lookup_table = GetLookupTable(ctx, tmp_lookup_table, D);
 
   if (opset_ < OPSET13) {
-    return ComputeInternal(ctx, *X, *Y, lookup_table, axis_, thread_pool);
+    return ComputeInternal(ctx, *X, *Y, lookup_table, axis, thread_pool);
   } else {
-    return ComputeImplOpset13(ctx, *X, *Y, lookup_table, thread_pool);
+    return ComputeImplOpset13(ctx, *X, *Y, lookup_table, axis, thread_pool);
   }
 }
 
@@ -207,9 +210,9 @@ common::Status QlinearSoftmaxCPU<int8_t>(size_t N,
   ThreadPool::TryParallelFor(
       thread_pool, N,
       // Read 3*N (max,sum,div) write N (div), computation=Read
-      TensorOpCost{static_cast<double>(D * 3),
+      TensorOpCost{static_cast<double>(D) * 3.0,
                    static_cast<double>(D),
-                   static_cast<double>(D * 3)},
+                   static_cast<double>(D) * 3.0},
       [x_data, y_data, D, y_scale, yzp, &lookup_table](std::ptrdiff_t first, std::ptrdiff_t last) {
         const auto c_y_scale = y_scale;
         const auto c_y_zp = yzp;
@@ -271,8 +274,8 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
   const auto* Y_zp_tensor = context->Input<Tensor>(4);
   const QLinearSoftmax::EXP_OUT_DTYPE Y_scale = std::floor(1.0F / (*(Y_scale_tensor->Data<float>())));
   const auto& X_shape = input.Shape();
-  const size_t N = X_shape.SizeToDimension(axis);
-  const size_t D = X_shape.SizeFromDimension(axis);
+  const size_t N = onnxruntime::narrow<size_t>(X_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  const size_t D = onnxruntime::narrow<size_t>(X_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   common::Status status;
   if (is_signed_) {
     using T = int8_t;
@@ -291,12 +294,12 @@ Status QLinearSoftmax::ComputeInternal(OpKernelContext* context, const Tensor& i
 // opset-13 and above
 Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
                                           const Tensor& input, Tensor& output,
-                                          gsl::span<const EXP_OUT_DTYPE> lookup_table,
+                                          gsl::span<const EXP_OUT_DTYPE> lookup_table, int axis,
                                           concurrency::ThreadPool* thread_pool) const {
   const auto& X_shape = input.Shape();
   size_t rank = X_shape.NumDimensions();
 
-  bool is_transpose_required = (size_t(axis_) != (rank - 1));
+  bool is_transpose_required = (size_t(axis) != (rank - 1));
   Tensor transposed_input;
   Tensor intermediate_output;  // output that the softmax implementation will write into while using transposed input
   std::vector<size_t> permutation(rank);
@@ -307,8 +310,8 @@ Status QLinearSoftmax::ComputeImplOpset13(OpKernelContext* context,
     std::iota(std::begin(permutation), std::end(permutation), 0);
 
     // swap the innermost dim with the dim corresponding to axis
-    permutation[axis_] = rank - 1;
-    permutation[rank - 1] = axis_;
+    permutation[axis] = rank - 1;
+    permutation[rank - 1] = axis;
     std::vector<int64_t> transposed_input_dims(rank);
     std::transform(permutation.cbegin(), permutation.cend(),
                    transposed_input_dims.begin(), [&X_shape](size_t e) { return X_shape[e]; });

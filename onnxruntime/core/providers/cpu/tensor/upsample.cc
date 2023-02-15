@@ -4,9 +4,10 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/tensor/upsample.h"
-
+#include "core/providers/cpu/tensor/upsample_antialias.h"
 using namespace onnxruntime::common;
 using namespace std;
+using onnxruntime::narrow;
 namespace onnxruntime {
 
 #define REGISTER_VERSIONED_TYPED_KERNEL(T, start, end)                          \
@@ -65,7 +66,7 @@ static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
     bool extrapolation_enabled,
     const GetOriginalCoordinateFunc& get_original_coordinate,
     const GetNearestPixelFunc& get_nearest_pixel) {
-  std::vector<int64_t> input_mapping(length_resized);
+  std::vector<int64_t> input_mapping(onnxruntime::narrow<size_t>(length_resized));
 
   for (int64_t output_dim0_idx = 0; output_dim0_idx < length_resized; ++output_dim0_idx) {
     float original_0_idx = get_original_coordinate(static_cast<float>(output_dim0_idx),
@@ -82,7 +83,7 @@ static std::vector<int64_t> UpsampleNearestSetupRank1InputMapping(
       if (input_dim0_idx < 0) input_dim0_idx = 0;
     }
 
-    input_mapping[gsl::narrow_cast<size_t>(output_dim0_idx)]= input_dim0_idx;
+    input_mapping[narrow<size_t>(output_dim0_idx)]= input_dim0_idx;
   }
 
   return input_mapping;
@@ -98,37 +99,37 @@ UpsampleNearestSetupInputMappings(int64_t n_dim,
                                   bool extrapolation_enabled,
                                   const GetOriginalCoordinateFunc& get_original_coordinate,
                                   const GetNearestPixelFunc& get_nearest_pixel) {
-  std::vector<std::vector<int64_t>> input_mappings(gsl::narrow_cast<size_t>(n_dim));
+  std::vector<std::vector<int64_t>> input_mappings(narrow<size_t>(n_dim));
 
   for (int64_t axis = 0; axis < n_dim; ++axis) {
-    std::vector<int64_t>& input_mapping = input_mappings[gsl::narrow_cast<size_t>(axis)];
-    input_mapping.resize(gsl::narrow_cast<size_t>(output_shape[gsl::narrow_cast<size_t>(axis)]));
+    std::vector<int64_t>& input_mapping = input_mappings[narrow<size_t>(axis)];
+    input_mapping.resize(narrow<size_t>(output_shape[narrow<size_t>(axis)]));
 
     // When scale is 1.0, there is a one-to-one mapping between the dimension
     // in the input and the output and there is no need to apply the co-ordinate
     // transformation which should only be done when there is "resizing" required
-    if (scales[gsl::narrow_cast<size_t>(axis)] == 1.0f) {
-      for (int64_t dim = 0; dim < output_shape[gsl::narrow_cast<size_t>(axis)]; dim++) {
-        input_mapping[gsl::narrow_cast<size_t>(dim)] = dim * input_dim_factor[gsl::narrow_cast<size_t>(axis)];
+    if (scales[narrow<size_t>(axis)] == 1.0f) {
+      for (int64_t dim = 0; dim < output_shape[narrow<size_t>(axis)]; dim++) {
+        input_mapping[narrow<size_t>(dim)] = dim * input_dim_factor[narrow<size_t>(axis)];
       }
       continue;
     }
 
     // scale != 1.0
     const int64_t input_size = input_dim_factor[0] * input_shape[0];
-    for (int64_t dim = 0; dim < output_shape[gsl::narrow_cast<size_t>(axis)]; dim++) {
+    for (int64_t dim = 0; dim < output_shape[narrow<size_t>(axis)]; dim++) {
       float original_dim = get_original_coordinate(static_cast<float>(dim),
-                                                   scales[gsl::narrow_cast<size_t>(axis)],
-                                                   static_cast<float>(output_shape[gsl::narrow_cast<size_t>(axis)]),
-                                                   static_cast<float>(input_shape[gsl::narrow_cast<size_t>(axis)]),
-                                                   roi[gsl::narrow_cast<size_t>(axis)], roi[gsl::narrow_cast<size_t>(n_dim + axis)]);
+                                                   scales[narrow<size_t>(axis)],
+                                                   static_cast<float>(output_shape[narrow<size_t>(axis)]),
+                                                   static_cast<float>(input_shape[narrow<size_t>(axis)]),
+                                                   roi[narrow<size_t>(axis)], roi[SafeInt<size_t>(n_dim) + axis]);
 
-      bool need_extrapolation = (extrapolation_enabled && (original_dim < 0 || original_dim > input_shape[gsl::narrow_cast<size_t>(axis)] - 1));
-      int64_t input_dim = get_nearest_pixel(original_dim, scales[gsl::narrow_cast<size_t>(axis)] < 1);
-      if (input_dim >= input_shape[gsl::narrow_cast<size_t>(axis)]) input_dim = input_shape[gsl::narrow_cast<size_t>(axis)] - 1;
+      bool need_extrapolation = (extrapolation_enabled && (original_dim < 0 || original_dim > input_shape[narrow<size_t>(axis)] - 1));
+      int64_t input_dim = get_nearest_pixel(original_dim, scales[narrow<size_t>(axis)] < 1);
+      if (input_dim >= input_shape[narrow<size_t>(axis)]) input_dim = input_shape[narrow<size_t>(axis)] - 1;
       if (input_dim < 0) input_dim = 0;
 
-      input_mapping[gsl::narrow_cast<size_t>(dim)] = need_extrapolation ? (-input_size) : (input_dim * input_dim_factor[gsl::narrow_cast<size_t>(axis)]);
+      input_mapping[narrow<size_t>(dim)] = need_extrapolation ? (-input_size) : (input_dim * input_dim_factor[narrow<size_t>(axis)]);
     }
   }
 
@@ -148,11 +149,11 @@ static Status UpsampleNearestImpl(const T* input,
                                   const GetNearestPixelFunc& get_nearest_pixel) {
   int64_t n_dim = static_cast<int64_t>(input_shape.NumDimensions());
 
-  std::vector<int64_t> input_dim_counters(gsl::narrow_cast<size_t>(n_dim));
-  std::vector<int64_t> input_dim_factor(gsl::narrow_cast<size_t>(n_dim));
-  input_dim_factor[gsl::narrow_cast<size_t>(n_dim - 1)] = 1;  // initialize dimension factor
+  std::vector<int64_t> input_dim_counters(narrow<size_t>(n_dim));
+  std::vector<int64_t> input_dim_factor(narrow<size_t>(n_dim));
+  input_dim_factor[SafeInt<size_t>(n_dim) - 1] = 1;  // initialize dimension factor
   for (int64_t dim_idx = n_dim - 2; dim_idx >= 0; dim_idx--) {
-    input_dim_factor[gsl::narrow_cast<size_t>(dim_idx)] = input_dim_factor[gsl::narrow_cast<size_t>(dim_idx + 1)] * input_shape[gsl::narrow_cast<size_t>(dim_idx + 1)];
+    input_dim_factor[narrow<size_t>(dim_idx)] = input_dim_factor[SafeInt<size_t>(dim_idx) + 1] * input_shape[SafeInt<size_t>(dim_idx) + 1];
   }
 
   int64_t output_idx = 0;
@@ -162,14 +163,14 @@ static Status UpsampleNearestImpl(const T* input,
     std::vector<int64_t> input_mapping = UpsampleNearestSetupRank1InputMapping(input_shape[0],
                                                                                output_shape[0],
                                                                                scales[0],
-                                                                               roi[0], roi[gsl::narrow_cast<size_t>(n_dim + 0)],
+                                                                               roi[0], roi[narrow<size_t>(n_dim + 0)],
                                                                                extrapolation_enabled,
                                                                                get_original_coordinate,
                                                                                get_nearest_pixel);
 
     for (int64_t output_dim0_idx = 0; output_dim0_idx < output_shape[0]; output_dim0_idx++) {
-      int64_t input_dim0_idx = input_mapping[gsl::narrow_cast<size_t>(output_dim0_idx)];
-      output[gsl::narrow_cast<size_t>(output_dim0_idx)]= input_dim0_idx < 0 ? extrapolation_value : input[input_dim0_idx];
+      int64_t input_dim0_idx = input_mapping[narrow<size_t>(output_dim0_idx)];
+      output[narrow<size_t>(output_dim0_idx)]= input_dim0_idx < 0 ? extrapolation_value : input[input_dim0_idx];
     }
 
     return Status::OK();
@@ -184,9 +185,9 @@ static Status UpsampleNearestImpl(const T* input,
     const std::vector<int64_t>& input_mapping_1 = input_mappings[1];
 
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      int64_t input_idx_0 = input_mapping_0[gsl::narrow_cast<size_t>(output_dim0_inx)];
+      int64_t input_idx_0 = input_mapping_0[narrow<size_t>(output_dim0_inx)];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        int64_t input_idx_1 = input_idx_0 + input_mapping_1[gsl::narrow_cast<size_t>(output_dim1_inx)];
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[narrow<size_t>(output_dim1_inx)];
         output[output_idx++] = (input_idx_1 < 0) ? extrapolation_value : input[input_idx_1];
       }
     }
@@ -199,11 +200,11 @@ static Status UpsampleNearestImpl(const T* input,
     const std::vector<int64_t>& input_mapping_2 = input_mappings[2];
 
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      int64_t input_idx_0 = input_mapping_0[gsl::narrow_cast<size_t>(output_dim0_inx)];
+      int64_t input_idx_0 = input_mapping_0[narrow<size_t>(output_dim0_inx)];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        int64_t input_idx_1 = input_idx_0 + input_mapping_1[gsl::narrow_cast<size_t>(output_dim1_inx)];
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[narrow<size_t>(output_dim1_inx)];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
-          int64_t input_idx_2 = input_idx_1 + input_mapping_2[gsl::narrow_cast<size_t>(output_dim2_inx)];
+          int64_t input_idx_2 = input_idx_1 + input_mapping_2[narrow<size_t>(output_dim2_inx)];
           output[output_idx++] = (input_idx_2 < 0) ? extrapolation_value : input[input_idx_2];
         }
       }
@@ -218,14 +219,14 @@ static Status UpsampleNearestImpl(const T* input,
     const std::vector<int64_t>& input_mapping_3 = input_mappings[3];
 
     for (int64_t output_dim0_inx = 0; output_dim0_inx < output_shape[0]; output_dim0_inx++) {
-      int64_t input_idx_0 = input_mapping_0[gsl::narrow_cast<size_t>(output_dim0_inx)];
+      int64_t input_idx_0 = input_mapping_0[narrow<size_t>(output_dim0_inx)];
       for (int64_t output_dim1_inx = 0; output_dim1_inx < output_shape[1]; output_dim1_inx++) {
-        int64_t input_idx_1 = input_idx_0 + input_mapping_1[gsl::narrow_cast<size_t>(output_dim1_inx)];
+        int64_t input_idx_1 = input_idx_0 + input_mapping_1[narrow<size_t>(output_dim1_inx)];
         for (int64_t output_dim2_inx = 0; output_dim2_inx < output_shape[2]; output_dim2_inx++) {
-          int64_t input_idx_2 = input_idx_1 + input_mapping_2[gsl::narrow_cast<size_t>(output_dim2_inx)];
+          int64_t input_idx_2 = input_idx_1 + input_mapping_2[narrow<size_t>(output_dim2_inx)];
           for (int64_t output_dim3_inx = 0; output_dim3_inx < output_shape[3]; output_dim3_inx++) {
-            int64_t input_idx_3 = input_idx_2 + input_mapping_3[gsl::narrow_cast<size_t>(output_dim3_inx)];
-            output[output_idx++] = (input_idx_3 < 0) ? static_cast<T>(extrapolation_value) : input[gsl::narrow_cast<size_t>(input_idx_3)];
+            int64_t input_idx_3 = input_idx_2 + input_mapping_3[narrow<size_t>(output_dim3_inx)];
+            output[output_idx++] = (input_idx_3 < 0) ? static_cast<T>(extrapolation_value) : input[narrow<size_t>(input_idx_3)];
           }
         }
       }
@@ -233,22 +234,22 @@ static Status UpsampleNearestImpl(const T* input,
     return Status::OK();
   }
 
-  std::vector<int64_t> output_dim_counter(n_dim);
+  std::vector<int64_t> output_dim_counter(onnxruntime::narrow<size_t>(n_dim));
   for (int64_t dim_idx = 0; dim_idx < n_dim; dim_idx++) {
-    input_idx += input_mappings[gsl::narrow_cast<size_t>(dim_idx)][0 /* output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)] */];
+    input_idx += input_mappings[narrow<size_t>(dim_idx)][0 /* output_dim_counter[narrow<size_t>(dim_idx)] */];
   }
 
   for (int64_t output_size = output_shape.Size(); output_idx < output_size; output_idx++) {
-    output[gsl::narrow_cast<size_t>(output_idx)] = (input_idx < 0) ? extrapolation_value : input[gsl::narrow_cast<size_t>(input_idx)];
+    output[narrow<size_t>(output_idx)] = (input_idx < 0) ? extrapolation_value : input[narrow<size_t>(input_idx)];
 
     for (int64_t dim_idx = n_dim - 1; dim_idx >= 0; dim_idx--) {
-      input_idx -= input_mappings[gsl::narrow_cast<size_t>(dim_idx)][gsl::narrow_cast<size_t>(output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)])];
-      if (++output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)] < output_shape[gsl::narrow_cast<size_t>(dim_idx)]) {
-        input_idx += input_mappings[gsl::narrow_cast<size_t>(dim_idx)][gsl::narrow_cast<size_t>(output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)])];
+      input_idx -= input_mappings[narrow<size_t>(dim_idx)][narrow<size_t>(output_dim_counter[narrow<size_t>(dim_idx)])];
+      if (++output_dim_counter[narrow<size_t>(dim_idx)] < output_shape[narrow<size_t>(dim_idx)]) {
+        input_idx += input_mappings[narrow<size_t>(dim_idx)][narrow<size_t>(output_dim_counter[narrow<size_t>(dim_idx)])];
         break;
       }
-      output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)] = 0;
-      input_idx += input_mappings[gsl::narrow_cast<size_t>(dim_idx)][0 /* output_dim_counter[gsl::narrow_cast<size_t>(dim_idx)] */];
+      output_dim_counter[narrow<size_t>(dim_idx)] = 0;
+      input_idx += input_mappings[narrow<size_t>(dim_idx)][0 /* output_dim_counter[narrow<size_t>(dim_idx)] */];
     }
   }
 
@@ -349,7 +350,7 @@ static Status UpsampleLinearImpl(const std::function<void(size_t, size_t, float)
       cur_idx /= output_shape[j];
     }
 
-    // output[gsl::narrow_cast<size_t>(i)] = 0;
+    // output[narrow<size_t>(i)] = 0;
 
     int64_t step = (1LL << n_dim) - 1;
     while (step >= 0) {
@@ -365,7 +366,7 @@ static Status UpsampleLinearImpl(const std::function<void(size_t, size_t, float)
         cur >>= 1;
       }
 
-      // output[gsl::narrow_cast<size_t>(i)] += input[old_idx] * w;
+      // output[narrow<size_t>(i)] += input[old_idx] * w;
       apply(old_idx, i, w);
 
       step--;
@@ -390,7 +391,7 @@ static Status UpsampleLinear(const T* input,
   std::fill_n(output, output_shape.Size(), T{});
 
   auto apply = [&input, &output](size_t input_idx, size_t output_idx, float w) {
-    output[gsl::narrow_cast<size_t>(output_idx)] += input[gsl::narrow_cast<size_t>(input_idx)] * w;
+    output[narrow<size_t>(output_idx)] += input[narrow<size_t>(input_idx)] * w;
   };
 
   return UpsampleLinearImpl(apply, input_shape, output_shape, scales, is_resize, roi, get_original_coordinate);
@@ -471,16 +472,16 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
 
     const int32_t in_y1 = std::min(static_cast<int32_t>(in_y), input_height - 1);
     const int32_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    p.dy1[gsl::narrow_cast<size_t>(y)] = std::fabs(in_y - in_y1);
-    p.dy2[gsl::narrow_cast<size_t>(y)] = std::fabs(in_y - in_y2);
+    p.dy1[narrow<size_t>(y)] = std::fabs(in_y - in_y1);
+    p.dy2[narrow<size_t>(y)] = std::fabs(in_y - in_y2);
 
     if (in_y1 == in_y2) {
-      p.dy1[gsl::narrow_cast<size_t>(y)] = 0.5f;
-      p.dy2[gsl::narrow_cast<size_t>(y)] = 0.5f;
+      p.dy1[narrow<size_t>(y)] = 0.5f;
+      p.dy2[narrow<size_t>(y)] = 0.5f;
     }
 
-    p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] = input_width * in_y1;
-    p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] = input_width * in_y2;
+    p.input_width_mul_y1[narrow<size_t>(y)] = input_width * in_y1;
+    p.input_width_mul_y2[narrow<size_t>(y)] = input_width * in_y2;
   }
 
   const size_t width_rindex = is_nchw ? 0 : 1;
@@ -496,14 +497,14 @@ BilinearParams SetupUpsampleBilinear(const int32_t input_height,
     p.x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
-    p.in_x1[gsl::narrow_cast<size_t>(x)] = std::min(static_cast<int32_t>(in_x), input_width - 1);
-    p.in_x2[gsl::narrow_cast<size_t>(x)] = std::min(p.in_x1[gsl::narrow_cast<size_t>(x)] + 1, input_width - 1);
+    p.in_x1[narrow<size_t>(x)] = std::min(static_cast<int32_t>(in_x), input_width - 1);
+    p.in_x2[narrow<size_t>(x)] = std::min(p.in_x1[narrow<size_t>(x)] + 1, input_width - 1);
 
-    p.dx1[gsl::narrow_cast<size_t>(x)] = std::fabs(in_x - p.in_x1[gsl::narrow_cast<size_t>(x)]);
-    p.dx2[gsl::narrow_cast<size_t>(x)] = std::fabs(in_x - p.in_x2[gsl::narrow_cast<size_t>(x)]);
-    if (p.in_x1[gsl::narrow_cast<size_t>(x)] == p.in_x2[gsl::narrow_cast<size_t>(x)]) {
-      p.dx1[gsl::narrow_cast<size_t>(x)] = 0.5f;
-      p.dx2[gsl::narrow_cast<size_t>(x)] = 0.5f;
+    p.dx1[narrow<size_t>(x)] = std::fabs(in_x - p.in_x1[narrow<size_t>(x)]);
+    p.dx2[narrow<size_t>(x)] = std::fabs(in_x - p.in_x2[narrow<size_t>(x)]);
+    if (p.in_x1[narrow<size_t>(x)] == p.in_x2[narrow<size_t>(x)]) {
+      p.dx1[narrow<size_t>(x)] = 0.5f;
+      p.dx2[narrow<size_t>(x)] = 0.5f;
     }
   }
 
@@ -578,16 +579,16 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
 
     const int32_t in_y1 = std::min(static_cast<int32_t>(in_y), input_height - 1);
     const int32_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    p.dy1_scale_10[gsl::narrow_cast<size_t>(y)] = std::abs(in_y_scale_10 - in_y1 * (1 << 10));
-    p.dy2_scale_10[gsl::narrow_cast<size_t>(y)] = std::abs(in_y_scale_10 - in_y2 * (1 << 10));
+    p.dy1_scale_10[narrow<size_t>(y)] = std::abs(in_y_scale_10 - in_y1 * (1 << 10));
+    p.dy2_scale_10[narrow<size_t>(y)] = std::abs(in_y_scale_10 - in_y2 * (1 << 10));
 
     if (in_y1 == in_y2) {
-      p.dy1_scale_10[gsl::narrow_cast<size_t>(y)] = static_cast<int32_t>(0.5f * (1 << 10));
-      p.dy2_scale_10[gsl::narrow_cast<size_t>(y)] = static_cast<int32_t>(0.5f * (1 << 10));
+      p.dy1_scale_10[narrow<size_t>(y)] = static_cast<int32_t>(0.5f * (1 << 10));
+      p.dy2_scale_10[narrow<size_t>(y)] = static_cast<int32_t>(0.5f * (1 << 10));
     }
 
-    p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] = input_width * in_y1;
-    p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] = input_width * in_y2;
+    p.input_width_mul_y1[narrow<size_t>(y)] = input_width * in_y1;
+    p.input_width_mul_y2[narrow<size_t>(y)] = input_width * in_y2;
   }
 
   const size_t width_rindex = is_nchw ? 0 : 1;
@@ -604,14 +605,14 @@ BilinearParamsInteger SetupUpsampleBilinearInteger(const int32_t input_height,
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
     int32_t in_x_scale_10 = static_cast<int32_t>(in_x * (1 << 10));
 
-    p.in_x1[gsl::narrow_cast<size_t>(x)] = std::min(static_cast<int32_t>(in_x), input_width - 1);
-    p.in_x2[gsl::narrow_cast<size_t>(x)] = std::min(p.in_x1[gsl::narrow_cast<size_t>(x)] + 1, input_width - 1);
+    p.in_x1[narrow<size_t>(x)] = std::min(static_cast<int32_t>(in_x), input_width - 1);
+    p.in_x2[narrow<size_t>(x)] = std::min(p.in_x1[narrow<size_t>(x)] + 1, input_width - 1);
 
-    p.dx1_scale_10[gsl::narrow_cast<size_t>(x)] = std::abs(in_x_scale_10 - p.in_x1[gsl::narrow_cast<size_t>(x)] * (1 << 10));
-    p.dx2_scale_10[gsl::narrow_cast<size_t>(x)] = std::abs(in_x_scale_10 - p.in_x2[gsl::narrow_cast<size_t>(x)] * (1 << 10));
-    if (p.in_x1[gsl::narrow_cast<size_t>(x)] == p.in_x2[gsl::narrow_cast<size_t>(x)]) {
-      p.dx1_scale_10[gsl::narrow_cast<size_t>(x)] = static_cast<int32_t>(0.5f * (1 << 10));
-      p.dx2_scale_10[gsl::narrow_cast<size_t>(x)] = static_cast<int32_t>(0.5f * (1 << 10));
+    p.dx1_scale_10[narrow<size_t>(x)] = std::abs(in_x_scale_10 - p.in_x1[narrow<size_t>(x)] * (1 << 10));
+    p.dx2_scale_10[narrow<size_t>(x)] = std::abs(in_x_scale_10 - p.in_x2[narrow<size_t>(x)] * (1 << 10));
+    if (p.in_x1[narrow<size_t>(x)] == p.in_x2[narrow<size_t>(x)]) {
+      p.dx1_scale_10[narrow<size_t>(x)] = static_cast<int32_t>(0.5f * (1 << 10));
+      p.dx2_scale_10[narrow<size_t>(x)] = static_cast<int32_t>(0.5f * (1 << 10));
     }
   }
 
@@ -654,9 +655,9 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
                                               const GetOriginalCoordinateFunc& get_original_coordinate) {
   TrilinearParams p;
 
-  p.z_original.reserve(gsl::narrow_cast<size_t>(output_depth));
-  p.y_original.reserve(gsl::narrow_cast<size_t>(output_height));
-  p.x_original.reserve(gsl::narrow_cast<size_t>(output_width));
+  p.z_original.reserve(narrow<size_t>(output_depth));
+  p.y_original.reserve(narrow<size_t>(output_height));
+  p.x_original.reserve(narrow<size_t>(output_width));
 
   // For each index in the output height and output width, cache its corresponding indices in the input
   // while multiplying it with the input stride for that dimension (cache because we don't have to re-compute
@@ -716,16 +717,16 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
 
     const int64_t in_z1 = std::min(static_cast<int64_t>(in_z), input_depth - 1);
     const int64_t in_z2 = std::min(in_z1 + 1, input_depth - 1);
-    p.dz1[gsl::narrow_cast<size_t>(z)] = std::fabs(in_z - in_z1);
-    p.dz2[gsl::narrow_cast<size_t>(z)] = std::fabs(in_z - in_z2);
+    p.dz1[narrow<size_t>(z)] = std::fabs(in_z - in_z1);
+    p.dz2[narrow<size_t>(z)] = std::fabs(in_z - in_z2);
 
     if (in_z1 == in_z2) {
-      p.dz1[gsl::narrow_cast<size_t>(z)] = 0.5f;
-      p.dz2[gsl::narrow_cast<size_t>(z)] = 0.5f;
+      p.dz1[narrow<size_t>(z)] = 0.5f;
+      p.dz2[narrow<size_t>(z)] = 0.5f;
     }
 
-    p.input_height_width_mul_z1[gsl::narrow_cast<size_t>(z)] = input_height * input_width * in_z1;
-    p.input_height_width_mul_z2[gsl::narrow_cast<size_t>(z)] = input_height * input_width * in_z2;
+    p.input_height_width_mul_z1[narrow<size_t>(z)] = input_height * input_width * in_z1;
+    p.input_height_width_mul_z2[narrow<size_t>(z)] = input_height * input_width * in_z2;
   }
 
   auto roi_y_start = roi.size() / 2 - 2;
@@ -741,16 +742,16 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
 
     const int64_t in_y1 = std::min(static_cast<int64_t>(in_y), input_height - 1);
     const int64_t in_y2 = std::min(in_y1 + 1, input_height - 1);
-    p.dy1[gsl::narrow_cast<size_t>(y)] = std::fabs(in_y - in_y1);
-    p.dy2[gsl::narrow_cast<size_t>(y)] = std::fabs(in_y - in_y2);
+    p.dy1[narrow<size_t>(y)] = std::fabs(in_y - in_y1);
+    p.dy2[narrow<size_t>(y)] = std::fabs(in_y - in_y2);
 
     if (in_y1 == in_y2) {
-      p.dy1[gsl::narrow_cast<size_t>(y)] = 0.5f;
-      p.dy2[gsl::narrow_cast<size_t>(y)] = 0.5f;
+      p.dy1[narrow<size_t>(y)] = 0.5f;
+      p.dy2[narrow<size_t>(y)] = 0.5f;
     }
 
-    p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] = input_width * in_y1;
-    p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] = input_width * in_y2;
+    p.input_width_mul_y1[narrow<size_t>(y)] = input_width * in_y1;
+    p.input_width_mul_y2[narrow<size_t>(y)] = input_width * in_y2;
   }
 
   auto roi_x_start = roi.size() / 2 - 1;
@@ -764,14 +765,14 @@ static TrilinearParams SetupUpsampleTrilinear(int64_t input_depth,
     p.x_original.emplace_back(in_x);
     in_x = std::max(0.0f, std::min(in_x, static_cast<float>(input_width - 1)));
 
-    p.in_x1[gsl::narrow_cast<size_t>(x)] = std::min(static_cast<int64_t>(in_x), input_width - 1);
-    p.in_x2[gsl::narrow_cast<size_t>(x)] = std::min(p.in_x1[gsl::narrow_cast<size_t>(x)] + 1, input_width - 1);
+    p.in_x1[narrow<size_t>(x)] = std::min(static_cast<int64_t>(in_x), input_width - 1);
+    p.in_x2[narrow<size_t>(x)] = std::min(p.in_x1[narrow<size_t>(x)] + 1, input_width - 1);
 
-    p.dx1[gsl::narrow_cast<size_t>(x)] = std::fabs(in_x - p.in_x1[gsl::narrow_cast<size_t>(x)]);
-    p.dx2[gsl::narrow_cast<size_t>(x)] = std::fabs(in_x - p.in_x2[gsl::narrow_cast<size_t>(x)]);
-    if (p.in_x1[gsl::narrow_cast<size_t>(x)] == p.in_x2[gsl::narrow_cast<size_t>(x)]) {
-      p.dx1[gsl::narrow_cast<size_t>(x)] = 0.5f;
-      p.dx2[gsl::narrow_cast<size_t>(x)] = 0.5f;
+    p.dx1[narrow<size_t>(x)] = std::fabs(in_x - p.in_x1[narrow<size_t>(x)]);
+    p.dx2[narrow<size_t>(x)] = std::fabs(in_x - p.in_x2[narrow<size_t>(x)]);
+    if (p.in_x1[narrow<size_t>(x)] == p.in_x2[narrow<size_t>(x)]) {
+      p.dx1[narrow<size_t>(x)] = 0.5f;
+      p.dx2[narrow<size_t>(x)] = 0.5f;
     }
   }
 
@@ -820,35 +821,35 @@ void UpsampleTrilinear(int64_t batch_size,
                 // when use_extrapolation is set and original index of x or y is out of the dim range
                 // then use extrapolation_value as the output value.
                 if (use_extrapolation &&
-                    ((p.z_original[gsl::narrow_cast<size_t>(z)] < 0 || p.z_original[gsl::narrow_cast<size_t>(z)] > static_cast<float>(input_depth - 1)) ||
-                     (p.y_original[gsl::narrow_cast<size_t>(y)] < 0 || p.y_original[gsl::narrow_cast<size_t>(y)] > static_cast<float>(input_height - 1)) ||
-                     (p.x_original[gsl::narrow_cast<size_t>(x)] < 0 || p.x_original[gsl::narrow_cast<size_t>(x)] > static_cast<float>(input_width - 1)))) {
+                    ((p.z_original[narrow<size_t>(z)] < 0 || p.z_original[narrow<size_t>(z)] > static_cast<float>(input_depth - 1)) ||
+                     (p.y_original[narrow<size_t>(y)] < 0 || p.y_original[narrow<size_t>(y)] > static_cast<float>(input_height - 1)) ||
+                     (p.x_original[narrow<size_t>(x)] < 0 || p.x_original[narrow<size_t>(x)] > static_cast<float>(input_width - 1)))) {
                   Ydata[output_width * output_height * z + output_width * y + x] =
                       static_cast<T>(extrapolation_value);
                   continue;
                 }
 
                 // subscript ordering in the variable - (xyz)
-                T X111 = Xdata[p.input_height_width_mul_z1[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] + p.in_x1[gsl::narrow_cast<size_t>(x)]];
-                T X211 = Xdata[p.input_height_width_mul_z1[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] + p.in_x2[gsl::narrow_cast<size_t>(x)]];
-                T X121 = Xdata[p.input_height_width_mul_z1[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] + p.in_x1[gsl::narrow_cast<size_t>(x)]];
-                T X221 = Xdata[p.input_height_width_mul_z1[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] + p.in_x2[gsl::narrow_cast<size_t>(x)]];
+                T X111 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
+                T X211 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
+                T X121 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
+                T X221 = Xdata[p.input_height_width_mul_z1[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
 
-                T X112 = Xdata[p.input_height_width_mul_z2[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] + p.in_x1[gsl::narrow_cast<size_t>(x)]];
-                T X212 = Xdata[p.input_height_width_mul_z2[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y1[gsl::narrow_cast<size_t>(y)] + p.in_x2[gsl::narrow_cast<size_t>(x)]];
-                T X122 = Xdata[p.input_height_width_mul_z2[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] + p.in_x1[gsl::narrow_cast<size_t>(x)]];
-                T X222 = Xdata[p.input_height_width_mul_z2[gsl::narrow_cast<size_t>(z)] + p.input_width_mul_y2[gsl::narrow_cast<size_t>(y)] + p.in_x2[gsl::narrow_cast<size_t>(x)]];
+                T X112 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
+                T X212 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y1[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
+                T X122 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x1[narrow<size_t>(x)]];
+                T X222 = Xdata[p.input_height_width_mul_z2[narrow<size_t>(z)] + p.input_width_mul_y2[narrow<size_t>(y)] + p.in_x2[narrow<size_t>(x)]];
 
                 Ydata[output_width * output_height * z + output_width * y + x] =
-                    static_cast<T>(p.dx2[gsl::narrow_cast<size_t>(x)] * p.dy2[gsl::narrow_cast<size_t>(y)] * p.dz2[gsl::narrow_cast<size_t>(z)] * X111 +
-                                   p.dx1[gsl::narrow_cast<size_t>(x)] * p.dy2[gsl::narrow_cast<size_t>(y)] * p.dz2[gsl::narrow_cast<size_t>(z)] * X211 +
-                                   p.dx2[gsl::narrow_cast<size_t>(x)] * p.dy1[gsl::narrow_cast<size_t>(y)] * p.dz2[gsl::narrow_cast<size_t>(z)] * X121 +
-                                   p.dx1[gsl::narrow_cast<size_t>(x)] * p.dy1[gsl::narrow_cast<size_t>(y)] * p.dz2[gsl::narrow_cast<size_t>(z)] * X221 +
+                    static_cast<T>(p.dx2[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X111 +
+                                   p.dx1[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X211 +
+                                   p.dx2[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X121 +
+                                   p.dx1[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz2[narrow<size_t>(z)] * X221 +
 
-                                   p.dx2[gsl::narrow_cast<size_t>(x)] * p.dy2[gsl::narrow_cast<size_t>(y)] * p.dz1[gsl::narrow_cast<size_t>(z)] * X112 +
-                                   p.dx1[gsl::narrow_cast<size_t>(x)] * p.dy2[gsl::narrow_cast<size_t>(y)] * p.dz1[gsl::narrow_cast<size_t>(z)] * X212 +
-                                   p.dx2[gsl::narrow_cast<size_t>(x)] * p.dy1[gsl::narrow_cast<size_t>(y)] * p.dz1[gsl::narrow_cast<size_t>(z)] * X122 +
-                                   p.dx1[gsl::narrow_cast<size_t>(x)] * p.dy1[gsl::narrow_cast<size_t>(y)] * p.dz1[gsl::narrow_cast<size_t>(z)] * X222);
+                                   p.dx2[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X112 +
+                                   p.dx1[narrow<size_t>(x)] * p.dy2[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X212 +
+                                   p.dx2[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X122 +
+                                   p.dx1[narrow<size_t>(x)] * p.dy1[narrow<size_t>(y)] * p.dz1[narrow<size_t>(z)] * X222);
               }
             }
           }
@@ -905,7 +906,7 @@ float CubicInterpolation1D(const T* Xdata,
   float result = 0;
   for (int i = 0, j = -1; i < static_cast<int>(CubicModeGridLength); i++, j++) {
     auto orig_data = GetDataForCoordinate(Xdata, x + j, y, input_height, input_width);
-    result += coeff_array[gsl::narrow_cast<size_t>(i)] / coeff_sum * orig_data;
+    result += coeff_array[narrow<size_t>(i)] / coeff_sum * orig_data;
   }
   cache[grid_start_pos] = result;
 
@@ -933,10 +934,10 @@ void ResizeBiCubic(int64_t batch_size,
                    T* Ydata,
                    const GetOriginalCoordinateFunc& get_original_coordinate) {
   std::vector<float> y_original;
-  y_original.reserve(gsl::narrow_cast<size_t>(output_height));
+  y_original.reserve(narrow<size_t>(output_height));
 
   std::vector<float> x_original;
-  x_original.reserve(gsl::narrow_cast<size_t>(output_width));
+  x_original.reserve(narrow<size_t>(output_width));
 
   std::unordered_map<float, std::array<float, CubicModeGridLength>> cubic_coeffs;
   std::unordered_map<float, std::unordered_map<int64_t, float>> coeff_to_1Dinterpolation_map;
@@ -953,7 +954,7 @@ void ResizeBiCubic(int64_t batch_size,
                                                              static_cast<float>(input_height),
                                                              roi[roi_y_start], roi[roi_y_end]);
     y_original.emplace_back(in_y);
-    auto s = y_original[gsl::narrow_cast<size_t>(y)] - std::floor(y_original[gsl::narrow_cast<size_t>(y)]);
+    auto s = y_original[narrow<size_t>(y)] - std::floor(y_original[narrow<size_t>(y)]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
       cubic_coeffs[s] = GetCubicCoeffs(s, cubic_coeff_a);
       coeff_to_1Dinterpolation_map[s] = {};
@@ -969,7 +970,7 @@ void ResizeBiCubic(int64_t batch_size,
                                                             static_cast<float>(input_width),
                                                             roi[roi_x_start], roi[roi_x_end]);
     x_original.emplace_back(in_x);
-    auto s = x_original[gsl::narrow_cast<size_t>(x)] - std::floor(x_original[gsl::narrow_cast<size_t>(x)]);
+    auto s = x_original[narrow<size_t>(x)] - std::floor(x_original[narrow<size_t>(x)]);
     if (cubic_coeffs.find(s) == cubic_coeffs.end()) {
       cubic_coeffs[s] = GetCubicCoeffs(s, cubic_coeff_a);
       coeff_to_1Dinterpolation_map[s] = {};
@@ -985,7 +986,7 @@ void ResizeBiCubic(int64_t batch_size,
   for (int64_t n = 0; n < batch_size; n++) {
     for (int64_t c = 0; c < num_channels; c++) {
       for (int64_t y = 0; y < output_height; ++y) {
-        auto in_y = y_original[gsl::narrow_cast<size_t>(y)];
+        auto in_y = y_original[narrow<size_t>(y)];
 
         // when use_extrapolation is set and original index is out of the dim range
         // then use extrapolation_value as the output value.
@@ -1006,13 +1007,13 @@ void ResizeBiCubic(int64_t batch_size,
           y_coeff_sum = 0;
           auto& orig_y_coeffs = cubic_coeffs[in_y - y_int];
           for (int64_t i = 0, y_val = y_int - 1; y_val <= y_int + 2; y_val++, i++) {
-            y_coeff_holder[gsl::narrow_cast<size_t>(i)] = (y_val < 0 || y_val >= static_cast<float>(input_height)) ? 0.0f : orig_y_coeffs[gsl::narrow_cast<size_t>(i)];
-            y_coeff_sum += y_coeff_holder[gsl::narrow_cast<size_t>(i)];
+            y_coeff_holder[narrow<size_t>(i)] = (y_val < 0 || y_val >= static_cast<float>(input_height)) ? 0.0f : orig_y_coeffs[narrow<size_t>(i)];
+            y_coeff_sum += y_coeff_holder[narrow<size_t>(i)];
           }
         }
 
         for (int64_t x = 0; x < output_width; ++x) {
-          auto in_x = x_original[gsl::narrow_cast<size_t>(x)];
+          auto in_x = x_original[narrow<size_t>(x)];
 
           // when use_extrapolation is set and original index is out of the dim range
           // then use extrapolation_value as the output value.
@@ -1032,8 +1033,8 @@ void ResizeBiCubic(int64_t batch_size,
             x_coeff_sum = 0;
             auto& orig_x_coeff = cubic_coeffs[s_x];
             for (int64_t i = 0, x_val = x_int - 1; x_val <= x_int + 2; x_val++, i++) {
-              x_coeff_holder[gsl::narrow_cast<size_t>(i)] = (x_val < 0 || x_val >= static_cast<float>(input_width)) ? 0.0f : orig_x_coeff[gsl::narrow_cast<size_t>(i)];
-              x_coeff_sum += x_coeff_holder[gsl::narrow_cast<size_t>(i)];
+              x_coeff_holder[narrow<size_t>(i)] = (x_val < 0 || x_val >= static_cast<float>(input_width)) ? 0.0f : orig_x_coeff[narrow<size_t>(i)];
+              x_coeff_sum += x_coeff_holder[narrow<size_t>(i)];
             }
           }
 
@@ -1045,7 +1046,7 @@ void ResizeBiCubic(int64_t batch_size,
             auto x_interpolation_result = CubicInterpolation1D(Xdata, x_int, y_val,
                                                                input_height, input_width, coeff_x, x_coeff_sum,
                                                                interpolation_result_cache);
-            result += x_interpolation_result * coeff_y[gsl::narrow_cast<size_t>(i)] / y_coeff_sum;
+            result += x_interpolation_result * coeff_y[narrow<size_t>(i)] / y_coeff_sum;
           }
 
           Ydata[y * output_width + x] = static_cast<T>(result);
@@ -1070,9 +1071,8 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                                 const std::vector<float>& scales,
                                 const gsl::span<const int64_t>& output_dims) const {
   const auto* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
   auto dims = X->Shape().GetDims();
-  ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
+  ORT_RETURN_IF_NOT(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
   Tensor* Y = context->Output(0, output_dims);
 
@@ -1086,20 +1086,21 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
                   is_resize_ ? "Resize: input tensor's dimension does not match the scales."
                              : "Upsample: input tensor's dimension does not match the scales.");
 
-  if (roi.size() != 2 * X->Shape().GetDims().size())
+  if (roi.size() != 2 * dims.size())
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   "Resize: size of roi array should be 2 * N where N is the rank of input tensor X.");
 
   bool no_scale = true;
   for (std::size_t i = 0, end = output_dims.size(); i < end; i++) {
-    if (no_scale && output_dims[gsl::narrow_cast<size_t>(i)] != dims[gsl::narrow_cast<size_t>(i)]) no_scale = false;
+    if (no_scale && output_dims[narrow<size_t>(i)] != dims[narrow<size_t>(i)]) no_scale = false;
   }
 
   if (no_scale) {
     memcpy(Y->MutableDataRaw(), X->DataRaw(), Y->SizeInBytes());
     return Status::OK();
   }
-
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
   switch (mode_) {
     case UpsampleMode::NN:
       return UpsampleNearest<T>(X->Data<T>(), Y->MutableData<T>(), X->Shape(), Y->Shape(),
@@ -1149,7 +1150,7 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
             height_scale = scales[2];
             width_scale = scales[3];
           } else {
-            ORT_ENFORCE(scales[3] == 1.0f, "4-D input with innermost scale (usually channel of NHWC) as 1.");
+            ORT_RETURN_IF_NOT(scales[3] == 1.0f, "4-D input with innermost scale (usually channel of NHWC) as 1.");
             is_nchw = false;
 
             batch_size = static_cast<int32_t>(dims[0]);
@@ -1165,46 +1166,65 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
           }
         }
 
-        AllocatorPtr alloc;
-        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
         if (is_nchw) {
-          UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                           height_scale, width_scale, roi,
-                           use_extrapolation_, extrapolation_value_, X->Data<T>(),
-                           Y->MutableData<T>(), alloc, get_original_coordinate_,
-                           output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          if (antialias_) {
+            UpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                      height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                      X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                      output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          } else {
+            UpsampleBilinear(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                             height_scale, width_scale, roi,
+                             use_extrapolation_, extrapolation_value_, X->Data<T>(),
+                             Y->MutableData<T>(), alloc, get_original_coordinate_,
+                             output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+          }
         } else {
           if (use_extrapolation_) {
-            if (!is_2D &&
-                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
-              NhwcUpsampleBilinearInteger<T, true>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            if (antialias_) {
+              NhwcUpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                            height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-              NhwcUpsampleBilinear<T, true>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              if (!is_2D &&
+                  (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                   Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+                NhwcUpsampleBilinearInteger<T, true>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              } else {
+                NhwcUpsampleBilinear<T, true>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              }
             }
           } else {
-            if (!is_2D &&
-                (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
-                 Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
-              NhwcUpsampleBilinearInteger<T, false>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+            if (antialias_) {
+              NhwcUpsampleBilinearAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                            height_scale, width_scale, roi, use_extrapolation_, extrapolation_value_, exclude_outside_,
+                                            X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
             } else {
-              NhwcUpsampleBilinear<T, false>(
-                  batch_size, num_channels, input_height, input_width, output_height, output_width,
-                  height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
-                  alloc, get_original_coordinate_,
-                  output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              if (!is_2D &&
+                  (Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
+                   Y->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
+                NhwcUpsampleBilinearInteger<T, false>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              } else {
+                NhwcUpsampleBilinear<T, false>(
+                    batch_size, num_channels, input_height, input_width, output_height, output_width,
+                    height_scale, width_scale, roi, extrapolation_value_, X->Data<T>(), Y->MutableData<T>(),
+                    alloc, get_original_coordinate_,
+                    output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+              }
             }
           }
         }
@@ -1223,14 +1243,21 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
         const int64_t output_height = is_3D ? output_dims[1] : output_dims[3];
         const int64_t output_width = is_3D ? output_dims[2] : output_dims[4];
 
-        AllocatorPtr alloc;
-        ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
-        UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
-                          output_depth, output_height, output_width,
-                          is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
-                          is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
-                          X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
-                          output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        if (antialias_) {
+          UpsampleTrilinearAntiAlias(batch_size, num_channels, input_depth, input_height, input_width,
+                                     output_depth, output_height, output_width,
+                                     is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                                     is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                                     exclude_outside_, X, Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        } else {
+          UpsampleTrilinear(batch_size, num_channels, input_depth, input_height, input_width,
+                            output_depth, output_height, output_width,
+                            is_3D ? scales[0] : scales[2], is_3D ? scales[1] : scales[3],
+                            is_3D ? scales[2] : scales[4], roi, use_extrapolation_, extrapolation_value_,
+                            X->Data<T>(), Y->MutableData<T>(), alloc, get_original_coordinate_,
+                            output_height * output_width > 64 ? context->GetOperatorThreadPool() : nullptr);
+        }
         return Status::OK();
       } else {
         // User shouldn't hit this as the check has been performed in ScalesValidation()
@@ -1251,17 +1278,37 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
       }
 
       bool is_2D = dims.size() == 2;
-      const int64_t batch_size = is_2D ? 1 : dims[0];
-      const int64_t num_channels = is_2D ? 1 : dims[1];
-      const int64_t input_height = is_2D ? dims[0] : dims[2];
-      const int64_t input_width = is_2D ? dims[1] : dims[3];
-      const int64_t output_height = is_2D ? output_dims[0] : output_dims[2];
-      const int64_t output_width = is_2D ? output_dims[1] : output_dims[3];
+      bool is_nchw = is_2D ? true : (scales[1] == 1.0f);
 
-      ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
-                    is_2D ? scales[0] : scales[2], is_2D ? scales[1] : scales[3], cubic_coeff_a_, use_extrapolation_,
-                    extrapolation_value_, exclude_outside_, roi, X->Data<float>(),
-                    Y->MutableData<float>(), get_original_coordinate_);
+      const int64_t batch_size = is_2D ? 1 : dims[0];
+      const int64_t num_channels = is_2D ? 1 : (is_nchw ? dims[1] : dims[3]);
+      const int64_t input_height = is_2D ? dims[0] : (is_nchw ? dims[2] : dims[1]);
+      const int64_t input_width = is_2D ? dims[1] : (is_nchw ? dims[3] : dims[2]);
+      const int64_t output_height = is_2D ? output_dims[0] : (is_nchw ? output_dims[2] : output_dims[1]);
+      const int64_t output_width = is_2D ? output_dims[1] : (is_nchw ? output_dims[3] : output_dims[2]);
+      const float height_scale = is_2D ? scales[0] : (is_nchw ? scales[2] : scales[1]);
+      const float width_scale = is_2D ? scales[1] : (is_nchw ? scales[3] : scales[2]);
+
+      if (antialias_) {
+        if (!is_nchw) {
+          NhwcResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                     height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                     extrapolation_value_, exclude_outside_, roi, X,
+                                     Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                     output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+        } else {
+          ResizeBiCubicAntiAlias(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                                 height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                                 extrapolation_value_, exclude_outside_, roi, X,
+                                 Y->MutableData<T>(), alloc, get_original_coordinate_,
+                                 output_height * output_width * num_channels > 64 ? context->GetOperatorThreadPool() : nullptr);
+        }
+      } else {
+        ResizeBiCubic(batch_size, num_channels, input_height, input_width, output_height, output_width,
+                      height_scale, width_scale, cubic_coeff_a_, use_extrapolation_,
+                      extrapolation_value_, exclude_outside_, roi, X->Data<float>(),
+                      Y->MutableData<float>(), get_original_coordinate_);
+      }
       return Status::OK();
     }
     default:
@@ -1272,21 +1319,20 @@ Status Upsample<T>::BaseCompute(OpKernelContext* context,
 template <typename T>
 Status Upsample<T>::Compute(OpKernelContext* context) const {
   const auto* X = context->Input<Tensor>(0);
-  ORT_ENFORCE(X != nullptr);
 
-  TensorShapeVector output_dims(X->Shape().GetDims().size());
+  auto input_dims = X->Shape().GetDims();
+  TensorShapeVector output_dims(input_dims.size());
 
   // Get roi data
   // Initialize the roi array to all zeros as this will be the most common case
   // Roi data is needed only when coordinate transformation mode is set to tf_crop_and_resize
   // for all other cases we need a 0 initialized roi array
-  std::vector<float> roi_array;
-  const std::vector<float>* roi_ptr = roi_cached_ ? &roi_ : &roi_array;
+  std::vector<float> roi_array(roi_);
 
   if (!roi_cached_) {
     bool use_default_roi = true;
     if (need_roi_input_) {
-      ORT_ENFORCE(roi_input_idx_ > 0, "Invalid roi input index.");
+      ORT_RETURN_IF_NOT(roi_input_idx_ > 0, "Invalid roi input index.");
       const auto* roi = context->Input<Tensor>(roi_input_idx_);
       if (roi != nullptr) {
         ParseRoiData(roi, roi_array);
@@ -1296,54 +1342,53 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     if (use_default_roi) {
       // default roi includes ensures all the values in that axis are included in the roi
       // normalized roi is thus : [start, end] = [0, 1]
-      const auto& input_dims = X->Shape().GetDims();
       size_t input_rank = input_dims.size();
       roi_array.resize(input_rank * 2);
       for (size_t i = 0; i < input_rank; ++i) {
-        roi_array[gsl::narrow_cast<size_t>(i)] = 0;
+        roi_array[narrow<size_t>(i)] = 0;
         roi_array[i + input_rank] = 1;
       }
     }
   }
 
+  ComputeROIWithAxes(roi_array, input_dims.size());
+  // Get scales data
+  std::vector<float> scales_array(input_dims.size());
+
   if (OpKernel::Node().InputDefs().size() == 1) {
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+    scales_array = scales_;
+
+    ComputeOutputShape(scales_array, input_dims, output_dims);
+    return BaseCompute(context, roi_array, scales_array, output_dims);
   }
 
   const auto* scales = context->Input<Tensor>(scales_input_idx_);
   const auto* sizes = context->Input<Tensor>(sizes_input_idx_);
+  // Get scales data
 
   if (scales_cached_) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    scales_array = scales_;
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_, X->Shape().GetDims(), output_dims);
-    return BaseCompute(context, *roi_ptr, scales_, output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
+    return BaseCompute(context, roi_array, scales_array, output_dims);
   }
-
-  // Get scales data
-  std::vector<float> scales_array(X->Shape().GetDims().size());
 
   if (scales != nullptr && scales->Shape().Size() != 0) {
-    ORT_ENFORCE(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
-    ParseScalesData(scales, scales_array);
+    ORT_RETURN_IF_NOT(sizes == nullptr, "Only one of scales or sizes must be provided as input.");
+    ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, input_dims.size()));
 
     // Compute output shape from scales and input dims
-    ComputeOutputShape(scales_array, X->Shape().GetDims(), output_dims);
+    ComputeOutputShape(scales_array, input_dims, output_dims);
   } else {
-    ORT_ENFORCE(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
+    ORT_RETURN_IF_NOT(sizes != nullptr && sizes->Shape().Size() != 0, "Either scales or sizes MUST be provided as input.");
 
-    // When sizes input is available directly populate it into the output_dims array.
-    memcpy(output_dims.data(), sizes->template Data<int64_t>(), gsl::narrow_cast<size_t>(sizes->Shape().Size())* sizeof(int64_t));
+    ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_dims, input_dims));
 
-    ORT_ENFORCE(X->Shape().GetDims().size() == output_dims.size(),
-                "Resize: input tensor's rank does not match the output tensor's rank.");
-
-    ParseScalesDataFromOutputSize(output_dims, X->Shape().GetDims(), scales_array);
+    ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims, input_dims, scales_array));
   }
 
-  return BaseCompute(context, *roi_ptr, scales_array, output_dims);
+  return BaseCompute(context, roi_array, scales_array, output_dims);
 }
 }  // namespace onnxruntime

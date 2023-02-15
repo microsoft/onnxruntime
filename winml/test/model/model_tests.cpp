@@ -118,9 +118,9 @@ TEST_P(ModelTest, Run) {
   WINML_EXPECT_NO_THROW(model = LearningModel::LoadFromFilePath(m_testCase->GetModelUrl()));
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(m_deviceKind));
   WINML_EXPECT_NO_THROW(session = LearningModelSession(model, device));
-  WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
   for (size_t i = 0; i < m_testCase->GetDataCount(); i++) {
     // Load and bind inputs
+    WINML_EXPECT_NO_THROW(binding = LearningModelBinding(session));
     onnxruntime::test::HeapBuffer inputHolder;
     std::unordered_map<std::string, Ort::Value> inputFeeds;
     WINML_EXPECT_NO_THROW(m_testCase->LoadTestData(i, inputHolder, inputFeeds, true));
@@ -129,6 +129,8 @@ TEST_P(ModelTest, Run) {
     // evaluate
     LearningModelEvaluationResult results = nullptr;
     WINML_EXPECT_NO_THROW(results = session.Evaluate(binding, L"Testing"));
+    binding.Clear();
+    binding = nullptr;
 
     // Load expected outputs
     onnxruntime::test::HeapBuffer outputHolder;

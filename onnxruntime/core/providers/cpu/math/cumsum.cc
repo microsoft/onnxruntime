@@ -12,8 +12,8 @@ using namespace onnxruntime;
 namespace {
 // static section
 std::vector<int64_t> GetStarts(int64_t rank, int64_t axis, int64_t index) {
-  std::vector<int64_t> starts(rank, 0);
-  starts[axis] = index;
+  std::vector<int64_t> starts(onnxruntime::narrow<size_t>(rank), 0);
+  starts[onnxruntime::narrow<size_t>(axis)] = index;
   return starts;
 }
 template <typename T>
@@ -200,13 +200,13 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
   int64_t axis = 0;
   ORT_THROW_IF_ERROR(cumsum_op::GetAxis(axis_tensor, rank, axis));
 
-  auto dim(output_tensor.Shape()[axis]);    // dimension size for the axis
+  auto dim(output_tensor.Shape()[onnxruntime::narrow<size_t>(axis)]);    // dimension size for the axis
   TensorShape slice_shape(input->Shape());  // the shape of one slice of input/output for the given value of the axis
-  slice_shape[axis] = 1;
+  slice_shape[onnxruntime::narrow<size_t>(axis)] = 1;
   auto slice_size(slice_shape.Size());     // total number of elements in each slice
   auto slice_dims(slice_shape.GetDims());  // dim array for the slice
 
-  std::vector<int64_t> steps(rank, 1);  // steps for the slice -- always set to 1
+  std::vector<int64_t> steps(onnxruntime::narrow<size_t>(rank), 1);  // steps for the slice -- always set to 1
 
   if (!reverse_) {
     int64_t index(0);  // the index we use as we walkthrough the given axis
@@ -215,7 +215,8 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
       ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
       ++index;
     }
-    {
+
+    if (index < dim) {
       // The next slice is a copy of the input (if exclusive == false then this is the first slice)
       auto input_starts(::GetStarts(rank, axis, 0));
       auto output_starts(::GetStarts(rank, axis, index));

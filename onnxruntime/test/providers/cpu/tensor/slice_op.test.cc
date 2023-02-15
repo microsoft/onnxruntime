@@ -731,5 +731,21 @@ TEST(SliceTest, EmptyDim) {
                       {0, 6},
                       {});
 }
+
+TEST(SliceTest, CoalesceDims) {
+  RunSliceTest<float>({2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1, 1},
+                      {0, 2}, {0, 1}, {-1, 1}, {1, 1, 2, 2}, {-5.f, -6.f, -7.f, -8.f}, true);
+  RunSliceTest<float>({1, 2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1},
+                      {std::numeric_limits<int64_t>::max()}, {2}, {}, {1, 2, 1, 2, 2},
+                      {5.f, 6.f, 7.f, 8.f, -5.f, -6.f, -7.f, -8.f}, true);
+  RunSliceTest<float>({1, 2, 2, 2, 2},
+                      {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, -1.f, -2.f, -3.f, -4.f, -5.f, -6.f, -7.f, -8.f}, {1, 1},
+                      {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()}, {1, 3}, {},
+                      {1, 1, 2, 1, 2}, {-3.f, -4.f, -7.f, -8.f}, true);
+  RunSliceTest<float>({1, 1, 1}, {1.f}, {0}, {std::numeric_limits<int64_t>::max()}, {1}, {}, {1, 1, 1}, {1.f}, true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

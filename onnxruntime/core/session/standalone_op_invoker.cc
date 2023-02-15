@@ -8,7 +8,7 @@
 #include <unordered_map>
 
 #if defined(_MSC_VER) && !defined(__clang__)
-//disabling warning on calling of raw "delete" operator
+// disabling warning on calling of raw "delete" operator
 #pragma warning(disable : 26400)
 #endif
 
@@ -83,7 +83,7 @@ using ArgPtr = std::unique_ptr<onnxruntime::NodeArg>;
 using ArgPtrs = onnxruntime::InlinedVector<ArgPtr>;
 
 using NodeResource = std::pair<NodePtr, ArgPtrs>;
-using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*,NodeResource>;
+using NodeResourceMap = InlinedHashMap<const onnxruntime::OpKernel*, NodeResource>;
 
 class NodeRepo {
  public:
@@ -96,7 +96,7 @@ class NodeRepo {
     std::lock_guard<std::mutex> guard(mutex_);
     auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
     if (!ret.second) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node"); 
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kernel already mapped to existing node");
     }
     return Status::OK();
   }
@@ -151,12 +151,13 @@ class StandAloneKernelContext : public OpKernelContext {
                           int output_count,
                           AllocatorPtr allocator,
                           onnxruntime::concurrency::ThreadPool* threadpool,
-                          const logging::Logger& logger) : OpKernelContext(threadpool, logger),
-                                                           input_values_(input_values),
-                                                           input_count_(input_count),
-                                                           output_values_(output_values),
-                                                           output_count_(output_count),
-                                                           allocator_(allocator) {}
+                          const logging::Logger& logger,
+                          Stream* stream) : OpKernelContext(threadpool, logger, stream),
+                                            input_values_(input_values),
+                                            input_count_(input_count),
+                                            output_values_(output_values),
+                                            output_count_(output_count),
+                                            allocator_(allocator) {}
 
   int NumVariadicInputs(size_t arg_num) const override {
     ORT_ENFORCE(arg_num < static_cast<size_t>(input_count_), "invalid arg_num.");
@@ -212,37 +213,13 @@ class StandAloneKernelContext : public OpKernelContext {
     return static_cast<int>(output_count_);
   }
 
-  Status GetTempSpaceAllocator(AllocatorPtr* output) const override ORT_MUST_USE_RESULT {
+  Status GetTempSpaceAllocator(AllocatorPtr* output) const override {
     *output = allocator_;
     return Status::OK();
   }
 
-  Fence_t InputFence(int index) const override {
-    if (index >= input_count_) {
-      return nullptr;
-    } else {
-      return input_values_[index]->Fence();
-    }
-  }
-
-  Fence_t ImplicitInputFence(int) const override {
-    return nullptr;
-  }
-
-  Fence_t OutputFence(int index) const override {
-    if (index >= output_count_) {
-      return nullptr;
-    } else {
-      return output_values_[index]->Fence();
-    }
-  }
-
   int GetDeviceId() const override {
     return 0;
-  }
-
-  void* GetComputeStream() const override {
-    return nullptr;
   }
 
  protected:
@@ -432,7 +409,8 @@ onnxruntime::Status InvokeOp(_In_ const OrtKernelContext* context,
                                                 output_count,
                                                 allocator,
                                                 ctx->GetOperatorThreadPool(),
-                                                ctx->Logger());
+                                                ctx->Logger(),
+                                                ctx->GetComputeStream());
   return kernel->Compute(&standalone_kernel_ctx);
 }
 
@@ -532,6 +510,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Ou
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   if (info_copy) {
     auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
+    GSL_SUPPRESS(r .11)
     delete kernel_info;
   }
 }

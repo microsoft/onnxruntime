@@ -10,7 +10,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-struct BeamSearchParameters : public IBeamSearchParameters {
+struct BeamSearchParameters : public IGenerationParameters {
   Status Validate() const;
 
   int BatchBeamSize() const { return batch_size * num_beams; }

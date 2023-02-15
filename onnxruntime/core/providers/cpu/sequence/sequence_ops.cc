@@ -95,7 +95,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   if (input_seq_idx < 0) {
     input_seq_idx = static_cast<int64_t>(X->Size()) + input_seq_idx;
   }
-  const Tensor& indexed_tensor = X->Get(input_seq_idx);
+  const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx));
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
   CopyCpuTensor(&indexed_tensor, Y);
@@ -221,7 +221,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
   auto* Y = context->Output<TensorSeq>(0);
 
   std::vector<Tensor> tensors;
-  tensors.reserve(num_tensors_input_seq + 1);
+  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) + 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       ORT_RETURN_IF_ERROR(CreateCopyAndAppendCpuTensor(*X, context, tensors));
@@ -273,7 +273,7 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
   Y->SetType(S->DataType());
 
   std::vector<Tensor> tensors;
-  tensors.reserve(num_tensors_input_seq - 1);
+  tensors.reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
       continue;
@@ -381,13 +381,13 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
   auto input_dims = input_shape.GetDims();
   const auto num_dimensions = gsl::narrow_cast<int64_t>(input_shape.NumDimensions());
   axis = HandleNegativeAxis(axis_, num_dimensions);  // handle negative and enforce axis is valid
-  const int64_t split_dim_size = input_dims[axis];
+  const int64_t split_dim_size = input_dims[onnxruntime::narrow<size_t>(axis)];
 
-  before_dims = narrow<int>(input_shape.SizeToDimension(axis));
-  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(axis));
+  before_dims = narrow<int>(input_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis)));
+  after_dims_including_split_axis = narrow<int>(input_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis)));
   after_dims_excluding_split = (axis + 1 == num_dimensions)
                                    ? 1  // we multiply by this value so must be 1 not 0
-                                   : narrow<int>(input_shape.SizeFromDimension(axis + 1));
+                                   : narrow<int>(input_shape.SizeFromDimension(SafeInt<size_t>(axis) + 1));
 
   if (is_split_input_scalar) {
     auto num_even_splits = split_dim_size / split_scalar;
@@ -397,9 +397,9 @@ Status SplitToSequence::PrepareForCompute(const TensorShape& input_shape, int64_
       is_uneven_split = true;
       num_outputs += 1;
     }
-    split_sizes.resize(num_outputs);
-    std::fill(split_sizes.begin(), split_sizes.begin() + num_even_splits, split_scalar);
-    std::fill(split_sizes.begin() + num_even_splits, split_sizes.end(), num_remaining_splits);
+    split_sizes.resize(onnxruntime::narrow<size_t>(num_outputs));
+    std::fill(split_sizes.begin(), split_sizes.begin() + onnxruntime::narrow<size_t>(num_even_splits), split_scalar);
+    std::fill(split_sizes.begin() + onnxruntime::narrow<size_t>(num_even_splits), split_sizes.end(), num_remaining_splits);
   } else {
     if (split_sizes.empty()) {
       // populate split_sizes with the same size for each output
@@ -444,7 +444,7 @@ static int64_t GetScalarSplitInput(const Tensor& tensor) {
 
 static void GetSplitSizesInput(const Tensor& tensor, std::vector<int64_t>& split_sizes) {
   auto num_elems = tensor.Shape().Size();
-  split_sizes.reserve(num_elems);
+  split_sizes.reserve(onnxruntime::narrow<size_t>(num_elems));
   if (tensor.IsDataType<int32_t>()) {
     const int32_t* data_ptr = tensor.Data<int32_t>();
     std::copy(data_ptr, data_ptr + num_elems, std::back_inserter(split_sizes));
@@ -517,7 +517,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
     } else {
       split_size = narrow<int>(split_sizes[i]);
     }
-    output_dimensions[axis] = split_size;
+    output_dimensions[onnxruntime::narrow<size_t>(axis)] = split_size;
 
     AllocatorPtr alloc;
     ORT_RETURN_IF_ERROR(context.GetTempSpaceAllocator(&alloc));
@@ -543,7 +543,7 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
       new_dims.reserve(output_dimensions.size() - 1);
       for (int64_t idx = 0, end = static_cast<int64_t>(output_dimensions.size()); idx < end; ++idx) {
         if (idx != axis) {
-          new_dims.push_back(output_dimensions[idx]);
+          new_dims.push_back(output_dimensions[onnxruntime::narrow<size_t>(idx)]);
         }
       }
       output_tensor.Reshape(new_dims);

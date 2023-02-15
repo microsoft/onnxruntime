@@ -147,7 +147,7 @@ static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_di
                             const uint8_t* source, uint8_t* target, size_t element_size) {
   size_t blocksize = num_elts_in_block * element_size;
   MultiIndex mindex;
-  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, element_size);
+  IncrementIndexAndComputeOffsetSetup(mindex, onnxruntime::narrow<size_t>(num_axes), target_dims, stride, element_size);
 
   const uint8_t* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -163,7 +163,7 @@ static void DoTransposeImpl(int64_t num_axes, gsl::span<const int64_t> target_di
                             const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex mindex;
-  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+  IncrementIndexAndComputeOffsetSetup(mindex, onnxruntime::narrow<size_t>(num_axes), target_dims, stride, 1);
 
   const std::string* local_source = source;
   for (size_t i = 0; i < num_blocks; ++i) {
@@ -187,7 +187,7 @@ static bool TypedDoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> t
 
   if (enabled) {
     MultiIndex mindex;
-    IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, sizeof(T));
+    IncrementIndexAndComputeOffsetSetup(mindex, onnxruntime::narrow<size_t>(num_axes), target_dims, stride, sizeof(T));
 
     const uint8_t* local_source = source;
     uint8_t* target_end = target + sizeof(T) * num_blocks;
@@ -235,7 +235,7 @@ static void DoTransposeEltWise(int64_t num_axes, gsl::span<const int64_t> target
                                const gsl::span<const size_t>& stride, const std::string* source, std::string* target) {
   ORT_ENFORCE(num_axes > 0, "Transpose not implemented for empty tensors.");
   MultiIndex mindex;
-  IncrementIndexAndComputeOffsetSetup(mindex, num_axes, target_dims, stride, 1);
+  IncrementIndexAndComputeOffsetSetup(mindex, onnxruntime::narrow<size_t>(num_axes), target_dims, stride, 1);
 
   // index used to iterate over target iteration-space
   const std::string* local_source = source;
@@ -261,7 +261,7 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   for (size_t i = 0; i < rank; i++) {
     size_t inpdim = permutations[i];
     if (inpdim + 1 < rank)
-      stride[i] = input_shape.SizeFromDimension(inpdim + 1);
+      stride[i] = onnxruntime::narrow<size_t>(input_shape.SizeFromDimension(inpdim + 1));
     else
       stride[i] = 1;
   }
@@ -273,13 +273,13 @@ static Status DoUntypedTranspose(const gsl::span<const size_t>& permutations, co
   size_t prefix_blocksize = 1;     // product of dimensions in the prefix
   bool is_suffix = true;
 
-  for (int64_t i = rank - 1; i >= 0; --i) {
-    int64_t input_axis = permutations[i];
+  for (int64_t i = SafeInt<int64_t>(rank) - 1; i >= 0; --i) {
+    int64_t input_axis = onnxruntime::narrow<int64_t>(permutations[onnxruntime::narrow<size_t>(i)]);
     if (is_suffix && (input_axis == i)) {
-      suffix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
+      suffix_blocksize *= static_cast<size_t>(input_dims[onnxruntime::narrow<size_t>(input_axis)]);
     } else {
       is_suffix = false;
-      prefix_blocksize *= static_cast<size_t>(input_dims[input_axis]);
+      prefix_blocksize *= static_cast<size_t>(input_dims[onnxruntime::narrow<size_t>(input_axis)]);
       ++num_axes_in_prefix;
     }
   }

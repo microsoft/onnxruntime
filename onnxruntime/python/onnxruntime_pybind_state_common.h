@@ -9,6 +9,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
@@ -177,6 +178,8 @@ namespace python {
 extern OrtCudnnConvAlgoSearch cudnn_conv_algo_search;
 // TODO remove deprecated global config
 extern bool do_copy_in_default_stream;
+// TODO remove deprecated global config
+extern onnxruntime::cuda::TunableOpInfo tunable_op;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
@@ -225,62 +228,23 @@ extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-struct CustomOpLibrary {
-  CustomOpLibrary(const char* library_path, OrtSessionOptions& ort_so);
-
-  ~CustomOpLibrary();
-
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpLibrary);
-
- private:
-  void UnloadLibrary();
-
-  std::string library_path_;
-  void* library_handle_ = nullptr;
-};
-#endif
-
-// Thin wrapper over internal C++ SessionOptions to accommodate custom op library management for the Python user
-struct PySessionOptions : public SessionOptions {
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // `PySessionOptions` has a vector of shared_ptrs to CustomOpLibrary, because so that it can be re-used for all
-  // `PyInferenceSession`s using the same `PySessionOptions` and that each `PyInferenceSession` need not construct
-  // duplicate CustomOpLibrary instances.
-  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
-
-  // Hold raw `OrtCustomOpDomain` pointers - it is upto the shared library to release the OrtCustomOpDomains
-  // that was created when the library is unloaded
-  std::vector<OrtCustomOpDomain*> custom_op_domains_;
-#endif
-};
+using PySessionOptions = OrtSessionOptions;
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(Environment& env, const PySessionOptions& so) {
-    sess_ = std::make_unique<InferenceSession>(so, env);
+    sess_ = std::make_unique<InferenceSession>(so.value, env);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so, env, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, env, arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = std::make_unique<InferenceSession>(so, env, buffer);
-    }
-  }
-#endif
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  void AddCustomOpLibraries(const std::vector<std::shared_ptr<CustomOpLibrary>>& custom_op_libraries) {
-    if (!custom_op_libraries.empty()) {
-      custom_op_libraries_.reserve(custom_op_libraries.size());
-      for (size_t i = 0; i < custom_op_libraries.size(); ++i) {
-        custom_op_libraries_.push_back(custom_op_libraries[i]);
-      }
+      sess_ = std::make_unique<InferenceSession>(so.value, env, buffer);
     }
   }
 #endif
@@ -295,14 +259,6 @@ struct PyInferenceSession {
   }
 
  private:
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  // Hold CustomOpLibrary resources so as to tie it to the life cycle of the InferenceSession needing it.
-  // NOTE: Define this above `sess_` so that this is destructed AFTER the InferenceSession instance -
-  // this is so that the custom ops held by the InferenceSession gets destroyed prior to the library getting unloaded
-  // (if ref count of the shared_ptr reaches 0)
-  std::vector<std::shared_ptr<CustomOpLibrary>> custom_op_libraries_;
-#endif
-
   std::unique_ptr<InferenceSession> sess_;
 };
 
@@ -488,7 +444,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 #ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
@@ -504,6 +460,5 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
-
 constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";
 }  // namespace onnxruntime

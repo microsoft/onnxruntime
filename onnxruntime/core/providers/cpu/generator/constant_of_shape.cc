@@ -46,16 +46,16 @@ Status ConstantOfShape::Compute(OpKernelContext* ctx) const {
   const auto element_size = output_tensor->DataType()->Size();
   switch (element_size) {
     case sizeof(int8_t):
-      FilloutOutput(*(reinterpret_cast<const int8_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int8_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int16_t):
-      FilloutOutput(*(reinterpret_cast<const int16_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int16_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int32_t):
-      FilloutOutput(*(reinterpret_cast<const int32_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int32_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     case sizeof(int64_t):
-      FilloutOutput(*(reinterpret_cast<const int64_t*>(value_ptr)), output_data, size);
+      FilloutOutput(*(reinterpret_cast<const int64_t*>(value_ptr)), output_data, onnxruntime::narrow<size_t>(size)) ;
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported output datatype with size: ", element_size);

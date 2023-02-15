@@ -57,7 +57,7 @@ Status Scale<T>::ComputeInternal(OpKernelContext* context) const {
   auto lhs_tensor = context->Input<Tensor>(0);
   auto output_tensor = context->Output(0, lhs_tensor->Shape());
   Impl_Scale<CudaT>(
-      Stream(),
+      Stream(context),
       reinterpret_cast<const CudaT*>(lhs_tensor->template Data<T>()),
       scale_value,
       reinterpret_cast<CudaT*>(output_tensor->template MutableData<T>()),

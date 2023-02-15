@@ -46,6 +46,7 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/ort_format_load_options.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -487,11 +488,11 @@ class Node {
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
   Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
-                           bool can_use_flatbuffer_for_initializers,
+                           const OrtFormatLoadOptions& load_options,
                            const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
@@ -1312,18 +1313,18 @@ class Graph {
 
   virtual ~Graph();
 
-  static common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-                                          const std::unordered_map<std::string, int>& domain_to_version,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
+                                  const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-                                          IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                  IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-                                          bool can_use_flatbuffer_for_initializers,
-                                          const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const OrtFormatLoadOptions& load_options,
+                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
-                                  bool can_use_flatbuffer_for_initializers,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1353,8 +1354,8 @@ class Graph {
         bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
-                                   bool can_use_flatbuffer_for_initializers);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                           const OrtFormatLoadOptions& load_options);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct

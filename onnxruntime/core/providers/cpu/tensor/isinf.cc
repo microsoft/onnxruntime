@@ -74,7 +74,7 @@ struct ComputeDispatchTarget {
           });
     } else {
       // all false
-      memset(output_data, false, total_items);
+      memset(output_data, false, onnxruntime::narrow<size_t>(total_items));
     }
   }
 };

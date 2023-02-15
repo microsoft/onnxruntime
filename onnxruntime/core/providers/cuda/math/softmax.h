@@ -18,10 +18,12 @@ Status SoftMaxComputeHelper(
     int64_t axis);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const input_t* src, int softmax_elements, int softmax_elements_stride, int batch_count);
+Status dispatch_warpwise_softmax_forward(cudaStream_t stream, output_t* dst, const input_t* src,
+                                         int softmax_elements, int softmax_elements_stride, int batch_count);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>
-void dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, const input_t* input, int softmax_elements, int softmax_elements_stride, int batch_count);
+Status dispatch_blockwise_softmax_forward(cudaStream_t stream, output_t* output, const input_t* input,
+                                          int softmax_elements, int input_stride, int output_stride, int batch_count);
 
 template <typename T>
 class Softmax final : public CudaKernel {

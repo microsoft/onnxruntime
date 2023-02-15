@@ -287,7 +287,7 @@ struct SliceIteratorBase {
     auto bytes_to_copy = inner_extent_ * element_size_;
 
     if (!is_string_tensor_) {
-      memcpy(output, input_, bytes_to_copy);
+      memcpy(output, input_, onnxruntime::narrow<size_t>(bytes_to_copy));
     } else {
       const std::string* input = reinterpret_cast<const std::string*>(input_);
       std::string* out = reinterpret_cast<std::string*>(output);
@@ -306,7 +306,7 @@ struct SliceIteratorBase {
     const auto bytes_to_copy = max_copying_elements_block_ * element_size_;
     if (SolitaryInnerStep()) {
       if (!is_string_tensor_) {
-        memcpy(output, input_, bytes_to_copy);
+        memcpy(output, input_, onnxruntime::narrow<size_t>(bytes_to_copy));
       } else {
         const std::string* input = reinterpret_cast<const std::string*>(input_);
         std::string* out = reinterpret_cast<std::string*>(output);
@@ -453,7 +453,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
     } else {
       const auto element_size = src->DataType()->Size();
       const auto elements = src->Shape().Size();
-      memcpy(target, source, elements * element_size);
+      memcpy(target, source, SafeInt<size_t>(elements) * element_size);
     }
   }
 }
@@ -498,9 +498,9 @@ struct WritableSliceIterator {
       pitch *= static_cast<size_t>(dims[i]);
     }
 
-    inner_extent_ = extents_[dims.size() - 1];
+    inner_extent_ = onnxruntime::narrow<size_t>(extents_[SafeInt<size_t>(dims.size()) - 1]);
     inner_step_ = dims.size() == steps.size()
-                      ? steps[dims.size() - 1]
+                      ? onnxruntime::narrow<size_t>(steps[SafeInt<size_t>(dims.size()) - 1])
                       : 1;
   }
 

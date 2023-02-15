@@ -59,8 +59,8 @@ static inline size_t CalculateOffset(size_t inner_dim, const TensorPitches& inpu
   for (size_t axis = rank - 1; axis-- > 0;) {
     auto dim = indices_shape[axis];
     if (axis != skip_axis)
-      base_offset += (inner_dim % dim) * input_shape_pitches[axis];
-    inner_dim /= dim;
+      base_offset += SafeInt<size_t>(inner_dim % dim) * input_shape_pitches[axis];
+    inner_dim /= SafeInt<size_t>(dim);
   }
 
   return base_offset;
@@ -101,13 +101,13 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
   const int64_t input_rank = static_cast<int64_t>(input_tensor->Shape().NumDimensions());
 
   const TensorShape& indices_shape = indices_tensor->Shape();
-  size_t num_inner_dim = CalculateInnerDimCount(indices_shape);
-  size_t inner_dim_size = indices_shape[input_rank - 1];
+  size_t num_inner_dim = onnxruntime::narrow<size_t>(CalculateInnerDimCount(indices_shape));
+  size_t inner_dim_size = onnxruntime::narrow<size_t>(indices_shape[SafeInt<size_t>(input_rank) - 1]);
   const Tin* indices_data = indices_tensor->Data<Tin>();
 
   const TensorPitches input_shape_pitches(*input_tensor);
-  int64_t axis_pitch = input_shape_pitches[axis];
-  int64_t axis_size = input_tensor->Shape()[axis];
+  int64_t axis_pitch = input_shape_pitches[onnxruntime::narrow<size_t>(axis)];
+  int64_t axis_size = input_tensor->Shape()[onnxruntime::narrow<size_t>(axis)];
 
   bool innermost_axis = axis == input_rank - 1;
   bool index_error = false;
@@ -116,7 +116,7 @@ static void core_impl(const Tensor* input_tensor, const Tensor* indices_tensor, 
     auto BatchWork = [&](size_t inner_dim) {
       ORT_TRY {
         auto output = output_data + inner_dim_size * inner_dim;
-        auto input = input_data + CalculateOffset(inner_dim, input_shape_pitches, axis, indices_shape);
+        auto input = input_data + CalculateOffset(inner_dim, input_shape_pitches, onnxruntime::narrow<size_t>(axis), indices_shape);
         auto indices = indices_data + inner_dim_size * inner_dim;
 
         if (innermost_axis) {
@@ -180,11 +180,11 @@ Status GatherElements::ValidateInputShapes(const TensorShape& input_data_shape,
     // make sure that the corresponding 'indices' shape
     // value is within bounds of the corresponding 'data' shape
     if (i != axis) {
-      if (indices_shape[i] < 0 || indices_shape[i] > input_data_shape[i])
+      if (indices_shape[onnxruntime::narrow<size_t>(i)] < 0 || indices_shape[onnxruntime::narrow<size_t>(i)] > input_data_shape[onnxruntime::narrow<size_t>(i)])
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "GatherElements op: 'indices' shape should have values within bounds of 'data' shape. "
                                "Invalid value in indices shape is: ",
-                               indices_shape[i]);
+                               indices_shape[onnxruntime::narrow<size_t>(i)]);
     }
   }
 

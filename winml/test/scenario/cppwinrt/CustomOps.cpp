@@ -8,7 +8,6 @@
 #include "filehelpers.h"
 #include <fstream>
 #include <MemoryBuffer.h>
-#include <gsl/gsl>
 #include "CustomOperatorProvider.h"
 #include "CustomOps.h"
 

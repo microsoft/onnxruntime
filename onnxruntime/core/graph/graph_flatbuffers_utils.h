@@ -6,6 +6,7 @@
 #include <memory>
 
 #include "core/common/status.h"
+#include "core/graph/ort_format_load_options.h"
 
 namespace ONNX_NAMESPACE {
 class AttributeProto;
@@ -66,18 +67,16 @@ Status SaveAttributeOrtFormat(
 /// </summary>
 /// <param name="fbs_tensor">Flatbuffer Tensor</param>
 /// <param name="initializer">TensorProto to load data into</param>
-/// <param name="can_use_flatbuffer_for_initializers">
-/// If true, set the TensorProto to point to the memory in the flatbuffer instead of copying data.
-/// This requires the buffer to remain valid for the entire duration of the InferenceSession.
-/// </param>
+/// <param name="load_options">ORT format load options</param>
 /// <returns>Status</returns>
 Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor,
                                 ONNX_NAMESPACE::TensorProto& initializer,
-                                bool can_use_flatbuffer_for_initializers = false);
+                                const OrtFormatLoadOptions& load_options);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor,
-                                      ONNX_NAMESPACE::SparseTensorProto& initializer);
+                                      ONNX_NAMESPACE::SparseTensorProto& initializer,
+                                      const OrtFormatLoadOptions& load_options);
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Load a give fbs::Attribute into AttributeProto
@@ -87,7 +86,7 @@ Status LoadAttributeOrtFormat(const fbs::Attribute& fbs_attr,
                               ONNX_NAMESPACE::AttributeProto& attr_proto,
                               std::unique_ptr<onnxruntime::Graph>& sub_graph,
                               onnxruntime::Graph& graph, onnxruntime::Node& node,
-                              bool can_use_flatbuffer_for_initializers,
+                              const OrtFormatLoadOptions& load_options,
                               const logging::Logger& logger);
 
 }  // namespace utils
