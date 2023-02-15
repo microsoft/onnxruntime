@@ -160,7 +160,7 @@ class SessionScope {
 #endif
 #ifdef CONCURRENCY_VISUALIZER
                                                                                  ,
-                                                                                 series_(ComposeSeriesName(session_state.GetGraphViewer())
+                                                                                 series_(ComposeSeriesName(session_state.GetGraphViewer()))
 #endif
 #ifdef ENABLE_NVTX_PROFILE
                                                                                  ,
@@ -213,10 +213,12 @@ class SessionScope {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-    session_state_.GetMemoryProfiler()->CreateEvents(
-        "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
-        session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
-    session_state_.GetMemoryProfiler()->Clear();
+    if (flush_memory_info_) {
+        session_state_.GetMemoryProfiler()->CreateEvents(
+            "dynamic activations_" + std::to_string(session_state_.GetMemoryProfiler()->GetMemoryInfo().GetIteration()),
+            session_state_.GetMemoryProfiler()->GetAndIncreasePid(), MemoryInfo::MapType::DynamicActivation, "", 0);
+        session_state_.GetMemoryProfiler()->Clear();
+    }
 #endif
 
     if (session_state_.Profiler().IsEnabled()) {
@@ -235,11 +237,21 @@ class SessionScope {
     }
 #endif
   }
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  void SetFlushMemoryInfoFlag(bool flush_memory_info) {
+    flush_memory_info_ = flush_memory_info;
+  }
+#endif
+
 private:
   const SessionState& session_state_;
   TimePoint session_start_;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   const ExecutionFrame& frame_;
+  // Whether memory profiler need create events and flush to file.
+  // For partial graph run, when the last subgraph of the whole graph is executing, we need flush to file.
+  bool flush_memory_info_ = true;
 #endif
 
 #ifdef CONCURRENCY_VISUALIZER
@@ -601,7 +613,8 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const bool& terminate_flag,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
-                                          const OrtValueCachePtr& cache) {
+                                          const OrtValueCachePtr& cache,
+                                          int32_t partial_graph_index) {
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
   auto* plan = session_state.GetExecutionPlan();
@@ -609,6 +622,11 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));
 
   SessionScope session_scope(session_state, ctx.GetExecutionFrame());
+
+#if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
+  // Only flush memory info for the 2nd partial graph execution (since ORTModule run this function twice).
+  session_scope.SetFlushMemoryInfoFlag(partial_graph_index == 1);
+#endif
 
   ctx.SetOrtValueCache(cache);
 
