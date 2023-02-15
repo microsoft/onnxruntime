@@ -61,7 +61,7 @@ pytorch_superresolution.onnx
 pytorch_superresolution_with_pre_and_post_proceessing.onnx
 ```
 
-If you load the second model into netron you can see its inputs and outputs: both image bytes.
+If you load the two models into [netron](https://netron.app/) you can see the difference in inputs and outputs between the two. The first two images below show the original model with its inputs being batches of channel data, and the second two show the inputs and outputs being the image bytes.
 
 ![ONNX model without pre and post processing](../../../images/mobile-superres-before-model.png)
 
