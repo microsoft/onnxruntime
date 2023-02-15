@@ -9,24 +9,28 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-struct EnvVarSingleton {
-  static EnvVarSingleton& instance() {
-    static EnvVarSingleton instance;
+struct SoftmaxEnvVarSingleton {
+  static SoftmaxEnvVarSingleton& Instance() {
+    static SoftmaxEnvVarSingleton instance;
     return instance;
   }
 
-  EnvVarSingleton(const EnvVarSingleton&) = delete;
-  EnvVarSingleton& operator=(const EnvVarSingleton&) = delete;
-  bool is_online_soft_max_enabled() { return online_soft_max_enabled; }
+  SoftmaxEnvVarSingleton(const SoftmaxEnvVarSingleton&) = delete;
+
+  SoftmaxEnvVarSingleton& operator=(const SoftmaxEnvVarSingleton&) = delete;
+
+  bool IsOnlineSoftmaxEnabled() {
+    return online_soft_max_enabled;
+  }
 
  private:
   bool online_soft_max_enabled;
 
-  EnvVarSingleton() {
+  SoftmaxEnvVarSingleton() {
     online_soft_max_enabled = ParseEnvironmentVariableWithDefault<bool>(attention::kEnableOnlineSoftmax, false);
   }
 
-  ~EnvVarSingleton() {}
+  ~SoftmaxEnvVarSingleton() {}
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -299,7 +303,7 @@ Status ComputeSoftmax(cudaStream_t stream,
                       bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
-  bool need_call_online_softmax = EnvVarSingleton::instance().is_online_soft_max_enabled();
+  bool need_call_online_softmax = SoftmaxEnvVarSingleton::Instance().IsOnlineSoftmaxEnabled();
   if (!need_call_online_softmax) {
     if (all_sequence_length <= 32) {
       const int blockSize = 32;
@@ -454,7 +458,7 @@ Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
                                 const bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
-  bool need_call_online_softmax = EnvVarSingleton::instance().is_online_soft_max_enabled();
+  bool need_call_online_softmax = SoftmaxEnvVarSingleton::Instance().IsOnlineSoftmaxEnabled();
   if (!need_call_online_softmax) {
     if (all_sequence_length <= 32) {
       const int blockSize = 32;
@@ -793,7 +797,7 @@ Status ComputeSoftmaxWithRawMask(cudaStream_t stream,
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
   T* out = use_persistent_softmax ? persistent_softmax_workspace : output;
 
-  bool need_call_online_softmax = EnvVarSingleton::instance().is_online_soft_max_enabled();
+  bool need_call_online_softmax = SoftmaxEnvVarSingleton::Instance().IsOnlineSoftmaxEnabled();
   if (!need_call_online_softmax) {
     if (all_sequence_length <= 32) {
       const int blockSize = 32;
