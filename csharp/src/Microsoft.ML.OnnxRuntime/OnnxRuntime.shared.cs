@@ -44,7 +44,11 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv)
+    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv).
+    /// The singleton class OrtEnv contains the process-global ONNX Runtime environment.
+    /// It sets up logging, creates system wide thread-pools (if Thread Pool options are provided)
+    /// and other necessary things for OnnxRuntime to function. Create or access OrtEnv by calling
+    /// the Instance() method. Call this method before doing anything else in your application.
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {

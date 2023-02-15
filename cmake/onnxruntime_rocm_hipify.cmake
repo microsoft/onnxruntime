@@ -122,6 +122,7 @@ set(provider_excluded_files
   "math/softmax_impl.cu"
   "math/softmax_warpwise_impl.cuh"
   "math/softmax_common.cc"
+  "math/softmax_common.h"
   "math/softmax.cc"
   "nn/conv.cc"
   "nn/conv.h"
