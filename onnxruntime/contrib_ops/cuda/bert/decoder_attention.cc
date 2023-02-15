@@ -363,7 +363,7 @@ Status DecoderAttention<T>::ComputeInternal(OpKernelContext* context) const {
   return LaunchDecoderAttentionKernel(
       device_prop,
 #ifdef USE_ROCM
-      IsTunableOpEnabled(),
+      GetTuningContext(),
 #endif
       stream,
       cublas,

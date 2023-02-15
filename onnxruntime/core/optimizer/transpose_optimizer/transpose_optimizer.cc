@@ -1040,7 +1040,7 @@ static bool HandlePad(HandlerArgs& args) {
 
 constexpr HandlerInfo pad_handler = {&FirstInput, &HandlePad};
 
-static bool HandleReduceOp(HandlerArgs& args) {
+static bool HandleReduceOpWithArg(HandlerArgs& args) {
   int64_t keepdims = args.node.GetAttributeIntDefault("keepdims", 1);
 
   std::optional<std::vector<int64_t>> axes = args.node.GetAttributeInts("axes");
@@ -1078,11 +1078,11 @@ static bool HandleReduceOp(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOp};
-
-static bool HandleReduceSum(HandlerArgs& args) {
-  if (args.ctx.opset < 13) {
-    return HandleReduceOp(args);
+static bool HandleReduceOps(HandlerArgs& args) {
+  if ((args.node.OpType() == "ReduceSum" && args.ctx.opset < 13) ||
+      // or all other reduce operators since opset 18
+      (args.node.OpType() != "ReduceSum" && args.ctx.opset < 18)) {
+    return HandleReduceOpWithArg(args);
   }
 
   bool keepdims = args.node.GetAttributeIntDefault("keepdims", 1) != 0;
@@ -1147,7 +1147,7 @@ static bool HandleReduceSum(HandlerArgs& args) {
   return true;
 }
 
-constexpr HandlerInfo reduce_sum_handler = {&FirstInput, &HandleReduceSum};
+constexpr HandlerInfo reduce_op_handler = {&FirstInput, &HandleReduceOps};
 
 static bool HandleSqueeze(HandlerArgs& args) {
   std::vector<int64_t> new_axes;
@@ -1709,7 +1709,7 @@ static const std::unordered_map<std::string_view, const HandlerInfo&> handler_ma
 #if !defined(USE_CUDA) && !defined(USE_ROCM)
     {"Resize", resize_handler},
 #endif
-    {"ReduceSum", reduce_sum_handler},
+    {"ReduceSum", reduce_op_handler},
 
     {"ReduceLogSum", reduce_op_handler},
     {"ReduceLogSumExp", reduce_op_handler},
