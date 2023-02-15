@@ -247,14 +247,18 @@ Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& met
   key_found = true;
   LOGS_DEFAULT(INFO) << "Found tuning results in the model file to be used while running the model";
 
+  Status status;
   ORT_TRY {
     auto parsed_tuning_results_json = json::parse(it->second);
     results = parsed_tuning_results_json.get<std::vector<TuningResults>>();
   }
   ORT_CATCH(const std::exception& e) {
-    return ORT_MAKE_STATUS(
-        ONNXRUNTIME, FAIL,
-        "Tuning results stored in the model file cannot be parsed. Error message: ", e.what(), ". Ignoring...");
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(
+          ONNXRUNTIME, FAIL,
+          "Tuning results stored in the model file cannot be parsed. Error message: ", e.what(), ". Ignoring...");
+    });
+    ORT_RETURN_IF_ERROR(status);
   }
 
   return Status::OK();
