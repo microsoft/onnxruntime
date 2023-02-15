@@ -115,7 +115,7 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
 
   while (input_counters) {
     // Copy the input data over
-    block_size = static_cast<size_t>(innermost_dim);
+    block_size = SafeInt<size_t>(innermost_dim);
     output = std::copy(input, input + block_size, output);
     input += block_size;
 
@@ -128,7 +128,7 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
 
     // Tile data for other axes
     while (input_counters.Increment()) {
-      block_size = output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()];
+      block_size = onnxruntime::narrow<size_t>(output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()]);
       copy = output - block_size;
       num_repeats = repeats[input_counters.Axis()] - 1;
       for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
