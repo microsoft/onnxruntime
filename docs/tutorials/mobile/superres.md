@@ -6,7 +6,7 @@ grand_parent: Tutorials
 nav_order: 3
 ---
 
-# Machine learning mobile application to improve image resolution
+# Improve image resolution with machine learning super resolution on mobile
 {: .no_toc }
 
 Learn how to build an application to improve image resolution using ONNX Runtime Mobile, with a model that includes pre and post processing.
