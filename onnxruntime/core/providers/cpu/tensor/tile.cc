@@ -109,20 +109,20 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
 
   // some helper variables that will be used along the way
   size_t block_size = 0;
-  size_t num_repeats = 0;
+  int64_t num_repeats = 0;
   const std::string* copy = nullptr;
-  const size_t innermost_dim = input_shape[dimension_count - 1];
+  const int64_t innermost_dim = input_shape[dimension_count - 1];
 
   while (input_counters) {
     // Copy the input data over
-    block_size = innermost_dim;
+    block_size = static_cast<size_t>(innermost_dim);
     output = std::copy(input, input + block_size, output);
     input += block_size;
 
     // Tile data for the innermost axis
     copy = output - block_size;
     num_repeats = repeats[dimension_count - 1] - 1;
-    for (size_t repeat = 0; repeat < num_repeats; ++repeat) {
+    for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
       output = std::copy(copy, copy + block_size, output);
     }
 
@@ -131,7 +131,7 @@ Status TileCoreForStringType(const Tensor& input_tensor, Tensor& output_tensor, 
       block_size = output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()];
       copy = output - block_size;
       num_repeats = repeats[input_counters.Axis()] - 1;
-      for (size_t repeat = 0; repeat < num_repeats; ++repeat) {
+      for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
         output = std::copy(copy, copy + block_size, output);
       }
     }
