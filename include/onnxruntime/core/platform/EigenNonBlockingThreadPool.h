@@ -287,6 +287,34 @@ class ThreadPoolProfiler {
 };
 #endif
 
+struct LockFreeMutex {
+  std::atomic_bool __occupied{false};
+  void lock() {
+    bool occupied = false;
+    while (!__occupied.compare_exchange_weak(
+        occupied,
+        true,
+        std::memory_order_relaxed,
+        std::memory_order_relaxed)) {
+      occupied = false;
+      _mm_pause();
+    }
+  }
+  void unlock() {
+    __occupied.store(false, std::memory_order_relaxed);
+  }
+};
+
+struct SimpleLocker {
+  SimpleLocker(LockFreeMutex& mtx) : __mtx(mtx) {
+    __mtx.lock();
+  }
+  ~SimpleLocker() {
+    __mtx.unlock();
+  }
+  LockFreeMutex& __mtx;
+};
+
 // Extended Eigen thread pool interface, avoiding the need to modify
 // the ThreadPoolInterface.h header from the external Eigen
 // repository.
@@ -449,7 +477,8 @@ class RunQueue {
   // PushBack adds w at the end of the queue.
   // If queue is full returns w, otherwise returns default-constructed Work.
   Work PushBack(Work w) {
-    std::lock_guard<OrtMutex> lock(mutex_);
+    //std::lock_guard<OrtMutex> lock(mutex_);
+    SimpleLocker simple_locker(lock_free_mtx_);
     unsigned back = back_.load(std::memory_order_relaxed);
     Elem& e = array_[(back - 1) & kMask];
     ElemState s = e.state.load(std::memory_order_relaxed);
@@ -469,7 +498,8 @@ class RunQueue {
   // with w_idx.  Typically the tag will be a per-thread ID to distinguish work
   // submitted from different threads.
   PushResult PushBackWithTag(Work w, Tag tag, unsigned& w_idx) {
-    std::lock_guard<OrtMutex> lock(mutex_);
+    //std::lock_guard<OrtMutex> lock(mutex_);
+    SimpleLocker simple_locker(lock_free_mtx_);
     unsigned back = back_.load(std::memory_order_relaxed);
     w_idx = (back - 1) & kMask;
     Elem& e = array_[w_idx];
@@ -490,7 +520,9 @@ class RunQueue {
   Work PopBack() {
     if (Empty())
       return Work();
-    std::lock_guard<OrtMutex> lock(mutex_);
+    //std::lock_guard<OrtMutex> lock(mutex_);
+    SimpleLocker simple_locker(lock_free_mtx_);
+
     unsigned back;
     Elem* e;
     ElemState s;
@@ -532,7 +564,9 @@ class RunQueue {
 
   bool RevokeWithTag(Tag tag, unsigned w_idx) {
     bool revoked = false;
-    std::lock_guard<OrtMutex> lock(mutex_);
+    //std::lock_guard<OrtMutex> lock(mutex_);
+    SimpleLocker simple_locker(lock_free_mtx_);
+
     Elem& e = array_[w_idx];
     ElemState s = e.state.load(std::memory_order_relaxed);
 
@@ -604,7 +638,8 @@ class RunQueue {
     Work w;
   };
 
-  OrtMutex mutex_;
+  //OrtMutex mutex_;
+  LockFreeMutex lock_free_mtx_;
 
   // Low log(kSize) + 1 bits in front_ and back_ contain rolling index of
   // front/back, respectively. The remaining bits contain modification counters
