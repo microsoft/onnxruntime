@@ -566,10 +566,11 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* relative_position_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
-                                  const Tensor* past_seq_len) const {
+                                  const Tensor* past_seq_len,
+                                  const Tensor* packing_token_offset) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
                                                mask_index, past, relative_position_bias, parameters,
-                                               max_threads_per_block, past_seq_len);
+                                               max_threads_per_block, past_seq_len, packing_token_offset);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
                                   int sequence_length, int& past_sequence_length) const {

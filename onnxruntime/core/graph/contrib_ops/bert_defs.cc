@@ -216,6 +216,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("packing_mode",
+              "Specify whether the input and output are in packing mode",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, sequence_length, input_hidden_size)",
@@ -250,6 +254,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "past_sequence_length",
                "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M",
+               OpSchema::Optional)
+        .Input(7,
+               "packing_token_offset",
+               "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
                "M",
                OpSchema::Optional)
         .Output(0,

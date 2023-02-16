@@ -21,7 +21,8 @@ class AttentionBase {
                      const Tensor* relative_position_bias,
                      void* parameters,
                      const int max_threads_per_block,  // for CUDA
-                     const Tensor* past_seq_len = nullptr) const;
+                     const Tensor* past_seq_len = nullptr,
+                     const Tensor* packing_token_offset = nullptr) const;
 
   Tensor* GetPresent(OpKernelContext* context,
                      const Tensor* past,
@@ -39,6 +40,7 @@ class AttentionBase {
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
     scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+    is_packing_mode_ = info.GetAttrOrDefault<int64_t>("packing_mode", 0) != 0;
 
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();
@@ -63,10 +65,12 @@ class AttentionBase {
                      const Tensor* past,
                      const Tensor* relative_position_bias,
                      void* parameters,
-                     const Tensor* past_seq_len = nullptr) const;
+                     const Tensor* past_seq_len = nullptr,
+                     const Tensor* packing_token_offset = nullptr) const;
 
   int num_heads_;                          // number of attention heads
   bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
+  bool is_packing_mode_;                   // whether every token can only attend to previous tokens.
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
   bool require_same_hidden_size_;          // whether the implementation supports different hidden sizes of Q/K/V.
   bool past_present_share_buffer_;         // whether or not the past (if used) and present tensor share the same buffer

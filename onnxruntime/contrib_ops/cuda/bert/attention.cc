@@ -18,6 +18,7 @@ namespace contrib {
 namespace cuda {
 
 constexpr int kPastSequenceLengthInputIndex = 6;
+constexpr int kPackingTokenOffsetInputIndex = 7;
 constexpr int kPastInputIndex = 4;
 constexpr int kPresentOutputIndex = 1;
 
@@ -61,6 +62,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
+  const Tensor* packing_token_offset = context->Input<Tensor>(kPackingTokenOffsetInputIndex);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -72,17 +74,21 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   relative_position_bias,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
-                                  past_seq_len));
+                                  past_seq_len,
+                                  packing_token_offset));
   assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 
-  TensorShapeVector output_shape(3);
-  output_shape[0] = static_cast<int64_t>(batch_size);
-  output_shape[1] = static_cast<int64_t>(sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
-  Tensor* output = context->Output(0, output_shape);
+  Tensor* output = nullptr;
+  if (is_packing_mode_) {
+    TensorShapeVector output_shape{parameters.total_token_count, parameters.v_hidden_size};
+    output = context->Output(0, output_shape);
+  } else {
+    TensorShapeVector output_shape{batch_size, sequence_length, parameters.v_hidden_size};
+    output = context->Output(0, output_shape);
+  }
 
   std::vector<int64_t> present_dims{
       2, parameters.batch_size, parameters.num_heads,
@@ -167,7 +173,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+
+  size_t gemm_buffer_size = static_cast<size_t>(m) * n;
+  if (is_packing_mode_) {
+    m = parameters.total_token_count;
+    gemm_buffer_size += static_cast<size_t>(m) * n;
+    gemm_buffer_size += batch_size * sequence_length * parameters.v_hidden_size;  // output buffer
+  }
+  gemm_buffer = GetScratchBuffer<T>(gemm_buffer_size, context->GetComputeStream());
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -179,6 +192,25 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
+
+  CudaT* gemm_buffer_data = reinterpret_cast<CudaT*>(gemm_buffer.get());
+  CudaT* output_buffer = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  if (is_packing_mode_) {
+    const int32_t* token_offset_data = packing_token_offset->Data<int32_t>();
+    CudaT* gemm_buffer_data_padding = gemm_buffer_data + m * n;
+    LaunchRestorePadding(
+        gemm_buffer_data_padding,
+        reinterpret_cast<CudaT*>(gemm_buffer.get()),
+        token_offset_data,
+        parameters.total_token_count,
+        n,
+        batch_size,
+        sequence_length,
+        Stream(context));
+    gemm_buffer_data = gemm_buffer_data_padding;
+
+    output_buffer = gemm_buffer_data_padding + batch_size * sequence_length * n;
+  }
 
   constexpr size_t element_size = sizeof(T);
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
@@ -195,7 +227,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
-  data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
+  data.gemm_buffer = gemm_buffer_data;
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = nullptr;
   data.key = nullptr;
@@ -205,11 +237,22 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
-  data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
+  data.output = output_buffer;
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  // data.token_offset_data = token_offset_data;
+
+  if (is_packing_mode_) {
+    const int32_t* token_offset_data = packing_token_offset->Data<int32_t>();
+    LaunchRemovePadding(reinterpret_cast<CudaT*>(output->MutableData<T>()),
+                        output_buffer,
+                        token_offset_data,
+                        parameters.total_token_count,
+                        parameters.v_hidden_size,
+                        Stream(context));
+  }
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

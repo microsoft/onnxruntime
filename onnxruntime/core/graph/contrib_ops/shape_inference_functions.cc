@@ -131,8 +131,9 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
     auto& input_shape = getInputShape(ctx, 0);
     auto& input_dims = input_shape.dim();
-    if (input_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 shall be 3 dimensions");
+    int input_dim_size = input_dims.size();
+    if (input_dim_size != 3 && input_dim_size != 2) {
+      fail_shape_inference("Inputs 0 shall be 3 or 2 dimensions");
     }
 
     auto& bias_shape = getInputShape(ctx, 2);
@@ -159,7 +160,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
       *output_shape.add_dim() = dim;
     }
 
-    output_shape.mutable_dim(2)->set_dim_value(v_hidden_size);
+    output_shape.mutable_dim(input_dim_size - 1)->set_dim_value(v_hidden_size);
     updateOutputShape(ctx, 0, output_shape);
 
     if (ctx.getNumOutputs() > 1) {  // has present output
@@ -174,7 +175,7 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
         if (past_present_share_buffer) {
           propagateElemTypeFromInputToOutput(ctx, past_input_index, 1);
         } else {
-          if (input_dims[1].has_dim_value() && past_dims[3].has_dim_value()) {
+          if (past_dims[3].has_dim_value() && input_dims[1].has_dim_value()) {
             int64_t total_sequence_length = input_dims[1].dim_value() + past_shape.dim(3).dim_value();
 
             ONNX_NAMESPACE::TensorShapeProto present_shape;

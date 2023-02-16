@@ -14,7 +14,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* past,
                                   const Tensor* relative_position_bias,
                                   void* parameters,
-                                  const Tensor* past_seq_len) const {
+                                  const Tensor* past_seq_len,
+                                  const Tensor* packing_token_offset) const {
   // Abbreviation and Meanings:
   //   B:    batch_size
   //   S:    sequence_length (input sequence length of query)
@@ -55,14 +56,38 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   const auto& dims = input_shape.GetDims();
-  if (dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'input' is expected to have 3 dimensions, got ",
-                           dims.size());
-  }
+  int64_t batch_size = -1;
+  int64_t sequence_length = -1;
+  int64_t input_hidden_size = -1;
+  int64_t total_token_count = -1;
+  if (is_packing_mode_) {
+    if (dims.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'input' is expected to have 2 dimensions in packing mode, got ",
+                             dims.size());
+    }
 
-  auto& batch_size = dims[0];
-  auto& sequence_length = dims[1];
-  int64_t input_hidden_size = dims[2];
+    if (nullptr == packing_token_offset) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'packing_token_offset' is expected to not be null in packing mode");
+    }
+
+    const auto& dims_token_offset = packing_token_offset->Shape().GetDims();
+
+    batch_size = dims_token_offset[0];
+    sequence_length = dims_token_offset[1];
+    total_token_count = dims[0];
+    input_hidden_size = dims[1];
+  } else {
+    if (dims.size() != 3) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'input' is expected to have 3 dimensions, got ",
+                             dims.size());
+    }
+    batch_size = dims[0];
+    sequence_length = dims[1];
+    input_hidden_size = dims[2];
+  }
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
@@ -251,6 +276,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
+    output_parameters->total_token_count = static_cast<int32_t>(total_token_count);
   }
 
   return Status::OK();
@@ -323,12 +349,15 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* relative_position_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
-                                  const Tensor* past_seq_len) const {
+                                  const Tensor* past_seq_len,
+                                  const Tensor* packing_token_offset) const {
   if (num_heads_ > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, relative_position_bias, parameters, past_seq_len);
+  return CheckInputs(input_shape, weights_shape, bias_shape,
+                     mask_index, past, relative_position_bias,
+                     parameters, past_seq_len, packing_token_offset);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

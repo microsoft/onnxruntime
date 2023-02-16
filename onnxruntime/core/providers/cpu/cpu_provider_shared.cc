@@ -201,12 +201,14 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const Tensor* relative_position_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
-                                    const Tensor* past_seq_len) override {
+                                    const Tensor* past_seq_len,
+                                    const Tensor* packing_token_offset) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
                                                   relative_position_bias,
                                                   parameters,
                                                   max_threads_per_block,
-                                                  past_seq_len);
+                                                  past_seq_len,
+                                                  packing_token_offset);
   }
 
   Tensor* AttentionBase__GetPresent(const contrib::AttentionBase* p,

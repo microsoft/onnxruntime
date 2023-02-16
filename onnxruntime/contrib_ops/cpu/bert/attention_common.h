@@ -53,6 +53,7 @@ struct AttentionParameters {
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
+  int total_token_count;
 };
 
 namespace attention {

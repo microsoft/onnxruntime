@@ -42,6 +42,7 @@ struct AttentionData {
   gsl::span<const int64_t> mask_index_dims;
   const T* past;
   const T* relative_position_bias;
+  const int32_t* token_offset_data;
 
   T* workspace;
   T* output;

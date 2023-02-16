@@ -251,7 +251,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                   AttentionData<T>& data,
                   cudaStream_t stream,
                   int max_threads_per_block,
-                  T* q, T* k, T* v, AttentionQkvFormat& qkv_format) {
+                  T* q, T* k, T* v,
+                  AttentionQkvFormat& qkv_format,
+                  const int32_t* token_offset) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -259,6 +261,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   const bool past_present_share_buffer = parameters.past_present_share_buffer;
+  //const int32_t total_token_count = parameters.total_token_count;
   void* fused_runner = data.fused_runner;
   bool use_memory_efficient_attention = data.use_memory_efficient_attention;
 
@@ -452,7 +455,7 @@ Status QkvToContext(
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
+  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format, data.token_offset_data));
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
