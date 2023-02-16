@@ -35,7 +35,7 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info,
 void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
   if (!cpu_alloc) {
     // use shared allocator if available
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);

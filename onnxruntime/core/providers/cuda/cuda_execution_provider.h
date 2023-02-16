@@ -15,6 +15,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/tunable/cuda_tuning_context.h"
 
 namespace onnxruntime {
 
@@ -26,7 +27,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(int id, OrtMemType mem_type) const override;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
 
   Status Sync() const override;
 
@@ -61,7 +62,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, Stream* stream, WaitNotificationFn wait_fn) const {
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, false, stream, wait_fn);
   }
 
   template <typename T>
@@ -69,7 +70,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     if (count_or_bytes == 0)
       return nullptr;
 
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(info_.device_id, OrtMemTypeDefault), count_or_bytes, true);
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeDefault), count_or_bytes, true);
   }
 
   template <typename T>
@@ -78,7 +79,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     // In some CUDA async
     if (count_or_bytes == 0)
       return nullptr;
-    return IAllocator::MakeUniquePtr<T>(GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU),
+    return IAllocator::MakeUniquePtr<T>(GetAllocator(OrtMemTypeCPU),
                                         count_or_bytes);
   }
 
@@ -104,9 +105,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
-  void EnableTunableOp();
-  void DisableTunableOp();
-  bool IsTunableOpEnabled() const;
+  ITuningContext* GetTuningContext() const override;
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
@@ -125,6 +124,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
   cudaStream_t stream_ = nullptr;
 
   bool use_ep_level_unified_stream_ = false;
+
+  // the tuning context might be altered when calling into a TunableOp
+  mutable cuda::tunable::CudaTuningContext tuning_context_;
 
   class PerThreadContext final {
    public:

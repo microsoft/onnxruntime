@@ -100,6 +100,7 @@ template <typename T, int TPB, int Vec>
 class VectorAdd : public IKernelExplorer {
  public:
   VectorAdd(DeviceArray& x, DeviceArray& y, DeviceArray& z, int n) {
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.x = static_cast<T*>(x.ptr());
     params_.y = static_cast<T*>(y.ptr());
@@ -121,13 +122,14 @@ template <typename T>
 class VectorAddTunable : public IKernelExplorer {
  public:
   VectorAddTunable(DeviceArray& x, DeviceArray& y, DeviceArray& z, int n) {
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.x = static_cast<T*>(x.ptr());
     params_.y = static_cast<T*>(y.ptr());
     params_.z = static_cast<T*>(z.ptr());
     params_.n = n;
 
-    impl_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   void Run() override {
