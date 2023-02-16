@@ -52,7 +52,7 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
         throw new Error('BUG in HTML image element & ImageData use case');
       }
     }
-  }
+  };
 
   // Copying the canavas data to the image as Data URL
   let image = canvas.toDataURL();
