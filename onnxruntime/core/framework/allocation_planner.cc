@@ -1054,13 +1054,17 @@ class PlannerImpl {
         auto process_input = [&](const NodeArg& input, size_t /*arg_idx*/) {
           if (input.Exists()) {
             const auto& name = input.Name();
+            /*if (name == "TFNodes/yolo_evaluation_layer_1/Cast_7:0_CUDAExecutionProvider") {
+              std::cout << name << " consumed by " << node_index << std::endl;
+            }*/
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
-            auto origin = Buffer(value_idx);
-            if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
-              // add current node as consumer for origin buffer
-              value_consumer_map_[origin].insert(node_index);
-            }
+            value_consumer_map_[value_idx].insert(node_index);
+            //auto origin = Buffer(value_idx);
+            //if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
+            //  // add current node as consumer for origin buffer
+            //  value_consumer_map_[origin].insert(node_index);
+            //}
           }
           return Status::OK();
         };
@@ -1069,6 +1073,19 @@ class PlannerImpl {
         ORT_RETURN_IF_ERROR(Node::ForEachWithIndex(node->ImplicitInputDefs(), process_input));
       }
     }
+    /*
+    std::set<std::string> black_list2 = {"casted",
+                                         "TFNodes/yolo_evaluation_layer_1/mul_6:0",
+                                         "TFNodes/yolo_evaluation_layer_1/mul_12:0",
+                                         "TFNodes/yolo_evaluation_layer_1/mul_5:0",
+                                         "TFNodes/yolo_evaluation_layer_1/arange__173_loop:1",
+                                         //below must be blocked
+                                         "TFNodes/yolo_evaluation_layer_1/arange_1__148_loop:1",
+                                         //"TFNodes/yolo_evaluation_layer_1/mul_11:0",
+                                         "TFNodes/yolo_evaluation_layer_1/arange_2__76_loop:1",
+                                         "TFNodes/yolo_evaluation_layer_1/arange_3__51_loop:1"
+                                         "---------------------------------------------"};
+    */
 
     std::function<void(NodeIndex)> TryReuseInput = [&](NodeIndex node_index) {
       auto* node = graph_viewer.GetNode(node_index);
@@ -1111,12 +1128,16 @@ class PlannerImpl {
               if (p_input_arg->Exists()) {
                 OrtValueIndex reusable_input{};
                 if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
-                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) /*&&
+                    value_consumer_map_[reusable_input].size() == 1 &&
+                    value_consumer_map_[output_idx_global].size() == 1 &&
+                    black_list2.find(p_input_arg->Name()) == black_list2.end())*/ {
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                   allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                   allocation_plan[output_idx_global].reused_buffer = reusable_input;
                   value_consumer_map_[reusable_input].insert(value_consumer_map_[output_idx_global].begin(),
                                                              value_consumer_map_[output_idx_global].end());
+                  //ort_value_info_[output_idx_global].is_inplace_reuse = true;
                   reused.insert(reusable_input);
                   found_reusable = true;
                   break;
@@ -1180,6 +1201,80 @@ class PlannerImpl {
         }
       }
     };  // TryReuseInput
+
+    /*
+    static const std::set<std::string> black_list = {
+        "TFNodes/yolo_evaluation_layer_1/arange__173_cast_diff:0",
+        "TFNodes/yolo_evaluation_layer_1/arange_1__148_cast_diff:0",
+        "TFNodes/yolo_evaluation_layer_1/Tile_1/multiples_Concat__142:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_6:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_7:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_9:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_30:0",
+        "TFNodes/yolo_evaluation_layer_1/truediv_11:0",
+        "TFNodes/yolo_evaluation_layer_1/sub_3:0",
+        "TFNodes/yolo_evaluation_layer_1/mul_8:0",
+        "TFNodes/yolo_evaluation_layer_1/Shape:0",
+        "TFNodes/yolo_evaluation_layer_1/Cast_5:0_CUDAExecutionProvider",
+        "TFNodes/yolo_evaluation_layer_1/arange_2__76_trip_cnt:0",
+        "TFNodes/yolo_evaluation_layer_1/arange_2__76_ceil:0",
+
+        "TFNodes/yolo_evaluation_layer_1/arange_1__148_ceil:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_6__126:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_7__121:0",
+        "TFNodes/yolo_evaluation_layer_1/Round_1:0",
+        "TFNodes/yolo_evaluation_layer_1/truediv_10:0",
+        "TFNodes/yolo_evaluation_layer_1/mul:0",
+        "TFNodes/yolo_evaluation_layer_1/Shape__183:0",
+        "TFNodes/yolo_evaluation_layer_1/arange_2__76_cast_diff:0",
+        "TFNodes/yolo_evaluation_layer_1/Tile_2__85:0",
+        "TFNodes/yolo_evaluation_layer_1/Tile_2/multiples_Concat__70:0",
+        "TFNodes/yolo_evaluation_layer_1/arange_3__51_trip_cnt:0",
+        "TFNodes/yolo_evaluation_layer_1/arange_3__51_cast_diff:0",
+        "TFNodes/yolo_evaluation_layer_1/Tile_3__60:0",
+
+        
+        //below cannot be unblocked
+        "TFNodes/yolo_evaluation_layer_1/Cast_7:0_CUDAExecutionProvider", // sharing this causing lots of mismatch
+        // below can be unblocked
+        "TFNodes/yolo_evaluation_layer_1/arange_3__51_ceil:0",
+        
+        // below can be unblocked
+        "TFNodes/yolo_evaluation_layer_1/Tile_3/multiples_Concat__45:0",
+        "TFNodes/yolo_evaluation_layer_1/Reshape_9__86:0",
+        
+        //below can be unblocked
+        "TFNodes/yolo_evaluation_layer_1/Reshape_9/shape_Concat__35:0",
+        "TFNodes/yolo_evaluation_layer_1/Reshape_9/shape_Unsqueeze__31:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_25__29:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_25:0",
+
+        //below can be unblocked
+        "TFNodes/yolo_evaluation_layer_1/Reshape_9/shape_Unsqueeze__32:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_26__24:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_26:0",
+        "TFNodes/yolo_evaluation_layer_1/Cast_5:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_28:0",
+        "TFNodes/yolo_evaluation_layer_1/strided_slice_20:0",
+        "TFNodes/yolo_evaluation_layer_1/Shape_2__11:0",
+        "TFNodes/yolo_evaluation_layer_1/Shape_2:0",
+        "TFNodes/yolo_evaluation_layer_1/Shape_2"
+    };*/
+
+    //std::function<InlinedHashSet<size_t>(NodeIndex)> GetNodeInputs = [&](NodeIndex node_index) {
+    //  InlinedHashSet<size_t> node_direct_inputs;
+    //  auto* node = graph_viewer.GetNode(node_index);
+    //  const auto& input_defs = node->InputDefs();
+    //  for (size_t input_idx_local = 0; input_idx_local < input_defs.size(); ++input_idx_local) {
+    //    const auto& node_input = input_defs[input_idx_local];
+    //    if (!node_input->Exists()) continue;
+    //    OrtValueIndex input_idx_global{};
+    //    if (value_map.GetIdx(node_input->Name(), input_idx_global).IsOK()) {
+    //      node_direct_inputs.insert(input_idx_global);
+    //    }
+    //  }
+    //  return node_direct_inputs;
+    //};
 
     // go over the outputs of "node_index" and try to reuse its memory
     std::function<void(NodeIndex)> TryReuseOutput = [&](NodeIndex node_index) {
@@ -1251,9 +1346,11 @@ class PlannerImpl {
                 break;
               }
             }
+            //if (all_covered && black_list.find(node_output->Name()) == black_list.end()) {
             if (all_covered) {
               allocation_plan[downstream_value].alloc_kind = AllocKind::kReuse;
               allocation_plan[downstream_value].reused_buffer = output_idx_global;
+              std::cout << node_output->Name() << " reused by " << downstream_arg->Name() << std::endl;
               get_reused = true;
               // add new consumer for the value to be reused
               value_consumer_map_[output_idx_global].insert(value_node_map_[downstream_value]);
@@ -1293,6 +1390,17 @@ class PlannerImpl {
         }
       }
     }
+
+    for (size_t value_index = 0; value_index < allocation_plan.size(); ++value_index) {
+      if (allocation_plan[value_index].alloc_kind == AllocKind::kReuse) {
+        while (allocation_plan[allocation_plan[value_index].reused_buffer].alloc_kind == AllocKind::kReuse &&
+               allocation_plan[value_index].reused_buffer != allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer) {
+          allocation_plan[value_index].reused_buffer = allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer;
+        }
+        ort_value_info_[value_index].reused_buffer_index = allocation_plan[value_index].reused_buffer;
+      }
+    }
+
     return Status::OK();
   }
 #endif
@@ -2226,7 +2334,9 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
   InlinedHashMap<std::string, int> op_type_counter;
   auto& p_graph_nodes = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
-  InlinedVector<NodeIndex> index_of_MemcpyFromAndToHost;
+  //InlinedVector<NodeIndex> index_of_MemcpyFromAndToHost;
+  int mem_stream = -1; // by default, there is no stream hosting mem nodes
+
   if (node_names_by_stream_.empty()) {  // input configure empty, do it from scratch
 
     InlinedHashMap<OrtDevice::DeviceType, int> device_to_stream;
@@ -2252,8 +2362,19 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       if (node_name_or_type.empty()) {
         node_name_or_type = op_type + std::to_string(op_type_counter[op_type]++);
       }
+      /*
       if (op_type == "MemcpyToHost" || op_type == "MemcpyFromHost") {
         index_of_MemcpyFromAndToHost.push_back(node->Index());
+      } else {
+        node_names_by_stream_[it->second].push_back(node_name_or_type);
+      }*/
+      if (op_type == "MemcpyToHost" || op_type == "MemcpyFromHost") {
+        if (mem_stream == -1) {
+          mem_stream = static_cast<int>(node_names_by_stream_.size());
+          node_names_by_stream_.push_back({});
+          device_types_.push_back(device_type);
+        }
+        node_names_by_stream_[mem_stream].push_back(node_name_or_type);
       } else {
         node_names_by_stream_[it->second].push_back(node_name_or_type);
       }
@@ -2283,9 +2404,9 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       ORT_ENFORCE(iter != node_stream_map.end(), "Failed to find node \"", node_name, "\" in node-stream map");
     }
   }
-  if (index_of_MemcpyFromAndToHost.size() > 0) {
-    stream_nodes.push_back(index_of_MemcpyFromAndToHost);
-  }
+  //if (index_of_MemcpyFromAndToHost.size() > 0) {
+  //  stream_nodes.push_back(index_of_MemcpyFromAndToHost);
+  //}
   return Status::OK();
 }
 

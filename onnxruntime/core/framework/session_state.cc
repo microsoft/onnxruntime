@@ -1352,9 +1352,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
 #ifdef _WIN32
 
-  PathString partition_config_file =
-      ToWideString(session_options.config_options.GetConfigOrDefault(
-          kNodePartitionConfigFile, ""));
+  PathString partition_config_file;
+  if (!parent_node) {
+    // do not use config file for sub-graph
+    partition_config_file = ToWideString(session_options.config_options.GetConfigOrDefault(
+        kNodePartitionConfigFile, ""));
+  }
 
 #else
 
