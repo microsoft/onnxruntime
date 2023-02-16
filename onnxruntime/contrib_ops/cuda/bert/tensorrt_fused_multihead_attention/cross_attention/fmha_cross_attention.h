@@ -186,7 +186,7 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
     void const* q_packed_d, void const* kv_packed_d, void* cu_seqlens_q_d, void* cu_seqlens_kv_d, void* o_packed_d) {
   Fused_multihead_attention_params_mhca params{};
 
-  int32_t const d_padded = static_cast<int>(std::pow(2, std::ceil(std::log(d) / std::log(2))));
+  int32_t const d_padded = d <= 64 ? 64 : static_cast<int>(std::pow(2, std::ceil(std::log(d) / std::log(2))));
 
   // Set the pointers.
   params.o_ptr = o_packed_d;
@@ -269,11 +269,11 @@ using FusedMHACrossKernelFactory = TSharedCubinKernelFactory<FusedMultiHeadCross
 // Below are public interface
 
 inline bool has_fused_cross_attention_kernel(int sm, int head_size, int kv_sequence_length) {
-  constexpr int min_head_size = 32;
+  constexpr int min_head_size = 0;
   const int max_head_size = (sm == 75 ? 64 : 256);
   return (sm == 75 || sm == 80 || sm == 86 || sm == 89) &&
          (head_size > min_head_size) && (head_size <= max_head_size) &&
-         (kv_sequence_length <= 128); // TODO: shall we remove this constraint on kv_sequence_length?
+         (kv_sequence_length <= 128);  // TODO: shall we remove this constraint on kv_sequence_length?
 }
 
 inline FusedMultiHeadCrossAttentionKernel const* get_fused_cross_attention_kernels(int32_t sm) {
