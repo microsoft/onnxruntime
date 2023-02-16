@@ -3,6 +3,7 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 
+#include "core/common/logging/macros.h"
 #include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
@@ -84,15 +85,19 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // If we are actually running on Android system, we can get the API level by querying the system
   // However, since we also allow the NNAPI EP run GetCapability for model conversion on a non-Android system,
   // since we cannot get the runtime system API level, we have to specify it using compile definition.
-  static const int32_t android_feature_level = []() {
+  const int32_t android_feature_level = [this]() {
 #ifdef __ANDROID__
-    const auto* nnapi = NnApiImplementation();
-    return nnapi->nnapi_runtime_feature_level;
+    const auto* nnapi_handle = NnApiImplementation();
+    auto flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) ? nnapi::TargetDeviceOption::CPU_DISABLED
+                                                         : nnapi::TargetDeviceOption::ALL_DEVICES;
+    flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT) ? nnapi::TargetDeviceOption::CPU_DISABLED_SOFT : flag;
+    return nnapi::GetNNAPIFeatureLevelWithDeviceTag(nnapi_handle, flag);
 #else
+    ORT_UNUSED_PARAMETER(nnapi_flags_);
     return ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
 #endif
   }();
-
+  LOGS_DEFAULT(VERBOSE) << "Finding Android API level: " << android_feature_level;
   const nnapi::OpSupportCheckParams params{
       android_feature_level,
       !!(nnapi_flags_ & NNAPI_FLAG_USE_NCHW),
@@ -270,13 +275,16 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
 
     bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+    bool cpu_disabled_soft = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT;
     bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
     if (cpu_disabled && cpu_only) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
     } else if (cpu_disabled) {
-      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_DISABLED);
+      builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_DISABLED);
     } else if (cpu_only) {
-      builder.SetTargetDeviceOption(nnapi::ModelBuilder::TargetDeviceOption::CPU_ONLY);
+      builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_ONLY);
+    } else if (cpu_disabled_soft) {
+      builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_DISABLED_SOFT);
     }
 
     std::unique_ptr<nnapi::Model> nnapi_model;
@@ -370,8 +378,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
 
         const void* inputBuffer = input_tensor.GetTensorRawData();
         inputs.push_back({input_name, inputBuffer, std::move(input_type)});
-
-     }
+      }
 
 #ifdef __ANDROID__
       // From this point we will need to take the exclusive lock on the model until the Predict is

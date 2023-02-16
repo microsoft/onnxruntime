@@ -142,8 +142,6 @@ class Model {
                  const android::nn::wrapper::OperandType& operand_type);
 
   void AddScalarOutput(const std::string& output_name);
-
-  int32_t GetNNAPIFeatureLevel() const;
 };
 
 class Execution {
