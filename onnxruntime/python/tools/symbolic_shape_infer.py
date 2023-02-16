@@ -1056,7 +1056,6 @@ class SymbolicShapeInference:
         data_shape = self._get_shape(node, 0)
         data_rank = len(data_shape)
         indices_shape = self._get_shape(node, 1)
-        len(indices_shape)
         last_index_dimension = indices_shape[-1]
         assert is_literal(last_index_dimension) and last_index_dimension <= data_rank
         new_shape = indices_shape[:-1] + data_shape[last_index_dimension:]
