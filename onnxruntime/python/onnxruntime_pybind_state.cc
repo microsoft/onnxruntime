@@ -559,13 +559,38 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDnnlExecutionProvider) {
 #ifdef USE_DNNL
-    return onnxruntime::DnnlProviderFactoryCreator::Create(session_options.enable_cpu_mem_arena)->CreateProvider();
+    // Generate dnnl_options
+    OrtDnnlProviderOptions dnnl_options;
+// For Eigen and OpenMP
+#if defined(DNNL_OPENMP)
+    int num_threads = 0;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "num_of_threads") {
+          num_threads = std::stoi(option.second);
+          if (num_threads < 0) {
+            ORT_THROW(
+                "[ERROR] [OneDNN] Invalid entry for the key 'num_of_threads',"
+                " set number of threads or use '0' for default\n");
+            // If the user doesnt define num_threads, auto detect threads later
+          }
+        } else {
+          ORT_THROW("Invalid OneDNN EP option: ", option.first);
+        }
+      }
+    }
+    dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
+#endif  // !defined(DNNL_ORT_THREAD)
+    dnnl_options.use_arena = session_options.enable_cpu_mem_arena;
+
+    return onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options)->CreateProvider();
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
     OrtOpenVINOProviderOptions params;
     params.device_type = openvino_device_type.c_str();
-    std::string blob_dump_path;
+    std::string cache_dir;
 
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
@@ -582,16 +607,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
           }
 
-        } else if (option.first == "use_compiled_network") {
-          if (option.second == "True") {
-            params.use_compiled_network = true;
-          } else if (option.second == "False") {
-            params.use_compiled_network = false;
-          } else {
-            ORT_THROW("Invalid value passed for use_compiled_network: ", option.second);
-          }
-
-        } else if (option.first == "enable_opencl_throttling") {
+        }  else if (option.first == "enable_opencl_throttling") {
           if (option.second == "True") {
             params.enable_opencl_throttling = true;
           } else if (option.second == "False") {
@@ -611,9 +627,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           params.device_id = option.second.c_str();
         } else if (option.first == "num_of_threads") {
           params.num_of_threads = std::stoi(option.second);
-        } else if (option.first == "blob_dump_path") {
-          blob_dump_path = option.second;
-          params.blob_dump_path = blob_dump_path.c_str();
+        } else if (option.first == "cache_dir") {
+          cache_dir = option.second;
+          params.cache_dir = cache_dir.c_str();
         } else if (option.first == "context") {
           params.context = (void*)(option.second.c_str());
         } else {
@@ -1333,7 +1349,7 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
-      
+
   py::class_<RunOptions>(m, "RunOptions", R"pbdoc(Configuration information for a single Run.)pbdoc")
       .def(py::init())
       .def_readwrite("log_severity_level", &RunOptions::run_log_severity_level,
@@ -1352,8 +1368,6 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 #endif
       .def_readwrite("only_execute_path_to_fetches", &RunOptions::only_execute_path_to_fetches,
                      R"pbdoc(Only execute the nodes needed by fetch list)pbdoc")
-      .def_readwrite("synchronize_execution_providers", &RunOptions::synchronize_execution_providers,
-                     R"pbdoc(Synchronize execution providers after executing session.)pbdoc")
       .def(
           "add_run_config_entry",
           [](RunOptions* options, const char* config_key, const char* config_value) -> void {
@@ -1650,6 +1664,57 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+      })
+      .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
+#if !defined(ORT_MINIMAL_BUILD)
+        py::list ret;
+        for (const auto& trs : sess->GetSessionHandle()->GetTuningResults()) {
+          py::dict py_trs;
+          py_trs["ep"] = trs.ep;
+          py_trs["results"] = trs.results;
+          py_trs["validators"] = trs.validators;
+          ret.append(std::move(py_trs));
+        }
+
+        return ret;
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
+#endif
+      })
+      .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::vector<TuningResults> tuning_results;
+        for (auto handle: results) {
+          auto py_trs = handle.cast<py::dict>();
+          TuningResults trs;
+          trs.ep = py_trs["ep"].cast<py::str>();
+
+          for (const auto [py_op_sig, py_kernel_map]: py_trs["results"].cast<py::dict>()) {
+            KernelMap kernel_map;
+            for (const auto [py_params_sig, py_kernel_id]: py_kernel_map.cast<py::dict>()) {
+              kernel_map[py_params_sig.cast<py::str>()] = py_kernel_id.cast<py::int_>();
+            }
+            trs.results[py_op_sig.cast<py::str>()] = kernel_map;
+          }
+
+          for (const auto [k, v]: py_trs["validators"].cast<py::dict>()) {
+            trs.validators[k.cast<py::str>()] = v.cast<py::str>();
+          }
+
+          tuning_results.emplace_back(std::move(trs));
+        }
+
+        Status status = sess->GetSessionHandle()->SetTuningResults(tuning_results, error_on_invalid);
+        if (!status.IsOK()) {
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
+        }
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_UNUSED_PARAMETER(results);
+        ORT_UNUSED_PARAMETER(error_on_invalid);
+        ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
+#endif
       });
 
   py::enum_<onnxruntime::ArenaExtendStrategy>(m, "ArenaExtendStrategy", py::arithmetic())

@@ -30,7 +30,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 14
+#define ORT_API_VERSION 15
 
 #ifdef __cplusplus
 extern "C" {
@@ -268,6 +268,7 @@ ORT_RUNTIME_CLASS(PrepackedWeightsContainer);
 ORT_RUNTIME_CLASS(TensorRTProviderOptionsV2);
 ORT_RUNTIME_CLASS(CUDAProviderOptionsV2);
 ORT_RUNTIME_CLASS(CANNProviderOptions);
+ORT_RUNTIME_CLASS(DnnlProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 
@@ -554,7 +555,9 @@ typedef struct OrtMIGraphXProviderOptions {
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
-  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{}, num_of_threads{}, use_compiled_network{}, blob_dump_path{}, context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
+  OrtOpenVINOProviderOptions() : device_type{}, enable_vpu_fast_compile{}, device_id{},
+                                 num_of_threads{}, cache_dir{},
+                                 context{}, enable_opencl_throttling{}, enable_dynamic_shapes{} {}
 #endif
   /** \brief Device type string
    *
@@ -564,8 +567,7 @@ typedef struct OrtOpenVINOProviderOptions {
   unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;               ///< 0 = Use default number of threads
-  unsigned char use_compiled_network;  ///< 0 = disabled, nonzero = enabled
-  const char* blob_dump_path;          // path is set to empty by default
+  const char* cache_dir;          // path is set to empty by default
   void* context;
   unsigned char enable_opencl_throttling;  ///< 0 = disabled, nonzero = enabled
   unsigned char enable_dynamic_shapes;     ///< 0 = disabled, nonzero = enabled
@@ -1678,6 +1680,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelInfo
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Get a float stored as an attribute in the graph node
@@ -1727,6 +1730,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelContext
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Used for custom operators, get the input count of a kernel
@@ -2091,7 +2095,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetAvailableProviders, _Outptr_ char*** out_ptr, _Out_ int* provider_length);
 
-  /** \brief Release data from OrtApi::GetAvailableProviders
+  /** \brief Release data from OrtApi::GetAvailableProviders. This API will never fail
+   * so you can rely on it in a noexcept code.
    *
    * \param[in] ptr The `out_ptr` result from OrtApi::GetAvailableProviders.
    * \param[in] providers_length The `provider_length` result from OrtApi::GetAvailableProviders
@@ -2598,6 +2603,7 @@ struct OrtApi {
 
   /// @}
   /// \name OrtKernelInfo
+  /// Custom operator APIs.
   /// @{
 
   /** \brief Fetch an array of int64_t values stored as an attribute in the graph node
@@ -3141,9 +3147,12 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(HasValue, _In_ const OrtValue* value, _Out_ int* out);
+
   /// @}
   /// \name OrtKernelContext
+  /// Custom operator APIs.
   /// @{
+
   /** \brief Used for custom operators, gets the GPU compute stream to use to launch the custom a GPU kernel
    *   \see ::OrtCustomOp
    * \param[in]  context OrtKernelContext instance
@@ -3536,6 +3545,13 @@ struct OrtApi {
 
   /* \brief: Get the training C Api
    *
+   * \param[in] version Must be ::ORT_API_VERSION
+   * \return The ::OrtTrainingApi for the version requested.
+   *         nullptr will be returned and no error message will be printed if the training api is not supported with
+   *         this build.
+   *         nullptr will be returned and an error message will be printed if the provided version is unsupported, for
+   *         example when using a runtime older than the version created with this header file.
+   *
    * \since Version 1.13
    */
   const OrtTrainingApi*(ORT_API_CALL* GetTrainingApi)(uint32_t version)NO_EXCEPTION;
@@ -3687,6 +3703,259 @@ struct OrtApi {
   ORT_API2_STATUS(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
                   _In_ const char* registration_func_name);
 
+  /// \name OrtKernelInfo
+  /// Custom operator APIs.
+  /// @{
+
+  /** \brief Get the number of inputs from ::OrtKernelInfo.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query the number of inputs
+   * during kernel/session creation.
+   *
+   * \param[in] info Instance of ::OrtKernelInfo.
+   * \param[out] out Pointer to variable assigned with the result on success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetInputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief Get the number of outputs from ::OrtKernelInfo.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query the number of outputs
+   * during kernel/session creation.
+   *
+   * \param[in] info Instance of ::OrtKernelInfo.
+   * \param[out] out Pointer to variable assigned with the result on success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetOutputCount, _In_ const OrtKernelInfo* info, _Out_ size_t* out);
+
+  /** \brief Get the name of a ::OrtKernelInfo's input.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query an input's name
+   * during kernel/session creation.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the name
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the name string's size,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index The index of the input name to get. Returns a failure status if out-of-bounds.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the input's name.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetInputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the name of a ::OrtKernelInfo's output.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query an output's name
+   * during kernel/session creation.
+   *
+   * If `out` is nullptr, the value of `size` is set to the size of the name
+   * string (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the name string's size,
+   * the value of `size` is set to the true size of the string (including null-terminator),
+   * the provided memory is filled with the string's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string's size and `out`
+   * is not nullptr, the value of `size` is set to the true size of the string
+   * and a failure status is returned.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index The index of the output name to get. Returns a failure status if out-of-bounds.
+   * \param[out] out Memory location into which to write the UTF-8 null-terminated string representing the output's
+   *                 name.
+   * \param[in,out] size Pointer to the size of the `out` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetOutputName, _In_ const OrtKernelInfo* info, size_t index, _Out_ char* out,
+                  _Inout_ size_t* size);
+
+  /** \brief Get the type information for a ::OrtKernelInfo's input.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+   * of an input during kernel/session creation.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
+   * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetInputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Get the type information for a ::OrtKernelInfo's output.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to query the shape and type information
+   * of an output during kernel/session creation.
+   *
+   * \param[in] info An instance of ::OrtKernelInfo.
+   * \param[in] index Which input to get the type information for
+   * \param[out] type_info Pointer set to the resulting ::OrtTypeInfo. Must be freed with OrtApi::ReleaseTypeInfo.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelInfo* info, size_t index,
+                  _Outptr_ OrtTypeInfo** type_info);
+
+  /** \brief Get a ::OrtValue tensor stored as an attribute in the graph node.
+   *
+   * Used in the CreateKernel callback of an OrtCustomOp to get a tensor attribute.
+   *
+   * \param[in] info ::OrtKernelInfo instance.
+   * \param[in] name UTF-8 null-terminated string representing the attribute's name.
+   * \param[in] allocator Allocator used to allocate the internal tensor state.
+   * \param[out] out Returns newly created ::OrtValue. Must be freed with OrtApi::ReleaseValue,
+   *                 which will also free internal tensor state allocated with the provided allocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(KernelInfoGetAttribute_tensor, _In_ const OrtKernelInfo* info, _In_z_ const char* name,
+                  _Inout_ OrtAllocator* allocator, _Outptr_ OrtValue** out);
+
+  /// @}
+  /// \name OrtSessionOptions
+  /// Custom operator APIs
+  /// @{
+
+  /** \brief Checks if the given session configuration entry exists.
+   *
+   * The config_key formats are defined in onnxruntime_session_options_config_keys.h
+   *
+   * Can be used in a custom operator library to check for session configuration entries
+   * that target one or more custom operators in the library. Example: The config entry
+   * custom_op.myop.some_key targets a custom op named "myop".
+   *
+   * \param[in] options The ::OrtSessionOptions instance.
+   * \param[in] config_key A null-terminated UTF-8 string representation of the configuration key.
+   * \param[out] out Pointer set to 1 if the entry exists and 0 otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(HasSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _Out_ int* out);
+
+  /** \brief Get a session configuration value.
+   *
+   * Returns a failure status if the configuration key does not exist.
+   * The config_key and the format of config_value are defined in onnxruntime_session_options_config_keys.h
+   *
+   * If `config_value` is nullptr, the value of `size` is set to the true size of the string
+   * value (including null-terminator), and a success status is returned.
+   *
+   * If the `size` parameter is greater than or equal to the actual string value's size,
+   * the value of `size` is set to the true size of the string value, the provided memory
+   * is filled with the value's contents, and a success status is returned.
+   *
+   * If the `size` parameter is less than the actual string value's size and `config_value`
+   * is not nullptr, the value of `size` is set to the true size of the string value
+   * and a failure status is returned.
+   *
+   * Can be used in a custom operator library to get session configuration entries
+   * that target one or more custom operators in the library. Example: The config entry
+   * custom_op.myop.some_key targets a custom op named "myop".
+   *
+   * \param[in] options The session options.
+   * \param[in] config_key A null-terminated UTF-8 string representation of the config key.
+   * \param[in] config_value Pointer to memory where the null-terminated UTF-8 string value will be stored.
+   * \param[in,out] size Pointer to the size of the `config_value` buffer. See above comments for details.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.14
+   */
+  ORT_API2_STATUS(GetSessionConfigEntry, _In_ const OrtSessionOptions* options,
+                  _In_z_ const char* config_key, _Out_ char* config_value, _Inout_ size_t* size);
+
+  /// @}
+
+  /** \brief Append dnnl provider to session options
+   *
+   * If oneDNN is not available, this function will return failure.
+   *
+   * \param[in] options
+   * \param[in] dnnl_options
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_Dnnl,
+                  _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options);
+
+   /** \brief Create an OrtDnnlProviderOptions
+   *
+   * \param[out] out Newly created ::OrtDnnlProviderOptions. Must be released with OrtApi::ReleaseDnnlProviderOptions
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out);
+
+  /** \brief Set options in a oneDNN Execution Provider.
+   *
+   * Key should be in null terminated string format of the member of ::OrtDnnlProviderOptions
+   * and value should be its related range.
+   *
+   * For example, key="use_arena" and value="1"
+   *
+   * \param[in] dnnl_options
+   * \param[in] provider_options_keys Array of UTF-8 null-terminated string for provider options keys
+   * \param[in] provider_options_values Array of UTF-8 null-terminated string for provider options values
+   * \param[in] num_keys Number of elements in the `provider_option_keys` and `provider_options_values` arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(UpdateDnnlProviderOptions, _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /**
+   * Get serialized oneDNN provider options string.
+   *
+   * For example, "use_arena=1;......"
+   *
+   * \param dnnl_options - OrtDnnlProviderOptions instance
+   * \param allocator - a ptr to an instance of OrtAllocator obtained with CreateAllocator() or GetAllocatorWithDefaultOptions()
+   *                      the specified allocator will be used to allocate continuous buffers for output strings and lengths.
+   * \param ptr - is a UTF-8 null terminated string allocated using 'allocator'. The caller is responsible for using the same allocator to free it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.15.
+   */
+  ORT_API2_STATUS(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
+
+  /** \brief Release an ::OrtDnnlProviderOptions
+   *
+   * \since Version 1.15.
+   */
+  void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif
@@ -3787,6 +4056,16 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessionOpt
  * \param device_id HIP device id, starts from zero.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessionOptions* options, int device_id);
+
+/*
+ * This is the old way to add the oneDNN provider to the session, please use
+ * SessionOptionsAppendExecutionProvider_oneDNN above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with
+ * oneDNN support and the oneDNN provider shared library exists
+ *
+ * \param use_arena zero: false. non-zero: true.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
 
 #ifdef __cplusplus
 }

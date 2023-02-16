@@ -21,6 +21,7 @@ class FusionGptAttentionPastBase(Fusion):
         self.num_heads = num_heads
         self.utils = FusionUtils(model)
         self.casted_attention_mask = {}  # map from name of attention mask to the name that casted to int32
+        self.mask_filter_value = None
 
     def match_past_pattern_1(self, concat_k, concat_v, output_name_to_node):
         # Pattern 1:
@@ -202,6 +203,9 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             ]
         )
 
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
+
         matmul_node = helper.make_node(
             "MatMul",
             inputs=[attention_node_name + "_output", gemm_qkv.input[1]],
@@ -367,6 +371,12 @@ class FusionGptAttention(FusionGptAttentionPastBase):
             if div_qk != div_mask:
                 logger.debug("fuse_attention: skip since div_qk != div_mask")
                 return
+
+            if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+                _, mul_val = self.model.get_constant_input(mask_nodes[0])
+                if mul_val != -10000:
+                    self.mask_filter_value = -mul_val
+
         else:
             # New pattern for gpt2 from PyTorch 1.5.0 and Transformers 2.9.0.
             i, qk_nodes, _ = self.model.match_parent_paths(
@@ -408,6 +418,10 @@ class FusionGptAttention(FusionGptAttentionPastBase):
                 if input_mask_nodes is None:
                     logger.debug("fuse_attention: failed to match input attention mask path")
                     return
+                if len(input_mask_nodes) > 1 and input_mask_nodes[0].op_type == "Mul":
+                    _, mul_val = self.model.get_constant_input(input_mask_nodes[0])
+                    if mul_val != -10000:
+                        self.mask_filter_value = mul_val
 
             mask_nodes = self.model.match_parent_path(
                 where_qk,

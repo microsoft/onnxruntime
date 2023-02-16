@@ -192,10 +192,12 @@ def parse_arguments():
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
 
-    parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
+    parser.add_argument("--enable_nccl", action="store_true", help="Enable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
-    parser.add_argument("--use_mpi", nargs="?", default=True, const=True, type=_str_to_bool)
+    parser.add_argument(
+        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Disabled by default."
+    )
 
     # enable ONNX tests
     parser.add_argument(
@@ -500,11 +502,6 @@ def parse_arguments():
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
-    parser.add_argument(
-        "--skip_and_perform_filtered_tests",
-        action="store_true",
-        help="Skip time-consuming and only perform filtered tests for TensorRT EP",
-    )
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
@@ -894,7 +891,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_SKIP_AND_PERFORM_FILTERED_TENSORRT_TESTS="
-        + ("ON" if args.test_all_timeout == "10800" else "OFF"),
+        + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
         # set vars for TVM
@@ -943,7 +940,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -977,6 +974,8 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+            if args.use_rocm:
+                cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -2377,6 +2376,11 @@ def main():
     # GDK builds don't support testing
     if args.use_gdk:
         args.test = False
+
+    # enable_training is a higher level flag that enables all training functionality.
+    if args.enable_training:
+        args.enable_training_apis = True
+        args.enable_training_ops = True
 
     configs = set(args.config)
 

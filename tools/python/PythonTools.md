@@ -163,3 +163,20 @@ optional arguments:
   -m MODEL, --model MODEL   model file
   -o OUT, --out OUT         output directory (default: <current dire)
 ```
+
+## onnx2tfevents.py
+
+Convert ONNX model to TensorBoard events file so that we can visualize the model in TensorBoard. This is especially useful for debugging large models that cannot be visualized in Netron.
+
+```
+usage: onnx2tfevents.py [-h] [--logdir LOGDIR] [--model MODEL]
+
+optional arguments:
+  -h, --help       show this help message and exit
+  --logdir LOGDIR  Tensorboard log directory
+  --model MODEL    ONNX model path
+```
+
+Once the events file is generated, start the tensorboard and visualize the model graph.
+
+Note: This tool requires torch and tensorboard to be installed.

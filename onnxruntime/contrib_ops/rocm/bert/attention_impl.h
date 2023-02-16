@@ -6,6 +6,7 @@
 #include <hip/hip_fp16.h>
 #include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +28,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
-    bool tuning,                               // Whether to enable tuning
+    RocmTuningContext* tuning_ctx, // context for tuning
     hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
@@ -40,8 +41,9 @@ Status LaunchAttentionKernel(
     const void* input,                         // Input tensor
     const int* mask_index,                     // Attention mask raw data or index. NULL means no mask.
     gsl::span<const int64_t> mask_index_dims,  // Mask index shape
+    const float mask_filter_value,             // Mask value for filtered out positions
     const void* past,                          // Past state input
-    const void* extra_add_qk,                  // Additional Add
+    const void* relative_position_bias,                  // Additional Add
     void* workspace,                           // Temporary buffer
     void* output,                              // Output tensor
     void* present                              // Present state output
@@ -49,7 +51,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
-    bool tuning,                      // Whether to enable tuning
+    RocmTuningContext* tuning_ctx, // context for tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor
@@ -62,6 +64,7 @@ Status LaunchDecoderAttentionKernel(
     const bool use_past,              // Whether use cache or not
     const bool has_layer_state,       // Whether output cache or not
     const bool has_key_padding_mask,  // Whether use key_padding_mask or not
+    const float mask_filter_value,    // Mask filter value
     const void* gemm_query_buffer,    // Query buffer
     const void* gemm_kv_buffer,       // Key and value buffer
     const bool* key_padding_mask,     // Key padding mask

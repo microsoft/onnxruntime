@@ -19,8 +19,13 @@ class FusionSkipLayerNormalization(Fusion):
     Note: This fusion does not check the input shape of Add and LayerNormalization.
     """
 
-    def __init__(self, model: OnnxModel):
-        super().__init__(model, "SkipLayerNormalization", "LayerNormalization")
+    def __init__(
+        self,
+        model: OnnxModel,
+        fused_op_type: str = "SkipLayerNormalization",
+        search_op_types: str = "LayerNormalization",
+    ):
+        super().__init__(model, fused_op_type, search_op_types)
         # Update shape inference is needed since other fusions might add new edge which does not have shape info yet.
         self.shape_infer_helper = self.model.infer_runtime_shape({"batch_size": 4, "seq_len": 7}, update=True)
 
@@ -43,6 +48,9 @@ class FusionSkipLayerNormalization(Fusion):
         # The number of input node of add should be 2
         if len(self.model.get_parents(add)) != 2:
             return
+
+        # Root Mean Square Layer Normalization
+        simplified = node.op_type == "SimplifiedLayerNormalization"
 
         if self.shape_infer_helper is not None:
             if not self.shape_infer_helper.compare_shape(add.input[0], add.input[1]):
@@ -89,12 +97,16 @@ class FusionSkipLayerNormalization(Fusion):
         ):
             self.nodes_to_remove.extend([add, node])
 
-            inputs = [add.input[0], add.input[1], node.input[1], node.input[2]]
+            inputs = (
+                [add.input[0], add.input[1], node.input[1], node.input[2]]
+                if not simplified
+                else [add.input[0], add.input[1], node.input[1]]
+            )
             normalize_node = helper.make_node(
-                "SkipLayerNormalization",
+                self.fused_op_type,
                 inputs=inputs,
                 outputs=outputs,
-                name=self.model.create_node_name("SkipLayerNormalization", name_prefix="SkipLayerNorm"),
+                name=self.model.create_node_name(self.fused_op_type, name_prefix="SkipLayerNorm"),
             )
             normalize_node.domain = "com.microsoft"
 

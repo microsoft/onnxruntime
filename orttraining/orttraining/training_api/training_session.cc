@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "orttraining/training_api/include/training_session.h"
+#include "orttraining/training_api/training_session.h"
 
 namespace onnxruntime {
 namespace training {

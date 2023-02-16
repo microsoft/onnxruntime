@@ -117,8 +117,11 @@ string_view IdenticalChildrenConsolidation::IdentityBuilder(const Graph& graph, 
       } else {
         identity.append(name);
       }
+    } else {
+      return ignore_identity;
     }
+    identity.append("####");
   }
-  return {identity.append("####")};
+  return {identity};
 }
 }  // namespace onnxruntime

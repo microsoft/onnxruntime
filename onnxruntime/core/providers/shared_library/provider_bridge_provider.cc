@@ -285,8 +285,8 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, id, mem_type);
+AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
 }
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
@@ -563,12 +563,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* extra_add_qk,
+                                  const Tensor* relative_position_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, extra_add_qk, parameters,
+                                               mask_index, past, relative_position_bias, parameters,
                                                max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
@@ -690,14 +690,21 @@ void RefCountTracker::DumpDetails(const std::string& phase_name) const {
 
 #if defined(USE_CANN)
 RandomGenerator& RandomGenerator::Default() { return g_host->RandomGenerator__Default(); }
-void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
-  return g_host->MurmurHash3__x86_128(key, len, seed, out);
-}
 
 namespace cann {
 std::unique_ptr<Model> CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
   return g_host->cann__CreateModel(graph_viewer, logger);
 }
 }  // namespace cann
+#endif
+
+void MurmurHash3::x86_128(const void* key, int len, uint32_t seed, void* out) {
+  return g_host->MurmurHash3__x86_128(key, len, seed, out);
+}
+
+#ifdef _WIN32
+std::string ToUTF8String(const std::wstring& s) {
+  return g_host->ToUTF8String(s);
+}
 #endif
 }  // namespace onnxruntime

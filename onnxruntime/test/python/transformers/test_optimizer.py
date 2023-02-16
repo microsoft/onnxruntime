@@ -242,7 +242,7 @@ class TestModelOptimization(unittest.TestCase):
 
     @pytest.mark.slow
     def test_huggingface_openaigpt_fusion(self):
-        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 24, 0])
+        self._test_optimizer_on_huggingface_model("openai-gpt", [0, 12, 0, 12, 0, 0, 24])
 
     @pytest.mark.slow
     @unittest.skip("skip failed fusion test of gpt-2 on PyTorch 1.12 and transformers 4.18. TODO: fix it")

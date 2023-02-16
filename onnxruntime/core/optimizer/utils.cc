@@ -290,7 +290,7 @@ bool GetClipConstantMinMax(const Graph& graph, const Node& node, float& min, flo
   max = std::numeric_limits<float>::max();
 
   // Clip opset 1 and 6 has min and max as attributes. they're inputs from opset 11 on.
-  bool min_max_are_attributes = node.SinceVersion() == 1 || node.SinceVersion() == 6;
+  bool min_max_are_attributes = node.SinceVersion() < 11;
   bool min_max_are_constant_values = true;
 
   if (min_max_are_attributes) {
@@ -362,6 +362,34 @@ bool IsScalar(const NodeArg& input_arg) {
   auto dim_size = shape->dim_size();
   return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
+
+template <typename T>
+bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
+                               bool is_constant) {
+  if (!IsScalar(input_arg)) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+  if (is_constant) {
+    tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
+  } else if (!graph.GetInitializedTensor(input_arg.Name(), tensor_proto)) {
+    return false;
+  }
+
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
+  Initializer init_const{*tensor_proto, graph.ModelPath()};
+  const T* val = init_const.data<T>();
+  value = *val;
+
+  return true;
+}
+
+template bool GetScalarInitializerValue<float>(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, float& value,
+                                               bool is_constant);
 
 #endif  // #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
