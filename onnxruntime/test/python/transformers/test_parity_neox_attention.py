@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from torch import nn
 
+
 def create_neox_attention_graph(
     batch_size,
     seq_len,
@@ -62,6 +63,7 @@ def create_neox_attention_graph(
     model = helper.make_model(graph)
     return model.SerializeToString()
 
+
 class RotaryEmbedding(torch.nn.Module):
     def __init__(self, dim, max_position_embeddings, base=10000, device=None):
         super().__init__()
@@ -105,6 +107,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, offset: int = 0):
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
 
+
 class GPTNeoXAttention(nn.Module):
     def __init__(self, batch_size, seq_len, num_head, hidden_size, use_rotary):
         super().__init__()
@@ -121,23 +124,23 @@ class GPTNeoXAttention(nn.Module):
             ),
         )
         self.register_buffer("masked_bias", torch.tensor(-1e9))
-        self.rotary_emb = RotaryEmbedding(
-            self.rotary_ndims, 512, 10000
-        )
+        self.rotary_emb = RotaryEmbedding(self.rotary_ndims, 512, 10000)
         self.norm_factor = torch.sqrt(torch.tensor(self.head_size, dtype=torch.float32)).to(torch.get_default_dtype())
         self.query_key_value = nn.Linear(hidden_size, 3 * hidden_size)
 
-        # bugbug
-        self.query_key_value.weight.data.copy_(torch.tensor(np.ones((3 * hidden_size, hidden_size))))
-        self.query_key_value.bias.data.copy_(torch.tensor(np.ones((3 * hidden_size))))
+        # self.query_key_value.weight.data.copy_(torch.tensor(np.ones((3 * hidden_size, hidden_size))))
+        # self.query_key_value.bias.data.copy_(torch.tensor(np.zeros((3 * hidden_size))))
 
         self.onnx_graph = create_neox_attention_graph(
             batch_size,
             seq_len,
             self.hidden_size,
-            self.query_key_value.weight.transpose(0, 1),
-            self.query_key_value.bias,
-            num_head,
+            self.query_key_value.weight.reshape(self.num_attention_heads, 3, -1)
+            .transpose(0, 1)
+            .reshape(3 * self.hidden_size, -1)
+            .transpose(0, 1),
+            self.query_key_value.bias.reshape(self.num_attention_heads, 3, -1).transpose(0, 1).reshape(-1),
+            self.num_attention_heads,
             self.use_rotary,
         )
 
@@ -178,6 +181,7 @@ class GPTNeoXAttention(nn.Module):
             alpha=(torch.tensor(1.0, dtype=self.norm_factor.dtype, device=self.norm_factor.device) / self.norm_factor),
         )
         attn_scores = attn_scores.view(batch_size, num_attention_heads, query_length, key_length)
+        print("torch:qk", attn_scores)
 
         mask_value = torch.finfo(attn_scores.dtype).min
         # Need to be a tensor, otherwise we get error: `RuntimeError: expected scalar type float but found double`.
@@ -191,12 +195,14 @@ class GPTNeoXAttention(nn.Module):
 
         attn_weights = nn.functional.softmax(attn_scores, dim=-1)
         attn_weights = attn_weights.to(value.dtype)
+        print("torch:softmax", attn_weights)
 
         # Mask heads if we want to
         if head_mask is not None:
             attn_weights = attn_weights * head_mask
 
         attn_output = torch.matmul(attn_weights, value)
+        print("torch:unfused_output", attn_output)
         return attn_output, attn_weights
 
     def onnx_forward(
@@ -216,7 +222,6 @@ class GPTNeoXAttention(nn.Module):
         output = torch.tensor(ort_output)
 
         return output
-
 
     def torch_forward(
         self,
@@ -244,6 +249,10 @@ class GPTNeoXAttention(nn.Module):
         key = qkv[..., self.head_size : 2 * self.head_size].permute(0, 2, 1, 3)
         value = qkv[..., 2 * self.head_size :].permute(0, 2, 1, 3)
 
+        print("torch:q", query)
+        print("torch:k", key)
+        print("torch:v", value)
+
         if self.use_rotary:
             # Compute rotary embeddings on rotary_ndims
             query_rot = query[..., : self.rotary_ndims]
@@ -261,6 +270,8 @@ class GPTNeoXAttention(nn.Module):
             query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
             query = torch.cat((query, query_pass), dim=-1)
             key = torch.cat((key, key_pass), dim=-1)
+            print("torch:query_after_rotary", query)
+            print("torch:key_after_rotary", key)
 
         # Cache QKV values
         if has_layer_past:
@@ -271,25 +282,26 @@ class GPTNeoXAttention(nn.Module):
         present = (key, value) if use_cache else None
 
         # Compute attention
-        attn_output, attn_weights = self._attn(query, key, value, attention_mask, head_mask)
+        attn_output, _ = self._attn(query, key, value, attention_mask, head_mask)
 
         # Reshape outputs
         attn_output = self._merge_heads(attn_output, self.num_attention_heads, self.head_size)
 
         return attn_output
 
+
 if __name__ == "__main__":
+    batch_size = 1
+    seq_len = 4
     num_head = 2
     hidden_size = 4
-    batch_size = 1
-    seq_len = 2
 
-    attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=False)
-    hidden_states = torch.normal(mean=0.5, std=0.1,
-                                 size=(batch_size, seq_len, hidden_size)).to(torch.float32)
+    attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=True)
+    hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(torch.float32)
 
     torch_output = attn.torch_forward(hidden_states)
     ort_output = attn.onnx_forward(hidden_states)
 
-    print(torch_output)
-    print(ort_output)
+    print("torch_output", torch_output)
+    print("ort_output", ort_output)
+    print(torch_output - ort_output)
