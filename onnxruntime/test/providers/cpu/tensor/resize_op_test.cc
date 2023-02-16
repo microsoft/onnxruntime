@@ -1842,7 +1842,7 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
   }
 
   test.AddOutput<T>("Y", output_shape, output_data);
-  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.  
+  // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -2183,6 +2183,36 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
 
       },
       {4, 4, 4}, X, {3, 3, 3}, Y);
+}
+
+TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
+  auto shape_check = [] (const std::vector<float>& X, const std::vector<float>& Y) {
+    int64_t N = X.size();
+    OpTester test("Resize", 13);
+    std::vector<float> scales{float(Y.size()) / float(X.size())};
+    std::vector<float> roi{};
+
+    test.AddAttribute("mode", "nearest");
+
+    test.AddInput<float>("X", {N}, X);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {1}, scales);
+    // we don't care its correctness, just want to make sure its shape is matched.
+    // Data of Y is random generated, so it's not used for correctness check.
+    test.AddOutput<float>("Y", {int64_t(Y.size())}, Y, false, 10000000.f, 100000000.f);
+    test.Run();
+  };
+
+  // Can we call UpsampleBase::computeOutputShape directly? It cost too much time.
+  constexpr int64_t IN = 706;
+  for(int64_t ON = 1; ON < IN; ON+=3) {
+    std::vector<float> X(IN);
+    std::vector<float> Y(ON);
+    std::iota(X.begin(), X.end(), 1.f);
+    std::iota(Y.begin(), Y.end(), 1.f);
+    shape_check(X, Y);
+  }
+
 }
 
 }  // namespace test
