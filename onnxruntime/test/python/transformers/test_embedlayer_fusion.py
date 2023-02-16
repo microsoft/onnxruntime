@@ -26,14 +26,16 @@ class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort()
 
-        expected_model = OnnxModel(onnx.load(expected_model_filename))
+        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model_filename)
+        expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort()
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
 
-    def verify_parity(self, optimized_model, expected_model):
-        sess_optimized = InferenceSession(optimized_model, providers=["CPUExecutionProvider"])
-        sess_expected = InferenceSession(expected_model, providers=["CPUExecutionProvider"])
+    def verify_parity(self, optimized_model_path, expected_model):
+        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", expected_model)
+        sess_optimized = InferenceSession(optimized_model_path, providers=["CPUExecutionProvider"])
+        sess_expected = InferenceSession(expected_model_path, providers=["CPUExecutionProvider"])
         inputs = np.random.randint(low=0, high=6, size=(4, 8), dtype=np.int32) + 1
 
         outputs_optimized = sess_optimized.run(None, {"ids": inputs})
@@ -42,35 +44,35 @@ class TestFusion(unittest.TestCase):
 
     def test_embedlayer_fusion(self):
         model = create_gpt2_embedlayer(one_attention_node=False)
-        path = "./test_data/models/"
-        original_model_filename = os.path.join(path, "gpt2_embedlayer.onnx")
-        optimized_model_filename = os.path.join(path, "gpt2_embedlayer_opt.onnx")
-        expected_model_filename = os.path.join(path, "gpt2_embedlayer_exp.onnx")
+        path = "."
+        original_model_path = os.path.join(path, "gpt2_embedlayer.onnx")
+        optimized_model_path = os.path.join(path, "gpt2_embedlayer_opt.onnx")
+        expected_model_filename = "gpt2_embedlayer_exp.onnx"
 
-        onnx.save(model, original_model_filename)
-        optimized_model = optimize_model(original_model_filename, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
 
         self.verify_fusion(optimized_model, expected_model_filename)
-        self.verify_parity(optimized_model_filename, expected_model_filename)
-        os.remove(original_model_filename)
-        os.remove(optimized_model_filename)
+        self.verify_parity(optimized_model_path, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_path)
 
     def test_embedlayer_fusion_one_attn_node(self):
         model = create_gpt2_embedlayer(one_attention_node=True)
-        path = "./test_data/models/"
-        original_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn.onnx")
-        optimized_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn_opt.onnx")
-        expected_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn_exp.onnx")
+        path = "."
+        original_model_path = os.path.join(path, "gpt2_embedlayer_one_attn.onnx")
+        optimized_model_path = os.path.join(path, "gpt2_embedlayer_one_attn_opt.onnx")
+        expected_model_filename = "gpt2_embedlayer_one_attn_exp.onnx"
 
-        onnx.save(model, original_model_filename)
-        optimized_model = optimize_model(original_model_filename, model_type="gpt2")
-        optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
+        onnx.save(model, original_model_path)
+        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        optimized_model.save_model_to_file(optimized_model_path, use_external_data_format=True)
 
         self.verify_fusion(optimized_model, expected_model_filename)
-        self.verify_parity(optimized_model_filename, expected_model_filename)
-        os.remove(original_model_filename)
-        os.remove(optimized_model_filename)
+        self.verify_parity(optimized_model_path, expected_model_filename)
+        os.remove(original_model_path)
+        os.remove(optimized_model_path)
 
 
 if __name__ == "__main__":
