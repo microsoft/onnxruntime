@@ -243,22 +243,23 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
 
 template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
-                                    const int rotary_embedding_dim, const int head_size,
-                                    const int step) {
+                                    const int rotary_embedding_dim, const int head_size, const int step) {
   // AddBiasTransposeQKV with rotary embedding
   // Format 1 for unfused attention, or fused causal attention
   //     Input:  BxSxMxNxH
   //     Output: MxBxNxSxH
   //     qkv_add_bias: BxSxMxNxH
   // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
-  int n = threadIdx.y;
+  int n = blockIdx.y;
   int s = blockIdx.x;
-  int b = blockIdx.y;
+  int b = blockIdx.z;
 
-  const int num_heads = blockDim.y;
+  const int seq_len = (gridDim.x == step) ? s : step;
+
+  const int num_heads = gridDim.y;
 
   const int sequence_length = gridDim.x;
-  const int batch_size = gridDim.y;
+  const int batch_size = gridDim.z;
   const int H = head_size;
   const int NH = num_heads * head_size;
   const int NHS = NH * sequence_length;
@@ -319,7 +320,7 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
       vec_from_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
       vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
 
-      apply_rotary_embedding(q, k, transpose_idx / tidx_factor, rotary_embedding_dim, step);
+      apply_rotary_embedding(q, k, transpose_idx / tidx_factor, rotary_embedding_dim, seq_len);
 
       write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
       write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
@@ -634,6 +635,33 @@ void InvokeAddBiasTranspose(
     const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count,
     bool do_rotary = false, int original_past_sequence_length = 0) {
   assert(num_heads <= max_threads_per_block);
+
+  if (do_rotary) {
+    assert(format == 1);
+    assert(v_head_size == -1 || qk_head_size == v_head_size);
+
+    const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
+    size_t smem_size = 2 * qk_head_size * sizeof(T);
+
+    const dim3 grid(sequence_length, num_heads, batch_size);
+    const dim3 block((size_per_head / 2 + 31) / 32 * 32, 1, 1);
+    AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
+                                                               qkv_add_bias, qk_head_size, qk_head_size,
+                                                               step);
+    // if (qk_head_size * batch_size / 2 <= max_threads_per_block) {
+    //   const dim3 block(qk_head_size / 2, batch_size, 1);
+    //   AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
+    //                                                              qkv_add_bias, qk_head_size, qk_head_size,
+    //                                                              step);
+    // } else {
+    //   const dim3 block(CeilDiv(max_threads_per_block / 2, batch_size), batch_size, 1);
+    //   AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
+    //                                                              qkv_add_bias, qk_head_size, qk_head_size,
+    //                                                              step);
+    // }
+    return;
+  }
+
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (qk_head_size * num_heads <= max_threads_per_block) {
     const dim3 block(qk_head_size, num_heads, 1);
@@ -641,16 +669,7 @@ void InvokeAddBiasTranspose(
       AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
     } else if (format == 1) {
       if (v_head_size == -1 || qk_head_size == v_head_size) {
-        if (do_rotary) {
-          const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
-          size_t smem_size = 2 * qk_head_size * sizeof(T);
-          const dim3 block2(qk_head_size / 2, num_heads, 1);
-          AddBiasTransposeQKV<T><<<grid, block2, smem_size, stream>>>(total_matrix_count, input, biases, output,
-                                                                      qkv_add_bias, qk_head_size, qk_head_size,
-                                                                      step);
-        } else {
-          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
-        }
+        AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
       } else {
         ORT_ENFORCE(total_matrix_count == 3);
         AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
@@ -673,17 +692,8 @@ void InvokeAddBiasTranspose(
       AddBiasTransposeTrtLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output);
     } else if (format == 1) {
       if (v_head_size == -1 || qk_head_size == v_head_size) {
-        if (do_rotary) {
-          const int step = original_past_sequence_length == 0 ? sequence_length : original_past_sequence_length;
-          size_t smem_size = 2 * qk_head_size * sizeof(T);
-          const dim3 block2(CeilDiv(max_threads_per_block / 2, num_heads), num_heads, 1);
-          AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
-                                                                      qkv_add_bias, qk_head_size, qk_head_size,
-                                                                      step);
-        } else {
-          AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output,
-                                                                  qkv_add_bias, total_matrix_count);
-        }
+        AddBiasTransposeQKVLarge<T><<<grid, block, 0, stream>>>(qk_head_size, input, biases, output,
+                                                                qkv_add_bias, total_matrix_count);
       } else {
         // It is rare for hidden size > 4096 (for half precision) and qk_head_size != v_head_size.
         ORT_THROW("AddBiasTranspose (format 1) not implemented for hidden_size > max_threads_per_block when qk_head_size != v_head_size");
