@@ -286,8 +286,7 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
         }
 */
         default:
-            throw std::invalid_argument(
-                "Tanh or Log Activation not yet supported for fp16 data type.");
+            return;
     }
 }
 
