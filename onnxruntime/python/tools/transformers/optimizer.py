@@ -65,6 +65,7 @@ def optimize_by_onnxruntime(
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
     disabled_optimizers=[],
+    verbose=False,
 ) -> str:
     """
     Use onnxruntime to optimize model.
@@ -103,6 +104,10 @@ def optimize_by_onnxruntime(
 
     sess_options.optimized_model_filepath = optimized_model_path
 
+    if verbose:
+        print("Using onnxruntime to optomize model - Debug level Set to verbose")
+        sess_options.log_severity_level = 0
+
     kwargs = {}
     if disabled_optimizers:
         kwargs["disabled_optimizers"] = disabled_optimizers
@@ -119,7 +124,6 @@ def optimize_by_onnxruntime(
         elif torch_version.hip:
             gpu_ep.append("MIGraphXExecutionProvider")
             gpu_ep.append("ROCMExecutionProvider")
-
         session = onnxruntime.InferenceSession(onnx_model_path, sess_options, providers=gpu_ep, **kwargs)
         assert not set(onnxruntime.get_available_providers()).isdisjoint(
             ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
@@ -194,6 +198,7 @@ def optimize_model(
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
+    verbose = False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 
@@ -265,6 +270,7 @@ def optimize_model(
             use_gpu=use_gpu,
             opt_level=opt_level,
             disabled_optimizers=disabled_optimizers,
+            verbose=verbose,
         )
     elif opt_level == 1:
         # basic optimizations (like constant folding and cast elimination) are not specified to execution provider.
@@ -274,6 +280,7 @@ def optimize_model(
             use_gpu=False,
             opt_level=1,
             disabled_optimizers=disabled_optimizers,
+            verbose=verbose,
         )
 
     if only_onnxruntime and not temp_model_path:
