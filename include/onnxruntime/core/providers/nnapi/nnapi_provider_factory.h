@@ -45,6 +45,9 @@ enum NNAPIFlags {
   // and NNAPI_FLAG_CPU_ONLY flags are set
   NNAPI_FLAG_CPU_ONLY = 0x008,
 
+  // DISABLE_CPU may bring perf improvement, but may also make it initialize failed.
+  // A soft disabling flag is used to try disable CPU first, and if it fails, fallback to CPU again.
+  NNAPI_FLAG_CPU_DISABLED_SOFT = 0x010,
   // Keep NNAPI_FLAG_LAST at the end of the enum definition
   // And assign the last NNAPIFlag to it
   NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_ONLY,

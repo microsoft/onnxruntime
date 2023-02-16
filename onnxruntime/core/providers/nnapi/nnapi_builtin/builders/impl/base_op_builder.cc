@@ -48,7 +48,7 @@ bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeUnit& node_unit) const {
   OpSupportCheckParams params{
-      model_builder.GetNNAPIFeatureLevel(),
+      model_builder.GetFeatureLevel(),
       model_builder.UseNCHW(),
   };
   ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params),
