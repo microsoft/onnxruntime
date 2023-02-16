@@ -307,8 +307,8 @@ export interface TensorFromImageOptions {
    * Describes normalization parameters to tensor conversion from image data - default values - Bias: 0, Mean: 255
    */
   norm?: {
-    bias?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
-    mean?: number;  // Todo add support - |[number,number,number]|[number,number,number,number];
+    bias?: number|[number, number, number]|[number, number, number, number];
+    mean?: number | [number, number, number] | [number, number, number, number];
   };
 }
 export interface TensorFactory {

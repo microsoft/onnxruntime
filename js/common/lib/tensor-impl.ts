@@ -184,17 +184,31 @@ export class Tensor implements TensorInterface {
     const {height, width} = options;
 
     const norm = options.norm;
-    let normMean: number;
-    let normBias: number;
+    let normMean: [number, number, number, number];
+    let normBias: [number, number, number, number];
     if (norm === undefined || norm.mean === undefined) {
-      normMean = 255;
+      normMean = [255, 255, 255, 255];
     } else {
-      normMean = norm.mean;
+      if (typeof (norm.mean) === 'number') {
+        normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
+      } else {
+        normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 0];
+        if (norm.mean[3] !== undefined) {
+          normMean[3] = norm.mean[3];
+        }
+      }
     }
     if (norm === undefined || norm.bias === undefined) {
-      normBias = 0;
+      normBias = [0, 0, 0, 0];
     } else {
-      normBias = norm.bias;
+      if (typeof (norm.bias) === 'number') {
+        normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
+      } else {
+        normBias = [norm.bias[0], norm.bias[1], norm.bias[2], 0];
+        if (norm.bias[3] !== undefined) {
+          normBias[3] = norm.bias[3];
+        }
+      }
     }
 
     const inputformat = options.bitmapFormat !== undefined ? options.bitmapFormat : 'RGBA';
@@ -234,11 +248,11 @@ export class Tensor implements TensorInterface {
 
     for (let i = 0; i < stride;
          i++, rImagePointer += step, bImagePointer += step, gImagePointer += step, aImagePointer += step) {
-      float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias) / normMean;
-      float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias) / normMean;
-      float32Data[bTensorPointer++] = (buffer[bImagePointer] + normBias) / normMean;
+      float32Data[rTensorPointer++] = (buffer[rImagePointer] + normBias[0]) / normMean[0];
+      float32Data[gTensorPointer++] = (buffer[gImagePointer] + normBias[1]) / normMean[1];
+      float32Data[bTensorPointer++] = (buffer[bImagePointer] + normBias[2]) / normMean[2];
       if (aTensorPointer !== -1 && aImagePointer !== -1) {
-        float32Data[aTensorPointer++] = (buffer[aImagePointer] + normBias) / normMean;
+        float32Data[aTensorPointer++] = (buffer[aImagePointer] + normBias[3]) / normMean[3];
       }
     }
 
@@ -264,6 +278,10 @@ export class Tensor implements TensorInterface {
 
     let data: Uint8ClampedArray|undefined;
     let tensorConfig: TensorFromImageOptions = {};
+
+    if (options !== undefined) {
+      tensorConfig = options;
+    }
 
     // filling and checking image configuration options
     if (isHTMLImageEle) {
@@ -442,9 +460,21 @@ export class Tensor implements TensorInterface {
 
   toDataURL(options?: TensorToImageDataOptions): string {
     const canvas = document.createElement('canvas');
+    canvas.width = this.dims[3];
+    canvas.height = this.dims[2];
     const pixels2DContext = canvas.getContext('2d');
 
-    const image = this.toImageData(options);
+    let image: ImageData;
+
+    if (options !== undefined) {
+      options.width = this.dims[3];
+      options.height = this.dims[2];
+      options.format = 'RGB';
+      image = this.toImageData(options);
+    } else {
+      image = this.toImageData({width: this.dims[3], height: this.dims[2], format: 'RGB'});
+    }
+
     if (pixels2DContext !== null) {
       pixels2DContext.putImageData(image, 0, 0);
       return canvas.toDataURL();
@@ -461,12 +491,37 @@ export class Tensor implements TensorInterface {
       const width = this.dims[3];
       const height = this.dims[2];
       const channels = this.dims[1];
-
       const inputformat = options !== undefined ? (options.format !== undefined ? options.format : 'RGB') : 'RGB';
-      const normMean = options !== undefined ? (options.norm?.mean !== undefined ? options.norm.mean : 255) : 255;
-      const normBias = options !== undefined ? (options.norm?.bias !== undefined ? options.norm.bias : 0) : 0;
-      const stride = height * width;
 
+      const norm = options?.norm;
+      let normMean: [number, number, number, number];
+      let normBias: [number, number, number, number];
+      if (norm === undefined || norm.mean === undefined) {
+        normMean = [255, 255, 255, 255];
+      } else {
+        if (typeof (norm.mean) === 'number') {
+          normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
+        } else {
+          normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 0];
+          if (norm.mean[3] !== undefined) {
+            normMean[3] = norm.mean[3];
+          }
+        }
+      }
+      if (norm === undefined || norm.bias === undefined) {
+        normBias = [0, 0, 0, 0];
+      } else {
+        if (typeof (norm.bias) === 'number') {
+          normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
+        } else {
+          normBias = [norm.bias[0], norm.bias[1], norm.bias[2], 0];
+          if (norm.bias[3] !== undefined) {
+            normBias[3] = norm.bias[3];
+          }
+        }
+      }
+
+      const stride = height * width;
       if (options !== undefined) {
         if (options.height !== undefined && options.height !== height) {
           throw new Error('Image output config height doesn\'t match tensor height');
@@ -505,11 +560,12 @@ export class Tensor implements TensorInterface {
 
       for (let i = 0; i < height * width;
            rImagePointer += step, gImagePointer += step, bImagePointer += step, aImagePointer += step, i++) {
-        image.data[rImagePointer] = ((this.data[rTensorPointer++] as number) - normBias) * normMean;  // R value
-        image.data[gImagePointer] = ((this.data[gTensorPointer++] as number) - normBias) * normMean;  // G value
-        image.data[bImagePointer] = ((this.data[bTensorPointer++] as number) - normBias) * normMean;  // B value
-        image.data[aImagePointer] =
-            aTensorPointer === -1 ? 255 : ((this.data[aTensorPointer++] as number) - normBias) * normMean;  // A value
+        image.data[rImagePointer] = ((this.data[rTensorPointer++] as number) - normBias[0]) * normMean[0];  // R value
+        image.data[gImagePointer] = ((this.data[gTensorPointer++] as number) - normBias[1]) * normMean[1];  // G value
+        image.data[bImagePointer] = ((this.data[bTensorPointer++] as number) - normBias[2]) * normMean[2];  // B value
+        image.data[aImagePointer] = aTensorPointer === -1 ?
+            255 :
+            ((this.data[aTensorPointer++] as number) - normBias[3]) * normMean[3];  // A value
       }
 
     } else {
