@@ -14,6 +14,8 @@ import numpy as np
 import torch
 from torch import nn
 
+torch.set_printoptions(threshold=10000)
+
 
 def create_neox_attention_graph(
     batch_size,
@@ -263,6 +265,9 @@ class GPTNeoXAttention(nn.Module):
             query, key = apply_rotary_pos_emb(query_rot, key_rot, cos, sin, offset=offset)
             query = torch.cat((query, query_pass), dim=-1)
             key = torch.cat((key, key_pass), dim=-1)
+            # print("query", query.shape, query)
+            # print("key", key.shape, key)
+            # print("value", value.shape, value)
 
         # Cache QKV values
         if has_layer_past:
@@ -282,18 +287,24 @@ class GPTNeoXAttention(nn.Module):
 
 
 if __name__ == "__main__":
-    for batch_size in [1]:
-        for seq_len in [32, 128, 255, 256]:
-            for num_head in [2]:
-                for hidden_size in [4]:
+    for batch_size in [1, 2, 4, 8]:
+        for seq_len in [32, 128, 512, 1024, 2048]:
+            for num_head in [12]:
+                for hidden_size in [768]:
                     attn = GPTNeoXAttention(batch_size, seq_len, num_head, hidden_size, use_rotary=True)
-                    hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(torch.float32)
+
+                    hidden_states = torch.normal(mean=0.5, std=0.1, size=(batch_size, seq_len, hidden_size)).to(
+                        torch.float32
+                    )
 
                     torch_output = attn.torch_forward(hidden_states)
                     ort_output = attn.onnx_forward(hidden_states)
-                    print('batch_size: {}, seq_len: {}, num_head: {}, hidden_size: {}'.format(batch_size, seq_len, num_head, hidden_size))
-                    if (torch.allclose(torch_output, ort_output, atol=1e-4)):
+                    print(
+                        "Parity check with shape BNSH = ({},{},{},{})".format(
+                            batch_size, seq_len, num_head, hidden_size
+                        )
+                    )
+                    if torch.allclose(torch_output, ort_output, atol=1e-6):
                         print("Success!")
                     else:
                         print("Failure!")
-                        print(torch_output - ort_output)
