@@ -200,17 +200,19 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
       target_tensor_seq.Add(std::move(*target_tensor));
     }
+    const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
+
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
         copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), stream});
       } else {
         if (stream)
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
         else
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
       }
       ++source_iter;
       ++target_iter;

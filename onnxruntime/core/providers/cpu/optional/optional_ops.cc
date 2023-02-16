@@ -75,7 +75,7 @@ static void CopySequenceTensor(AllocatorPtr alloc,
   auto in_tensor = src->begin();
   for (; in_tensor != src->end(); ++in_tensor) {
     auto& tensor = in_tensor->Get<Tensor>();
-    Tensor tmp(tensor.DataType(), onnxruntime::TensorShape(tensor.Shape()), alloc);
+    Tensor tmp(tensor.DataType(), tensor.Shape(), alloc);
     CopyCpuTensor(&tensor, &tmp);
     tgt->Add(std::move(tmp));
   }

@@ -98,6 +98,7 @@ Status SequenceAt::Compute(OpKernelContext* context) const {
   const Tensor& indexed_tensor = X->Get(onnxruntime::narrow<size_t>(input_seq_idx));
   auto* Y = context->Output(0, indexed_tensor.Shape().GetDims());
 
+  // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
   ORT_RETURN_IF_ERROR(Info().GetDataTransferManager().CopyTensor(indexed_tensor, *Y));
 
   return Status::OK();
@@ -183,6 +184,7 @@ ONNX_CPU_OPERATOR_KERNEL(
                                  DataTypeImpl::GetTensorType<int64_t>()}),
     SequenceInsert);
 
+// Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
 static Tensor CloneTensor(const Tensor& in_tensor, OpKernelContext* context, const DataTransferManager& dtm) {
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -223,6 +225,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
 
   for (int i = 0; i < num_tensors_input_seq; ++i) {
     if (i == input_seq_idx) {
+      // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
       Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
       Y->Add(S->GetAt(i));
     } else {
@@ -230,6 +233,7 @@ Status SequenceInsert::Compute(OpKernelContext* context) const {
     }
   }
   if (input_seq_idx == num_tensors_input_seq) {
+    // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
     Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
 
@@ -310,6 +314,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
   Y->Reserve(SafeInt<size_t>(num_inputs));
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
+    // Using DataTransferManager here allows other non-CPU EPs to use this implementation of the sequence ops
     Y->Add(CloneTensor(*X, context, Info().GetDataTransferManager()));
   }
   return Status::OK();
