@@ -16,6 +16,7 @@ Abstract:
 
 #include "fp16_common.h"
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 //
 // Templates for activation functions.
@@ -61,14 +62,17 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
     MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
     {
         MLAS_FLOAT16X8 ValueTimesAlpha = MlasMultiplyFloat16x8(Value, AlphaBroadcast);
-        return vbslq_f16(vcleq_f16(Value, ZeroVec), ValueTimesAlpha, Value);
+        return MlasBitwiseSelectFloat16x8(MlasCmpLessEqualFloat16x8(Value, ZeroVec),
+                                          ValueTimesAlpha, Value);
     }
 
     MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
     {
         MLAS_FLOAT16X4 ValueTimesAlpha =
             MlasMultiplyFloat16x4(Value, MlasToLowHalfFloat16x4(AlphaBroadcast));
-        return vbsl_f16(vcle_f16(Value, MlasToLowHalfFloat16x4(ZeroVec)), ValueTimesAlpha, Value);
+        return MlasBitwiseSelectFloat16x4(
+            MlasCmpLessEqualFloat16x4(Value, MlasToLowHalfFloat16x4(ZeroVec)), ValueTimesAlpha,
+            Value);
     }
 };
 
@@ -286,3 +290,5 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
                 "Tanh or Log Activation not yet supported for fp16 data type.");
     }
 }
+
+#endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED

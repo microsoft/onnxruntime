@@ -3,6 +3,8 @@
 
 #include "test_fp16.h"
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+
 class MlasFp16ActivationTest : public MlasTestBase {
  public:
   static const char* GetTestSuiteName() {
@@ -122,3 +124,5 @@ template<> MlasFp16ActivationTest* MlasTestFixture<MlasFp16ActivationTest>::mlas
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   return is_short_execute ? MlasDirectShortExecuteTests<MlasFp16ActivationTest>::RegisterShortExecute() : 0;
 });
+
+#endif // fp16 vector intrinsic supported

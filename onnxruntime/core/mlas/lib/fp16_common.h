@@ -18,14 +18,14 @@ Abstract:
 
 #include "mlasi.h"
 
-#if defined(MLAS_NEON64_INTRINSICS)
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+// TODO!! Add intel fp16 implementations
+
 typedef float16x8_t MLAS_FLOAT16X8;
 typedef float16x4_t MLAS_FLOAT16X4;
-#else
-#define MLAS_FLOAT16_VEC_UNSUPPORTED
-#endif
-
-#ifndef MLAS_FLOAT16_VEC_UNSUPPORTED
+typedef uint16x8_t MLAS_UINT16X8;
+typedef uint16x4_t MLAS_UINT16X4;
 
 #include "mlas_float16.h"
 
@@ -271,4 +271,32 @@ MlasReduceAddFloat16x8(MLAS_FLOAT16X8 Vector)
     return vgetq_lane_u16(vreinterpretq_u16_f16(Vector), 0);
 }
 
-#endif  // !MLAS_FLOAT16_VEC_UNSUPPORTED
+MLAS_FORCEINLINE
+MLAS_UINT16X8
+MlasCmpLessEqualFloat16x8(MLAS_FLOAT16X8 left, MLAS_FLOAT16X8 right)
+{
+    return vcleq_f16(left, right);
+}
+
+MLAS_FORCEINLINE
+MLAS_UINT16X4
+MlasCmpLessEqualFloat16x4(MLAS_FLOAT16X4 left, MLAS_FLOAT16X4 right)
+{
+    return vcle_f16(left, right);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasBitwiseSelectFloat16x8(MLAS_UINT16X8 select, MLAS_FLOAT16X8 ones, MLAS_FLOAT16X8 zeros) 
+{
+    return vbslq_f16(select, ones, zeros);
+}
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X4
+MlasBitwiseSelectFloat16x4(MLAS_UINT16X4 select, MLAS_FLOAT16X4 ones, MLAS_FLOAT16X4 zeros)
+{
+    return vbsl_f16(select, ones, zeros);
+}
+
+#endif  // fp16 vector intrinsic supported

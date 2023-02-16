@@ -77,6 +77,14 @@ Abstract:
 #define MLAS_SUPPORTS_GEMM_DOUBLE
 #endif
 
+#if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
+#if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
+
+#define MLAS_F16VEC_INTRINSICS_SUPPORTED
+
+#endif // ARM64
+#endif // Visual Studio 16 or earlier does not support fp16 intrinsic
+
 //
 // Basic Linear Algebra Subprograms (BLAS) types.
 //
@@ -1410,6 +1418,7 @@ public:
     virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
 };
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 /**
  * @brief Half precision activation functions
 */
@@ -1434,6 +1443,7 @@ public:
 private:
     const MLAS_ACTIVATION& Activation_;
 };
+#endif // fp16 vector intrinsic supported
 
 /**
  * @brief Convert half gemm result matrix to single precision float matrix
