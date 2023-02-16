@@ -208,16 +208,17 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // filling nodes
 
   n_nodes_ = nodes_treeids.size();
+  limit = static_cast<size_t>(n_nodes_);
   InlinedVector<TreeNodeElementId> node_tree_ids;  
-  node_tree_ids.reserve(n_nodes_);
+  node_tree_ids.reserve(limit);
   nodes_.clear();
-  nodes_.reserve(n_nodes_);
+  nodes_.reserve(limit);
   roots_.clear();
   absl::flat_hash_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
-  idi.reserve(n_nodes_);
+  idi.reserve(limit);
   max_feature_id_ = 0;
 
-  for (i = 0, limit = static_cast<size_t>(n_nodes_); i < limit; ++i) {
+  for (i = 0; i < limit; ++i) {
     TreeNodeElementId node_tree_id{static_cast<int>(nodes_treeids[i]),
                                    static_cast<int>(nodes_nodeids[i])};
     TreeNodeElement<ThresholdType> node;
@@ -252,8 +253,8 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   }
 
   InlinedVector<int64_t> truenode_ids, falsenode_ids;
-  truenode_ids.reserve(n_nodes_);
-  falsenode_ids.reserve(n_nodes_);
+  truenode_ids.reserve(limit);
+  falsenode_ids.reserve(limit);
   TreeNodeElementId coor;
   i = 0;
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it, ++i) {
