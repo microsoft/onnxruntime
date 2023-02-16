@@ -128,6 +128,8 @@ class Op {
 template <typename ParamsT, typename TimerT>
 class TunableOp {
  public:
+  using ThisT = TunableOp<ParamsT, TimerT>;
+
   TunableOp() = default;
   TunableOp(TunableOp&&) = default;
   virtual ~TunableOp() = default;
@@ -169,7 +171,11 @@ class TunableOp {
     // Do nothing if we are not playing around with params
   }
 
-  std::string Signature() const {
+  std::string Signature() {
+    // NOTE: this is not thread-safe, but it seems to be harmless
+    if (signature_.empty()) {
+      signature_ = CreateSignature();
+    }
     return signature_;
   }
 
@@ -184,7 +190,7 @@ class TunableOp {
     this->ops_.emplace_back(std::move(op));
   }
 
-  void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
+  void RegisterNestedTunableOp(ThisT* op_ptr) {
     nested_tunable_ops_.insert(op_ptr);
 
     // Add an op for this tunable op as well.
@@ -271,7 +277,7 @@ class TunableOp {
 #endif
   }
 
-  std::string signature_{CreateSignature()};
+  std::string signature_;
 
   // the default impl to use when tuning is disabled
   int default_id_{0};
