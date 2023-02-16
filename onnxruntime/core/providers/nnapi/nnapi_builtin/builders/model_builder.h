@@ -9,6 +9,7 @@
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "shaper.h"
 
 namespace onnxruntime {
@@ -28,23 +29,9 @@ class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
-  enum class TargetDeviceOption : int8_t {
-    ALL_DEVICES,  // use all avaliable target devices
-
-    /* TODO support these options
-    PREFERRED_DEVICES,  // Use one or more preferred devices (must be given)
-    EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
-     */
-
-    CPU_DISABLED,  // use all avaliable target devices except CPU
-    CPU_ONLY,      // use CPU only
-  };
-
   ModelBuilder(const GraphViewer& graph_viewer);
 
   common::Status Compile(std::unique_ptr<Model>& model);
-
-  int32_t GetNNAPIFeatureLevel() const;
 
   // Add an NNAPI operation (operator)
   common::Status AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
@@ -90,7 +77,7 @@ class ModelBuilder {
 
   // Set NNAPI execution preference
   // Default preference is PREFER_SUSTAINED_SPEED
-  void ExecutePreference(
+  void SetExecutePreference(
       android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
   // Accessors for members
@@ -115,6 +102,11 @@ class ModelBuilder {
   // the given node must be in the underlying graph_viewer
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
+  const NnApi* GetNnApi() const { return nnapi_; }
+
+  const std::vector<ANeuralNetworksDevice*>& GetDevices() const { return nnapi_target_devices_; }
+
+  int32_t GetFeatureLevel() const { return nnapi_feature_level_; }
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
@@ -158,16 +150,17 @@ class ModelBuilder {
 
   TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+  ANeuralNetworksDevice* nnapi_reference_device_{nullptr};
   std::string nnapi_target_devices_detail_;  // Debug info for target devices
 
+  // feature_level, to decide if we can run this node on NNAPI
+  int32_t nnapi_feature_level_ = 0;
   // The number of nnapi operations in this model
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
   // Convert the onnx model to ANeuralNetworksModel
   common::Status Prepare();
-
-  common::Status GetTargetDevices();
 
   // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
   void PreprocessInitializers();

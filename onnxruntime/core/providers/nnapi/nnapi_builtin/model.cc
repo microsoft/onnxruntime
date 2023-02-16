@@ -7,6 +7,7 @@
 #include "core/providers/common.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "nnapi_api_helper.h"
 
 #ifdef USENNAPISHAREDMEM
 #include <sys/mman.h>
@@ -89,7 +90,7 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 
 bool Model::SupportsDynamicOutputShape() const {
   // dynamic output shape is only supported on Android API level 29+ (ANEURALNETWORKS_FEATURE_LEVEL_3)
-  return GetNNAPIFeatureLevel() >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
+  return GetNNAPIFeatureLevel(nnapi_,{}) >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
 }
 
 Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
@@ -102,10 +103,6 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
 
   execution.reset(new Execution(*nnapi_execution /*, shaper_*/));
   return Status::OK();
-}
-
-int32_t Model::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
 }
 
 #pragma region Model::NNMemory

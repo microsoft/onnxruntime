@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "model_builder.h"
+#include <unordered_map>
 
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
@@ -10,6 +11,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/shared/node_unit/node_unit.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/helper.h"
@@ -25,10 +27,6 @@ namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
     : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_{graph_viewer} {}
-
-int32_t ModelBuilder::GetNNAPIFeatureLevel() const {
-  return nnapi_ ? static_cast<int32_t>(nnapi_->nnapi_runtime_feature_level) : 0;
-}
 
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
@@ -54,7 +52,13 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 
 Status ModelBuilder::Prepare() {
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-  ORT_RETURN_IF_ERROR(GetTargetDevices());
+  ORT_RETURN_IF_ERROR(GetTargetDevices(nnapi_, target_device_option_, nnapi_target_devices_,
+                                       nnapi_target_devices_detail_));
+  nnapi_reference_device_ = nnapi_target_devices_detail_.find("nnapi-reference") != std::string::npos
+                                ? nnapi_target_devices_.back()
+                                : nullptr;
+  nnapi_feature_level_ = GetNNAPIFeatureLevel(*this);
+  // SetExecutePreference(android::nn::wrapper::ExecutePreference::PREFER_SUSTAINED_SPEED);
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();
   PreprocessInitializers();
@@ -75,45 +79,6 @@ static size_t GetPaddedByteSize(size_t size) {
   //   return size;
   // This does exactly the same as the logic above
   return (size + kDefaultByteAlignmentForNNAPI - 1) & ~(kDefaultByteAlignmentForNNAPI - 1);
-}
-
-Status ModelBuilder::GetTargetDevices() {
-  // GetTargetDevices is only supported on API 29+
-  if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3)
-    return Status::OK();
-
-  if (target_device_option_ == TargetDeviceOption::ALL_DEVICES)
-    return Status::OK();
-
-  const std::string nnapi_cpu("nnapi-reference");
-  uint32_t num_devices = 0;
-  RETURN_STATUS_ON_ERROR_WITH_NOTE(
-      nnapi_->ANeuralNetworks_getDeviceCount(&num_devices), "Getting count of available devices");
-
-  for (uint32_t i = 0; i < num_devices; i++) {
-    ANeuralNetworksDevice* device = nullptr;
-    const char* device_name = nullptr;
-    int32_t device_type;
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(
-        nnapi_->ANeuralNetworks_getDevice(i, &device), "Getting " + std::to_string(i) + "th device");
-
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getName(device, &device_name),
-                                     "Getting " + std::to_string(i) + "th device's name");
-
-    RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_->ANeuralNetworksDevice_getType(device, &device_type),
-                                     "Getting " + std::to_string(i) + "th device's type");
-
-    bool device_is_cpu = nnapi_cpu == device_name;
-    if ((target_device_option_ == TargetDeviceOption::CPU_DISABLED && !device_is_cpu) ||
-        (target_device_option_ == TargetDeviceOption::CPU_ONLY && device_is_cpu)) {
-      nnapi_target_devices_.push_back(device);
-      const auto device_detail = MakeString("[Name: [", device_name, "], Type [", device_type, "]], ");
-      nnapi_target_devices_detail_ += device_detail;
-      LOGS_DEFAULT(VERBOSE) << "Target device " << device_detail << " is added";
-    }
-  }
-
-  return Status::OK();
 }
 
 void ModelBuilder::PreprocessInitializers() {
@@ -400,10 +365,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   index = next_index_++;
 
   if (operand_type.channelQuant) {
-    if (GetNNAPIFeatureLevel() < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    if (nnapi_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Per-channel quantization is only supported on Android API level 29+,",
-                             " system NNAPI feature level: ", GetNNAPIFeatureLevel());
+                             " system NNAPI feature level: ", nnapi_feature_level_);
     }
 
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
@@ -539,7 +504,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
-  if (use_fp16_ && GetNNAPIFeatureLevel() > ANEURALNETWORKS_FEATURE_LEVEL_1) {
+  if (use_fp16_ && nnapi_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
@@ -555,8 +520,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
   // This is only available on API 29+, for API 28- the nnapi_target_devices_ will
   // be empty so we will not check API level here, see GetTargetDevices()
   bool use_create_for_devices = false;
-  if (!nnapi_target_devices_.empty()) {
-    std::unique_ptr<bool[]> supported_ops_holder = std::make_unique<bool[]>(num_nnapi_ops_);
+  std::unique_ptr<bool[]> supported_ops_holder = std::make_unique<bool[]>(num_nnapi_ops_);
+  if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
     auto* supported_ops = supported_ops_holder.get();
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
@@ -566,20 +531,64 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
                                          [](bool is_supported) { return is_supported; });
+    // allowing fall back to cpu if it's not strict CPU_DISABLED mode
     if (!all_ops_supported) {
-      // There are some ops not supported by the list of the target devices
-      // Fail the Compile
-      //
-      // TODO, add some logic to not fail for some cases
-      // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
-      // and cpu is not in the target devices list
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The model cannot run using current set of target devices, ",
-                             nnapi_target_devices_detail_);
+      if (target_device_option_ != TargetDeviceOption::CPU_DISABLED_SOFT) {
+        // There are some ops not supported by the list of the target devices
+        // Fail the Compile
+        //
+        // TODO, add some logic to not fail for some cases
+        // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
+        // and cpu is not in the target devices list
+        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                               "The model cannot run using current set of target devices, ",
+                               nnapi_target_devices_detail_);
+      }
     } else {
       use_create_for_devices = true;
     }
   }
+
+#ifndef NDEBUG
+  if ((nnapi_reference_device_ && nnapi_target_devices_.size() > 1) ||
+      (target_device_option_ == TargetDeviceOption::CPU_DISABLED_SOFT)) {
+    auto* supported_ops = supported_ops_holder.get();
+
+    if (target_device_option_ != TargetDeviceOption::CPU_DISABLED_SOFT) {
+      RETURN_STATUS_ON_ERROR_WITH_NOTE(
+          nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
+              nnapi_model_->model_, nnapi_target_devices_.data(),
+              static_cast<uint32_t>(nnapi_target_devices_.size() - 1), supported_ops),
+          "on getSupportedOperationsForDevices");
+    }
+
+    std::unordered_map<std::string, int32_t> optype_support;
+    const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
+    for (size_t idx = 0; idx < node_indices.size(); idx++) {
+      auto node_idx = node_indices[idx];
+      const auto* node(graph_viewer_.GetNode(node_idx));
+      if (!supported_ops[idx]) {
+        optype_support[node->OpType()]++;
+      } else {
+        optype_support[node->OpType()]--;
+      }
+    }
+    size_t total_ops = 0;
+    std::string fb_op_alloc_detail, nm_op_alloc_detail;
+
+    for (const auto& [op, count] : optype_support) {
+      if (count > 0) {
+        total_ops += count;
+        fb_op_alloc_detail += std::to_string(count) + "x " + op + ",";
+      } else {
+        nm_op_alloc_detail += std::to_string(-count) + "x " + op + ",";
+      }
+    }
+
+    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fb_op_alloc_detail << "] out of " << num_nnapi_ops_ << " are falling-back to nnapi-reference, and ["
+                          << nm_op_alloc_detail << "] are running in accelerators.";
+  }
+#endif
 
   if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
