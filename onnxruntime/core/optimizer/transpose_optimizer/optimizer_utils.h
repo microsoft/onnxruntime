@@ -43,7 +43,8 @@ onnxruntime::Graph& GraphFromApiGraph(onnx_layout_transformation::api::GraphRef&
 onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& node);
 
 /// <summary>
-/// Default ORT cost check function for transpose optimizer.
+/// Cost check function for transpose optimizer that takes into account implementation details of the
+/// ORT execution provider kernels.
 /// </summary>
 /// <param name="graph">The graph being optimized</param>
 /// <param name="node">The node we're considering pushing a Transpose through</param>
@@ -53,7 +54,7 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
 ///   or be merged into a single Transpose.
 /// </param>
 /// <returns>CostCheckResult indicating the action the transpose optimizer should perform.</returns>
-onnx_layout_transformation::CostCheckResult OrtDefaultCostCheck(
+onnx_layout_transformation::CostCheckResult OrtEPCostCheck(
     const onnx_layout_transformation::api::GraphRef& graph,
     const onnx_layout_transformation::api::NodeRef& node,
     const std::vector<int64_t>& perm,

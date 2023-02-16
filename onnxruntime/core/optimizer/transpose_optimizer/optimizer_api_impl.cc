@@ -831,9 +831,9 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
-CostCheckResult OrtDefaultCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
-                                    const std::vector<int64_t>& /*perm*/,
-                                    const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
+CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                               const std::vector<int64_t>& /*perm*/,
+                               const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
   // special case some kernels based on the ORT implementation details
   if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
     if (node.IsOp("MaxPool")) {
@@ -901,7 +901,7 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   }
 
   // for other nodes use the default ORT cost check
-  return OrtDefaultCostCheck(graph, node, perm, outputs_leading_to_transpose);
+  return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
