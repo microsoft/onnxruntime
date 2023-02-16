@@ -51,6 +51,32 @@ class SoftmaxBlockwise : public IKernelExplorer {
 };
 
 template <typename T>
+class SoftmaxWarpwiseStaticSelection : public IKernelExplorer {
+ public:
+  SoftmaxWarpwiseStaticSelection(DeviceArray& output, DeviceArray& input, int softmax_elements,
+                                 int input_stride, int output_stride, int batch_count, bool is_log_softmax)
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(input.ptr()),
+                softmax_elements, input_stride, output_stride, batch_count, is_log_softmax) {}
+
+  void Run() override {
+    ORT_THROW_IF_ERROR((rocm::SoftmaxWarpwiseStaticSelection<T, T, rocm::AccumulationType_t<T>>(&params_)));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"SoftmaxWarpwiseStaticSelection"};
+  }
+
+  bool SelectOp(const std::string& name) {
+    auto status = rocm::SoftmaxWarpwiseStaticSelection<T, T, rocm::AccumulationType_t<T>>(&params_);
+    return status.IsOK() && name == "SoftmaxWarpwiseStaticSelection";
+  }
+
+ private:
+  using ParamsT = rocm::SoftmaxParams<T, T>;
+  ParamsT params_{};
+};
+
+template <typename T>
 class SoftmaxBlockwiseStaticSelection : public IKernelExplorer {
  public:
   SoftmaxBlockwiseStaticSelection(DeviceArray& output, DeviceArray& input, int softmax_elements,
@@ -175,6 +201,9 @@ class CKSoftmax : public IKernelExplorer {
 void InitSoftmax(py::module m) {
   REGISTER_OP_FOR_ALL_VEC_SIZE(SoftmaxBlockwise, half);
   REGISTER_OP_FOR_ALL_VEC_SIZE(SoftmaxBlockwise, float);
+
+  REGISTER_OP_TYPED(SoftmaxWarpwiseStaticSelection, half);
+  REGISTER_OP_TYPED(SoftmaxWarpwiseStaticSelection, float);
 
   REGISTER_OP_TYPED(SoftmaxBlockwiseStaticSelection, half);
   REGISTER_OP_TYPED(SoftmaxBlockwiseStaticSelection, float);
