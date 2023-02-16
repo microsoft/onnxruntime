@@ -143,21 +143,23 @@ Status AOTanyOp<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     AOTanyOp,
     kMSDomain,
     1,
+    float,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AOTanyOp<float>);
-/*
-ONNX_OPERATOR_KERNEL_EX(
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
     AOTanyOp,
     kMSDomain,
     1,
+    int64_t,
     kCpuExecutionProvider,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
     AOTanyOp<int64_t>);
-*/
+
 }  // namespace contrib
 }  // namespace onnxruntime
