@@ -34,7 +34,7 @@ void WrapInOrtValue(T value,
                     AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
 
   TensorShape shape({1});
   auto element_type = DataTypeImpl::GetType<T>();
@@ -55,7 +55,7 @@ static void CreateInputOrtValue(gsl::span<const int64_t> dims,
                                 AllocatorPtr alloc = nullptr) {
   static CPUExecutionProviderInfo info;
   static CPUExecutionProvider cpu_provider(info);
-  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(0, OrtMemTypeDefault);
+  static AllocatorPtr cpu_allocator = cpu_provider.GetAllocator(OrtMemTypeDefault);
 
   TensorShape shape(dims);
   assert(shape.Size() == static_cast<int64_t>(value.size()));

@@ -128,6 +128,8 @@ class OnnxModel:
         for graph in self.graphs():
             if node in graph.node:
                 graph.node.remove(node)
+                return
+        logger.warning("Failed to remove node %s", node)  # It might be a bug to hit this line.
 
     def remove_nodes(self, nodes_to_remove):
         for node in nodes_to_remove:
@@ -182,6 +184,12 @@ class OnnxModel:
                 node.output[j] = new_output_name
 
     def replace_output_of_all_nodes(self, old_output_name, new_output_name):
+        # This function shall be used carefully. For example:
+        #       Add --[old_name]--> Cast ---> [new_name]
+        #        |
+        #        +----[old_name]--> Transpose -->
+        # If we want to remove the Cast node: replace output of Add to new_name is not enough;
+        # The input of Transpose shall also be updated to new_name.
         for node in self.model.graph.node:
             OnnxModel.replace_node_output(node, old_output_name, new_output_name)
 
@@ -319,7 +327,7 @@ class OnnxModel:
         self,
         node,
         parent_op_types,
-        parent_input_index,
+        parent_input_index=None,
         output_name_to_node=None,
         return_indice=None,
     ):
@@ -339,7 +347,8 @@ class OnnxModel:
         Returns:
             parents: a list of matched parent node.
         """
-        assert len(parent_input_index) == len(parent_op_types)
+        if parent_input_index is not None:
+            assert len(parent_input_index) == len(parent_op_types)
 
         if output_name_to_node is None:
             output_name_to_node = self.output_name_to_node()
@@ -350,16 +359,19 @@ class OnnxModel:
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
-                parent_input_index[i],
+                parent_input_index[i] if parent_input_index is not None else None,
                 output_name_to_node,
                 exclude=[],
                 return_indice=return_indice,
             )
             if matched_parent is None:
-                logger.debug(
-                    f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
-                    stack_info=True,
-                )
+                if parent_input_index is not None:
+                    logger.debug(
+                        f"Failed to match index={i} parent_input_index={parent_input_index[i]} op_type={op_type}",
+                        stack_info=True,
+                    )
+                else:
+                    logger.debug(f"Failed to match index={i} op_type={op_type}", stack_info=True)
                 return None
 
             matched_parents.append(matched_parent)
@@ -553,7 +565,9 @@ class OnnxModel:
             graph_output_names = set(self.get_graphs_output_names())
             for node in nodes_to_remove:
                 if bool(set(node.output) & graph_output_names):
-                    if not bool(set(node.input) & graph_input_names):
+                    if (not bool(set(node.input) & graph_input_names)) and len(
+                        self.input_name_to_nodes()[node.input[0]]
+                    ) == 1:
                         self.replace_output_of_all_nodes(node.input[0], node.output[0])
                     else:
                         continue
@@ -788,11 +802,14 @@ class OnnxModel:
             self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
-            logger.info(
-                "Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-                    len(input_to_remove), len(output_to_remove), len(nodes_to_remove)
-                )
-            )
+            removed = []
+            if input_to_remove:
+                removed.append(f"{len(input_to_remove)} inputs")
+            if output_to_remove:
+                removed.append(f"{len(output_to_remove)} outputs")
+            if nodes_to_remove:
+                removed.append(f"{len(nodes_to_remove)} nodes")
+            logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
 
@@ -977,6 +994,10 @@ class OnnxModel:
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
+        # Note: After the model is saved to another directory with external data,
+        #       You need reload the onnx model if you want to read tensor from self.model object.
+        #       It is because the base directory is not updated for self.model object so attempt to read tensor data
+        #       might encounter error since external data cannot be located.
         OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file)
         logger.info(f"Model saved to {output_path}")
 
@@ -1004,6 +1025,18 @@ class OnnxModel:
                 return opset.version
         raise RuntimeError("ONNX model has no opset for default domain")
 
+    def get_operator_statistics(self, include_domain=False):
+        """
+        Returns node count of operators.
+        """
+        op_count = {}
+        for node in self.nodes():
+            op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
+            op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
+
+        logger.info(f"Operators:{op_count}")
+        return op_count
+
     @staticmethod
     def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
         """Returns True when two tensors have same value.
@@ -1020,7 +1053,7 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
-        return numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)
+        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
     def remove_duplicated_initializer(self):
         """Remove initializers with duplicated values, and only keep the first one.

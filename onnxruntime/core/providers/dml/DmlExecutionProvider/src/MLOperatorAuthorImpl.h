@@ -331,7 +331,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
-        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
+        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextNodeWrapperPrivate, IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
         IMLOperatorTensorShapeDescription, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
@@ -373,6 +373,14 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     {
         return E_NOTIMPL;
     }
+
+    // IMLOperatorKernelCreationContextNodeWrapperPrivate methods.
+
+    uint32_t STDMETHODCALLTYPE GetUtf8NameBufferSizeInBytes() const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetUtf8Name(uint32_t bufferSizeInBytes, char* name) const noexcept override;
+
+    uint32_t STDMETHODCALLTYPE GetWideNameBufferSizeInBytes() const noexcept override;
+    HRESULT STDMETHODCALLTYPE GetWideName(uint32_t bufferSizeInBytes, wchar_t* name) const noexcept override;
 
 private:
     // For shape info, in addition to the info

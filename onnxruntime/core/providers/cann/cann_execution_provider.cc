@@ -1418,20 +1418,12 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
   return Status::OK();
 }
 
-AllocatorPtr CANNExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeDefault) {
-    return IExecutionProvider::GetAllocator(info_.device_id, mem_type);
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
-  }
-}
-
 void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cann_device{OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info_.device_id};
   OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CANN_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
 
-  auto cann_alloc = IExecutionProvider::GetAllocator(cann_device.Id(), OrtMemTypeDefault);
+  auto cann_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!cann_alloc) {
     cann_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cann_device);
 
@@ -1453,7 +1445,7 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     InsertAllocator(cann_alloc);
   }
 
-  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto cann_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!cann_pinned_alloc) {
     cann_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -1471,7 +1463,7 @@ void CANNExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
     InsertAllocator(cann_pinned_alloc);
   }
 
-  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cann_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!cann_cpu_alloc) {
     cann_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
