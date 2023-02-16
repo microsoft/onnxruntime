@@ -279,7 +279,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   indices.reserve(target_class_nodeids.size());
   for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
     indices.emplace_back(std::pair<TreeNodeElementId, uint32_t>(
-        TreeNodeElementId(target_class_treeids[i], target_class_nodeids[i]),
+        TreeNodeElementId{target_class_treeids[i], target_class_nodeids[i]},
         i));
   }
   std::sort(indices.begin(), indices.end());

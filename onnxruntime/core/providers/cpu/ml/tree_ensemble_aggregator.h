@@ -15,11 +15,6 @@ namespace detail {
 struct TreeNodeElementId {
   int64_t tree_id;
   int64_t node_id;
-  TreeNodeElementId() {}
-  TreeNodeElementId(int64_t tid, int64_t nid) {
-    tree_id = tid;
-    node_id = nid;
-  }
   bool operator==(const TreeNodeElementId& xyz) const {
     return (tree_id == xyz.tree_id) && (node_id == xyz.node_id);
   }
@@ -73,7 +68,6 @@ enum MissingTrack : uint8_t {
 
 template <typename T>
 struct TreeNodeElement {
-  // TreeNodeElementId id;  // not necessary
   int feature_id;
 
   // Stores the node threshold or the weights if the tree has one target.
