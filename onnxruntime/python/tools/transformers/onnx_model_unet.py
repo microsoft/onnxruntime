@@ -91,12 +91,17 @@ class UnetOnnxModel(BertOnnxModel):
 
     def fuse_attention(self, options: Optional[FusionOptions] = None):
         # Self Attention
-        self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
+        enable_packed_qkv = (options is None) or options.enable_packed_qkv
+        self_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, False, enable_packed_qkv, False
+        )
         self_attention_fusion.apply()
 
         # Cross Attention
         enable_packed_kv = (options is None) or options.enable_packed_kv
-        cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
+        cross_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, True, False, enable_packed_kv
+        )
         cross_attention_fusion.apply()
 
     def fuse_bias_add(self):
@@ -152,7 +157,8 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.merge_adjacent_transpose()
 
-        self.fuse_bias_add()
+        if options is not None and options.enable_bias_add:
+            self.fuse_bias_add()
 
         self.postprocess()
 
