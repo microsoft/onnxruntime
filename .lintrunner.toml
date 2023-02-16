@@ -14,7 +14,7 @@
 # To lint local changes:
 #
 # ```bash
-# lintrunner
+# lintrunner -m main
 # ```
 #
 # To lint all files:
@@ -26,7 +26,7 @@
 # To format files:
 #
 # ```bash
-# lintrunner -a --all-files
+# lintrunner f --all-files
 # ```
 #
 # To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
@@ -51,8 +51,6 @@ exclude_patterns = [
     'onnxruntime/test/**',
     # TODO enable
     'orttraining/**',
-    # FIXME(#7032): ignore server code for now
-    'server/**',
     # FIXME: DUO106
     'tools/nuget/generate_nuspec_for_native_nuget.py',
     # FIXME: DUO116
