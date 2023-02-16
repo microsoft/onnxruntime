@@ -486,11 +486,15 @@ class UpsampleBase {
     return ScalesValidation(scales, mode_);
   }
 
-  void ComputeOutputShape(gsl::span<const float> scales,
+  static void ComputeOutputShape(gsl::span<const float> scales,
                           gsl::span<const int64_t> input_dims,
-                          TensorShapeVector& output_dims) const {
+                          TensorShapeVector& output_dims) {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
-      double output_shape = double(scales[i]) * input_dims[i] - std::numeric_limits<float>::epsilon();
+      // floor mode
+      // float scale = scales[i]+0.1/input_dims[i];
+      // output_dims[i]=static_cast<int64_t>(scale * input_dims[i]);
+      // round mode
+      float output_shape = scales[i] * input_dims[i];
       output_dims[i] = static_cast<int64_t>(std::round(output_shape));
     }
   }
