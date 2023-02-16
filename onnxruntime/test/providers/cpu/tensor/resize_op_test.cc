@@ -2204,10 +2204,10 @@ TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
   };
 
   // Can we call UpsampleBase::computeOutputShape directly? It costs too much time.
-  constexpr int64_t IN = 706;
-  for(int64_t ON = 1; ON < IN; ON += 3) {
-    std::vector<float> X(IN);
-    std::vector<float> Y(ON);
+  constexpr int64_t in_size = 706;
+  for(int64_t out_size = 1; out_size < in_size; out_size += 3) {
+    std::vector<float> X(in_size);
+    std::vector<float> Y(out_size);
     std::iota(X.begin(), X.end(), 1.f);
     std::iota(Y.begin(), Y.end(), 1.f);
     shape_check(X, Y);
