@@ -130,6 +130,7 @@ class TunableOp {
  public:
   TunableOp() = default;
   TunableOp(TunableOp&&) = default;
+  virtual ~TunableOp() = default;
 
   Status operator()(const ParamsT* params) {
     int id = default_id_;
@@ -168,7 +169,9 @@ class TunableOp {
     // Do nothing if we are not playing around with params
   }
 
-  virtual ~TunableOp() = default;
+  std::string Signature() const {
+    return signature_;
+  }
 
  protected:
   // set the default op to be used in non-tuning scenario
@@ -188,10 +191,6 @@ class TunableOp {
     RegisterOp([op_ptr](const ParamsT* params) {
       return op_ptr->operator()(params);
     });
-  }
-
-  std::string Signature() const {
-    return signature_;
   }
 
  private:
