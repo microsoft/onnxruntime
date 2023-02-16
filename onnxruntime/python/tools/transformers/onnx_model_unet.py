@@ -12,7 +12,7 @@ from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
-from fusion_transpose import FusionTranspose
+from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -91,12 +91,17 @@ class UnetOnnxModel(BertOnnxModel):
 
     def fuse_attention(self, options: Optional[FusionOptions] = None):
         # Self Attention
-        self_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, False, False)
+        enable_packed_qkv = (options is None) or options.enable_packed_qkv
+        self_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, False, enable_packed_qkv, False
+        )
         self_attention_fusion.apply()
 
         # Cross Attention
         enable_packed_kv = (options is None) or options.enable_packed_kv
-        cross_attention_fusion = FusionAttentionUnet(self, self.hidden_size, self.num_heads, True, enable_packed_kv)
+        cross_attention_fusion = FusionAttentionUnet(
+            self, self.hidden_size, self.num_heads, True, False, enable_packed_kv
+        )
         cross_attention_fusion.apply()
 
     def fuse_bias_add(self):
@@ -126,6 +131,9 @@ class UnetOnnxModel(BertOnnxModel):
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
 
+            insert_transpose_fusion = FusionInsertTranspose(self)
+            insert_transpose_fusion.apply()
+
         if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
             bias_split_gelu_fusion.apply()
@@ -152,7 +160,8 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.merge_adjacent_transpose()
 
-        self.fuse_bias_add()
+        if options is not None and options.enable_bias_add:
+            self.fuse_bias_add()
 
         self.postprocess()
 
