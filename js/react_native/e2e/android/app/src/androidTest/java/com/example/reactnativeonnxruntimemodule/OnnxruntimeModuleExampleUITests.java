@@ -1,5 +1,7 @@
 package com.example.reactnativeonnxruntimemodule;
 
+import android.content.Context;
+import android.content.Intent;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
@@ -12,6 +14,7 @@ import androidx.test.espresso.util.TreeIterables;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
+import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.hamcrest.Matcher;
 import org.junit.Assert;
@@ -36,6 +39,10 @@ public class OnnxruntimeModuleExampleUITests {
 
     @Test
     public void testExample() {
+        // Use the 'testing' Context
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        context.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+
         try {
             // Wait for a view displayed
             int waitTime = 0;
