@@ -26,8 +26,7 @@ class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort()
 
-        expected_model_path = os.path.join(expected_model_filename)
-        expected_model = OnnxModel(onnx.load(expected_model_path))
+        expected_model = OnnxModel(onnx.load(expected_model_filename))
         expected_model.topological_sort()
 
         self.assertEqual(str(optimized_model.model.graph), str(expected_model.model.graph))
@@ -43,36 +42,34 @@ class TestFusion(unittest.TestCase):
 
     def test_embedlayer_fusion(self):
         model = create_gpt2_embedlayer(one_attention_node=False)
-        path = "."
-        original_model_filename = "gpt2_embedlayer.onnx"
-        optimized_model_filename = "gpt2_embedlayer_opt.onnx"
-        expected_model_filename = "gpt2_embedlayer_exp.onnx"
+        path = "./test_data/models/"
+        original_model_filename = os.path.join(path, "gpt2_embedlayer.onnx")
+        optimized_model_filename = os.path.join(path, "gpt2_embedlayer_opt.onnx")
+        expected_model_filename = os.path.join(path, "gpt2_embedlayer_exp.onnx")
 
-        original_model_path = os.path.join(path, original_model_filename)
-        onnx.save(model, original_model_path)
-        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        onnx.save(model, original_model_filename)
+        optimized_model = optimize_model(original_model_filename, model_type="gpt2")
         optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_filename, expected_model_filename)
-        os.remove(original_model_path)
+        os.remove(original_model_filename)
         os.remove(optimized_model_filename)
 
     def test_embedlayer_fusion_one_attn_node(self):
         model = create_gpt2_embedlayer(one_attention_node=True)
-        path = "."
-        original_model_filename = "gpt2_embedlayer_one_attn.onnx"
-        optimized_model_filename = "gpt2_embedlayer_one_attn_opt.onnx"
-        expected_model_filename = "gpt2_embedlayer_one_attn_exp.onnx"
+        path = "./test_data/models/"
+        original_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn.onnx")
+        optimized_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn_opt.onnx")
+        expected_model_filename = os.path.join(path, "gpt2_embedlayer_one_attn_exp.onnx")
 
-        original_model_path = os.path.join(path, original_model_filename)
-        onnx.save(model, original_model_path)
-        optimized_model = optimize_model(original_model_path, model_type="gpt2")
+        onnx.save(model, original_model_filename)
+        optimized_model = optimize_model(original_model_filename, model_type="gpt2")
         optimized_model.save_model_to_file(optimized_model_filename, use_external_data_format=True)
 
         self.verify_fusion(optimized_model, expected_model_filename)
         self.verify_parity(optimized_model_filename, expected_model_filename)
-        os.remove(original_model_path)
+        os.remove(original_model_filename)
         os.remove(optimized_model_filename)
 
 
