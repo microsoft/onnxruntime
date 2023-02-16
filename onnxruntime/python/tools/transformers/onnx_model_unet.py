@@ -12,7 +12,7 @@ from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
-from fusion_transpose import FusionTranspose, FusionInsertTranspose
+from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
