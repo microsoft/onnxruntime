@@ -75,7 +75,7 @@ struct TreeNodeElement {
 
   // onnx specification says hitrates is used to store information about the node,
   // but this information is not used for inference.
-  // T hitrates;  
+  // T hitrates;
 
   // True node, false node are obtained by computing `this + truenode_inc_or_first_weight`,
   // `this + falsenode_inc_or_n_weights` if the node is not a leaf.
@@ -135,7 +135,7 @@ class TreeAggregator {
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/, 
                                  const TreeNodeElement<ThresholdType>& /*root*/,
-                                 const std::vector<SparseValue<ThresholdType>>& /*weights*/) const {}
+                                 gsl::span<const SparseValue<ThresholdType>> /*weights*/) const {}
 
   void MergePrediction(InlinedVector<ScoreValue<ThresholdType>>& /*predictions*/,
                        const InlinedVector<ScoreValue<ThresholdType>>& /*predictions2*/) const {}
@@ -191,7 +191,7 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions, 
                                  const TreeNodeElement<ThresholdType>& root,
-                                 const std::vector<SparseValue<ThresholdType>>& weights) const {
+                                 gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
     for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
@@ -296,7 +296,7 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
-                                 const std::vector<SparseValue<ThresholdType>>& weights) const {
+                                 gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
     for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
@@ -354,7 +354,7 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
 
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
-                                 const std::vector<SparseValue<ThresholdType>>& weights) const {
+                                 gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_inc_or_first_weight;
     for (uint32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =

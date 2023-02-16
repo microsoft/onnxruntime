@@ -189,11 +189,12 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // additional members
   size_t limit;
   uint32_t i;
-  std::vector<NODE_MODE> cmodes(nodes_modes.size());
+  InlinedVector<NODE_MODE> cmodes;
+  cmodes.reserve(nodes_modes.size());
   same_mode_ = true;
   int fpos = -1;
   for (i = 0, limit = nodes_modes.size(); i < limit; ++i) {
-    cmodes[i] = MakeTreeNodeMode(nodes_modes[i]);
+    cmodes.push_back(MakeTreeNodeMode(nodes_modes[i]));
     if (cmodes[i] == NODE_MODE::LEAF)
       continue;
     if (fpos == -1) {
@@ -206,22 +207,20 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // filling nodes
 
-  std::vector<TreeNodeElementId> node_tree_ids(nodes_treeids.size());
-  std::vector<int64_t> truenode_ids(nodes_treeids.size());
-  std::vector<int64_t> falsenode_ids(nodes_treeids.size());
-  std::fill(truenode_ids.begin(), truenode_ids.end(), 0);
-  std::fill(falsenode_ids.begin(), falsenode_ids.end(), 0);
   n_nodes_ = nodes_treeids.size();
-  nodes_.resize(nodes_treeids.size());
+  InlinedVector<TreeNodeElementId> node_tree_ids;  
+  node_tree_ids.reserve(n_nodes_);
+  nodes_.clear();
+  nodes_.reserve(n_nodes_);
   roots_.clear();
-  std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
+  absl::flat_hash_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
+  idi.reserve(n_nodes_);
   max_feature_id_ = 0;
 
   for (i = 0, limit = static_cast<size_t>(n_nodes_); i < limit; ++i) {
-    TreeNodeElement<ThresholdType>& node = nodes_[i];
-    TreeNodeElementId& node_tree_id = node_tree_ids[i];
-    node_tree_id.tree_id = static_cast<int>(nodes_treeids[i]);
-    node_tree_id.node_id = static_cast<int>(nodes_nodeids[i]);
+    TreeNodeElementId node_tree_id{static_cast<int>(nodes_treeids[i]),
+                                   static_cast<int>(nodes_nodeids[i])};
+    TreeNodeElement<ThresholdType> node;
     node.feature_id = static_cast<int>(nodes_featureids[i]);
     if (node.feature_id > max_feature_id_) {
       max_feature_id_ = node.feature_id;
@@ -237,7 +236,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       node.hitrates = i < nodes_hitrates_as_tensor.size() ? nodes_hitrates_as_tensor[i] : -1;
     } */
 
-    node.flags |= static_cast<uint8_t>(cmodes[i]);
+    node.flags = static_cast<uint8_t>(cmodes[i]);
     node.truenode_inc_or_first_weight = 0;  // nodes_truenodeids[i] if not a leaf
     node.falsenode_inc_or_n_weights = 0;    // nodes_falsenodeids[i] if not a leaf
 
@@ -248,13 +247,21 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       ORT_THROW("Node ", node_tree_id.node_id, " in tree ", node_tree_id.tree_id, " is already there.");
     }
     idi.insert(std::pair<TreeNodeElementId, uint32_t>(node_tree_id, i));
+    nodes_.emplace_back(node);
+    node_tree_ids.emplace_back(node_tree_id);
   }
 
+  InlinedVector<int64_t> truenode_ids, falsenode_ids;
+  truenode_ids.reserve(n_nodes_);
+  falsenode_ids.reserve(n_nodes_);
   TreeNodeElementId coor;
   i = 0;
   for (auto it = nodes_.begin(); it != nodes_.end(); ++it, ++i) {
-    if (!it->is_not_leaf())
+    if (!it->is_not_leaf()) {
+      truenode_ids.push_back(0);
+      falsenode_ids.push_back(0);
       continue;
+    }
 
     TreeNodeElementId& node_tree_id = node_tree_ids[i];
     coor.tree_id = node_tree_id.tree_id;
@@ -264,18 +271,18 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (truenode).");
     }
-    truenode_ids[i] = (coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0;
+    truenode_ids.emplace_back((coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0);
 
     coor.node_id = static_cast<int>(nodes_falsenodeids[i]);
     found = idi.find(coor);
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (falsenode).");
     }
-    falsenode_ids[i] = (coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0;
+    falsenode_ids.emplace_back((coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0);
   }
 
   // sort targets
-  std::vector<std::pair<TreeNodeElementId, uint32_t>> indices;
+  InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices;
   indices.reserve(target_class_nodeids.size());
   for (i = 0, limit = target_class_nodeids.size(); i < limit; i++) {
     indices.emplace_back(std::pair<TreeNodeElementId, uint32_t>(
@@ -291,11 +298,12 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   for (indi = 0, limit = target_class_nodeids.size(); indi < limit; ++indi) {
     ind = indices[indi].first;
     i = indices[indi].second;
-    if (idi.find(ind) == idi.end()) {
+    auto found = idi.find(ind);
+    if (found == idi.end()) {
       ORT_THROW("Unable to find node ", ind.tree_id, "-", ind.node_id, " (weights).");
     }
 
-    TreeNodeElement<ThresholdType>& leaf = nodes_[idi[ind]];
+    TreeNodeElement<ThresholdType>& leaf = nodes_[found->second];
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
       // models converted with an old version of onnxmltools. There weights are ignored.
