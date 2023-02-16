@@ -12,7 +12,7 @@ from fusion_biassplitgelu import FusionBiasSplitGelu
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
-from fusion_transpose import FusionTranspose
+from fusion_transpose import FusionInsertTranspose, FusionTranspose
 from onnx import ModelProto
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
@@ -130,6 +130,9 @@ class UnetOnnxModel(BertOnnxModel):
         if (options is None) or options.enable_group_norm:
             group_norm_fusion = FusionGroupNorm(self)
             group_norm_fusion.apply()
+
+            insert_transpose_fusion = FusionInsertTranspose(self)
+            insert_transpose_fusion.apply()
 
         if (options is None) or options.enable_bias_splitgelu:
             bias_split_gelu_fusion = FusionBiasSplitGelu(self)
