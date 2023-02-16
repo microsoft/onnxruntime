@@ -571,12 +571,14 @@ common::Status CopyOneInputAcrossDevices(const SessionState& session_state, cons
   Stream* device_stream = nullptr;
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
-  DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
-  gsl::span<Stream*> streams = device_stream_collection->GetStreams();
-  for (Stream* stream : streams) {
-    if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
-      device_stream = stream;
-      break;
+  if (device_stream_collection_holder.p_ != nullptr) {
+    DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+    gsl::span<Stream*> streams = device_stream_collection->GetStreams();
+    for (Stream* stream : streams) {
+      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+        device_stream = stream;
+        break;
+      }
     }
   }
 #endif
