@@ -20,6 +20,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import static androidx.test.espresso.Espresso.onView;
+import static androidx.test.espresso.matcher.RootMatchers.isFocusable;
 import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.isRoot;
@@ -42,7 +43,7 @@ public class OnnxruntimeModuleExampleUITests {
             final int sleepTime = 1000;
             do {
                 try {
-                    ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
+                    ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed())).inRoot(isFocusable());
                     if (getText(view) != null) {
                         break;
                     }
@@ -55,7 +56,7 @@ public class OnnxruntimeModuleExampleUITests {
                 }
             } while (waitTime < 180000);
 
-            ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed()));
+            ViewInteraction view = onView(allOf(withContentDescription("output"), isDisplayed())).inRoot(isFocusable());
             Assert.assertEquals("Result: 3", getText(view));
         } finally {
             dumpRootViewHierarchy();
