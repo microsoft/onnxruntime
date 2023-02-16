@@ -2197,15 +2197,15 @@ TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
     test.AddInput<float>("X", {N}, X);
     test.AddInput<float>("roi", {0}, roi);
     test.AddInput<float>("scales", {1}, scales);
-    // we don't care its correctness, just want to make sure its shape is matched.
-    // Data of Y is random generated, so it's not used for correctness check.
+    // Data of Y is random generated, because we don't care its correctness,
+    // just want to make sure its shape is correct.
     test.AddOutput<float>("Y", {int64_t(Y.size())}, Y, false, 10000000.f, 100000000.f);
     test.Run();
   };
 
-  // Can we call UpsampleBase::computeOutputShape directly? It cost too much time.
+  // Can we call UpsampleBase::computeOutputShape directly? It costs too much time.
   constexpr int64_t IN = 706;
-  for(int64_t ON = 1; ON < IN; ON+=3) {
+  for(int64_t ON = 1; ON < IN; ON += 3) {
     std::vector<float> X(IN);
     std::vector<float> Y(ON);
     std::iota(X.begin(), X.end(), 1.f);
