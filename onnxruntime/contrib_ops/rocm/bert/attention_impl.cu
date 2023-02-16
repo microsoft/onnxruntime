@@ -54,8 +54,8 @@ size_t GetAttentionScratchSize(size_t element_size,
                                int batch_size,
                                int num_heads,
                                int sequence_length,
-                               int all_sequence_length) {
-  const size_t bytes = element_size * batch_size * num_heads * sequence_length * all_sequence_length;
+                               int total_sequence_length) {
+  const size_t bytes = element_size * batch_size * num_heads * sequence_length * total_sequence_length;
 
   const size_t alignment = 256;
   const size_t bytesAligned = AlignTo(bytes, alignment);
@@ -89,7 +89,7 @@ struct GemmSoftmaxGemmPermutePararms : onnxruntime::rocm::tunable::OpParams {
   void FillShape(const AttentionParameters& attention) {
     batch = attention.batch_size * attention.num_heads;
     m = attention.sequence_length;
-    n = attention.past_sequence_length + attention.sequence_length;
+    n = attention.total_sequence_length;
     k = attention.head_size;
     o = attention.head_size;
   }
@@ -137,16 +137,15 @@ Status GemmSoftmaxGemmPermuteGeneric(
       params.batch));
 
   // Softmax on [m,n] along the n dimension.
-  int all_sequence_length = attn.past_sequence_length + attn.sequence_length;
   if (use_raw_attention_mask) {  // 2d, 3d or 4d attention mask
     // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
     auto* mask = mask_index;
     int4 strides;
     const int mask_dimension = static_cast<int>(mask_index_dims.size());
     if (mask_dimension == 2) {
-      strides = {all_sequence_length, 0, 0, 1};
+      strides = {attn.total_sequence_length, 0, 0, 1};
     } else if (mask_dimension == 3) {
-      strides = {attn.sequence_length * all_sequence_length, 0, all_sequence_length, 1};
+      strides = {attn.sequence_length * attn.total_sequence_length, 0, attn.total_sequence_length, 1};
     } else if (mask_dimension == 4) {
       int max_sequence_length = mask_dimension == 4 ? static_cast<int>(mask_index_dims[3]) : 0;
       strides = {max_sequence_length * max_sequence_length, max_sequence_length, max_sequence_length, 1};
@@ -156,7 +155,7 @@ Status GemmSoftmaxGemmPermuteGeneric(
 
     T* persistent_softmax_workspace = gemm1_out;  // replace Q*K' in place if persistent softmax is selected.
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
-        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        params.Stream(), attn.total_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
         strides, mask, nullptr, relative_position_bias, gemm1_out, softmax_out,
         attn.is_unidirectional, /* FIXME: this must not be attn.scale! */params.scale,
         use_persistent_softmax, persistent_softmax_workspace, attn.mask_filter_value));
@@ -165,11 +164,11 @@ Status GemmSoftmaxGemmPermuteGeneric(
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     const int* mask_start = (mask_index_dims[0] > attn.batch_size) ? mask_index + attn.batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
-        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        params.Stream(), attn.total_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
         mask_index, mask_start, relative_position_bias, gemm1_out, softmax_out, attn.is_unidirectional));
   } else {  // no mask
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(
-        params.Stream(), all_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
+        params.Stream(), attn.total_sequence_length, attn.sequence_length, attn.batch_size, attn.num_heads,
         relative_position_bias, gemm1_out, softmax_out, attn.is_unidirectional));
   }
 
@@ -555,9 +554,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
-  const int all_sequence_length = parameters.past_sequence_length + parameters.sequence_length;
   const size_t bytes = GetAttentionScratchSize(element_size, parameters.batch_size, parameters.num_heads,
-                                               parameters.sequence_length, all_sequence_length);
+                                               parameters.sequence_length, parameters.total_sequence_length);
   HipT* scratch1 = reinterpret_cast<HipT*>(workspace.get());
   HipT* scratch2 = scratch1 + (bytes / element_size);
   HipT* scratch3 = scratch2 + (bytes / element_size);
@@ -580,10 +578,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
   // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
-  const int present_size_per_batch = all_sequence_length * parameters.head_size;
+  const int present_size_per_batch = parameters.total_sequence_length * parameters.head_size;
   if (nullptr != present) {
     ORT_RETURN_IF_ERROR(
-      LaunchConcatPastToPresent(Stream(context), all_sequence_length,
+      LaunchConcatPastToPresent(Stream(context),
+                                parameters.total_sequence_length,
                                 parameters.sequence_length,
                                 parameters.batch_size,
                                 parameters.head_size,
