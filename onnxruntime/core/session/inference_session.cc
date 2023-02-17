@@ -414,7 +414,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     : InferenceSession(session_options, session_env, ToPathString(model_uri)) {
 }
 #endif
-
+/////87878787878787dfdfddfdfd777787878sss
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
@@ -427,7 +427,7 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
   // Finalize session options and initialize assets of this session instance
   ConstructorCommon(session_options, session_env);
 }
-
+////222ererererere87878
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),

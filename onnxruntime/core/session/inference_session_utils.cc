@@ -41,7 +41,7 @@ static Status SetInterOpNumThreads(SessionOptions& session_options,
   session_options.inter_op_param.thread_pool_size = value;
   return Status::OK();
 }
-
+//
 static Status SetExecutionMode(SessionOptions& session_options,
                                int value,
                                const logging::Logger& logger) {

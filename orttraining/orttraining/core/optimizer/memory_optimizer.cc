@@ -474,6 +474,7 @@ void MemoryOptimizer::RegisterAllowedRecomputeOps() {
         {"Where", AllowedRecomputeNodeConfig{{0, 1, 2}}},
 
         // Data copy
+        {"Slice", AllowedRecomputeNodeConfig{{0}}},
         {"Tile", AllowedRecomputeNodeConfig{{0}}},
         {"Cast", AllowedRecomputeNodeConfig{{0}}},
     });

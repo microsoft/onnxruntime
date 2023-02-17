@@ -13,18 +13,18 @@ namespace {
 constexpr int kNumElementsPerThread = 2;
 constexpr int kNumThreadsPerBlock = 512;
 #else
-constexpr int kNumElementsPerThread = GridDim::maxElementsPerThread;
+constexpr int kNumElementsPerThread = 2 * GridDim::maxElementsPerThread;
 constexpr int kNumThreadsPerBlock = GridDim::maxThreadsPerBlock;
 #endif
 }  // namespace
 
 template <bool is_grad, int DIMS, typename T>
 __global__ void _SliceKernel(const TArray<int64_t> starts, const TArray<int64_t> steps,
-                             const TArray<int64_t> input_strides, const TArray<fast_divmod> output_strides,
-                             const T* input_data, T* output_data, const CUDA_LONG N) {
-  CUDA_LONG start = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
+                             const TArray<int64_t> input_strides, const TArray<fast_divmod_uint32> output_strides,
+                             const T* input_data, T* output_data, const size_t N) {
+  uint32_t start = kNumElementsPerThread * kNumThreadsPerBlock * blockIdx.x + threadIdx.x;
   T values[kNumElementsPerThread];
-  CUDA_LONG id;
+  uint32_t id;
   if (is_grad) {
     id = start;
 #pragma unroll
@@ -40,10 +40,10 @@ __global__ void _SliceKernel(const TArray<int64_t> starts, const TArray<int64_t>
 #pragma unroll
   for (int i = 0; i < kNumElementsPerThread; ++i) {
     if (id < N) {
-      CUDA_LONG input_index = 0;
-      int div;
-      int mod = id;
-      int dim = 0;
+      uint32_t input_index = 0;
+      uint32_t div;
+      uint32_t mod = static_cast<uint32_t>(id);
+      uint32_t dim = 0;
 #pragma unroll
       for (; dim < DIMS - 1; ++dim) {
         output_strides[dim].divmod(mod, div, mod);
@@ -74,7 +74,7 @@ __global__ void _SliceKernel(const TArray<int64_t> starts, const TArray<int64_t>
 template <bool is_grad>
 Status SliceImplEx(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
                    const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
-                   const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data,
+                   const TArray<fast_divmod_uint32>& output_strides, const void* input_data, void* output_data,
                    const size_t N) {
   int blocksPerGrid = static_cast<int>(CeilDiv(N, kNumThreadsPerBlock * kNumElementsPerThread));
   switch (element_size) {
@@ -83,7 +83,7 @@ Status SliceImplEx(cudaStream_t stream, const size_t element_size, const int32_t
     _SliceKernel<is_grad, DIMS, ELEMENT_TYPE><<<blocksPerGrid, kNumThreadsPerBlock, 0, stream>>>( \
         starts, steps, input_strides, output_strides,                                             \
         reinterpret_cast<const ToCudaType<ELEMENT_TYPE>::MappedType*>(input_data),                \
-        reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data), (CUDA_LONG)N);      \
+        reinterpret_cast<ToCudaType<ELEMENT_TYPE>::MappedType*>(output_data), N);                 \
   } break
 #define HANDLE_ELEMENT_TYPE(ELEMENT_TYPE) \
   case sizeof(ELEMENT_TYPE): {            \
@@ -113,7 +113,7 @@ Status SliceImplEx(cudaStream_t stream, const size_t element_size, const int32_t
 
 Status SliceImpl(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
                  const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
-                 const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data, const size_t N) {
+                 const TArray<fast_divmod_uint32>& output_strides, const void* input_data, void* output_data, const size_t N) {
   return SliceImplEx<false>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides,
                             input_data, output_data, N);
 }
@@ -121,7 +121,7 @@ Status SliceImpl(cudaStream_t stream, const size_t element_size, const int32_t d
 #ifdef ENABLE_TRAINING_OPS
 Status SliceImplGrad(cudaStream_t stream, const size_t element_size, const int32_t dimension_count,
                      const TArray<int64_t>& starts, const TArray<int64_t>& steps, const TArray<int64_t>& input_strides,
-                     const TArray<fast_divmod>& output_strides, const void* input_data, void* output_data,
+                     const TArray<fast_divmod_uint32>& output_strides, const void* input_data, void* output_data,
                      const size_t N) {
   return SliceImplEx<true>(stream, element_size, dimension_count, starts, steps, input_strides, output_strides,
                            input_data, output_data, N);

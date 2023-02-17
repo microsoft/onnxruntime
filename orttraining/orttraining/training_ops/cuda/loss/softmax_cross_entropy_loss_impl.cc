@@ -212,6 +212,7 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   // N_D = N * D1 * D2...D*K
   int64_t N_D;
   int64_t C;
+  std::cout << "SoftmaxCrossEntropyLossGrad 11111111111111 N_D:" << N_D << ", C: " << C << std::endl;
   onnxruntime::contrib::GetNDCFromLogitAndLabelShape(probability_shape, label_shape, N_D, C);
   Tensor* d_logit = ctx->Output(0, probability_shape);
   const T* dY_data = dY.Data<T>();
@@ -224,9 +225,10 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   std::vector<size_t> permutations;
   AllocatorPtr alloc;
   const OpKernelInfo& info = OpKernel::Info();
-
+  std::cout << "SoftmaxCrossEntropyLossGrad 22222222222222 N_D:" << N_D << ", C: " << C << std::endl;
   // Transpose logit from [N, C, D1, D2 .. Dk] to [N, D1, D2...Dk, C]
   if (probability_shape.NumDimensions() > 2) {
+    std::cout << "SoftmaxCrossEntropyLossGrad 3333333333333" << std::endl;
     ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
     onnxruntime::contrib::GetPermutationAndShape(true, probability_shape, new_shape, permutations);
     transpose_output = AllocateTensorInMLValue(log_prob.DataType(), new_shape, alloc);
@@ -238,7 +240,8 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     const Tensor& weight = *p_weight;
     weight_data = weight.Data<T>();
   }
-
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+  std::cout << "SoftmaxCrossEntropyLossGrad 44444444444444" << std::endl;
   IAllocatorUniquePtr<T> weight_data_nd = GetScratchBuffer<T>(N_D, ctx->GetComputeStream());
   T* weight_data_nd_data = weight_data_nd.get();
   ComputeSoftmaxCrossEntropyWeightsImpl(Stream(ctx),
@@ -248,6 +251,8 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                                         ignore_index,
                                         reinterpret_cast<CudaT*>(weight_data_nd_data));
   typedef AccumulationType_t<CudaT> TBuf;
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+  std::cout << "SoftmaxCrossEntropyLossGrad 55555555555" << std::endl;
   auto normalize_factor_data = GetScratchBuffer<TBuf>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::MEAN) {
     // Compute buffer size in byte for reduction APIs.
@@ -269,7 +274,8 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
   }
 
   const T* bias_data = p_bias ? p_bias->Data<T>() : nullptr;
-
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+  std::cout << "SoftmaxCrossEntropyLossGrad 55555555555555" << std::endl;
   SoftmaxCrossEntropyLossGradImpl(Stream(ctx),
                                   reinterpret_cast<const CudaT*>(dY_data),
                                   reinterpret_cast<const CudaT*>(log_prob_data),
@@ -281,9 +287,9 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
                                   C,
                                   ReductionType::NONE == reduction_,
                                   reinterpret_cast<CudaT*>(d_logit_data));
-
   // Transpose logit from [N, D1, D2...Dk, C] to [N, C, D1, D2 .. Dk]
   if (probability_shape.NumDimensions() > 2) {
+    std::cout << "SoftmaxCrossEntropyLossGrad 6666666666666666" << std::endl;
     TensorShape logit_shape = new_shape;
     new_shape.clear();
     permutations.clear();
@@ -295,7 +301,10 @@ Status SoftmaxCrossEntropyLossGrad<T, Tin>::ComputeInternal(OpKernelContext* ctx
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(d_logit_data, transposed_data, sizeof(T) * probability_shape.Size(), cudaMemcpyDeviceToDevice, Stream(ctx)));
     d_logit->Reshape(new_shape);
   }
+  std::cout << "SoftmaxCrossEntropyLossGrad 777777777777" << std::endl;
 
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(static_cast<cudaStream_t>(ctx->GetComputeStream()->GetHandle())));
+  std::cout << "SoftmaxCrossEntropyLossGrad 88888888888888" << std::endl;
   return Status::OK();
 }
 
