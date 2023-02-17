@@ -266,7 +266,7 @@ export class Tensor implements TensorInterface {
   static async fromImage(imageData: ImageData, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(imageElement: HTMLImageElement, options?: TensorFromImageOptions): Promise<Tensor>;
   static async fromImage(bitmap: ImageBitmap, options: TensorFromImageOptions): Promise<Tensor>;
-  static async fromImage(string: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  static async fromImage(urlSource: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   static async fromImage(image: ImageData|HTMLImageElement|ImageBitmap|string, options?: TensorFromImageOptions):
       Promise<Tensor> {
@@ -428,15 +428,13 @@ export class Tensor implements TensorInterface {
           context.drawImage(newImage, 0, 0, canvas.width, canvas.height);
           const img = context.getImageData(0, 0, canvas.width, canvas.height);
           if (options !== undefined) {
-            // using square brackets to avoid TS error - type 'never'
             if (options.height !== undefined && options.height !== canvas.height) {
-              throw new Error('Image input config height doesn\'t match ImageBitmap height');
+              throw new Error('Image input config height doesn\'t match height');
             } else {
               tensorConfig.height = canvas.height;
             }
-            // using square brackets to avoid TS error - type 'never'
             if (options.width !== undefined && options.width !== canvas.width) {
-              throw new Error('Image input config width doesn\'t match ImageBitmap width');
+              throw new Error('Image input config width doesn\'t match width');
             } else {
               tensorConfig.width = canvas.width;
             }
@@ -464,19 +462,81 @@ export class Tensor implements TensorInterface {
     canvas.height = this.dims[2];
     const pixels2DContext = canvas.getContext('2d');
 
-    let image: ImageData;
+    if (pixels2DContext != null) {
+      // Default values for height and width & format
+      let width: number;
+      let height: number;
+      if (options?.tensorLayout !== undefined && options.tensorLayout === 'NHWC') {
+        width = this.dims[2];
+        height = this.dims[3];
+      } else {  // Default layout is NCWH
+        width = this.dims[3];
+        height = this.dims[2];
+      }
 
-    if (options !== undefined) {
-      options.width = this.dims[3];
-      options.height = this.dims[2];
-      options.format = 'RGB';
-      image = this.toImageData(options);
-    } else {
-      image = this.toImageData({width: this.dims[3], height: this.dims[2], format: 'RGB'});
-    }
+      const inputformat = options?.format !== undefined ? options.format : 'RGB';
 
-    if (pixels2DContext !== null) {
-      pixels2DContext.putImageData(image, 0, 0);
+      const norm = options?.norm;
+      let normMean: [number, number, number, number];
+      let normBias: [number, number, number, number];
+      if (norm === undefined || norm.mean === undefined) {
+        normMean = [255, 255, 255, 255];
+      } else {
+        if (typeof (norm.mean) === 'number') {
+          normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
+        } else {
+          normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 0];
+          if (norm.mean[3] !== undefined) {
+            normMean[3] = norm.mean[3];
+          }
+        }
+      }
+      if (norm === undefined || norm.bias === undefined) {
+        normBias = [0, 0, 0, 0];
+      } else {
+        if (typeof (norm.bias) === 'number') {
+          normBias = [norm.bias, norm.bias, norm.bias, norm.bias];
+        } else {
+          normBias = [norm.bias[0], norm.bias[1], norm.bias[2], 0];
+          if (norm.bias[3] !== undefined) {
+            normBias[3] = norm.bias[3];
+          }
+        }
+      }
+
+      const stride = height * width;
+      // Default pointer assignments
+      let rTensorPointer = 0, gTensorPointer = stride, bTensorPointer = stride * 2, aTensorPointer = -1;
+
+      // Updating the pointer assignments based on the input image format
+      if (inputformat === 'RGBA') {
+        rTensorPointer = 0;
+        gTensorPointer = stride;
+        bTensorPointer = stride * 2;
+        aTensorPointer = stride * 3;
+      } else if (inputformat === 'RGB') {
+        rTensorPointer = 0;
+        gTensorPointer = stride;
+        bTensorPointer = stride * 2;
+      } else if (inputformat === 'RBG') {
+        rTensorPointer = 0;
+        bTensorPointer = stride;
+        gTensorPointer = stride * 2;
+      }
+
+      for (let i = 0; i < height; i++) {
+        for (let j = 0; j < width; j++) {
+          const R = ((this.data[rTensorPointer++] as number) - normBias[0]) * normMean[0];  // R value
+          const G = ((this.data[gTensorPointer++] as number) - normBias[1]) * normMean[1];  // G value
+          const B = ((this.data[bTensorPointer++] as number) - normBias[2]) * normMean[2];  // B value
+          const A = aTensorPointer === -1 ?
+              255 :
+              ((this.data[aTensorPointer++] as number) - normBias[3]) * normMean[3];  // A value
+          // eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+          pixels2DContext.fillStyle = 'rgba(' + R + ',' + G + ',' + B + ',' + A + ')';
+          pixels2DContext.fillRect(j, i, 1, 1);
+        }
+      }
       return canvas.toDataURL();
     } else {
       throw new Error('Can not access image data');

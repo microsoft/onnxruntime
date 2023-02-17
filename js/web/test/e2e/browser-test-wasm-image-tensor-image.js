@@ -3,14 +3,15 @@
 
 'use strict';
 
-const IMAGE_HEIGHT = 30
-const IMAGE_WIDTH = 30
+const IMAGE_HEIGHT = 20
+const IMAGE_WIDTH = 15
 
 function getRndColor() {
   let r = 255*Math.random()|0,
       g = 255*Math.random()|0,
-      b = 255*Math.random()|0;
-  return 'rgb(' + r + ',' + g + ',' + b + ')';
+      b = 255*Math.random()|0,
+      a = 255*Math.random()|0;
+  return 'rgb(' + r + ',' + g + ',' + b + ',' + a +')';
 }
 
 function compareTensors(tensorA, tensorB, msg){
@@ -43,7 +44,7 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
       }
   }
 
-  // // Copying the canavas data to the image
+  // Copying the canavas data to the image
   img.src = canvas.toDataURL();
 
   // Testing HTML Image Element --> Tensor --> ImageData --> Tensor
@@ -63,11 +64,11 @@ it('Browser E2E testing - Tensor <--> Image E2E test', async function () {
 
   // Testing Data URL --> Tensor --> Data URL --> Tensor
   // Data URL to tensor API -
-  const inputTensorDataURL = await ort.Tensor.fromImage(image,{format:'RGB', norm:{bias:[2,3,9,0],mean:[5,16,7,0]}});
+  const inputTensorDataURL = await ort.Tensor.fromImage(image,{format:'RBG', norm:{bias:[1,10,5,0],mean:[5,7,11,0]}});
   // Tensor to ImageDAta API
-  let newImage = inputTensorDataURL.toDataURL({format:'RGB', norm:{bias:[2/5,3/16,9/7,0],mean:[5,16,7,0]}});
+  let newImage = inputTensorDataURL.toDataURL({norm:{bias:[1/5,10/7,5/11,0],mean:[5,7,11,0]}});
   // ImageData to tensor API
-  let inputTensorImageData = await ort.Tensor.fromImage(newImage,{format:'RGB', norm:{bias:[2,3,9,0],mean:[5,16,7,0]}});
+  let inputTensorImageData = await ort.Tensor.fromImage(newImage,{format:'RGB', norm:{bias:[1,10,5,0],mean:[5,7,11,0]}});
   compareTensors(inputTensorDataURL,inputTensorImageData,'BUG in ImageData & Data URL use case');
 
   // Testing URL --> Tensor --> ImageData --> Tensor

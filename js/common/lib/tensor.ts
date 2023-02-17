@@ -340,7 +340,7 @@ export interface TensorFactory {
    * Input Defaults: RGBA, 3 channels, 0-255, NHWC - Output Defaults: same as input parameters
    * @returns A promise that resolves to a tensor object
    */
-  fromImage(string: string, options?: TensorFromImageOptions): Promise<Tensor>;
+  fromImage(urlSource: string, options?: TensorFromImageOptions): Promise<Tensor>;
 
   /**
    * create a tensor from image object - HTMLImageElement, ImageData, ImageBitmap, URL
