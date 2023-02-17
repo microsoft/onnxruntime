@@ -21,6 +21,7 @@ stages:
       OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
       OnnxruntimeNodejsBindingArch: 'arm64'
       PoolName: 'aiinfra-linux-ARM64-CPU-2019'
+
   - template: templates/win-ci.yml
     parameters:
       DoCompliance: true
