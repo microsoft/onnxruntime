@@ -50,10 +50,7 @@ jobs:
 
     - template: set-version-number-variables-step.yml
 
-    - script: |
-        gradle wrapper --gradle-version 6.8.3 --no-daemon --no-watch-fs
-      displayName: Set up gradle 6.8.3 wrapper
-      workingDirectory: $(Build.SourcesDirectory)/java
+    - template: set-up-gradle-wrapper-step.yml
 
     - script: |
         brew install ccache
