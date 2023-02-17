@@ -214,7 +214,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   nodes_.clear();
   nodes_.reserve(limit);
   roots_.clear();
-  absl::flat_hash_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
+  std::unordered_map<TreeNodeElementId, uint32_t, TreeNodeElementId::hash_fn> idi;
   idi.reserve(limit);
   max_feature_id_ = 0;
 
@@ -244,10 +244,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (i < static_cast<size_t>(nodes_missing_value_tracks_true.size()) && nodes_missing_value_tracks_true[i] == 1) {
       node.flags |= static_cast<uint8_t>(MissingTrack::kTrue);
     }
-    if (idi.find(node_tree_id) != idi.end()) {
+    auto p = idi.insert(std::pair<TreeNodeElementId, uint32_t>(node_tree_id, i));
+    if (!p.second) {
       ORT_THROW("Node ", node_tree_id.node_id, " in tree ", node_tree_id.tree_id, " is already there.");
     }
-    idi.insert(std::pair<TreeNodeElementId, uint32_t>(node_tree_id, i));
     nodes_.emplace_back(node);
     node_tree_ids.emplace_back(node_tree_id);
   }
