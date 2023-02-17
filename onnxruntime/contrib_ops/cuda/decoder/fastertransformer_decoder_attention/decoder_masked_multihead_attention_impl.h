@@ -11,7 +11,7 @@ namespace contrib {
 namespace cuda {
 
 struct DecoderMaskedMultiheadAttentionParams : AttentionParameters {
-  int beam_width;
+  int beam_width = 1;
 
   void* q = nullptr;
   void* q_bias = nullptr;

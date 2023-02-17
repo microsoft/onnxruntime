@@ -203,7 +203,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   const float inv_sqrt_dh = 1.f / (sqrtf(static_cast<float>(head_size)));
 
-  int temp_offset = (bi * params.num_heads * params.sequence_length * params.total_sequence_length) + (hi * params.sequence_length * params.total_sequence_length);
+  //int temp_offset = (bi * params.num_heads * params.sequence_length * params.total_sequence_length) + (hi * params.sequence_length * params.total_sequence_length);
 
   // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
   if (tidx == 0) {
@@ -211,7 +211,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     qk *= inv_sqrt_dh;
     qk_max = qk;
     qk_smem[tlength] = qk;
-    reinterpret_cast<T*>(params.out)[temp_offset + tlength] = qk;
+    //reinterpret_cast<T*>(params.out)[temp_offset + tlength] = qk;
   }
 
   // Make sure the data is in shared memory.
@@ -269,7 +269,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     bool is_masked = (params.mask != nullptr) && (params.mask[bi_seq_len_offset + ti] == 0);
 
     // The keys loaded from the key cache.
-    K_vec_k k[K_VECS_PER_THREAD];
+    K_vec_k k_vec[K_VECS_PER_THREAD];
 #pragma unroll
     for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
       int jj = ii * params.max_sequence_length + ti;
@@ -277,10 +277,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
       if (ti < tlength) {
         if (has_beams) {
           const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
-          k[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
         } else {
-          k[ii] = vec_conversion<K_vec_k, K_vec_m>(
+          k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
       }
@@ -288,14 +288,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
     // Perform the dot product and normalize qk.
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
-    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k) * inv_sqrt_dh;
+    float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
 
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
-    // if( ti < params.timestep && tidx % THREADS_PER_KEY == 0 ) {
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
-      reinterpret_cast<T*>(params.out)[temp_offset + ti] = qk;
+      //reinterpret_cast<T*>(params.out)[temp_offset + ti] = qk;
     }
   }
 
@@ -347,7 +346,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
     float logit = qk_smem[ti] * inv_sum;
     convert_from_float(logits_smem[ti], logit);
-    reinterpret_cast<T*>(params.out)[temp_offset + ti] = logit;
+    //reinterpret_cast<T*>(params.out)[temp_offset + ti] = logit;
   }
 
   // Put Values part below so we leverage __syncthreads
@@ -369,7 +368,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // The base pointer for the value in the cache buffer.
   T* params_v_cache = reinterpret_cast<T*>(params.v_cache);
 
-  // T* v_cache = &params_v_cache[bhi * params.max_sequence_length * head_size + vi];
+  T* v_cache = &params_v_cache[bhi * params.max_sequence_length * head_size + vi];
 
   // Base pointer for the beam's batch, before offsetting with indirection buffer
   T* v_cache_batch = &params_v_cache[bbhi * params.max_sequence_length * head_size + vi];
@@ -420,7 +419,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     v = add_vec(v, v_bias);
 
     // Store the values with bias back to global memory in the cache for V.
-    //*reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
+    *reinterpret_cast<V_vec_m*>(&v_cache[tlength * head_size]) = vec_conversion<V_vec_m, V_vec_k>(v);
 
     // Initialize the output value with the current timestep.
     out = fma(logits_smem[tlength], v, out);

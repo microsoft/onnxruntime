@@ -64,6 +64,7 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   // TODO: Send graceful error Status back
   ORT_ENFORCE(sequence_length == 1);
   ORT_ENFORCE(past_present_share_buffer_);
+  ORT_ENFORCE(parameters.head_size == parameters.v_head_size);
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);

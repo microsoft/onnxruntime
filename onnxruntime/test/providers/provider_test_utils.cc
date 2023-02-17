@@ -288,23 +288,14 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
       ASSERT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
-        if (i == 348928) {
-          float a = expected[i];
-          float b = output[i];
-          float c = 1.f;
-          (void)(a);
-          (void)(b);
-          (void)(c);
-        }
-          if (expected[i] != output[i]) {
+          if ((std::abs(expected[i] - output[i]) >= 0.005)) {
               float a = expected[i];
               float b = output[i];
               float c = 1.f;
               (void)(a);
               (void)(b);
               (void)(c);
-          }
-          else {
+          } else {
               float a = expected[i];
               float b = output[i];
               float c = 1.f;
@@ -975,9 +966,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
               }
             }
 
-            if (idx == 1) {
-              Check(expected_data, ort_value.Get<Tensor>(), provider_type);            
-            }
+              Check(expected_data, ort_value.Get<Tensor>(), provider_type);
           } else {
             Check(expected_data, ort_value, provider_type);
           }
