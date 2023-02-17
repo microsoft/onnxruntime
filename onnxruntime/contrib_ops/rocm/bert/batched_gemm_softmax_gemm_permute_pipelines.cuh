@@ -244,6 +244,17 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   }
 };
 
+
+template<typename T>
+class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGemmPermuteParams<T>> {
+ public:
+  GemmSoftmaxGemmPermuteTunableOp() {
+    this->RegisterOp([](const GemmSoftmaxGemmPermuteParams<T>* params) {
+      return GemmSoftmaxGemmPermuteGenericPipeline<T>::Run(params, nullptr, false);
+    });
+  }
+};
+
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime

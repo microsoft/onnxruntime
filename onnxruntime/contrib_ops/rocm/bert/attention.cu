@@ -165,7 +165,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   }
 
-  return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
+  if (this->GetTuningContext()->IsTunableOpEnabled() && relative_position_bias == nullptr && !use_persistent_softmax) {
+    return GemmSoftmaxGemmPermuteTunableOp<HipT>{}(&gemm_softmax_gemm_permute_params);
+  } else {
+    return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
+  }
 }
 
 }  // namespace rocm
