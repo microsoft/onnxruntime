@@ -2185,6 +2185,19 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
       {4, 4, 4}, X, {3, 3, 3}, Y);
 }
 
+// Test for RoundTrip conversion of output shape. We resized an input from original size to
+// intermidiate size, then resized it back to original size. The output shape should match the original input shape.
+/*
+  # basiccally, we want to verify that the following code works as expected:
+  # onnx defined that we should use floor() to calculate the output shape, but that doesn't work.
+  # try to use round() instead.
+  for input_size in range(1, 706):
+    for target_size in range(1, 706):
+      scale = np.float32(target_size) / np.float32(input_size)
+      new = round(input_size * scale)
+      roundtrip = round(np.float32(new) / scale)
+      assert input_size == roundtrip:
+*/
 TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
   auto shape_check = [](const std::vector<float>& X, const std::vector<float>& Y) {
     int64_t N = X.size();
