@@ -605,31 +605,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
   typedef typename ToHipType<T>::MappedType HipT;
-  namespace blas = tunable::blas;
-
-  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
-  // TODO: use custom kernel of expand to improve the performance.
-  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      GetTuningContext(), Stream(context), rocblas,
-      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      n, m, 1,
-      /*alpha=*/1.0f,
-      reinterpret_cast<const HipT*>(bias->Data<T>()), n,
-      GetConstOnes<HipT>(m, Stream(context)), 1,
-      /*beta=*/0.0f,
-      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
-
-  // result(N, M) = 1 * weights x input + 1 x B.
-  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      GetTuningContext(), Stream(context), rocblas,
-      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      n, m, k,
-      /*alpha=*/1.0f,
-      reinterpret_cast<const HipT*>(weights->Data<T>()), n,
-      reinterpret_cast<const HipT*>(input->Data<T>()), k,
-      /*beta=*/1.0f,
-      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
-
   size_t workspace_size = GetAttentionWorkspaceSize(element_size,
                                                     parameters.batch_size,
                                                     parameters.num_heads,
@@ -645,16 +620,41 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   HipT* scratch2 = scratch1 + (bytes / element_size);
   HipT* scratch3 = scratch2 + (bytes / element_size);
 
-  // input should be BxSx3xNxH => scratch3: 3xBxNxSxH
+  namespace blas = tunable::blas;
+
+  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
+  // TODO: use custom kernel of expand to improve the performance.
+  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
+      GetTuningContext(), Stream(context), rocblas,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      n, m, 1,
+      /*alpha=*/1.0f,
+      reinterpret_cast<const HipT*>(bias->Data<T>()), n,
+      GetConstOnes<HipT>(m, Stream(context)), 1,
+      /*beta=*/0.0f,
+      scratch3, n));
+
+  // result(N, M) = 1 * weights x input + 1 x B.
+  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
+      GetTuningContext(), Stream(context), rocblas,
+      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
+      n, m, k,
+      /*alpha=*/1.0f,
+      reinterpret_cast<const HipT*>(weights->Data<T>()), n,
+      reinterpret_cast<const HipT*>(input->Data<T>()), k,
+      /*beta=*/1.0f,
+      scratch3, n));
+
+  // input should be BxSx3xNxH => gemm_buffer: 3xBxNxSxH
   ORT_RETURN_IF_ERROR(LaunchTransQkv(Stream(context), 3, parameters.sequence_length, parameters.batch_size, parameters.head_size, parameters.num_heads,
-                      device_prop.maxThreadsPerBlock, false, reinterpret_cast<HipT*>(gemm_buffer.get()), scratch3));
+                      device_prop.maxThreadsPerBlock, false, scratch3, reinterpret_cast<HipT*>(gemm_buffer.get())));
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
   const int batches = parameters.batch_size * parameters.num_heads;
   const int size_per_batch = parameters.sequence_length * parameters.head_size;
   const int total_size = batches * size_per_batch;
 
-  const HipT* q_buffer = scratch3;
+  const HipT* q_buffer = reinterpret_cast<HipT*>(gemm_buffer.get());
   const HipT* k_buffer = q_buffer + total_size;
   const HipT* v_buffer = k_buffer + total_size;
 
