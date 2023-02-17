@@ -1293,6 +1293,17 @@ class PlannerImpl {
         }
       }
     }
+
+    for (size_t value_index = 0; value_index < allocation_plan.size(); ++value_index) {
+      if (allocation_plan[value_index].alloc_kind == AllocKind::kReuse) {
+        while (allocation_plan[allocation_plan[value_index].reused_buffer].alloc_kind == AllocKind::kReuse &&
+               allocation_plan[value_index].reused_buffer != allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer) {
+          allocation_plan[value_index].reused_buffer = allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer;
+        }
+        ort_value_info_[value_index].reused_buffer_index = allocation_plan[value_index].reused_buffer;
+      }
+    }
+
     return Status::OK();
   }
 #endif
