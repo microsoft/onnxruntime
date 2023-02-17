@@ -32,7 +32,7 @@ jobs:
       - name: Move API docs into target area
         run: |
           rm -rf docs/api/rust
-          mv rust/target/doc docs/api/rust
+          mv rust/target/doc/onnxruntime docs/api/rust
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v3
         with:
