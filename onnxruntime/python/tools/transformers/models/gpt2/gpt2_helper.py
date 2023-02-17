@@ -24,7 +24,6 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from benchmark_helper import Precision
 from float16 import float_to_float16_max_diff
-from fusion_options import AttentionMaskFormat
 from io_binding_helper import IOBindingHelper
 from onnx_model import OnnxModel
 from torch_onnx_export_helper import torch_onnx_export
