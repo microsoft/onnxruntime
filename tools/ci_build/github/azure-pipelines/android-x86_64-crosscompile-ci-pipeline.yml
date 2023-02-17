@@ -61,6 +61,18 @@ stages:
         env | grep ANDROID
       displayName: View Android ENVs
 
+<<<<<<< HEAD
+=======
+    # Start switching to jdk 17 after the Android Emulator is started
+    # since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 17
+      inputs:
+        versionSpec: '17'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
+>>>>>>> 9ff50d27b15ffbf19262c113bb10f8f889dc99ae
     - script: |
         python3 tools/ci_build/build.py \
           --android \
@@ -132,7 +144,7 @@ stages:
     - template: "templates/use-android-ndk.yml"
 
     - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-      displayName: Setup gradle wrapper to use gradle 6.8.3
+      displayName: Setup gradle wrapper to use gradle 7.5.1
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -146,6 +158,17 @@ stages:
         env | grep ANDROID
       displayName: View Android ENVs
 
+<<<<<<< HEAD
+=======
+    # Start switching to jdk 17 after the Android Emulator is started since Android SDK manager requires java 8
+    - task: JavaToolInstaller@0
+      displayName: Use jdk 17
+      inputs:
+        versionSpec: '17'
+        jdkArchitectureOption: 'x64'
+        jdkSourceOption: 'PreInstalled'
+
+>>>>>>> 9ff50d27b15ffbf19262c113bb10f8f889dc99ae
     - script: |
         python3 tools/ci_build/build.py \
           --android \
@@ -414,6 +437,18 @@ stages:
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
 
+<<<<<<< HEAD
+=======
+      # Start switching to jdk 17 after the Android Emulator is started
+      # since Android SDK manager requires java 8
+      - task: JavaToolInstaller@0
+        displayName: Use jdk 17
+        inputs:
+          versionSpec: '17'
+          jdkArchitectureOption: 'x64'
+          jdkSourceOption: 'PreInstalled'
+
+>>>>>>> 9ff50d27b15ffbf19262c113bb10f8f889dc99ae
       - script: |
           python3 tools/ci_build/build.py \
           --android \

@@ -62,7 +62,7 @@ jobs:
 
   - script:
       /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+    displayName: Setup gradle wrapper to use gradle 7.5.1
 
   - script: |
       python3 -m pip install -q flatbuffers
@@ -230,6 +230,7 @@ jobs:
       targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
+<<<<<<< HEAD
   - template: android-dump-logs-from-steps.yml
     parameters:
       steps:
@@ -247,6 +248,23 @@ jobs:
           sonarQubeRunAnalysis: false
           spotBugsAnalysis: false
         displayName: Run React Native Android e2e Tests
+=======
+  - task: Gradle@3
+    inputs:
+      gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+      options: '--stacktrace'
+      tasks: ':app:connectedDebugAndroidTest'
+      publishJUnitResults: true
+      testResultsFiles: '**/TEST-*.xml'
+      testRunTitle: 'React Native Android e2e Test results'
+      javaHomeOption: 'path'
+      jdkDirectory: '$(JAVA_HOME_17_X64)'
+      sonarQubeRunAnalysis: false
+      spotBugsAnalysis: false
+    displayName: Run React Native Android e2e Tests
+    continueOnError: false
+>>>>>>> 9ff50d27b15ffbf19262c113bb10f8f889dc99ae
 
   - script: |
       export FORCE_BUNDLING=1
