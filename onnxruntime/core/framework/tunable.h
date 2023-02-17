@@ -134,6 +134,10 @@ class TunableOp {
   TunableOp(TunableOp&&) = default;
   virtual ~TunableOp() = default;
 
+  int op_size() {
+    return this->ops_.size();
+  }
+
   Status operator()(const ParamsT* params) {
     int id = default_id_;
     ITuningContext* ctx = params->TuningContext();

@@ -154,6 +154,7 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
 
  protected:
   virtual int FindFastest(const GemmParams<T>* params) override {
+    std::cout << "====== [DEBUG] Running FindFastest in gemm_rocblas.h\n";
     auto solution_indices = this->GetSolutions(params);
     std::vector<Op<GemmParams<T>>> candidates;
     for (int solution_idx : solution_indices) {
@@ -163,7 +164,7 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
     auto id = this->FindFastestImpl(params, candidates);
     // memoize the result
     this->RegisterOp(std::move(candidates[id]));
-    return this->ops_.size() - 1;
+    return this->op_size() - 1;
   }
 
  private:
