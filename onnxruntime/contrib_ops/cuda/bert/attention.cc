@@ -244,6 +244,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.use_memory_efficient_attention = use_memory_efficient_attention;
   // data.token_offset_data = token_offset_data;
 
+  Status status = QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
   if (is_packing_mode_) {
     const int32_t* token_offset_data = packing_token_offset->Data<int32_t>();
     LaunchRemovePadding(reinterpret_cast<CudaT*>(output->MutableData<T>()),
@@ -254,7 +255,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                         Stream(context));
   }
 
-  return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
+  return status;
 }
 
 }  // namespace cuda

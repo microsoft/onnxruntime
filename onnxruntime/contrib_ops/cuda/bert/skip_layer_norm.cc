@@ -109,7 +109,6 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
     }
   }
 
-  int sequence_length = static_cast<int>(input_dims[1]);
   int64_t element_count = input->Shape().Size();
   size_t element_size = sizeof(T);
   typedef typename ToCudaType<T>::MappedType CudaT;
