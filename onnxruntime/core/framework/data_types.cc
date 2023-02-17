@@ -745,6 +745,8 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_TENSOR_PROTO(FloatE4M3, reg_fn);
+  REGISTER_TENSOR_PROTO(FloatE5M2, reg_fn);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
@@ -761,6 +763,8 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(FloatE4M3, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(FloatE5M2, reg_fn);
 #endif
 
 #if !defined(DISABLE_ML_OPS)
@@ -788,6 +792,8 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(uint64_t, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(FloatE4M3, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(FloatE5M2, reg_fn);
 
 #if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
@@ -809,7 +815,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint32_t, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, uint64_t, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, FloatE4M3, reg_fn);    \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, FloatE5M2, reg_fn);
 
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(TensorSeq, reg_fn);

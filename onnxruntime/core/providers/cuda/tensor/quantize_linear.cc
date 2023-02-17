@@ -64,10 +64,10 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 
 // register QuantizeLinear kernels
 #define REGISTER_Q_KERNEL_TYPED(T)                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                            \
       QuantizeLinear,                                                 \
       kOnnxDomain,                                                    \
-      10,                                                             \
+      10, 18,                                                         \
       T,                                                              \
       kCudaExecutionProvider,                                         \
       (*KernelDefBuilder::Create())                                   \
@@ -78,12 +78,29 @@ Status DequantizeLinear<T, U>::ComputeInternal(OpKernelContext* ctx) const {
 REGISTER_Q_KERNEL_TYPED(int8_t)
 REGISTER_Q_KERNEL_TYPED(uint8_t)
 
+#define REGISTER_Q_KERNEL_TYPED_19(T)                                 \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                      \
+      QuantizeLinear,                                                 \
+      kOnnxDomain,                                                    \
+      19,                                                             \
+      T,                                                              \
+      kCudaExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                   \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>()) \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>()),    \
+      QuantizeLinear<T, float>);
+
+REGISTER_Q_KERNEL_TYPED_19(int8_t)
+REGISTER_Q_KERNEL_TYPED_19(uint8_t)
+REGISTER_Q_KERNEL_TYPED_19(FloatE4M3)
+REGISTER_Q_KERNEL_TYPED_19(FloatE5M2)
+
 // register DequantizeLinear kernels
 #define REGISTER_DQ_KERNEL_TYPED(T)                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
       DequantizeLinear,                                           \
       kOnnxDomain,                                                \
-      10,                                                         \
+      10, 18,                                                     \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -92,6 +109,22 @@ REGISTER_Q_KERNEL_TYPED(uint8_t)
 
 REGISTER_DQ_KERNEL_TYPED(int8_t)
 REGISTER_DQ_KERNEL_TYPED(uint8_t)
+
+#define REGISTER_DQ_KERNEL_TYPED_19(T)                            \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      DequantizeLinear,                                           \
+      kOnnxDomain,                                                \
+      19,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      DequantizeLinear<T, float>);
+
+REGISTER_DQ_KERNEL_TYPED_19(int8_t)
+REGISTER_DQ_KERNEL_TYPED_19(uint8_t)
+REGISTER_DQ_KERNEL_TYPED_19(FloatE4M3)
+REGISTER_DQ_KERNEL_TYPED_19(FloatE5M2)
 
 // specialize QuantizeLinear::ComputeInternal and DequantizeLinear::ComputeInternal
 #define SPECIALIZED_QDQ_COMPUTE(T, U)                                                \
@@ -102,6 +135,9 @@ SPECIALIZED_QDQ_COMPUTE(int8_t, float)
 SPECIALIZED_QDQ_COMPUTE(uint8_t, float)
 SPECIALIZED_QDQ_COMPUTE(int8_t, MLFloat16)
 SPECIALIZED_QDQ_COMPUTE(uint8_t, MLFloat16)
+
+SPECIALIZED_QDQ_COMPUTE(FloatE4M3, float)
+SPECIALIZED_QDQ_COMPUTE(FloatE5M2, float)
 
 }  // namespace cuda
 }  // namespace onnxruntime

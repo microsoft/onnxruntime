@@ -33,7 +33,7 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::All);
+    element_type_lists::All_float8);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -42,7 +42,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::All);
+    element_type_lists::All_float8);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -57,6 +57,9 @@ using EnabledDstTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecu
 
 template <typename T>
 using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>, T>;
+
+template <typename T>
+using IsOrtFloat8Type = boost::mp11::mp_contains<TypeList<FloatE4M3, FloatE5M2>, T>;
 
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
@@ -118,6 +121,12 @@ CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
+template <typename SrcType>
+typename std::enable_if<IsOrtFloat8Type<SrcType>::value, void>::type
+CastToString(const SrcType& input, std::string& output) {
+  CastToString(input.ToFloat(), output);
+}
+
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
@@ -148,6 +157,14 @@ CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
   output = static_cast<DstType>(intermediate);
+}
+
+template <typename DstType>
+typename std::enable_if<IsOrtFloat8Type<DstType>::value, void>::type
+CastFromString(const std::string& input, DstType& output) {
+  float intermediate;
+  CastFromString(input, intermediate);
+  output = DstType(intermediate);
 }
 
 // type that is usable with Eigen cast
@@ -183,6 +200,67 @@ struct TensorCaster {
     out_vector = in_vector.template cast<DstEigenCastType>();
   }
 };
+
+// float 8 types
+
+#define TENSOR_CAST_SRCDSTTYPE(SrcDstType) \
+  template <> \
+  struct TensorCaster<FloatE4M3, SrcDstType> { \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size()); \
+      const auto* in_data = in.Data<FloatE4M3>(); \
+      auto* out_data = out.MutableData<SrcDstType>(); \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) { \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat()); \
+      } \
+    } \
+  }; \
+  template <> \
+  struct TensorCaster<FloatE5M2, SrcDstType> { \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size()); \
+      const auto* in_data = in.Data<FloatE5M2>(); \
+      auto* out_data = out.MutableData<SrcDstType>(); \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) { \
+        out_data[i] = static_cast<SrcDstType>(in_data[i].ToFloat()); \
+      } \
+    } \
+  }; \
+  template <> \
+  struct TensorCaster<SrcDstType, FloatE5M2> { \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size()); \
+      const auto* in_data = in.Data<SrcDstType>(); \
+      auto* out_data = out.MutableData<FloatE5M2>(); \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) { \
+        out_data[i] = FloatE5M2(static_cast<SrcDstType>(in_data[i])); \
+      } \
+    } \
+  }; \
+  template <> \
+  struct TensorCaster<SrcDstType, FloatE4M3> { \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size()); \
+      const auto* in_data = in.Data<SrcDstType>(); \
+      auto* out_data = out.MutableData<FloatE4M3>(); \
+      for (std::ptrdiff_t i = 0; i < shape_size; ++i) { \
+        out_data[i] = FloatE4M3(static_cast<SrcDstType>(in_data[i])); \
+      } \
+    } \
+  };
+
+TENSOR_CAST_SRCDSTTYPE(float)
+TENSOR_CAST_SRCDSTTYPE(double)
+TENSOR_CAST_SRCDSTTYPE(int8_t)
+TENSOR_CAST_SRCDSTTYPE(int16_t)
+TENSOR_CAST_SRCDSTTYPE(int32_t)
+TENSOR_CAST_SRCDSTTYPE(int64_t)
+TENSOR_CAST_SRCDSTTYPE(uint8_t)
+TENSOR_CAST_SRCDSTTYPE(uint16_t)
+TENSOR_CAST_SRCDSTTYPE(uint32_t)
+TENSOR_CAST_SRCDSTTYPE(uint64_t)
+TENSOR_CAST_SRCDSTTYPE(MLFloat16)
+TENSOR_CAST_SRCDSTTYPE(BFloat16)
 
 // tensor X -> string
 template <typename SrcType>
@@ -257,6 +335,7 @@ struct TensorCaster<MLFloat16, std::string> {
     CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
   }
 };
+
 #endif
 
 class Cast final : public OpKernel {

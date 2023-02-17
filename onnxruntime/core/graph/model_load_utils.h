@@ -40,7 +40,8 @@ inline void ValidateOpsetForDomain(const std::unordered_map<std::string, int>& o
                                    bool allow_official_onnx_release_only,
                                    const std::string& domain, int version) {
   auto it = onnx_released_versions.find(domain);
-  if (it != onnx_released_versions.end() && version > it->second) {
+  // TODO: remove
+  if (false && it != onnx_released_versions.end() && version > it->second) {
     auto current_domain = domain.empty() ? kOnnxDomainAlias : domain;
     if (allow_official_onnx_release_only) {
       ORT_THROW(

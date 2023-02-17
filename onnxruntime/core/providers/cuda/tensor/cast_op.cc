@@ -26,7 +26,9 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<uint16_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<uint64_t>(),
-      DataTypeImpl::GetTensorType<bool>()};
+      DataTypeImpl::GetTensorType<bool>(),
+      DataTypeImpl::GetTensorType<FloatE4M3>(),
+      DataTypeImpl::GetTensorType<FloatE5M2>()};
   return types;
 }
 
@@ -51,10 +53,20 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
           .TypeConstraint("T2", CastOpTypeConstraints()),         \
       Cast<T>);                                                   \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      13, 18,                                                     \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+      Cast<T>);                                                   \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
       Cast,                                                       \
       kOnnxDomain,                                                \
-      13,                                                         \
+      19,                                                         \
       T,                                                          \
       kCudaExecutionProvider,                                     \
       (*KernelDefBuilder::Create())                               \
@@ -96,6 +108,8 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT32, uint32_t)
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
+    CASE(TensorProto_DataType_FLOATE4M3, FloatE4M3)
+    CASE(TensorProto_DataType_FLOATE5M2, FloatE5M2)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
@@ -123,6 +137,25 @@ SPECIALIZE_IMPL(uint32_t)
 SPECIALIZE_IMPL(uint64_t)
 SPECIALIZE_IMPL(bool)
 SPECIALIZE_IMPL(BFloat16)
+
+#define REGISTER_KERNEL_TYPED_19(T)                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      Cast,                                                       \
+      kOnnxDomain,                                                \
+      19,                                                         \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>()) \
+          .TypeConstraint("T2", CastOpTypeConstraints()),         \
+      Cast<T>);
+
+#define SPECIALIZE_IMPL_19(T) \
+  REGISTER_KERNEL_TYPED_19(T) \
+  template Status Cast<T>::ComputeInternal(OpKernelContext* context) const;
+
+SPECIALIZE_IMPL_19(FloatE4M3)
+SPECIALIZE_IMPL_19(FloatE5M2)
 
 }  // namespace cuda
 }  // namespace onnxruntime

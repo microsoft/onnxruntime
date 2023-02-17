@@ -53,6 +53,12 @@ using All =
         AllFixedSize,
         std::string>;
 
+using All_float8 =
+    boost::mp11::mp_push_back<
+        All,
+        FloatE4M3,
+        FloatE5M2>;
+
 using AllIeeeFloatExceptHalf =
     TypeList<
         float,
