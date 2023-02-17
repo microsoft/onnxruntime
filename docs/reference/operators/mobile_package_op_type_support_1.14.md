@@ -1,3 +1,10 @@
+---
+title: ORT 1.14 Mobile Package Operators
+parent: Operators
+grand_parent: Reference
+nav_exclude: true
+---
+
 # ONNX Runtime Mobile Pre-Built Package Operator and Type Support
 
 ## Supported operators and types
