@@ -30,6 +30,7 @@ constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine
 // add new provider option name here. 
 constexpr const char* kContextMemorySharingEnable = "trt_context_memory_sharing_enable";
 constexpr const char* kLayerNormFP32Fallback = "trt_layer_norm_fp32_fallback";
+constexpr const char* kExtraPluginLibPaths = "trt_extra_plugin_lib_paths";
 }  // namespace provider_option_names
 }  // namespace tensorrt 
 
@@ -66,6 +67,7 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
           .AddAssignmentToReference(tensorrt::provider_option_names::kContextMemorySharingEnable, info.context_memory_sharing_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kLayerNormFP32Fallback, info.layer_norm_fp32_fallback)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kExtraPluginLibPaths, info.extra_plugin_lib_paths)
           .Parse(options)); // add new provider option here.
 
   return info;
@@ -93,6 +95,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       // add new provider option here.
       {tensorrt::provider_option_names::kContextMemorySharingEnable, MakeStringWithClassicLocale(info.context_memory_sharing_enable)},
       {tensorrt::provider_option_names::kLayerNormFP32Fallback, MakeStringWithClassicLocale(info.layer_norm_fp32_fallback)},
+      {tensorrt::provider_option_names::kExtraPluginLibPaths, MakeStringWithClassicLocale(info.extra_plugin_lib_paths)},
   };
   return options;
 }

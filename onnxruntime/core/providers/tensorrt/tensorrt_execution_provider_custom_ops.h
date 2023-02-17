@@ -6,12 +6,14 @@
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/shared_library/provider_api.h"
+#include "tensorrt_execution_provider_info.h"
 
 using namespace onnxruntime;
 
 namespace onnxruntime {
 
-common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domains_list);
+//common::Status CreateTensorRTCustomOpDomainList(std::string extra_plugin_lib_paths, std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
+common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info);
 void ReleaseTensorRTCustomOpDomain(OrtProviderCustomOpDomain* domain);
 void ReleaseTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list);
 

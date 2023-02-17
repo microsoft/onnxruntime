@@ -24,18 +24,6 @@
 // TODO: find a better way to share this
 #include "core/providers/cuda/cuda_stream_handle.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#define LIBTYPE HINSTANCE
-#define OPENLIB(libname) LoadLibrary(libname)
-#define LIBFUNC(lib, fn) GetProcAddress((lib), (fn))
-#else
-#include <dlfcn.h>
-#define LIBTYPE void*
-#define OPENLIB(libname) dlopen((libname), RTLD_LAZY)
-#define LIBFUNC(lib, fn) dlsym((lib), (fn))
-#endif
-
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 
 using namespace ONNX_NAMESPACE;

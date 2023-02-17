@@ -51,7 +51,7 @@ struct Tensorrt_Provider : Provider {
     info.device_id = device_id;
     info.has_trt_options = false;
 
-    common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
     }
@@ -82,8 +82,9 @@ struct Tensorrt_Provider : Provider {
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
+    info.extra_plugin_lib_paths = options.trt_extra_plugin_lib_paths == nullptr ? "" : options.trt_extra_plugin_lib_paths;
 
-    common::Status status = CreateTensorRTCustomOpDomainList(info.custom_op_domain_list);
+    common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
     }

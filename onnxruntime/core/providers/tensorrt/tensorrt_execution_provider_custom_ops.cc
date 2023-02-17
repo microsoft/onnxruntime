@@ -25,11 +25,36 @@ extern TensorrtLogger& GetTensorrtLogger();
  * Note: Current TRT plugin doesn't have APIs to get number of inputs/outputs of the plugin.
  * So, TensorRTCustomOp uses variadic inputs/outputs to pass ONNX graph validation.
  */
-common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpDomain*>& custom_op_domain_list) {
+common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& info) {
   std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
   custom_op_domain->domain_ = "trt.plugins";
 
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Get all registered TRT plugins from registry.";
+  std::string extra_plugin_lib_paths{""};
+  if (info.has_trt_options) {
+    if (!info.extra_plugin_lib_paths.empty()) {
+      extra_plugin_lib_paths = info.extra_plugin_lib_paths;
+    } 
+  } else {
+    const std::string extra_plugin_lib_paths_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kExtraPluginLibPaths);
+    if (!extra_plugin_lib_paths_env.empty()) {
+      extra_plugin_lib_paths = extra_plugin_lib_paths_env;
+    }
+  }
+
+  if (!extra_plugin_lib_paths.empty()) {
+    std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
+    std::string lib;
+    while (std::getline(extra_plugin_libs, lib, ';')) {
+      LIBTYPE handle = OPENLIB(lib.c_str());
+      if (handle) {
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Successfully load " << lib; 
+      } else {
+        LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't load " << lib << ", please make sure the path is correct."; 
+      }
+    }
+  }
+
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from registry ...";
   TensorrtLogger trt_logger = GetTensorrtLogger();
   initLibNvInferPlugins(&trt_logger, "");
 
@@ -52,7 +77,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtProviderCustomOpD
     custom_op_domain->custom_ops_.push_back(trt_custom_op.release());
     registered_plugin_names.insert(plugin_name);
   }
-  custom_op_domain_list.push_back(custom_op_domain.release());
+  info.custom_op_domain_list.push_back(custom_op_domain.release());
 
   return common::Status::OK();
 }

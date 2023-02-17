@@ -38,6 +38,8 @@ struct TensorrtExecutionProviderInfo {
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtTensorRTProviderOptions& info);
 
+  //std::string extra_plugin_lib_paths{"/home/azureuser/repos/FasterTransformer/build/lib/libvit_plugin.so;/home/azureuser/repos/FasterTransformer/build/lib/libvit_plugin_wrong.so"};
+  std::string extra_plugin_lib_paths{""};
   std::vector<OrtProviderCustomOpDomain*> custom_op_domain_list;
 };
 }  // namespace onnxruntime
