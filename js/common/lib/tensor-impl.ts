@@ -548,9 +548,18 @@ export class Tensor implements TensorInterface {
     let image: ImageData;
     if (pixels2DContext != null) {
       // Default values for height and width & format
-      const width = this.dims[3];
-      const height = this.dims[2];
-      const channels = this.dims[1];
+      let width: number;
+      let height: number;
+      let channels: number;
+      if (options?.tensorLayout !== undefined && options.tensorLayout === 'NHWC') {
+        width = this.dims[2];
+        height = this.dims[1];
+        channels = this.dims[3];
+      } else {  // Default layout is NCWH
+        width = this.dims[3];
+        height = this.dims[2];
+        channels = this.dims[1];
+      }
       const inputformat = options !== undefined ? (options.format !== undefined ? options.format : 'RGB') : 'RGB';
 
       const norm = options?.norm;
@@ -562,7 +571,7 @@ export class Tensor implements TensorInterface {
         if (typeof (norm.mean) === 'number') {
           normMean = [norm.mean, norm.mean, norm.mean, norm.mean];
         } else {
-          normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 0];
+          normMean = [norm.mean[0], norm.mean[1], norm.mean[2], 255];
           if (norm.mean[3] !== undefined) {
             normMean[3] = norm.mean[3];
           }
