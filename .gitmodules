@@ -3,7 +3,7 @@
 	url = https://github.com/protocolbuffers/protobuf.git
 [submodule "cmake/external/onnx"]
 	path = cmake/external/onnx
-	url = https://github.com/xadupre/onnx.git@f8
+	url = https://github.com/onnx/onnx.git@xadupre/f8
 [submodule "cmake/external/eigen"]
 	path = cmake/external/eigen
 	url = https://gitlab.com/libeigen/eigen.git

@@ -1,6 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# pylint: disable=C0116,W0212,R1720,C0114
+# pylint: disable=C0116,W0212,R1720,C0103,C0114
 
 import platform
 import unittest

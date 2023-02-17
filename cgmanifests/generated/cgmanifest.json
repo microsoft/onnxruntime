@@ -113,7 +113,7 @@
         "type": "git",
         "git": {
           "commitHash": "0c03a9641b5cb934efa7f03c5e22cacd324df83e",
-          "repositoryUrl": "https://github.com/xadupre/onnx.git"
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
       }
@@ -303,7 +303,7 @@
         "type": "git",
         "git": {
           "commitHash": "0c03a9641b5cb934efa7f03c5e22cacd324df83e",
-          "repositoryUrl": "https://github.com/xadupre/onnx.git"
+          "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
       }
