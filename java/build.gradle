@@ -187,8 +187,8 @@ test {
 
 jacocoTestReport {
 	reports {
-		xml.required true
-		csv.required true
+		xml.required = true
+		csv.required = true
 		html.destination file("${buildDir}/jacocoHtml")
 	}
 }
