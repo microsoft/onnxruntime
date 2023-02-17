@@ -9,6 +9,7 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/print_tensor_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,19 +21,42 @@ class AttentionCPUBase : public AttentionBase {
 
   template <typename T>
   Status ApplyAttention(const T* Q,                  // Q data with shape BxNxSxH
-                        const T* K,                  // K data with shape BxNxSxH
-                        const T* V,                  // V value with size BxNxSxH_v
+                        const T* K,                  // K data with shape BxNxLxH
+                        const T* V,                  // V value with size BxNxLxH_v
                         const Tensor* mask_index,    // mask index. nullptr if no mask or its size is B
                         const Tensor* past,          // past state
                         Tensor* output,              // output tensor
                         int batch_size,              // batch size (B)
-                        int sequence_length,         // sequence length (S)
+                        int sequence_length,         // sequence length of Q (S)
+                        int kv_sequence_length,      // sequence length of K or V (L)
                         int qk_head_size,            // head size of Q or K (H)
                         int v_head_size,             // head size of V (H_v)
                         int v_hidden_size,           // hidden size of V (D_v)
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
-    const int kv_sequence_length = sequence_length;
+    // const int kv_sequence_length = sequence_length;
+    std::cout << "Q (in apply):" << std::endl;
+    for(int i = 0; i < batch_size; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(Q + i) << ", ";
+    // }
+    // std::cout << std::endl;
+
+    std::cout << "K (in apply):" << std::endl;
+    for(int i = 0; i < batch_size; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(K + i) << ", ";
+    // }
+    // std::cout << std::endl;
+
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -40,7 +64,7 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
-    Tensor* present = GetPresent(context, past, batch_size, v_head_size, sequence_length, past_sequence_length);
+    Tensor* present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
 
     // Total sequence length including that of past state: T = P + L
     const int total_sequence_length = past_sequence_length + kv_sequence_length;
@@ -74,7 +98,7 @@ class AttentionCPUBase : public AttentionBase {
 
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
-                             batch_size, sequence_length, past_sequence_length,
+                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size,
                              past_data, present_data, tp, extra_add_qk_data);
 
@@ -107,6 +131,7 @@ class AttentionCPUBase : public AttentionBase {
                              bool has_unidirectional,                   // has unidirectional mask
                              int batch_size,                            // batch size of self-attention
                              int sequence_length,                       // sequence length of self-attention
+                             int kv_sequence_length,                    // sequence length of cross-attention (L)
                              int past_sequence_length,                  // sequence length of past state
                              int head_size,                             // head size of self-attention
                              const T* past,                             // past state
@@ -114,9 +139,22 @@ class AttentionCPUBase : public AttentionBase {
                              ThreadPool* tp,                            // thread pool
                              const T* extra_add_qk_data                 // extra add matrix with shape BxNxSxT
   ) const {
-    const int total_sequence_length = past_sequence_length + sequence_length;                // T = P + L
+    // std::cout << "Q (in probs):" << std::endl;
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(Q + i) << ", ";
+    // }
+    // std::cout << std::endl;
+
+    // std::cout << "K (in probs):" << std::endl;
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(K + i) << ", ";
+    // }
+    // std::cout << std::endl;
+
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;             // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // P x H
-    const size_t input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // L x H
+    const size_t q_chunk_length = static_cast<size_t>(sequence_length) * head_size;          // S x H
+    const size_t input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;   // L x H
     const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // T x H
 
     {
@@ -131,6 +169,8 @@ class AttentionCPUBase : public AttentionBase {
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+      // const float alpha = sequence_length == kv_sequence_length ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+      // std::cout << "Alpha: " << alpha << std::endl;
 
       // The cost of Gemm
       const double cost = static_cast<double>(head_size) * sequence_length * total_sequence_length;
@@ -162,7 +202,7 @@ class AttentionCPUBase : public AttentionBase {
           // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
           // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                    Q + input_chunk_length * i, k, 1.0,
+                                    Q + q_chunk_length * i, k, 1.0,
                                     output, nullptr);
 
           // Fix unidirectional mask to be parity with huggingface implementation.
@@ -185,6 +225,16 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     //  attention_probs(B, N, S, T) = Softmax(attention_probs)
+    std::cout << "Q x K' + mask:" << std::endl;
+    for(int i = 0; i < batch_size; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(attention_probs + i) << ", ";
+    // }
+    // std::cout << std::endl;
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
@@ -206,10 +256,32 @@ class AttentionCPUBase : public AttentionBase {
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
-    const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;  // P x H_v
     const ptrdiff_t input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;   // L x H_v
     const ptrdiff_t present_chunk_length = past_chunk_length + input_chunk_length;               // T x H_v
+
+    std::cout << "Softmax (in score):" << std::endl;
+    for(int i = 0; i < batch_size; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(attention_probs + i) << ", ";
+    // }
+    // std::cout << std::endl;
+    
+    std::cout << "V (in score):" << std::endl;
+    for(int i = 0; i < batch_size; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+    // for (int i = 0; i < 5; i++) {
+    //   std::cout << *(V + i) << ", ";
+    // }
+    // std::cout << std::endl;
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {

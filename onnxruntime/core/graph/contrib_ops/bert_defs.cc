@@ -138,14 +138,14 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
-    if (query_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+    if (query_dims.size() < 3) {
+      fail_shape_inference("Inputs 0 (query) shall be at least 3 dimensions");
     }
 
     auto& value_shape = getInputShape(ctx, 2);
     auto& value_dims = value_shape.dim();
-    if (value_dims.size() != 3) {
-      fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+    if (value_dims.size() < 3) {
+      fail_shape_inference("Inputs 2 (value) shall be at least 3 dimensions");
     }
 
     ONNX_NAMESPACE::TensorShapeProto output_shape;
@@ -267,7 +267,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
-Multi-Head Self/Cross Attention. Bias from input projection is included.
+Multi-Head Self/Cross Attention. Bias from input projection is optional.
 
 The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
 means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of
@@ -296,7 +296,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
                "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",

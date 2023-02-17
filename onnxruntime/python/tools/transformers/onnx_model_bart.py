@@ -186,7 +186,7 @@ class FusionBartAttention(FusionAttention):
             [0, 0, 0, 0, 0, 1],
         )
         if q_nodes is not None:
-            reshape_q_2, _, reshape_q_1, mul_q, add_q, matmul_q = q_nodes
+            reshape_q_2, transpose_q, reshape_q_1, mul_q, add_q, matmul_q = q_nodes
         else:
             return
 
@@ -208,10 +208,10 @@ class FusionBartAttention(FusionAttention):
         #)
 
         if k_nodes_with_bias is not None:
-            _, reshape_k_2, _, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
+            _, reshape_k_2, transpose_k_1, reshape_k_1, add_k, matmul_k = k_nodes_with_bias
             k_nodes = k_nodes_with_bias
         elif k_nodes_no_bias is not None:
-            _, reshape_k_2, _, reshape_k_1, matmul_k = k_nodes_no_bias
+            _, reshape_k_2, transpose_k_1, reshape_k_1, matmul_k = k_nodes_no_bias
             k_nodes = k_nodes_no_bias
         #elif k_nodes_no_bias_with_past is not None:
         #    _, reshape_k_2, _, _, reshape_k_1, matmul_k = k_nodes_no_bias_with_past
@@ -222,12 +222,20 @@ class FusionBartAttention(FusionAttention):
         if k_nodes == k_nodes_no_bias: #or k_nodes == k_nodes_no_bias_with_past:
             # Create empty Add node for graph
             bias_dim = self.model.get_initializer(add_v.input[0]).dims[0]
-            #print(bias_dim)
-            empty_tensor = helper.make_tensor("empty_bias", TensorProto.FLOAT, [bias_dim], [0.0] * bias_dim)
-            self.model.add_initializer(empty_tensor, self.this_graph_name)
-            add_k = helper.make_node("Add", ["empty_bias", matmul_k.output[0]], [reshape_k_1.name], "Add_empty")
-            #matmul_k.output[0] = "Add_empty"
-            #self.model.add_node(add_k)
+            # print(bias_dim)
+
+            empty_bias_name = "empty_bias"
+            empty_tensor = self.model.get_initializer(empty_bias_name)
+            if empty_tensor == None:
+                empty_tensor = helper.make_tensor(empty_bias_name, TensorProto.FLOAT, [bias_dim], [0.0] * bias_dim)
+                self.model.add_initializer(empty_tensor, self.this_graph_name)
+
+            add_name = self.model.create_node_name("Add")
+            add_k = helper.make_node("Add", [empty_bias_name, matmul_k.output[0]], [reshape_k_1.name], add_name)
+            # matmul_k.output[0] = add_name
+            # reshape_k_1.input[0] = add_name
+            # self.nodes_to_add.append(add_k)
+            # self.node_name_to_graph_name[add_name] = self.this_graph_name
 
         #print("checkpoint 6")
         if not self.check_runtime_shape_path(
@@ -262,6 +270,18 @@ class FusionBartAttention(FusionAttention):
             )
             mask_index = self.attention_mask.process_mask(mask_nodes[0].output[-1])
 
+        mha_inputs_no_bias_fused = []
+        if decoder_cross_attention:
+            # These inputs for multihead attention are for when the bias is not fused
+            mha_inputs_no_bias_fused = [
+                transpose_q.output[0],
+                transpose_k_1.output[0],
+                transpose_v.output[0],
+            ]
+
+            # Skip the 1/sqrt(H) Mul in the Q path
+            reshape_q_1.input[0] = add_q.output[0]
+
         if encoder_attention or decoder_attention or decoder_cross_attention: 
             attention_last_node = reshape_qkv_2
             num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q_1)
@@ -271,8 +291,6 @@ class FusionBartAttention(FusionAttention):
                 return
             
             self.use_multi_head_attention = decoder_cross_attention
-            # If mask_index = None, then don't do *qc in fusion_attention.py
-            # If mask_index != None, then do *qc in fusion_attention.py and use mul_q
             new_node = self.create_attention_node(
                 None, # mask_index,
                 matmul_q,
@@ -286,7 +304,8 @@ class FusionBartAttention(FusionAttention):
                 root_input,
                 attention_last_node.output[0],
                 mask_index if decoder_attention else None,
-                None # mul_q if mask_index != None else None,
+                # None, # mul_q if mask_index != None else None,
+                mha_inputs_no_bias_fused,
             )
             #print("checkpoint 8")
             if new_node is None:
@@ -298,11 +317,11 @@ class FusionBartAttention(FusionAttention):
             self.nodes_to_remove.extend([attention_last_node, transpose_qkv, matmul_qkv])
             self.nodes_to_remove.extend(qk_nodes)
             
-            # When using cross attention, keep matmul_q, matmul_k, matmul_v in original graph
+            # When using cross attention, keep most nodes in original graph
             if decoder_cross_attention:
-                matmul_q_node = q_nodes.pop()
-                matmul_k_node = k_nodes.pop()
-                matmul_v_node = v_nodes.pop()
+                q_nodes = [q_nodes[0], q_nodes[3]]
+                k_nodes = k_nodes[:2]
+                v_nodes = v_nodes[:1]
 
             self.nodes_to_remove.extend(q_nodes)
             self.nodes_to_remove.extend(k_nodes)
@@ -376,8 +395,10 @@ class FusionBartReshape(FusionReshape):
 
             top_matmul = gemm_path[-1]
             root_input = top_matmul.input[0]
-            if shape_0.input[0] != root_input:
-                return
+            # First invariant: output of SkipLayerNorm = first input of shape_0 (if attention has one root input)
+            # Second invariant: first input of matmul_k = first input of matmul_v (if attention has two root inputs)
+            # if shape_0.input[0] != root_input:
+            #     return
 
             #print("If:", reshape_node.name)
             self.replace_reshape_node(shape, reshape_node, concat_node)

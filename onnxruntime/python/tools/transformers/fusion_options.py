@@ -182,6 +182,14 @@ class FusionOptions:
             action="store_true",
             help="Use MultiHeadAttention instead of Attention operator for testing purpose. "
             "Note that MultiHeadAttention might be slower than Attention since MatMul of input projection is excluded. "
-            "MultiHeadAttention has only CUDA implementation so the model can only run with cuda execution provider.",
+            "MultiHeadAttention has no bias fusion in CPU implementation, only CUDA implementation does right now.",
         )
         parser.set_defaults(use_multi_head_attention=False)
+
+        parser.add_argument(
+            "--fuse_mha_bias",
+            required=False,
+            action="store_true",
+            help="Fuse bias into MultiHeadAttention operator"
+        )
+        parser.set_defaults(fuse_mha_bias=False)

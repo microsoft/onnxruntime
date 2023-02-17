@@ -6,7 +6,7 @@ from enum import Enum
 from logging import getLogger
 from os import name
 from sys import path
-from typing import Tuple, Union
+from typing import Tuple, Union, List
 
 import numpy as np
 from fusion_base import Fusion
@@ -97,6 +97,7 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
+        fuse_mha_bias: bool = False,
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
@@ -104,6 +105,7 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
         self.use_multi_head_attention = use_multi_head_attention
+        self.fuse_mha_bias = fuse_mha_bias
         self.mask_filter_value = None
 
         # Flags to show warning only once
@@ -214,7 +216,7 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
-        q_mul: NodeProto = None,
+        mha_inputs: List[NodeProto] = [],
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -351,12 +353,21 @@ class FusionAttention(Fusion):
                 logger.debug("MultiHeadAttention does not support extra_add_qk: cannot fuse the attention.")
                 return None
 
-            attention_inputs = [
-                q_matmul.output[0],
-                k_matmul.output[0], #if k_matmul.output[0] == k_add.input[1] else k_add.input[1],
-                v_matmul.output[0],
-                attention_node_name + "_qkv_bias",
-            ]
+            if self.fuse_mha_bias:
+                attention_inputs = [
+                    q_matmul.output[0],
+                    k_matmul.output[0],
+                    v_matmul.output[0],
+                    attention_node_name + "_qkv_bias",
+                ]
+            else:
+                attention_inputs = mha_inputs
+                # attention_inputs = [
+                #     q_add.output[0],
+                #     k_add.output[0] if k_add.input[0] != "empty_bias" else k_matmul.output[0],
+                #     v_add.output[0],
+                # ]
+
             if mask_index is not None:
                 attention_inputs.append(mask_index)
 
