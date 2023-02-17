@@ -492,7 +492,7 @@ class UpsampleBase {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
       // round mode
       float output_shape = scales[i] * input_dims[i];
-      output_dims[i] = static_cast<int64_t>(std::round(output_shape));
+      output_dims[i] = static_cast<int64_t>(std::roundf(output_shape));
     }
   }
 
