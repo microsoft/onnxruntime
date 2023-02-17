@@ -194,7 +194,7 @@ class DataObserver(object):
                         float(valid_token) / float(total_token) * 100,
                         valid_token,
                         total_token,
-                        valid_token_per_batch.tolist(),
+                        str(valid_token_per_batch.tolist()),
                     ]
                 )
                 found = True
@@ -217,7 +217,7 @@ class DataObserver(object):
                         float(valid_token) / float(total_token) * 100,
                         valid_token,
                         total_token,
-                        None,
+                        'N/A',
                     ]
                 )
                 found = True
