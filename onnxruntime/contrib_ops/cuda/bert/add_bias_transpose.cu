@@ -5,6 +5,8 @@
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
+using namespace onnxruntime::cuda;
+
 namespace onnxruntime {
 namespace cuda {
 
@@ -30,8 +32,6 @@ __device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
 
 }  // namespace cuda
 }  // namespace onnxruntime
-
-using namespace onnxruntime::cuda;
 
 namespace onnxruntime {
 namespace contrib {
