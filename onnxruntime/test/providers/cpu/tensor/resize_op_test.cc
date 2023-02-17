@@ -2186,7 +2186,7 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
 }
 
 // Test for RoundTrip conversion of output shape. We resized an input from original size to
-// intermidiate size, then resized it back to original size. The output shape should match the original input shape.
+// intermediate size, then resized it back to original size. The output shape should match the original input shape.
 /*
   # basiccally, we want to verify that the following code works as expected:
   # onnx defined that we should use floor() to calculate the output shape, but that doesn't work.
