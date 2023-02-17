@@ -1093,7 +1093,7 @@ TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims)
   // This test is to ensure that the co-ordinate transformation is not applied to the
   // outermost dim as there is no "resizing".
   // If it were applied using the provided attributes ,it would result in result mismatch
-  std::vector<float> scales{1.0f, 0.5f};
+  std::vector<float> scales{1.0f, 0.4f};
 
   test.AddAttribute("mode", "nearest");
   test.AddAttribute("coordinate_transformation_mode", "tf_half_pixel_for_nn");
@@ -1106,9 +1106,9 @@ TEST(ResizeOpTest, ResizeOpNearest_OneToOneMappingBetweenInputAndOutputDataDims)
   test.AddInput<float>("roi", {0}, roi);
   test.AddInput<float>("scales", {2}, scales);
 
-  // would produce {5.0f, 5.0f} if co-ordinate transformation was applied
+  // would produce {6.0f, 6.0f} if co-ordinate transformation was applied
   // to the outermost dim
-  std::vector<float> Y = {2.0f, 5.0f};
+  std::vector<float> Y = {3.0f, 6.0f};
   test.AddOutput<float>("Y", {2, 1}, Y);
   test.Run();
 }
@@ -2186,7 +2186,7 @@ TEST(ResizeOpTest, Antialias_Use_Extrapolation) {
 }
 
 TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
-  auto shape_check = [] (const std::vector<float>& X, const std::vector<float>& Y) {
+  auto shape_check = [](const std::vector<float>& X, const std::vector<float>& Y) {
     int64_t N = X.size();
     OpTester test("Resize", 13);
     std::vector<float> scales{float(Y.size()) / float(X.size())};
@@ -2201,18 +2201,32 @@ TEST(ResizeOpTest, TestOuputShapeRoundTripConversion) {
     // just want to make sure its shape is correct.
     test.AddOutput<float>("Y", {int64_t(Y.size())}, Y, false, 10000000.f, 100000000.f);
     test.Run();
+
+    // round trip, resize back to original size
+    test.ClearData();
+    scales[0] = 1.f / scales[0];
+    N = Y.size();
+
+    test.AddAttribute("mode", "nearest");
+
+    test.AddInput<float>("X", {N}, Y);
+    test.AddInput<float>("roi", {0}, roi);
+    test.AddInput<float>("scales", {1}, scales);
+    // Data of Y is random generated, because we don't care its correctness,
+    // just want to make sure its shape is correct.
+    test.AddOutput<float>("Y", {int64_t(X.size())}, X, false, 10000000.f, 100000000.f);
+    test.Run();
   };
 
   // Can we call UpsampleBase::computeOutputShape directly? It costs too much time.
   constexpr int64_t in_size = 706;
-  for(int64_t out_size = 1; out_size < in_size; out_size += 3) {
+  for (int64_t out_size = 1; out_size < in_size; out_size += 3) {
     std::vector<float> X(in_size);
     std::vector<float> Y(out_size);
     std::iota(X.begin(), X.end(), 1.f);
     std::iota(Y.begin(), Y.end(), 1.f);
     shape_check(X, Y);
   }
-
 }
 
 }  // namespace test
