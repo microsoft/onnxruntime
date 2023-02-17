@@ -28,6 +28,9 @@ class DataObserver(object):
 
     def initialize(self, model, user_input_names):
         """Initialize data observer."""
+        if not self._enabled:
+            return
+
         self._tensor_to_node_map.clear()
         for node in model.graph.node:
             for output_name in node.output:
@@ -41,8 +44,6 @@ class DataObserver(object):
 
         This is used for collecting data/compute sparsity information for embedding layer.
         """
-        if not self._enabled:
-            return
 
         self._embedding_graph_input_to_padding_idx_map.clear()
 
@@ -111,20 +112,55 @@ class DataObserver(object):
 
             # Check label inputs
             label_graph_input = None
+
+            def _default_label_preprocess(labels):
+                return labels
+
+            label_preprocess_func = _default_label_preprocess
             if node.input[1] not in self._tensor_to_node_map:
                 if node.input[1] not in user_input_names:
                     continue
                 label_graph_input = node.input[1]
             else:
                 reshape_node = self._tensor_to_node_map[node.input[1]]
-                if reshape_node.op_type != "Reshape" or reshape_node.input[0] not in user_input_names:
+                if reshape_node.op_type == "Reshape":
+                    reshape_input = reshape_node.input[0]
+                    if reshape_input in user_input_names:
+                        label_graph_input = reshape_input
+                    else:  # Pattern defined in Bloom model.
+                        if reshape_input in self._tensor_to_node_map:
+                            slice_node = self._tensor_to_node_map[reshape_input]
+                            if slice_node.op_type == "Slice":
+                                slice_input = slice_node.input[0]
+                                starts = self._get_initializer_value(model, slice_node.input[1])
+                                ends = self._get_initializer_value(model, slice_node.input[2])
+                                axes = self._get_initializer_value(model, slice_node.input[3])
+                                steps = self._get_initializer_value(model, slice_node.input[4])
+                                if (
+                                    slice_input in user_input_names
+                                    and starts is not None
+                                    and ends is not None
+                                    and axes is not None
+                                    and steps is not None
+                                    and len(axes) == 1
+                                    and axes[0] == 1
+                                ):
+                                    label_graph_input = slice_input
+
+                                    def _slice_label_preprocess(labels):
+                                        return labels[:, starts[0] : ends[0] : steps[0]]
+
+                                    label_preprocess_func = _slice_label_preprocess
+
+                if label_graph_input is None:
                     continue
-                label_graph_input = reshape_node.input[0]
 
             if label_graph_input not in self._loss_label_graph_input_to_ignore_idx_map:
-                self._loss_label_graph_input_to_ignore_idx_map[label_graph_input] = set()
+                self._loss_label_graph_input_to_ignore_idx_map[label_graph_input] = []
 
-            self._loss_label_graph_input_to_ignore_idx_map[label_graph_input].add(ignore_index)
+            self._loss_label_graph_input_to_ignore_idx_map[label_graph_input].append(
+                [ignore_index, label_preprocess_func]
+            )
 
     def inspect_from_input_data(self, name, data):
         if not self._enabled:
@@ -147,6 +183,7 @@ class DataObserver(object):
         ):
             for padding_idx in self._embedding_graph_input_to_padding_idx_map[name]:
                 valid_token = torch.count_nonzero(data - padding_idx)
+                valid_token_per_batch = torch.count_nonzero(data - padding_idx, dim=1)
                 total_token = data.numel()
                 self._stats.append(
                     [
@@ -157,6 +194,7 @@ class DataObserver(object):
                         float(valid_token) / float(total_token) * 100,
                         valid_token,
                         total_token,
+                        valid_token_per_batch.tolist(),
                     ]
                 )
                 found = True
@@ -166,9 +204,10 @@ class DataObserver(object):
             and name in self._loss_label_graph_input_to_ignore_idx_map
             and isinstance(data, torch.Tensor)
         ):
-            for ignore_index in self._loss_label_graph_input_to_ignore_idx_map[name]:
-                valid_token = torch.count_nonzero(data - ignore_index)
-                total_token = data.numel()
+            for ignore_index, preprocess_func in self._loss_label_graph_input_to_ignore_idx_map[name]:
+                data_preprocessed = preprocess_func(data)
+                valid_token = torch.count_nonzero(data_preprocessed - ignore_index)
+                total_token = data_preprocessed.numel()
                 self._stats.append(
                     [
                         self._current_step,
@@ -178,20 +217,38 @@ class DataObserver(object):
                         float(valid_token) / float(total_token) * 100,
                         valid_token,
                         total_token,
+                        None,
                     ]
                 )
+                found = True
 
         return found
 
     def _print_embed_label_stats(self):
         if len(self._stats) > 0:
             stat = ">>>Valid token/label density (e.g. valid/total) in passing {} steps:\n".format(self._log_steps)
-            stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<10} | {:<15} | {:<15} |\n".format(
-                "STEP", "INPUT TYPE", " INPUT NAME", "PAD IDX", "DENSITY", "VALID TOKENS", "TOTAL TOKENS"
+            stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<10} | {:<15} | {:<15} | {:<15} |\n".format(
+                "STEP",
+                "INPUT TYPE",
+                " INPUT NAME",
+                "PAD IDX",
+                "DENSITY",
+                "VALID TOKENS",
+                "TOTAL TOKENS",
+                "VALID TOKENS/BATCH",
             )
-            for step, input_type, input_name, padding_idx, density, valid_token, total_token in self._stats:
-                stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} |\n".format(
-                    step, input_type, input_name, padding_idx, density, valid_token, total_token
+            for (
+                step,
+                input_type,
+                input_name,
+                padding_idx,
+                density,
+                valid_token,
+                total_token,
+                valid_token_per_batch,
+            ) in self._stats:
+                stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<9.2f}% | {:<15} | {:<15} | {:<15} |\n".format(
+                    step, input_type, input_name, padding_idx, density, valid_token, total_token, valid_token_per_batch
                 )
             stat += "<<<\n"
             print(stat)
@@ -203,3 +260,10 @@ class DataObserver(object):
                 return tensor
 
         return None
+
+    def _get_initializer_value(self, model, name):
+        tensor = self._get_initializer(model, name)
+        if tensor is None:
+            return None
+        value = onnx.numpy_helper.to_array(tensor)
+        return value
