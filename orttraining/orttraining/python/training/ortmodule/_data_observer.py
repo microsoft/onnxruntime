@@ -217,7 +217,7 @@ class DataObserver(object):
                         float(valid_token) / float(total_token) * 100,
                         valid_token,
                         total_token,
-                        'N/A',
+                        "N/A",
                     ]
                 )
                 found = True
