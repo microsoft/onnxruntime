@@ -56,7 +56,7 @@ OrtValue create_ort_value(
   const T val) {
   OrtValue ort_val;
   onnxruntime::Tensor::InitOrtValue(onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({1}),
-                                    invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_val);
+                                    invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ort_val);
   auto* ort_tensor = ort_val.GetMutable<onnxruntime::Tensor>();
   CopyVectorToTensor<T>(invoker, &val, 1, *ort_tensor);
   return ort_val;
@@ -76,7 +76,7 @@ OrtValue create_ort_value(
   OrtValue ort_value;
   onnxruntime::Tensor::InitOrtValue(
       onnxruntime::DataTypeImpl::GetType<T>(), onnxruntime::TensorShape({(int64_t)values.size()}),
-      invoker.GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault), ort_value);
+      invoker.GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault), ort_value);
   CopyVectorToTensor<T>(
     invoker,
     values.data(),

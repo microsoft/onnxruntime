@@ -78,7 +78,7 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and

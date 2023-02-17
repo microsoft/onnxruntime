@@ -95,7 +95,7 @@ class WindowsThread : public EnvThread {
     }
 
     if (custom_create_thread_fn) {
-      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, (OrtThreadWorkerFn)CustomThreadMain, local_param.get());
+      custom_thread_handle = custom_create_thread_fn(custom_thread_creation_options, CustomThreadMain, local_param.get());
       if (!custom_thread_handle) {
         ORT_THROW("custom_create_thread_fn returned invalid handle.");
       }
@@ -217,7 +217,7 @@ class WindowsThread : public EnvThread {
   }
 #pragma warning(pop)
 
-  static void __stdcall CustomThreadMain(void* param) {
+  static void CustomThreadMain(void* param) {
     std::unique_ptr<Param> p(static_cast<Param*>(param));
     ORT_TRY {
       p->start_address(p->index, p->param);

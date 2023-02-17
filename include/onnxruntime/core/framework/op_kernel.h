@@ -121,7 +121,7 @@ class OpKernel {
     return Status::OK();
   }
 
-  const OrtMemoryInfo& Allocator(int id, OrtMemType mem_type) const;
+  const OrtMemoryInfo& Allocator(OrtMemType mem_type) const;
   const OpKernelInfo& Info() const {
     return *op_kernel_info_;
   }

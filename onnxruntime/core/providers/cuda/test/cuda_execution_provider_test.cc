@@ -24,10 +24,10 @@ bool TestDeferredRelease() {
   // Initialize allocators in EP.
   onnxruntime::AllocatorManager allocator_manager;
   ep.RegisterAllocator(allocator_manager);
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
   CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);
@@ -71,10 +71,10 @@ bool TestDeferredReleaseWithoutArena() {
   // Use existing allocator in allocator_manager.
   // Also register new allocator created by this EP in allocator_manager.
   ep.RegisterAllocator(allocator_manager);
-  AllocatorPtr gpu_alloctor = ep.GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+  AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
-  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  AllocatorPtr cpu_pinned_alloc = ep.GetAllocator(OrtMemTypeCPU);
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
   CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr);

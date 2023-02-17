@@ -21,6 +21,7 @@ parameters:
   EnableLto: true
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
   AllowReleasedOpsetOnly: '0'
+  IsReleaseBuild: false
 jobs:
 - job: ${{ parameters.JobName }}
   timeoutInMinutes: 200
@@ -140,7 +141,7 @@ jobs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln'
         configuration: '$(BuildConfig)'
         platform: 'Any CPU'
-        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
+        msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - script: |
@@ -214,13 +215,13 @@ jobs:
           artifactName: ${{ parameters.ArtifactName }}
           targetPath: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishSymbols@2
-        displayName: 'Publish Build Symbols'
-        condition: eq(variables['IsReleaseBuild'], 'true')
-        inputs:
-          symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-          searchPattern: '**/*.pdb'
-          symbolServerType: teamServices
+      - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
+        - task: PublishSymbols@2
+          displayName: 'Publish Build Symbols'
+          inputs:
+            symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            searchPattern: '**/*.pdb'
+            symbolServerType: teamServices
 
     # Node.js Publish
     - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
