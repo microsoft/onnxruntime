@@ -2,10 +2,9 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Runtime.CompilerServices;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Collections.Generic;
-
+using System.Threading;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -36,7 +35,7 @@ namespace Microsoft.ML.OnnxRuntime
     public enum OrtLanguageProjection
     {
         ORT_PROJECTION_C = 0,
-        ORT_PROJECTION_CPLUSPLUS = 1,
+        ORT_PROJECTION_CPLUSPLUS = 1 ,
         ORT_PROJECTION_CSHARP = 2,
         ORT_PROJECTION_PYTHON = 3,
         ORT_PROJECTION_JAVA = 4,
@@ -50,16 +49,21 @@ namespace Microsoft.ML.OnnxRuntime
     /// and other necessary things for OnnxRuntime to function. Create or access OrtEnv by calling
     /// the Instance() method. Call this method before doing anything else in your application.
     /// </summary>
-    public sealed class OrtEnv : SafeHandle
+    public sealed class OrtEnv : IDisposable
     {
-        private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(() => new OrtEnv());
-        private static LogLevel envLogLevel = LogLevel.Warning;
+        private static Object _lock = new Object();
+        private static OrtEnv _instance = null;
 
-        #region private methods
-        private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
-    : base(IntPtr.Zero, true)
+        private bool  _disposed = false;
+        private IntPtr handle = IntPtr.Zero;
+        private LogLevel envLogLevel = LogLevel.Warning;
+
+#region private methods
+        /// <summary>
+        /// To be called only from constructor
+        /// </summary>
+        private void SetLangugageProjection()
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
@@ -70,31 +74,90 @@ namespace Microsoft.ML.OnnxRuntime
                 throw;
             }
         }
-        #endregion
 
-        #region internal methods
+        private OrtEnv()
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
+            SetLangugageProjection();
+        }
+
+        private OrtEnv(OrtThreadingOptions opt)
+        {
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnvWithGlobalThreadPools(envLogLevel, @"CSharpOnnxRuntime", opt.Handle, out handle));
+            SetLangugageProjection();
+        }
+
+#endregion
+
+#region internal methods
         /// <summary>
         /// Returns a handle to the native `OrtEnv` instance held by the singleton C# `OrtEnv` instance
         /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
         /// during lazy initialization
         /// </summary>
-        internal static IntPtr Handle
+        internal IntPtr Handle
         {
             get
             {
-                return _instance.Value.handle;
+                return handle;
             }
         }
         #endregion
 
-        #region public methods
+#region public methods
 
         /// <summary>
-        /// Returns an instance of OrtEnv
+        /// Creates and return instance of OrtEnv, or returns the one that already was created
+        /// possibly with another Instance() overload
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
-        public static OrtEnv Instance() { return _instance.Value; }
+        public static OrtEnv Instance() 
+        {
+            if (_instance == null)
+            {
+                lock (_lock)
+                {
+                    if (_instance == null)
+                    {
+                        var inst = new OrtEnv();
+                        Interlocked.MemoryBarrier();
+                        _instance = inst;
+                    }
+                }
+            }
+            return _instance;
+        }
+
+        /// <summary>
+        /// Creates and returns a new instance of OrtEnv created with OrtThreadingOptions
+        /// and assigns it _instance. If successful, the Instance() method will always return
+        /// OrtEnv instance created by this method.
+        /// 
+        /// This function can only be called once.
+        /// </summary>
+        /// <param name="opt">threading options instance</param>
+        /// <returns></returns>
+        /// <exception cref="OnnxRuntimeException">when the singleton was already initialized</exception>
+        public static OrtEnv Instance(OrtThreadingOptions opt)
+        {
+            if(_instance != null)
+            {
+                throw new OnnxRuntimeException(ErrorCode.Fail,
+                    "Singleton object already instantiated. Threading options would not take effect");
+            }
+
+            lock (_lock)
+            {
+                if (_instance == null)
+                {
+                    var inst = new OrtEnv(opt);
+                    Interlocked.MemoryBarrier();
+                    _instance = inst;
+                }
+            }
+            return _instance;
+        }
 
         /// <summary>
         /// Enable platform telemetry collection where applicable
@@ -125,16 +188,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// This function returns the onnxruntime version string
-        /// </summary>
-        /// <returns>version string</returns>
-        public string GetVersionString()
-        {
-            IntPtr versionString = NativeMethods.OrtGetVersionString();
-            return NativeOnnxValueHelper.StringFromNativeUtf8(versionString);
-        }
-
-        /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
         /// </summary>
         /// <returns>an array of strings that represent execution provider names</returns>
@@ -147,7 +200,7 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 var availableProviders = new string[numProviders];
-                for (int i = 0; i < numProviders; ++i)
+                for (int i=0; i<numProviders; ++i)
                 {
                     availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
                 }
@@ -175,32 +228,62 @@ namespace Microsoft.ML.OnnxRuntime
                 envLogLevel = value;
             }
         }
-        #endregion
 
-        #region SafeHandle
-        /// <summary>
-        /// Overrides SafeHandle.IsInvalid
-        /// </summary>
-        /// <value>returns true if handle is equal to Zero</value>
-        public override bool IsInvalid
-        {
-            get
-            {
-                return (handle == IntPtr.Zero);
-            }
-        }
+#endregion
 
+#region IDisposable
         /// <summary>
-        /// Overrides SafeHandle.ReleaseHandle() to properly dispose of
-        /// the native instance of OrtEnv
+        /// Destroys native object
         /// </summary>
         /// <returns>always returns true</returns>
-        protected override bool ReleaseHandle()
+        void ReleaseHandle()
         {
             NativeMethods.OrtReleaseEnv(handle);
             handle = IntPtr.Zero;
-            return true;
         }
-        #endregion
+
+        /// <summary>
+        /// Finalizer. to cleanup session in case it runs
+        /// and the user forgets to Dispose() of the session
+        /// </summary>
+        ~OrtEnv()
+        {
+            Dispose(false);
+        }
+
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// IDisposable implementation
+        /// </summary>
+        /// <param name="disposing">true if invoked from Dispose() method</param>
+        private void Dispose(bool disposing)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            // cleanup unmanaged resources
+            if (handle != IntPtr.Zero)
+            {
+                ReleaseHandle();
+            }
+
+            // we are assuming this is the last thing the program is doing
+            var p = Interlocked.Exchange(ref _instance, null);
+            // Expecting that this was the instance, otherwise a bug
+            Debug.Assert(p == this);
+
+            _disposed = true;
+        }
+#endregion
     }
 }

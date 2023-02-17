@@ -197,6 +197,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             }
         }
 
+        [Fact(DisplayName = "TestThreadingOptions")]
+        public void TestThreadingOptions()
+        {
+            using (var opt = new OrtThreadingOptions())
+            {
+                Assert.NotNull(opt);
+
+                //verify default options
+                opt.GlobalSpinControl = false;
+                opt.GlobalInterOpNumThreads = 1;
+                opt.GlobalIntraOpNumThreads = 1;
+                opt.SetGlobalDenormalAsZero();
+            }
+        }
+
         [Fact(DisplayName = "EnablingAndDisablingTelemetryEventCollection")]
         public void EnablingAndDisablingTelemetryEventCollection()
         {
@@ -241,6 +256,32 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
             Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
         }
+        
+        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptions")]
+        public void TestUpdatingEnvWithThreadingOptions()
+        {
+            using (var opt = new OrtThreadingOptions()) {
+                // Make sure we start anew
+                OrtEnv.Instance().Dispose();
+                var env = OrtEnv.Instance(opt);
+                Assert.NotNull(env);
+            }
+        }
+        
+        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptionsMultipleTimesExpectException")]
+        public void TestUpdateEnvMultipleTimesExpectException()
+        {
+            using (var opt = new OrtThreadingOptions())
+            {
+                // Make sure we start anew
+                OrtEnv.Instance().Dispose();
+                var env = OrtEnv.Instance(opt);
+                Assert.NotNull(env);
+                Assert.Throws<OnnxRuntimeException>(() => OrtEnv.Instance(opt));
+                var envDefault = OrtEnv.Instance();
+                Assert.True(env == envDefault);
+            }
+        }       
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]
         public void CanCreateAndDisposeSessionWithModel()

@@ -339,6 +339,10 @@
     <TargetsFile Include="$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\targets.xml" Visible="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="OrtThreadingOptions.Shared.cs" Link="OrtThreadingOptions.Shared.cs" />
+  </ItemGroup>
+
   <Target Name="CopyMiscFiles" BeforeTargets="PreBuildEvent">
     <Copy SourceFiles="@(LicenseFile)" DestinationFiles="@(LicenseFile->'$(OnnxRuntimeCsharpRoot)\..\%(Filename).txt')" />
     <Copy SourceFiles="@(TargetsFile)" DestinationFiles="@(TargetsFile->'$(OnnxRuntimeCsharpRoot)\src\Microsoft.ML.OnnxRuntime\targets\netstandard\$(PackageId).targets')" />
