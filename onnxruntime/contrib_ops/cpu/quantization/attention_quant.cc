@@ -160,7 +160,7 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
                                                  bias->Shape(),
                                                  mask_index,
                                                  past_tensor,
-                                                 nullptr,  // extra_add_qk
+                                                 nullptr,  // relative_position_bias
                                                  nullptr   // parameters
                                                  ));
 

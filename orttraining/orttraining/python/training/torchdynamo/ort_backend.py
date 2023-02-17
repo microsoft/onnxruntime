@@ -396,7 +396,7 @@ def _run_onnx_session_with_ortvaluevector(
 
     _nvtx_range_push("run_with_ortvaluevector")
     run_options = onnxruntime.RunOptions()
-    run_options.synchronize_execution_providers = True
+    run_options.add_run_config_entry("disable_synchronize_execution_providers", "1")
     sess.run_with_ortvaluevector(run_options, input_names, ort_inputs, output_names, ort_outputs, output_devices)
     _nvtx_range_pop()
 
