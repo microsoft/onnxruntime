@@ -501,26 +501,6 @@ def parse_arguments():
         "--tensorrt_placeholder_builder", action="store_true", help="Instantiate Placeholder TensorRT Builder"
     )
     parser.add_argument("--tensorrt_home", help="Path to TensorRT installation dir")
-    parser.add_argument(
-        "--extra_tensorrt_plugin_header_files",
-        nargs="+",
-        help="Specify one or more possible names for the extra TRT plugin header files"
-        "Please give file name with full/relative path.",
-    )
-    parser.add_argument(
-        "--extra_tensorrt_plugin_include_paths",
-        nargs="+",
-        help="Include directories for extra TRT plugins header files or related header files"
-        "This argument will be fed to CMAKE include_directories().",
-    )
-    parser.add_argument(
-        "--extra_tensorrt_plugin_libs",
-        nargs="+",
-        help="Specify one or more possible names for the extra TRT plugin library"
-        "This argument will be fed to CMAKE find_library() as name argument."
-        "If not absolute/relative path, CMAKE find_library() will search files from --extra_tensorrt_plugin_lib_paths.",
-    )
-    parser.add_argument("--extra_tensorrt_plugin_lib_paths", nargs="+", help="Directories for extra TRT plugin libs")
     parser.add_argument("--test_all_timeout", default="10800", help="Set timeout for onnxruntime_test_all")
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
@@ -914,16 +894,6 @@ def generate_build_tree(
         + ("ON" if not args.tensorrt_placeholder_builder else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=" + ("ON" if args.use_tensorrt_builtin_parser else "OFF"),
         "-Donnxruntime_TENSORRT_PLACEHOLDER_BUILDER=" + ("ON" if args.tensorrt_placeholder_builder else "OFF"),
-        "-Donnxruntime_USE_EXTRA_TENSORRT_PLUGINS=" + ("ON" if args.extra_tensorrt_plugin_libs else "OFF"),
-        "-Donnxruntime_EXTRA_TENSORRT_PLUGIN_HEADER_FILES="
-        + (";".join(args.extra_tensorrt_plugin_header_files) if args.extra_tensorrt_plugin_header_files else ""),
-        "-Donnxruntime_EXTRA_TENSORRT_PLUGIN_INCLUDE_PATHS="
-        + (";".join(args.extra_tensorrt_plugin_include_paths) if args.extra_tensorrt_plugin_include_paths else ""),
-        "-Donnxruntime_SEARCH_EXTRA_TENSORRT_PLUGIN_LIBS=" + ("ON" if args.extra_tensorrt_plugin_lib_paths else "OFF"),
-        "-Donnxruntime_EXTRA_TENSORRT_PLUGIN_LIBS="
-        + (";".join(args.extra_tensorrt_plugin_libs) if args.extra_tensorrt_plugin_libs else ""),
-        "-Donnxruntime_EXTRA_TENSORRT_PLUGIN_LIB_PATHS="
-        + (";".join(args.extra_tensorrt_plugin_lib_paths) if args.extra_tensorrt_plugin_lib_paths else ""),
         # set vars for TVM
         "-Donnxruntime_USE_TVM=" + ("ON" if args.use_tvm else "OFF"),
         "-Donnxruntime_TVM_CUDA_RUNTIME=" + ("ON" if args.use_tvm and args.tvm_cuda_runtime else "OFF"),

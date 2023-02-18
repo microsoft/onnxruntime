@@ -692,30 +692,9 @@ if (onnxruntime_USE_TENSORRT)
     set(onnxparser_link_libs nvonnxparser_static)
   endif()
 
-  if (onnxruntime_USE_EXTRA_TENSORRT_PLUGINS)
-    # search plugin libs from given path
-    if (onnxruntime_SEARCH_EXTRA_TENSORRT_PLUGIN_LIBS)
-      MESSAGE(STATUS "Search extra TensorRT plugin libs [${onnxruntime_EXTRA_TENSORRT_PLUGIN_LIBS}] at [${onnxruntime_EXTRA_TENSORRT_PLUGIN_LIB_PATHS}]")
-      foreach(PLUGIN_LIB IN LISTS onnxruntime_EXTRA_TENSORRT_PLUGIN_LIBS)
-          find_library(FOUND_LIB_${PLUGIN_LIB} ${PLUGIN_LIB}
-            HINTS  ${onnxruntime_EXTRA_TENSORRT_PLUGIN_LIB_PATHS}
-            PATH_SUFFIXES lib lib64 lib/x64)
-        if(NOT FOUND_LIB_${PLUGIN_LIB})
-          message(FATAL_ERROR "${PLUGIN_LIB} not found")
-        endif()
-        list(APPEND EXTRA_TENSORRT_PLUGIN_LIBS ${FOUND_LIB_${PLUGIN_LIB}})
-      endforeach()
-      MESSAGE(STATUS "Extra TensorRT plugin libs found: [${EXTRA_TENSORRT_PLUGIN_LIBS}]")
-    else()
-    # get plugin libs directly from args
-      set(EXTRA_TENSORRT_PLUGIN_LIBS ${onnxruntime_EXTRA_TENSORRT_PLUGIN_LIBS})
-      MESSAGE(STATUS "Extra TensorRT plugin libs: [${EXTRA_TENSORRT_PLUGIN_LIBS}]")
-    endif()
-  endif()
-
   include_directories(${TENSORRT_INCLUDE_DIR})
 
-  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY} ${EXTRA_TENSORRT_PLUGIN_LIBS})
+  set(trt_link_libs cudnn cublas ${CMAKE_DL_LIBS} ${TENSORRT_LIBRARY})
 
   file(GLOB_RECURSE onnxruntime_providers_tensorrt_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/*.h"
@@ -738,11 +717,6 @@ if (onnxruntime_USE_TENSORRT)
   target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${onnxruntime_CUDNN_HOME}/include)
-  endif()
-
-  if (onnxruntime_USE_EXTRA_TENSORRT_PLUGINS)
-    target_precompile_headers(onnxruntime_providers_tensorrt PUBLIC ${onnxruntime_EXTRA_TENSORRT_PLUGIN_HEADER_FILES})
-    include_directories(${onnxruntime_EXTRA_TENSORRT_PLUGIN_INCLUDE_PATHS})
   endif()
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
