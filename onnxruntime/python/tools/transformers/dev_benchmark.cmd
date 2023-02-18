@@ -21,25 +21,27 @@ set run_torchscript=false
 
 REM Devices to test.
 REM Attention: You cannot run both CPU and GPU at the same time: gpu need onnxruntime-gpu, and CPU need onnxruntime.
-set run_gpu_fp32=false
+set run_gpu_fp32=true
 set run_gpu_fp16=false
-set run_cpu_fp32=true
-set run_cpu_int8=true
+set run_cpu_fp32=false
+set run_cpu_int8=false
 
 set average_over=100
 
 REM Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 set use_optimizer=true
 
-set batch_sizes=1
-set sequence_length=8 128
+set batch_sizes=1 4
+set sequence_length=32 64
 
 REM Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
 REM Note that different input count might lead to different performance
 set input_counts=1
 
 REM Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
-set models_to_test=bert-base-cased
+REM set models_to_test=bert-base-cased
+set models_to_test="google/vit-base-patch16-224"
+REM set models_to_test="google/vit-base-patch32"
 
 REM If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 REM set CUDA_VISIBLE_DEVICES=1

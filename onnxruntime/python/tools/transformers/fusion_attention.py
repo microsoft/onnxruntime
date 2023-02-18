@@ -419,18 +419,27 @@ class FusionAttention(Fusion):
             else:
                 return
 
-        other_inputs = []
-        for i, input in enumerate(start_node.input):
-            if input not in output_name_to_node:
-                continue
+        # Match Vit
+        vit_nodes = self.model.match_parent_path(
+            matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [None, None, None, None]
+        )
+        if vit_nodes is not None:
+            root_input = vit_nodes[3].input[0]
+        else:
+            other_inputs = []
+            for i, input in enumerate(start_node.input):
+                if input not in output_name_to_node:
+                    continue
 
-            if input == qkv_nodes[0].output[0]:
-                continue
-            other_inputs.append(input)
-        if len(other_inputs) != 1:
-            return
+                if input == qkv_nodes[0].output[0]:
+                    continue
+                other_inputs.append(input)
+            if len(other_inputs) != 1:
+                return
 
-        root_input = other_inputs[0]
+            root_input = other_inputs[0]
+
+
         """
         Match flaubert                     Mask
                                             |
@@ -471,11 +480,13 @@ class FusionAttention(Fusion):
 
         is_distill = False
         is_distill_add = False
+        is_no_add = False
         qk_paths = {
             "path1": (["Softmax", "Add", "Div", "MatMul"], [0, 0, None, 0]),
             "path2": (["Softmax", "Add", "Mul", "MatMul"], [0, 0, None, 0]),
             "path3": (["Softmax", "Where", "MatMul", "Div"], [0, 0, 2, 0]),
             "path4": (["Softmax", "Add", "Where", "MatMul"], [0, 0, 0, 2]),
+            "path5": (["Softmax", "Div", "MatMul"], [0, None, 0]),
         }
 
         qk_nodes = None
@@ -487,6 +498,8 @@ class FusionAttention(Fusion):
                 is_distill = True
             if k == "path4":
                 is_distill_add = True
+            if k == "path5":
+                is_no_add = True
             break
 
         if qk_nodes is None:
@@ -500,6 +513,8 @@ class FusionAttention(Fusion):
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
             (_, add_qk, where_qk, matmul_qk) = qk_nodes
+        elif is_no_add:
+            (_, _, matmul_qk) = qk_nodes
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
@@ -557,6 +572,8 @@ class FusionAttention(Fusion):
                 if add_qk_str is None:
                     logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
                     return
+        elif is_no_add:
+            pass
         else:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 add_qk,
@@ -569,17 +586,20 @@ class FusionAttention(Fusion):
                 ],
                 output_name_to_node,
             )
-        if mask_nodes is None:
-            logger.debug("fuse_attention: failed to match mask path")
-            return
+#        if mask_nodes is None:
+#            logger.debug("fuse_attention: failed to match mask path")
+#            return
 
-        if len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
+        if mask_nodes is not None and len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
                 self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
-            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+            if mask_nodes is None:
+                mask_index = None
+            else:
+                mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
