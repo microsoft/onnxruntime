@@ -35,23 +35,23 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
                         OpKernelContext* context) const {
     // const int kv_sequence_length = sequence_length;
-    std::cout << "Q (in apply):" << std::endl;
-    for(int i = 0; i < 1; i++) {
-      std::cout << "[" << i << "]:" << std::endl;
-      const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
-      onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    }
+    // std::cout << "Q (in apply):" << std::endl;
+    // for(int i = 0; i < 1; i++) {
+    //   std::cout << "[" << i << "]:" << std::endl;
+    //   const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
+    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    // }
     // for (int i = 0; i < 5; i++) {
     //   std::cout << *(Q + i) << ", ";
     // }
     // std::cout << std::endl;
 
-    std::cout << "K (in apply):" << std::endl;
-    for(int i = 0; i < 1; i++) {
-      std::cout << "[" << i << "]:" << std::endl;
-      const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
-      onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    }
+    // std::cout << "K (in apply):" << std::endl;
+    // for(int i = 0; i < 1; i++) {
+    //   std::cout << "[" << i << "]:" << std::endl;
+    //   const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
+    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    // }
     // for (int i = 0; i < 5; i++) {
     //   std::cout << *(K + i) << ", ";
     // }
@@ -156,7 +156,7 @@ class AttentionCPUBase : public AttentionBase {
     const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;    // L x H
     const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;               // T x H
 
-    std::cout << "Lengths: " << total_sequence_length << ", " << past_chunk_length << ", " << q_input_chunk_length << ", " << kv_input_chunk_length << ", " << present_chunk_length << std::endl;
+    // std::cout << "Lengths: " << total_sequence_length << ", " << past_chunk_length << ", " << q_input_chunk_length << ", " << kv_input_chunk_length << ", " << present_chunk_length << std::endl;
 
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
@@ -226,12 +226,12 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     //  attention_probs(B, N, S, T) = Softmax(attention_probs)
-    std::cout << "Q x K' + mask:" << std::endl;
-    for(int i = 0; i < 1; i++) {
-      std::cout << "[" << i << "]:" << std::endl;
-      const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-      onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    }
+    // std::cout << "Q x K' + mask:" << std::endl;
+    // for(int i = 0; i < 1; i++) {
+    //   std::cout << "[" << i << "]:" << std::endl;
+    //   const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
+    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    // }
     // for (int i = 0; i < 5; i++) {
     //   std::cout << *(attention_probs + i) << ", ";
     // }
@@ -263,23 +263,23 @@ class AttentionCPUBase : public AttentionBase {
     const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;    // L x H_v
     const ptrdiff_t present_chunk_length = past_chunk_length + kv_input_chunk_length;                // T x H_v
 
-    std::cout << "Softmax (in score):" << std::endl;
-    for(int i = 0; i < 1; i++) {
-      std::cout << "[" << i << "]:" << std::endl;
-      const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-      onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    }
+    // std::cout << "Softmax (in score):" << std::endl;
+    // for(int i = 0; i < 1; i++) {
+    //   std::cout << "[" << i << "]:" << std::endl;
+    //   const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
+    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    // }
     // for (int i = 0; i < 5; i++) {
     //   std::cout << *(attention_probs + i) << ", ";
     // }
     // std::cout << std::endl;
     
-    std::cout << "V (in score):" << std::endl;
-    for(int i = 0; i < 1; i++) {
-      std::cout << "[" << i << "]:" << std::endl;
-      const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
-      onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    }
+    // std::cout << "V (in score):" << std::endl;
+    // for(int i = 0; i < 1; i++) {
+    //   std::cout << "[" << i << "]:" << std::endl;
+    //   const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
+    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
+    // }
     // for (int i = 0; i < 5; i++) {
     //   std::cout << *(V + i) << ", ";
     // }

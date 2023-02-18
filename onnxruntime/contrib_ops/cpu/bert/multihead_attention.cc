@@ -13,8 +13,9 @@
 // #include "core/common/safeint.h"
 // #include "core/platform/threadpool.h"
 
-using onnxruntime::narrow;
-using onnxruntime::concurrency::ThreadPool;
+// using onnxruntime::narrow;
+// using onnxruntime::concurrency::ThreadPool;
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -46,10 +47,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
 
-  AttentionParameters parameters;
   if (bias != nullptr) {
     ORT_NOT_IMPLEMENTED("Q/K/V bias in multihead attention cpu kernel is not supported");
   }
+  AttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs4D<Tensor>(query,
                                                                         key,
                                                                         value,
@@ -60,9 +61,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
-  // const int kv_sequence_length = parameters.kv_sequence_length;
-  // int qk_head_size = parameters.head_size;
-  // int v_head_size = parameters.v_head_size;
+  const int kv_sequence_length = parameters.kv_sequence_length;
+  int qk_head_size = parameters.head_size;
+  int v_head_size = parameters.v_head_size;
+  int v_hidden_size = parameters.v_hidden_size;
 
   std::vector<int64_t> output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
@@ -104,18 +106,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const T* Q = query->Data<T>();
   const T* K = key->Data<T>();
   const T* V = value->Data<T>();
-  const Tensor* mask_index = key_padding_mask;
-  int batch_size_no_const = parameters.batch_size;
-  int seq_len = parameters.sequence_length;
-  int kv_seq_len = parameters.kv_sequence_length;
-  int qk_head_size = parameters.head_size;
-  int v_head_size = parameters.v_head_size;
-  int v_hidden_size = parameters.v_hidden_size;
-
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past, output,
-                        batch_size_no_const, seq_len, kv_seq_len, 
+  return ApplyAttention(Q, K, V, key_padding_mask, past, output,
+                        batch_size, sequence_length, kv_sequence_length, 
                         qk_head_size, v_head_size, v_hidden_size, 
                         extra_add_qk, context);
   // return ApplyAttention(query->Data<T>, key->Data<T>, value->Data<T>, key_padding_mask, past, output,
