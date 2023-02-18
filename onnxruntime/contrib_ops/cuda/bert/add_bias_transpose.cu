@@ -3,35 +3,11 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
+#ifndef USE_ROCM
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
+#endif
 
 using namespace onnxruntime::cuda;
-
-namespace onnxruntime {
-namespace cuda {
-
-struct __align__(8) Half4 {
-  half2 x;
-  half2 y;
-};
-
-__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
-  Half4 r;
-  r.x = a.x + b.x;
-  r.y = a.y + b.y;
-  return r;
-}
-
-__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
-  return make_float2(a.x + b.x, a.y + b.y);
-}
-
-__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
-  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
-}
-
-}  // namespace cuda
-}  // namespace onnxruntime
 
 namespace onnxruntime {
 namespace contrib {
@@ -241,6 +217,7 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   }
 }
 
+#ifndef USE_ROCM
 template <typename T>
 __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* output, T* qkv_add_bias,
                                     const int rotary_embedding_dim, const int head_size, const int step,
@@ -366,6 +343,7 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     }
   }
 }
+#endif
 
 // this suppose 3 matrix in total
 template <typename T>
@@ -651,6 +629,9 @@ void InvokeAddBiasTranspose(
   assert(num_heads <= max_threads_per_block);
 
   if (do_rotary) {
+#ifdef USE_ROCM
+    ORT_THROW("Rotary attention is not supported on ROCm");
+#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 520
     if (format != 1 && format != 3) {
       ORT_THROW("format must be 1 or 3 for rotary attention");
     }
@@ -666,6 +647,9 @@ void InvokeAddBiasTranspose(
     AddBiasTransposeQKV<T><<<grid, block, smem_size, stream>>>(total_matrix_count, input, biases, output,
                                                                qkv_add_bias, qk_head_size, qk_head_size,
                                                                step, format);
+#else
+    ORT_THROW("rotary attention is not supported on sm < 53");
+#endif
     return;
   }
 
