@@ -46,6 +46,7 @@ common::Status CreateTensorRTCustomOpDomainList(TensorrtExecutionProviderInfo& i
     }
   }
 
+  // extra_plugin_lib_paths has the format of "path1;path2....;pathn"
   if (!extra_plugin_lib_paths.empty()) {
     std::stringstream extra_plugin_libs(extra_plugin_lib_paths);
     std::string lib;
