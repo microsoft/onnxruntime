@@ -78,6 +78,8 @@ Abstract:
 #endif
 
 #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
+// Visual Studio older than 2022 does not support fp16 intrinsic
+
 #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
 
 #define MLAS_F16VEC_INTRINSICS_SUPPORTED

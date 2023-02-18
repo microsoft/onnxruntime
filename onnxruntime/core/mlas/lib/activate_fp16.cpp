@@ -286,6 +286,7 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
         }
 */
         default:
+            // Tanh and Logistic activation not supported.
             return;
     }
 }
