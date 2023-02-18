@@ -314,9 +314,11 @@ class Execution {
 };
 
 Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags) {
-  execution_ = [[CoreMLExecution alloc] initWithPath:path
-                                              logger:logger
-                                        coreml_flags:coreml_flags];
+  @autoreleasepool {
+    execution_ = [[CoreMLExecution alloc] initWithPath:path
+                                                logger:logger
+                                          coreml_flags:coreml_flags];
+  }
 }
 
 Status Execution::LoadModel() {
@@ -325,7 +327,10 @@ Status Execution::LoadModel() {
   }
 
   if (HAS_VALID_BASE_OS_VERSION) {
-    auto status = [execution_ loadModel];
+    Status status{};
+    @autoreleasepool {
+      status = [execution_ loadModel];
+    }
     model_loaded = status.IsOK();
     return status;
   }
@@ -338,7 +343,9 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
   ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_VALID_BASE_OS_VERSION) {
-    return [execution_ predict:inputs outputs:outputs];
+    @autoreleasepool {
+      return [execution_ predict:inputs outputs:outputs];
+    }
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");
