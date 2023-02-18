@@ -198,7 +198,7 @@ def optimize_model(
     opt_level: Optional[int] = None,
     use_gpu: bool = False,
     only_onnxruntime: bool = False,
-    verbose = False,
+    verbose=False,
 ):
     """Optimize Model by OnnxRuntime and/or python fusion logic.
 

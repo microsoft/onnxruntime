@@ -109,7 +109,7 @@ def run(
             Gelu.get_fused_op(formula),
             use_gpu=use_gpu,
             opt_level=2 if use_gpu else None,
-            verbose=verbose
+            verbose=verbose,
         )
         onnx_path = optimized_onnx_path
     else:
@@ -189,7 +189,7 @@ class TestGeluParity(unittest.TestCase):
                 device=device,
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
-                verbose=verbose
+                verbose=verbose,
             )
 
             self.run_test(
@@ -201,7 +201,7 @@ class TestGeluParity(unittest.TestCase):
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
                 fp32_gelu_op=True,
-                verbose=verbose
+                verbose=verbose,
             )
 
             self.run_test(
@@ -213,7 +213,7 @@ class TestGeluParity(unittest.TestCase):
                 formula=formula,
                 enable_assert=formula in self.formula_must_pass,
                 fp32_gelu_op=False,
-                verbose=verbose
+                verbose=verbose,
             )
 
     def test_cpu(self):

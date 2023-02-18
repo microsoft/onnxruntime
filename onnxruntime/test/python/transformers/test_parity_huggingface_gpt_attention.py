@@ -18,7 +18,7 @@ import onnx
 import pytest
 import torch
 from onnx import helper
-from parity_utilities import compare_outputs, create_ort_session, diff_outputs, parse_arguments
+from parity_utilities import compare_outputs, create_ort_session, parse_arguments
 from torch import nn
 from transformers.modeling_utils import Conv1D
 

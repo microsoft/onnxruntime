@@ -17,16 +17,25 @@ def parse_arguments(argv=sys.argv[1:], namespace_filter=None):
     parser = argparse.ArgumentParser()
 
     #useful EPs that don't require the use of optmizer.py
-    parser.add_argument('-n',"--no_optimize", required=False, action="store_false", default=True, help="Turn off onnxruntime optimizers (Default off optimizers ON)")
+    parser.add_argument(
+        '-n',
+        "--no_optimize",
+        required=False,
+        action="store_false",
+        default=True,
+        help="Turn off onnxruntime optimizers (Default off optimizers ON)",
+    )
 
     #useful for debugging and viewing state during test runs
-    parser.add_argument('-l', "--log_verbose", required=False, action="store_true", default=False, help="Set Onnxruntime log_serverity_level=0 (VERBOSE) ")
-
+    parser.add_argument('-l',
+    "--log_verbose",
+    required=False,
+    action="store_true",
+    default=False,
+    help="Set Onnxruntime log_serverity_level=0 (VERBOSE) ",
+    )
 
     args, remaining_args = parser.parse_known_args(namespace=namespace_filter)
-
-    #print("*******************************************")
-    #print(args.no_optimize, args.log_verbose)
 
     return args, sys.argv[:1] + remaining_args
 
@@ -101,7 +110,9 @@ def optimize_onnx(
     else:
         from onnxruntime.transformers.optimizer import optimize_model
 
-    onnx_model = optimize_model(input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level, verbose=verbose)
+    onnx_model = optimize_model(
+        input_onnx_path, model_type="gpt2", use_gpu=use_gpu, opt_level=opt_level, verbose=verbose
+    )
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:

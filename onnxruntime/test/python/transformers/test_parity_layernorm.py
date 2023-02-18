@@ -155,12 +155,7 @@ def run(
     if optimized:
         optimized_onnx_path = "./temp/layer_norm_{}_formula{}_opt.onnx".format("fp16" if float16 else "fp32", formula)
         if (not float16) or cast_fp16:
-            optimize_onnx(
-                onnx_model_path,
-                optimized_onnx_path,
-                expected_op=LayerNorm.get_fused_op(),
-                verbose=verbose
-            )
+            optimize_onnx(onnx_model_path, optimized_onnx_path, expected_op=LayerNorm.get_fused_op(), verbose=verbose)
         else:
             if cast_onnx_only:
                 optimize_fp16_onnx_with_cast(onnx_model_path, optimized_onnx_path, epsilon=epsilon)
@@ -210,7 +205,7 @@ class TestLayerNormParity(unittest.TestCase):
         formula=0,
         epsilon=0.00001,
         enable_assert=True,
-        verbose=False
+        verbose=False,
     ):
         if float16 and device.type == "cpu":  # CPU does not support FP16
             return
