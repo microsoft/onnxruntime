@@ -490,7 +490,8 @@ class UpsampleBase {
                           gsl::span<const int64_t> input_dims,
                           TensorShapeVector& output_dims) const {
     for (std::size_t i = 0; i < input_dims.size(); i++) {
-      output_dims[i] = static_cast<int64_t>(scales[i] * input_dims[i]);
+      double output_shape = double(scales[i]) * input_dims[i] - std::numeric_limits<float>::epsilon();
+      output_dims[i] = static_cast<int64_t>(std::round(output_shape));
     }
   }
 
