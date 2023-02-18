@@ -72,11 +72,11 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   IAllocatorUniquePtr<float> p_f_scale, p_f_dScale, p_f_dBias, p_f_saved_mean, p_f_saved_inv_std;
 
   if (std::is_same<T1, MLFloat16>::value) {
-    p_f_scale = GetScratchBuffer<float>(C);
-    p_f_dScale = GetScratchBuffer<float>(C);
-    p_f_dBias = GetScratchBuffer<float>(C);
+    p_f_scale = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_dScale = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_dBias = GetScratchBuffer<float>(C, ctx->GetComputeStream());
 
-    Impl_Cast<HipT1, float>(Stream(), Scale_data, p_f_scale.get(), C);
+    Impl_Cast<HipT1, float>(Stream(ctx), Scale_data, p_f_scale.get(), C);
 
     p_scale = p_f_scale.get();
     p_dScale = p_f_dScale.get();
@@ -84,18 +84,18 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
   }
 
   if (std::is_same<T2, MLFloat16>::value) {
-    p_f_saved_mean = GetScratchBuffer<float>(C);
-    p_f_saved_inv_std = GetScratchBuffer<float>(C);
+    p_f_saved_mean = GetScratchBuffer<float>(C, ctx->GetComputeStream());
+    p_f_saved_inv_std = GetScratchBuffer<float>(C, ctx->GetComputeStream());
 
-    Impl_Cast<HipT2, float>(Stream(), saved_mean_data, p_f_saved_mean.get(), C);
-    Impl_Cast<HipT2, float>(Stream(), saved_inv_std_data, p_f_saved_inv_std.get(), C);
+    Impl_Cast<HipT2, float>(Stream(ctx), saved_mean_data, p_f_saved_mean.get(), C);
+    Impl_Cast<HipT2, float>(Stream(ctx), saved_inv_std_data, p_f_saved_inv_std.get(), C);
 
     p_saved_mean = p_f_saved_mean.get();
     p_saved_inv_std = p_f_saved_inv_std.get();
   }
 
   MIOPEN_RETURN_IF_ERROR(miopenBatchNormalizationBackward(
-      MiopenHandle(),
+      GetMiopenHandle(ctx),
       miopen_batch_norm_mode_,
       &alpha,
       &beta,
@@ -116,8 +116,8 @@ Status BatchNormalizationGrad<T, T1, T2>::ComputeInternal(OpKernelContext* ctx) 
       p_saved_inv_std));
 
   if (std::is_same<T1, MLFloat16>::value) {
-    Impl_Cast<float, HipT1>(Stream(), reinterpret_cast<float*>(p_dScale), dScale_data, C);
-    Impl_Cast<float, HipT1>(Stream(), reinterpret_cast<float*>(p_dBias), dBias_data, C);
+    Impl_Cast<float, HipT1>(Stream(ctx), reinterpret_cast<float*>(p_dScale), dScale_data, C);
+    Impl_Cast<float, HipT1>(Stream(ctx), reinterpret_cast<float*>(p_dBias), dBias_data, C);
   }
 
   return Status::OK();

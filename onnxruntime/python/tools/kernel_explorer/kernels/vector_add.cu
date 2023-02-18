@@ -60,11 +60,11 @@ Status VectorAddOp(const VectorAddParams<T>* params) {
       params->n);
 }
 
-#define ADD_OP(threads_per_block)                                \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 1>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 2>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 4>); \
-  this->ops_.emplace_back(VectorAddOp<T, threads_per_block, 8>);
+#define ADD_OP(threads_per_block)                         \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 1>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 2>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 4>); \
+  this->RegisterOp(VectorAddOp<T, threads_per_block, 8>);
 
 // A Tunable VectorAddOp is a collection of non-tunable VectorAddOps implementations that have variable performance
 // characteristics. Those implementations may be put into a C++ container for tuner to select.
@@ -100,6 +100,7 @@ template <typename T, int TPB, int Vec>
 class VectorAdd : public IKernelExplorer {
  public:
   VectorAdd(DeviceArray& x, DeviceArray& y, DeviceArray& z, int n) {
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.x = static_cast<T*>(x.ptr());
     params_.y = static_cast<T*>(y.ptr());
@@ -121,13 +122,14 @@ template <typename T>
 class VectorAddTunable : public IKernelExplorer {
  public:
   VectorAddTunable(DeviceArray& x, DeviceArray& y, DeviceArray& z, int n) {
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.x = static_cast<T*>(x.ptr());
     params_.y = static_cast<T*>(y.ptr());
     params_.z = static_cast<T*>(z.ptr());
     params_.n = n;
 
-    impl_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   void Run() override {

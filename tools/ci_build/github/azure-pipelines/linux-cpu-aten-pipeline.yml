@@ -11,15 +11,22 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
+  variables:
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: Linux-CPU-2019
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
     submodules: recursive
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '12.16.3'
+      versionSpec: '16.x'
 
   - template: templates/get-docker-image-steps.yml
     parameters:
@@ -27,6 +34,21 @@ jobs:
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildaten
+
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cach Task
+
+  - script: |
+      sudo mkdir -p $(Pipeline.Workspace)/ccache
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
 
   - task: CmdLine@2
     displayName: 'build'
@@ -38,19 +60,27 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e CCACHE_DIR=/cache \
           onnxruntimecpubuildaten \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Release \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --skip_tests \
-              --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON
+          /bin/bash -c "
+              set -ex; \
+              ccache -z; \
+              ccache -s; \
+              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                --build_dir /build --cmake_generator Ninja \
+                --config Release \
+                --skip_submodule_sync \
+                --build_shared_lib \
+                --parallel \
+                --build_wheel \
+                --skip_tests \
+                --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON \
+                --use_cache; \
+              ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -82,4 +112,4 @@ jobs:
                 --cmake_extra_defines onnxruntime_ENABLE_ATEN=ON"
       workingDirectory: $(Build.SourcesDirectory)
 
-  - template: templates/clean-agent-build-directory-step.yml
+  - template: templates/explicitly-defined-final-tasks.yml

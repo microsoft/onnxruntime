@@ -181,7 +181,7 @@ def generate_repo_url(line_list, repo_url, commit_id):
 
 
 def generate_dependencies(xml_text, package_name, version):
-    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.10.0"/>'
+    dml_dependency = '<dependency id="Microsoft.AI.DirectML" version="1.10.1"/>'
 
     if package_name == "Microsoft.AI.MachineLearning":
         xml_text.append("<dependencies>")
@@ -708,14 +708,16 @@ def generate_files(line_list, args):
                 + '\\native" />'
             )
             # usb-ma2x8x.mvcmd
-            files_list.append(
-                "<file src="
-                + '"'
-                + os.path.join(dll_list_path, "usb-ma2x8x.mvcmd")
-                + runtimes_target
-                + args.target_architecture
-                + '\\native" />'
-            )
+            # OpenVINO 2022.3 doesn't have usb-ma2x8x.mvcmd
+            if "2022.3" not in openvino_path:
+                files_list.append(
+                    "<file src="
+                    + '"'
+                    + os.path.join(dll_list_path, "usb-ma2x8x.mvcmd")
+                    + runtimes_target
+                    + args.target_architecture
+                    + '\\native" />'
+                )
             for tbb_element in os.listdir(tbb_list_path):
                 if tbb_element.endswith("dll"):
                     files_list.append(

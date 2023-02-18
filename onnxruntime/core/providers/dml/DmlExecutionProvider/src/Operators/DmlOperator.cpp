@@ -89,6 +89,110 @@ namespace Dml
         {
             DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
             ORT_THROW_IF_FAILED(m_dmlDevice->CompileOperator(dmlOperator.Get(), executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
+            
+            // Static buffer (might truncate name) to avoid excessive dynamic allocation only for debugging purposes.
+            wchar_t nodeName[512];
+            ORT_THROW_IF_FAILED(kernelInfo.GetNodeWrapperInterface()->GetWideName(sizeof(nodeName), nodeName));
+            ORT_THROW_IF_FAILED(m_compiledOperator->SetName(nodeName));
+
+            UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
+            if (persistentResourceSize > 0)
+            {
+                ORT_THROW_IF_FAILED(m_executionProvider->AllocatePooledResource(
+                    static_cast<size_t>(persistentResourceSize),
+                    AllocatorRoundingMode::Enabled,
+                    m_persistentResource.GetAddressOf(),
+                    m_persistentResourcePoolingUnk.GetAddressOf()));
+
+                m_persistentResourceBinding = DML_BUFFER_BINDING{ m_persistentResource.Get(), 0, persistentResourceSize };
+            }
+
+            std::vector<DML_BUFFER_BINDING> initializationInputBindings(m_kernelInputIndices.size());
+
+            ORT_THROW_IF_FAILED(m_executionProvider->InitializeOperator(
+                m_compiledOperator.Get(),
+                m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
+                gsl::make_span(initializationInputBindings)));
+        }
+    }
+
+    void DmlOperator::SetDmlOperatorGraphDesc(
+        const MLOperatorGraphDesc&& operatorGraphDesc,
+        const MLOperatorKernelCreationContext& kernelInfo
+        )
+    {
+        // Initialize should only be called once.
+        assert(m_compiledOperator == nullptr);
+
+        // DML doesn't support empty tensors. If an operator is still executable with empty tensors, the empty tensors
+        // should be removed or massaged depending on the definition.
+        for (const TensorDesc& desc : m_inputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        for (const TensorDesc& desc : m_outputTensorDescs)
+        {
+            if (OperatorHelper::ContainsEmptyDimensions(desc.GetSizes()))
+            {
+                return;
+            }
+        }
+
+        // m_kernelInputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelInputIndices.size(); idx++)
+        {
+            if (m_kernelInputIndices[idx] == std::nullopt || !kernelInfo.IsInputValid(*m_kernelInputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelInputIndices[idx] == idx);
+        }
+
+        // m_kernelOutputIndices should be identity
+        for (uint32_t idx = 0; idx < m_kernelOutputIndices.size(); idx++)
+        {
+            if (m_kernelOutputIndices[idx] == std::nullopt || !kernelInfo.IsOutputValid(*m_kernelOutputIndices[idx]))
+            {
+                continue;
+            }
+            assert(m_kernelOutputIndices[idx] == idx);
+        }
+
+        ComPtr<IMLOperatorKernelCreationContextPrivate> contextPrivate;
+        ORT_THROW_IF_FAILED(kernelInfo.GetInterface()->QueryInterface(contextPrivate.GetAddressOf()));
+        if (contextPrivate->IsDmlGraphNode())
+        {
+            ORT_THROW_IF_FAILED(contextPrivate->SetDmlOperator(&operatorGraphDesc));
+        }
+        else
+        {
+            DML_GRAPH_DESC graphDesc = {};
+            std::vector<DML_GRAPH_NODE_DESC> dmlGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<ComPtr<IDMLOperator>> dmlOperators(operatorGraphDesc.nodeCount);
+            std::vector<DML_OPERATOR_GRAPH_NODE_DESC> dmlOperatorGraphNodes(operatorGraphDesc.nodeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlInputEdges(operatorGraphDesc.inputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlOutputEdges(operatorGraphDesc.outputEdgeCount);
+            std::vector<DML_GRAPH_EDGE_DESC> dmlIntermediateEdges(operatorGraphDesc.intermediateEdgeCount);
+
+            // DML Graph validator will check the validity of the graph. No need to check here.
+            ConvertToDmlGraphDesc(operatorGraphDesc,
+                                  graphDesc,
+                                  dmlOperators,
+                                  dmlOperatorGraphNodes,
+                                  dmlGraphNodes,
+                                  dmlInputEdges,
+                                  dmlOutputEdges,
+                                  dmlIntermediateEdges);
+
+            // compile the graph and create IDMLCompiledOperator
+            Microsoft::WRL::ComPtr<IDMLDevice1> dmlDevice1;
+            DMLX_THROW_IF_FAILED(m_dmlDevice->QueryInterface(IID_PPV_ARGS(&dmlDevice1)));
+            DML_EXECUTION_FLAGS executionFlags = GetExecutionFlags();
+            ORT_THROW_IF_FAILED(dmlDevice1->CompileGraph(&graphDesc, executionFlags, IID_PPV_ARGS(&m_compiledOperator)));
 
             UINT64 persistentResourceSize = m_compiledOperator->GetBindingProperties().PersistentResourceSize;
             if (persistentResourceSize > 0)

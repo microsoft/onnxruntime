@@ -59,6 +59,7 @@ def add_github_dep(name, parsed_url):
         if dep not in git_deps:
             git_deps[dep] = name
     else:
+        # TODO: support urls like: https://github.com/onnx/onnx-tensorrt/archive/refs/tags/release/7.1.zip
         if len(segments) == 5:
             tag = PurePosixPath(segments[4]).stem
             if tag.endswith(".tar"):
@@ -72,6 +73,7 @@ def add_github_dep(name, parsed_url):
             return
         # Make a REST call to convert to tag to a git commit
         url = "https://api.github.com/repos/%s/%s/git/refs/tags/%s" % (org_name, repo_name, tag)
+        print("requesting %s ..." % url)
         res = requests.get(url, auth=(args.username, args.token))
         response_json = res.json()
         tag_object = response_json["object"]
@@ -148,7 +150,6 @@ proc = subprocess.run(
         "submodule",
         "foreach",
         "--quiet",
-        "--recursive",
         "'{}' '{}' $toplevel/$sm_path".format(
             normalize_path_separators(sys.executable),
             normalize_path_separators(os.path.join(SCRIPT_DIR, "print_submodule_info.py")),

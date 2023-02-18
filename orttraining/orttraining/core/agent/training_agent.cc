@@ -4,6 +4,8 @@
 #include "orttraining/core/agent/training_agent.h"
 #include "core/framework/utils.h"
 #include "core/framework/feeds_fetches_manager.h"
+#include "core/framework/partial_graph_execution_state.h"
+#include "core/framework/stream_execution_context.h"
 
 namespace onnxruntime {
 namespace training {
@@ -23,11 +25,9 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   std::vector<std::string> bw_feed_names;
 
   size_t break_point = 0;
-  const SequentialExecutionPlan& seq_exec_plan = *(session_state.GetExecutionPlan());
-  const auto& exec_plan_vec = seq_exec_plan.execution_plan;
-  for (size_t program_counter = 0; program_counter < exec_plan_vec.size(); program_counter += 1) {
-    const auto& node_exec_plan = exec_plan_vec[program_counter];
-    auto node_index = node_exec_plan.node_index;
+  auto* plan = session_state.GetExecutionPlan();
+  auto& training_node_execution_order = plan->node_execution_order_in_training;
+  for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));
       for (const auto& node_arg : node.InputDefs()) {
@@ -43,7 +43,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
   }
 
   fw_program_counter_end_ = break_point;
-  bw_program_counter_end_ = exec_plan_vec.size();
+  bw_program_counter_end_ = training_node_execution_order.size();
 
   CreateAndInitializeFeedsFetchesManager(session_state, fw_feed_names, fw_fetches_names, fw_outputs_device_info,
                                          fw_feeds_fetches_manager_);

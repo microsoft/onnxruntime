@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "orttraining/training_ops/cpu/optimizer/adamw/adamw.h"
+#include "orttraining/training_ops/cpu/optimizer/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/common.h"
@@ -71,32 +72,6 @@ Status AdamWOptimizerBase::PrepareForCompute(OpKernelContext* ctx, AdamWOptimize
   return Status::OK();
 }
 
-Status AdamWOptimizerBase::GenerateOutputs(OpKernelContext* ctx, size_t number_of_values,
-                                           const TensorSeq* values, TensorSeq* updated_values) const {
-  // Return if the output edge is not fetched.
-  if (updated_values == nullptr) {
-    return Status::OK();
-  }
-
-  bool is_same_buffer = const_cast<TensorSeq*>(values) == updated_values;
-  if (!is_same_buffer) {
-    AllocatorPtr alloc;
-    ORT_ENFORCE(ctx->GetTempSpaceAllocator(&alloc).IsOK(), "AdamWOptimizer: Unable to get an allocator.");
-
-    updated_values->SetType(values->DataType());
-    updated_values->Reserve(number_of_values);
-    for (size_t input_idx = 0; input_idx < number_of_values; ++input_idx) {
-      const Tensor& source_tensor = values->Get(input_idx);
-      Tensor target_tensor(source_tensor.DataType(),
-                           source_tensor.Shape(), alloc);
-      ORT_RETURN_IF_ERROR(CopyInputTensorToOutputTensor(source_tensor, target_tensor));
-      updated_values->Add(std::move(target_tensor));  // Add will check for type consistency
-    }
-  }
-
-  return Status::OK();
-}
-
 ONNX_OPERATOR_KERNEL_EX(
     AdamWOptimizer,
     kMSDomain,
@@ -157,12 +132,6 @@ Status AdamWOptimizer<T>::AdamWComputeMode1(Tensor& weight, Tensor& gradient, Te
 }
 
 template <typename T>
-Status AdamWOptimizer<T>::CopyInputTensorToOutputTensor(const Tensor& source_tensor, Tensor& dest_tensor) const {
-  CopyCpuTensor(&source_tensor, &dest_tensor);
-  return Status::OK();
-}
-
-template <typename T>
 Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
   AdamWOptimizerBase::Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(ctx, p));
@@ -217,9 +186,15 @@ Status AdamWOptimizer<T>::Compute(OpKernelContext* ctx) const {
     *updated_flag_ptr = 0;
   }
 
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.weights, p.updated_weights));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.momentums_1, p.updated_momentums_1));
-  ORT_RETURN_IF_ERROR(GenerateOutputs(ctx, p.num_of_weights, p.momentums_2, p.updated_momentums_2));
+  if (p.updated_weights != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCPUBuffer(ctx, p.num_of_weights, p.weights, p.updated_weights));
+  }
+  if (p.updated_momentums_1 != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCPUBuffer(ctx, p.num_of_weights, p.momentums_1, p.updated_momentums_1));
+  }
+  if (p.updated_momentums_2 != nullptr) {
+    ORT_RETURN_IF_ERROR(CopyIfNotSameCPUBuffer(ctx, p.num_of_weights, p.momentums_2, p.updated_momentums_2));
+  }
 
   return Status::OK();
 }

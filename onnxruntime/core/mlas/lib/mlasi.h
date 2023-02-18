@@ -107,6 +107,8 @@ Abstract:
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
+#include "core/framework/float16.h"
+
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
 class MLASCPUIDInfo
@@ -120,6 +122,8 @@ class MLASCPUIDInfo
 
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+    bool HasFp16VectorAcceleration() const { return has_fp16_; }
 
     uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
 
@@ -135,6 +139,7 @@ class MLASCPUIDInfo
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
+    bool has_fp16_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -179,7 +184,49 @@ enum MlasUArch {
 
 #endif // MLAS_TARGET_ARM64
 
-#endif // BUILD_MLAS_NO_ONNXRUNTIME
+//
+// Define MLAS_FP16
+//
+#include "mlas_float16.h"
+
+namespace onnxruntime
+{
+struct MLFloat16 {
+    uint16_t val{0};
+
+    MLFloat16() = default;
+    explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+    explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+
+    float ToFloat() const { return MLAS_Half2Float(val); }
+
+    operator float() const { return ToFloat(); }
+
+    MLFloat16& operator=(float ff)
+    {
+        val = MLAS_Float2Half(ff);
+        return *this;
+    }
+};
+
+inline bool
+operator==(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val == right.val;
+}
+
+inline bool
+operator!=(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val != right.val;
+}
+
+}
+
+#endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
+
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -700,9 +747,9 @@ extern "C" {
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -735,6 +782,9 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchSse41;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAvx2;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8U8DispatchAvx2;
+#ifdef MLAS_AMX_SUPPORTED
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8S8DispatchAmx;
+#endif
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmX8S8DispatchNeon;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUdot;
@@ -987,7 +1037,7 @@ MlasPartitionWork(
 #if defined(_MSC_VER) && !defined(__clang__)
   #pragma warning(push)
   // VC++ suggests we can attempt to make 'MlasBitsOfFp32' constexpr, but it is not valid.
-  #pragma warning(disable:26497) 
+  #pragma warning(disable:26497)
 #endif
 
 MLAS_FORCEINLINE
@@ -2061,4 +2111,51 @@ MlasReadTimeStampCounter(void)
     return 0;
 #endif
 #endif
+}
+
+//
+// Aligned buffer for GEMM packing, etc.
+//
+
+
+constexpr size_t ThreadedBufAlignment = 64;
+extern thread_local size_t ThreadedBufSize;
+#ifdef _MSC_VER
+extern thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder;
+#else
+extern thread_local std::unique_ptr<uint8_t, decltype(&free)> ThreadedBufHolder;
+#endif
+
+MLAS_FORCEINLINE
+constexpr size_t
+UpAlignSize(size_t size)
+{
+    size = (size + ThreadedBufAlignment - 1) / ThreadedBufAlignment;
+    return size * ThreadedBufAlignment;
+}
+
+
+MLAS_FORCEINLINE
+void
+MlasThreadedBufAlloc(size_t size)
+{
+    if (size > ThreadedBufSize) {
+#ifdef _MSC_VER
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(_aligned_malloc(size, ThreadedBufAlignment)));
+#elif (__STDC_VERSION__ >= 201112L) && !defined(__APPLE__)
+        ThreadedBufHolder.reset(
+            reinterpret_cast<uint8_t*>(aligned_alloc(ThreadedBufAlignment, size)));
+#else
+	// aligned_alloc unavailable macos 10.14 or earlier
+        void* ptr;
+        int err = posix_memalign(&ptr, ThreadedBufAlignment, size);
+        if (err != 0) {
+            ptr = nullptr;
+        }
+        ThreadedBufHolder.reset(reinterpret_cast<uint8_t*>(ptr));
+#endif
+
+        ThreadedBufSize = size;
+    }
 }

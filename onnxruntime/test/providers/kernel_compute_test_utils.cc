@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 
 #include "test/providers/kernel_compute_test_utils.h"
 
@@ -57,7 +57,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(0, OrtMemTypeDefault), gpu_value,
+                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), gpu_value,
                            tensor.Strides());
       ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
       initializer_map[name] = gpu_value;
@@ -100,7 +100,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
                                initializer_map[input_data_[static_cast<size_t>(pair.first)].def_.Name()]
                                    .GetMutable<Tensor>()
                                    ->MutableDataRaw(),
-                               execution_providers.Get(ep_type)->GetAllocator(0, OrtMemTypeDefault)->Info(), output);
+                               execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault)->Info(), output);
           is_may_strided_output = true;
           break;
         }
@@ -108,7 +108,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       ASSERT_TRUE(is_may_strided_output);
     } else {
       Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->GetAllocator(0, OrtMemTypeDefault), output);
+                           execution_providers.Get(ep_type)->GetAllocator(OrtMemTypeDefault), output);
     }
     outputs.emplace_back(output);
   }
@@ -122,8 +122,16 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   }
 
   // Execute the kernel and fetch outputs.
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 6387)
+#endif
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, DefaultLoggingManager().DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, DefaultLoggingManager().DefaultLogger());
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
   ASSERT_STATUS_OK(kernel->Compute(&op_kernel_context));
   ASSERT_STATUS_OK(frame.GetOutputs(outputs));
 
@@ -152,7 +160,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->GetAllocator(0, OrtMemTypeDefault), cpu_value,
+                             execution_providers.Get(cpu_ep_type)->GetAllocator(OrtMemTypeDefault), cpu_value,
                              tensor.Strides());
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }

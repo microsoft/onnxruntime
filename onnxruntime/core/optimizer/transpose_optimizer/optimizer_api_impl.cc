@@ -614,7 +614,7 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
 
   output_args.reserve(num_outputs);
   for (size_t i = 0; i < num_outputs; ++i) {
-    std::string output = graph.GenerateNodeArgName(inputs.empty() ? "" : std::string(inputs.front()) + name + "_out" + std::to_string(i));
+    std::string output = graph.GenerateNodeArgName(name + "_out" + std::to_string(i));
     NodeArg* arg = &graph.GetOrCreateNodeArg(output, nullptr);
     output_args.push_back(arg);
   }
@@ -645,6 +645,12 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
   for (NodeArg* arg : output_args) {
     graph.UpdateProducerNode(arg->Name(), node.Index());
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // add schema to make it equivalent with the other nodes in the graph created by Graph::Resolve()
+  // EPs may do kernel lookup during GetCapability which requires the schema
+  graph.SetOpSchemaFromRegistryForNode(node);
+#endif
 
   return node;
 }
@@ -776,7 +782,7 @@ void ApiGraph::MoveOutput(api::NodeRef& src_node, size_t src_idx, api::NodeRef& 
 
   graph_utils::GraphEdge::RemoveGraphEdges(graph_, output_edges);
 
-  std::string new_name = graph_.GenerateNodeArgName(node_arg->Name());
+  std::string new_name = graph_.GenerateNodeArgName(src_ort_node.Name());
   src_output_defs[src_idx] = &graph_.GetOrCreateNodeArg(new_name, nullptr);
   graph_.UpdateProducerNode(new_name, src_node_idx);
 }
@@ -830,7 +836,7 @@ namespace layout_transformer {
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
-#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
+#if !defined(USE_CUDA) && !defined(USE_ROCM)
     std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
 #else
     std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
@@ -844,7 +850,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {
@@ -909,18 +915,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      [[maybe_unused]] auto new_node_ref =
-        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
-
-#if !defined(ORT_MINIMAL_BUILD)
-      // Set the schema if one is available. This keeps the node equivalent with the state of the original ONNX
-      // node (if possible - some replacement nodes do not have a schema).
-      //
-      Node& new_node = NodeFromApiNode(*new_node_ref);
-      // add schema if available.
-      // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
-      graph.SetOpSchemaFromRegistryForNode(new_node);
-#endif
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }
   }

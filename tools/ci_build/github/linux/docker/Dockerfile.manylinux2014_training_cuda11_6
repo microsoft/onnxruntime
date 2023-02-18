@@ -165,7 +165,7 @@ CMD ["/bin/bash"]
 
 #Build manylinux2014 docker image end
 ARG PYTHON_VERSION=3.9
-ARG TORCH_VERSION=1.12.1
+ARG TORCH_VERSION=1.13.1
 ARG OPSET_VERSION=15
 ARG INSTALL_DEPS_EXTRA_ARGS
 
@@ -174,7 +174,11 @@ ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && \
     /tmp/scripts/manylinux/install_centos.sh && \
     /tmp/scripts/install_os_deps.sh -d gpu $INSTALL_DEPS_EXTRA_ARGS && \
-    /tmp/scripts/install_ninja.sh && \
+    /tmp/scripts/install_rust.sh
+
+ENV PATH="/root/.cargo/bin/:$PATH"
+
+RUN /tmp/scripts/install_ninja.sh && \
     /tmp/scripts/install_python_deps.sh -d gpu -v 11.6 -p $PYTHON_VERSION -h $TORCH_VERSION $INSTALL_DEPS_EXTRA_ARGS && \
     rm -rf /tmp/scripts
 

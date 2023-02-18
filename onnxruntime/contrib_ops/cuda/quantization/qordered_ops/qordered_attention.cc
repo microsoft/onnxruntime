@@ -49,7 +49,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
 
-Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index) {
+Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr alloc, int qkv_index, cudaStream_t cuda_stream) {
   ++qkv_weight_const_count_;
   ORT_ENFORCE(tensor.Shape().NumDimensions() == 2, "QKV weight must be 2d tensors!");
   input_hidden_size_ = (input_hidden_size_ == 0 ? tensor.Shape()[0] : input_hidden_size_);
@@ -61,7 +61,7 @@ Status QOrderedAttention::PutIntoMergedWeight(const Tensor& tensor, AllocatorPtr
   auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(((int8_t*)merged_qkv_weight_.get()) + (offset * input_hidden_size_),
                                        tensor.Data<int8_t>(), qkv_hidden_sizes_[qkv_index] * input_hidden_size_,
-                                       cudaMemcpyDeviceToDevice, Stream()));
+                                       cudaMemcpyDeviceToDevice, cuda_stream));
   return Status::OK();
 }
 
@@ -75,11 +75,11 @@ Status QOrderedAttention::PutIntoMergedWeightScale(const Tensor& tensor, Allocat
   auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
   float* target = ((float*)merged_qkv_alpha_.get()) + offset;
   int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
-  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), tensor.Shape().IsScalar() ? 0 : 1, target, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasScopy(DefaultCublasHandle(), count, tensor.Data<float>(), tensor.Shape().IsScalar() ? 0 : 1, target, 1));
   ORT_ENFORCE(const_scale_input_ > 0.0f && const_scale_qkv_layer_[qkv_index] > 0.0f,
               "input scale and respective qkv gemm scale must be positive constant!");
   float scale = static_cast<float>((double)const_scale_input_ / const_scale_qkv_layer_[qkv_index]);
-  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasSscal(DefaultCublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
@@ -93,10 +93,10 @@ Status QOrderedAttention::PutIntoMergedBias(const Tensor& tensor, AllocatorPtr a
   auto offset = std::accumulate(&qkv_hidden_sizes_[0], &qkv_hidden_sizes_[qkv_index], 0LL);
   float* target = ((float*)merged_qkv_bias_.get()) + offset;
   int count = gsl::narrow_cast<int>(qkv_hidden_sizes_[qkv_index]);
-  CUBLAS_RETURN_IF_ERROR(cublasScopy(CublasHandle(), count, tensor.Data<float>(), 1, target, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasScopy(DefaultCublasHandle(), count, tensor.Data<float>(), 1, target, 1));
   ORT_ENFORCE(const_scale_qkv_layer_[qkv_index] > 0.0f, "qkv gemm scale should be positive constant at qkv_index", qkv_index);
   float scale = static_cast<float>(1.0 / const_scale_qkv_layer_[qkv_index]);
-  CUBLAS_RETURN_IF_ERROR(cublasSscal(CublasHandle(), count, &scale, target, 1));
+  CUBLAS_RETURN_IF_ERROR(cublasSscal(DefaultCublasHandle(), count, &scale, target, 1));
   return Status::OK();
 }
 
@@ -111,7 +111,7 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
     const_scale_qkv_layer_[input_idx - InputIds::Scale_Q_Gemm] = *tensor.Data<float>();
   } else if (input_idx >= InputIds::Q_Weight && input_idx < InputIds::Q_Weight + 3) {
     is_packed = true;
-    ORT_RETURN_IF_ERROR(PutIntoMergedWeight(tensor, alloc, input_idx - InputIds::Q_Weight));
+    ORT_RETURN_IF_ERROR(PutIntoMergedWeight(tensor, alloc, input_idx - InputIds::Q_Weight, nullptr));
   } else if (input_idx >= InputIds::Scale_Q_Weight && input_idx < InputIds::Scale_Q_Weight + 3) {
     is_packed = true;
     ORT_RETURN_IF_ERROR(PutIntoMergedWeightScale(tensor, alloc, input_idx - InputIds::Scale_Q_Weight));
@@ -123,9 +123,10 @@ Status QOrderedAttention::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
     double base = std::exp((double)scale / sqrt(qkv_hidden_sizes_[0] / static_cast<double>(num_heads_)));
     auto* softmax_lookup_data = alloc->Alloc(256 * sizeof(float));
     softmax_lookup_ = BufferUniquePtr(softmax_lookup_data, BufferDeleter(alloc));
-    ORT_RETURN_IF_ERROR(BuildTableForSoftmaxPowerOf(Stream(), base, (float*)softmax_lookup_.get()));
+    ORT_RETURN_IF_ERROR(BuildTableForSoftmaxPowerOf(nullptr, base, (float*)softmax_lookup_.get()));
   }
 
+  cudaStreamSynchronize(nullptr);
   return Status::OK();
 }
 
@@ -156,7 +157,7 @@ inline void debug_print([[maybe_unused]] const T* arr,
 
 #endif
 
-QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true, true) {
+QOrderedAttention::QOrderedAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11040
   input_hidden_size_ = 0;
   int cuda_runtime_version = 0;
@@ -208,12 +209,10 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   const Tensor* mask_index = context->Input<Tensor>(InputIds::Mask_Index);
 
   auto& device_prop = GetDeviceProp();
-  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), &merged_weights_shape, merged_bias_shape,
+  ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(), merged_weights_shape, merged_bias_shape,
                                   mask_index,
                                   nullptr,  // past
-                                  nullptr,  // extra_add_qk
-                                  nullptr,  // key
-                                  nullptr,  // value
+                                  nullptr,  // relative_position_bias
                                   nullptr,  // parameters
                                   device_prop.maxThreadsPerBlock));
 
@@ -250,7 +249,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int64_t size_of_attention_scores = ((int64_t)batch_size) * num_heads_ * sequence_length * sequence_length;
 
   // transposed qkv_layer,  union(stacked, attention probs + attention scores)
-  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>((int64_t)m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores));
+  auto gemm_buffer_quantized = GetScratchBuffer<int8_t>((int64_t)m * n + std::max((int64_t)m * n, 2 * size_of_attention_scores), context->GetComputeStream());
 
   int8_t* stacked_qkv_layers = gemm_buffer_quantized.get() + ((int64_t)m * n);
   int8_t* tranposed_qkv_layers = gemm_buffer_quantized.get();
@@ -262,7 +261,7 @@ Status QOrderedAttention::ComputeInternal(OpKernelContext* context) const {
   int8_t* attention_probs = stacked_qkv_layers;                              // rewrite to stacked_qkv_layers after they are transposed
   int8_t* context_layer = k_layer;                                           // rewrite k_layer after it is not used, it is float value
 
-  cudaStream_t stream = Stream();
+  cudaStream_t stream = Stream(context);
   // Gemm result (M, N) = alpha * input * weights + scale_bias.
   ORT_RETURN_IF_ERROR(QOrdered_MatMul(cublasLt, stream, device_prop,
                                       1, m, n, k,

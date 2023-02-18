@@ -1173,9 +1173,6 @@ void DebugTrap();
 void Check(const OpTester::Data& expected_data, const Tensor& output_tensor, const std::string& provider_type);
 
 inline const Tensor& FetchTensor(const OrtValue& ort_value) {
-  if (ort_value.Fence()) {
-    ort_value.Fence()->BeforeUsingAsInput(onnxruntime::kCpuExecutionProvider, 0);
-  }
   return ort_value.Get<Tensor>();
 }
 

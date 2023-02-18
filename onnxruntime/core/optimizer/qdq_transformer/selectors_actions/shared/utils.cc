@@ -34,31 +34,30 @@ static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
+          {"Split", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}},
-          {"Split", {}}};
+          {"Unsqueeze", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
-          {"Softmax", {}},
-          {"Sqrt", {}},
-          {"Tanh", {}},
+          {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
           {"Relu", {}},
-          {"LeakyRelu", {}},
-          // Add Slice here instead of MiscOpVersionsMap which requires input & output have same quantization parameter
+          {"Sigmoid", {}},
           {"Slice", {}},
-          {"Sigmoid", {}}};
+          {"Softmax", {}},
+          {"Sqrt", {}},
+          {"Tanh", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
           {"Div", {}},
-          {"Sub", {}},
+          {"Mul", {}},
           {"Pow", {}},
-          {"Mul", {}}};
+          {"Sub", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}}};
@@ -134,14 +133,6 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
-void RegisterWhereSelector(Selectors& qdq_selectors) {
-  /* register selector for where op */
-  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<WhereNodeGroupSelector>();
-  OpVersionsAndSelector::OpVersionsMap where_op_versions_map{{"Where", {}}};
-  qdq_selectors.RegisterSelector(std::move(where_op_versions_map),
-                                 std::move(selector));
-}
-
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
@@ -151,7 +142,6 @@ void SelectorManager::CreateSelectors() {
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
-  RegisterWhereSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

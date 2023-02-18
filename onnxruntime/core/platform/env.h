@@ -82,7 +82,7 @@ struct ThreadOptions {
   // that are contained in a given physical core with the same index as the thread. ORT does not set any affinity
   // to the thread that is considered main (the thread that initiates the creation of the TP).
   // The process that owns the thread may consider setting its affinity.
-  std::vector<LogicalProcessors> affinity;
+  std::vector<LogicalProcessors> affinities;
 
   // Set or unset denormal as zero.
   bool set_denormal_as_zero = false;
@@ -139,8 +139,7 @@ class Env {
   /// <returns>Number of physical cores</returns>
   virtual int GetNumPhysicalCpuCores() const = 0;
 
-  // This function currently doesn't support systems with more than 64 logical processors on Windows
-  virtual std::vector<LogicalProcessors> GetThreadAffinityMasks() const = 0;
+  virtual std::vector<LogicalProcessors> GetDefaultThreadAffinities() const = 0;
 
   /// \brief Returns the number of micro-seconds since the Unix epoch.
   virtual uint64_t NowMicros() const {
@@ -231,7 +230,7 @@ class Env {
   // OK from the function.
   // Otherwise returns nullptr in "*handle" and an error status from the
   // function.
-  virtual common::Status LoadDynamicLibrary(const std::string& library_filename, bool global_symbols, void** handle) const = 0;
+  virtual common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols, void** handle) const = 0;
 
   virtual common::Status UnloadDynamicLibrary(void* handle) const = 0;
 
@@ -239,7 +238,7 @@ class Env {
   //
   // Used to help load other shared libraries that live in the same folder as the core code, for example
   // The DNNL provider shared library. Without this path, the module won't be found on windows in all cases.
-  virtual std::string GetRuntimePath() const { return ""; }
+  virtual PathString GetRuntimePath() const { return PathString(); }
 
   // \brief Get a pointer to a symbol from a dynamic library.
   //

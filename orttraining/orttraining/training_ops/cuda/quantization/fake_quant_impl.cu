@@ -3,6 +3,7 @@
 
 #include "orttraining/training_ops/cuda/quantization/fake_quant_impl.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/elementwise_impl.cuh"
 
 namespace onnxruntime {
 namespace cuda {
@@ -77,6 +78,37 @@ void FakeQuantPerTensor(cudaStream_t stream, const int64_t num_elements, const T
 SPECIALIZED_FAKEQUANT_IMPL(float)
 
 #undef SPECIALIZED_FAKEQUANT_IMPL
+
+template <typename T>
+struct FakeQuantGradFunctor {
+  FakeQuantGradFunctor(const T* dY_data, const bool* gradient_mask_data)
+      : dY_data_(dY_data),
+        gradient_mask_data_(gradient_mask_data) {}
+
+  __device__ __inline__ T operator()(CUDA_LONG idx) const {
+    // If gradient_mask is true (i.e. quantization was in range), return dY, else return 0
+    return gradient_mask_data_[idx] ? dY_data_[idx] : static_cast<T>(0);
+  }
+
+  const T* dY_data_;
+  const bool* gradient_mask_data_;
+};
+
+template <typename T>
+void FakeQuantGradImpl(cudaStream_t stream, const int64_t num_elements, const T* dY_data,
+                       const bool* gradient_mask_data, T* dX_data) {
+  FakeQuantGradFunctor<T> fake_quant_grad_functor(dY_data, gradient_mask_data);
+  LaunchElementwiseKernel<T, decltype(fake_quant_grad_functor)>(
+      stream, dX_data, fake_quant_grad_functor, num_elements);
+}
+
+#define SPECIALIZED_FAKEQUANTGRAD_IMPL(T)                                             \
+  template void FakeQuantGradImpl<T>(cudaStream_t stream, const int64_t num_elements, \
+                                     const T* dY_data, const bool* gradient_mask_data, T* dX_data);
+
+SPECIALIZED_FAKEQUANTGRAD_IMPL(float)
+
+#undef SPECIALIZED_FAKEQUANTGRAD_IMPL
 
 }  // namespace cuda
 }  // namespace onnxruntime

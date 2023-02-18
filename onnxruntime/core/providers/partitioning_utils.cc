@@ -96,9 +96,9 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
   ORT_ENFORCE(is_node_supported_fn, "Node support test is required.");
 
   /*
-  * NOTE: when making change here PLEASE update the logic that replicates the C++ partitioning in 
-  * /tools/python/util/mobile_helpers/usability_checker.py:check_partitioning
-  */
+   * NOTE: when making change here PLEASE update the logic that replicates the C++ partitioning in
+   * /tools/python/util/mobile_helpers/usability_checker.py:check_partitioning
+   */
   std::vector<std::vector<const Node*>> supported_groups{};
 
   // number of inputs from unprocessed nodes (in-degree) per node

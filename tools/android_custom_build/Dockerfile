@@ -4,7 +4,7 @@
 # --------------------------------------------------------------
 # Dockerfile for ONNX Runtime Android package build environment
 
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -14,16 +14,16 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip
 
 # install Java
-RUN apt-get install --yes --no-install-recommends openjdk-8-jdk-headless
+RUN apt-get install --yes --no-install-recommends openjdk-11-jdk-headless
 
 ENV ANDROID_HOME=/opt/android-sdk
-ENV NDK_VERSION=24.0.8215888
+ENV NDK_VERSION=25.0.8775105
 ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 # install Android command line tools
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \
-  --checksum=sha-256=d71f75333d79c9c6ef5c39d3456c6c58c613de30e6a751ea0dbd433e8f8b9cbf \
-  https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip && \
+  --checksum=sha-256=0bebf59339eaa534f4217f8aa0972d14dc49e7207be225511073c661ae01da0a \
+  https://dl.google.com/android/repository/commandlinetools-linux-9123335_latest.zip && \
   unzip /tmp/cmdline-tools.zip -d /tmp/cmdline-tools && \
   mkdir -p ${ANDROID_HOME}/cmdline-tools && \
   mv /tmp/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest
@@ -46,9 +46,9 @@ RUN apt-get install --yes --no-install-recommends \
   python3-wheel
 
 # cmake
-RUN CMAKE_VERSION=3.21.0 && \
+RUN CMAKE_VERSION=3.25.2 && \
   aria2c -q -d /tmp -o cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
-  --checksum=sha-256=d54ef6909f519740bc85cec07ff54574cd1e061f9f17357d9ace69f61c6291ce \
+  --checksum=sha-256=783da74f132fd1fea91b8236d267efa4df5b91c5eec1dea0a87f0cf233748d99 \
   https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
@@ -71,3 +71,6 @@ ARG ONNXRUNTIME_REPO=https://github.com/microsoft/onnxruntime.git
 ARG ONNXRUNTIME_BRANCH_OR_TAG=main
 RUN git clone --single-branch --branch=${ONNXRUNTIME_BRANCH_OR_TAG} --recurse-submodules ${ONNXRUNTIME_REPO} \
   /workspace/onnxruntime
+
+# add scripts
+COPY scripts /workspace/scripts

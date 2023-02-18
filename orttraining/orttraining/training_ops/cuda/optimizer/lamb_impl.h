@@ -6,6 +6,7 @@
 #include <cuda_runtime.h>
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/multi_tensor/common.cuh"
+#include "core/framework/stream_handles.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -107,7 +108,8 @@ struct LambMultiTensorReductionFunctor {
       ChunkGroup<4> chunk_group,
       const CudaKernel& kernel,
       void* reduction_buffer,
-      size_t reduction_buffer_size);
+      size_t reduction_buffer_size,
+      onnxruntime::Stream* ort_stream);
 };
 
 // Lamb's reduction mapping [w, d] to [w_norm, d_norm] spans multiples thread blocks
