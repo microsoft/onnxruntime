@@ -36,7 +36,7 @@ class AttentionCPUBase : public AttentionBase {
                         OpKernelContext* context) const {
     // const int kv_sequence_length = sequence_length;
     std::cout << "Q (in apply):" << std::endl;
-    for(int i = 0; i < batch_size; i++) {
+    for(int i = 0; i < 1; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
       onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
@@ -47,7 +47,7 @@ class AttentionCPUBase : public AttentionBase {
     // std::cout << std::endl;
 
     std::cout << "K (in apply):" << std::endl;
-    for(int i = 0; i < batch_size; i++) {
+    for(int i = 0; i < 1; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
       onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
@@ -130,7 +130,7 @@ class AttentionCPUBase : public AttentionBase {
                              T* mask_data,                              // buffer for mask data.
                              bool has_unidirectional,                   // has unidirectional mask
                              int batch_size,                            // batch size of self-attention
-                             int sequence_length,                       // sequence length of self-attention
+                             int sequence_length,                       // sequence length of self-attention (S)
                              int kv_sequence_length,                    // sequence length of cross-attention (L)
                              int past_sequence_length,                  // sequence length of past state
                              int head_size,                             // head size of self-attention
@@ -150,12 +150,13 @@ class AttentionCPUBase : public AttentionBase {
     //   std::cout << *(K + i) << ", ";
     // }
     // std::cout << std::endl;
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
+    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;      // P x H
+    const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;        // S x H
+    const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;    // L x H
+    const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;               // T x H
 
-    const int total_sequence_length = past_sequence_length + kv_sequence_length;             // T = P + L
-    const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;  // P x H
-    const size_t q_chunk_length = static_cast<size_t>(sequence_length) * head_size;          // S x H
-    const size_t input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;   // L x H
-    const size_t present_chunk_length = past_chunk_length + input_chunk_length;              // T x H
+    std::cout << "Lengths: " << total_sequence_length << ", " << past_chunk_length << ", " << q_input_chunk_length << ", " << kv_input_chunk_length << ", " << present_chunk_length << std::endl;
 
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
@@ -190,7 +191,7 @@ class AttentionCPUBase : public AttentionBase {
                    static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
           }
 
-          const T* k = K + input_chunk_length * i;
+          const T* k = K + kv_input_chunk_length * i;
           if (nullptr != present) {
             // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
             k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
@@ -202,7 +203,7 @@ class AttentionCPUBase : public AttentionBase {
           // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
           // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                    Q + q_chunk_length * i, k, 1.0,
+                                    Q + q_input_chunk_length * i, k, 1.0,
                                     output, nullptr);
 
           // Fix unidirectional mask to be parity with huggingface implementation.
@@ -226,7 +227,7 @@ class AttentionCPUBase : public AttentionBase {
 
     //  attention_probs(B, N, S, T) = Softmax(attention_probs)
     std::cout << "Q x K' + mask:" << std::endl;
-    for(int i = 0; i < batch_size; i++) {
+    for(int i = 0; i < 1; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
       onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
@@ -256,13 +257,14 @@ class AttentionCPUBase : public AttentionBase {
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
-    const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
-    const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;  // P x H_v
-    const ptrdiff_t input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;   // L x H_v
-    const ptrdiff_t present_chunk_length = past_chunk_length + input_chunk_length;               // T x H_v
+    const int total_sequence_length = past_sequence_length + kv_sequence_length;                     // T = P + L
+    const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;      // P x H_v
+    const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;        // S x H_v
+    const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;    // L x H_v
+    const ptrdiff_t present_chunk_length = past_chunk_length + kv_input_chunk_length;                // T x H_v
 
     std::cout << "Softmax (in score):" << std::endl;
-    for(int i = 0; i < batch_size; i++) {
+    for(int i = 0; i < 1; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
       onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
@@ -273,7 +275,7 @@ class AttentionCPUBase : public AttentionBase {
     // std::cout << std::endl;
     
     std::cout << "V (in score):" << std::endl;
-    for(int i = 0; i < batch_size; i++) {
+    for(int i = 0; i < 1; i++) {
       std::cout << "[" << i << "]:" << std::endl;
       const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
       onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
@@ -296,13 +298,13 @@ class AttentionCPUBase : public AttentionBase {
 
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const T* v = V + input_chunk_length * i;
+        const T* v = V + kv_input_chunk_length * i;
         if (nullptr != present) {
           // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
           v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
         }
 
-        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + input_chunk_length * i;
+        T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
         ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
         math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
                         attention_probs + attention_probs_offset,

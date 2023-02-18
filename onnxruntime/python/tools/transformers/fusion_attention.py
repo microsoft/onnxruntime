@@ -407,31 +407,32 @@ class FusionAttention(Fusion):
 
                 # if q_mul is not None:
                 # Convert add_qk_str to float
-                cast_node_name = self.model.create_node_name("Cast")
-                add_qk_fp32 = helper.make_node(
-                    "Cast",
-                    inputs=[add_qk_str],
-                    outputs=[add_qk_str + "_float32"],
-                    name=cast_node_name,
-                    to=int(TensorProto.FLOAT),
-                )
+                # cast_node_name = self.model.create_node_name("Cast")
+                # add_qk_fp32 = helper.make_node(
+                #     "Cast",
+                #     inputs=[add_qk_str],
+                #     outputs=[add_qk_str + "_float32"],
+                #     name=cast_node_name,
+                #     to=int(TensorProto.FLOAT),
+                # )
+
                 # Convert 4d mask from (B,1,M,M) to (B,N,M,M)
                 # B = batch size, M = max sequence length, N = num heads
                 concat_node_name = self.model.create_node_name("Concat")
                 concat_add_qk_fp32 = helper.make_node(
                     "Concat",
-                    inputs=[add_qk_str + "_float32" for _ in range(num_heads)],
-                    outputs=[add_qk_str + "_float32_mask"],
+                    inputs=[add_qk_str for _ in range(num_heads)],
+                    outputs=[add_qk_str + "_mask"],
                     name=concat_node_name,
                     axis=1,
                 )
                 # Add new nodes to graph
-                self.nodes_to_add.append(add_qk_fp32)
+                # self.nodes_to_add.append(add_qk_fp32)
                 self.nodes_to_add.append(concat_add_qk_fp32)
-                self.node_name_to_graph_name[cast_node_name] = self.this_graph_name
+                # self.node_name_to_graph_name[cast_node_name] = self.this_graph_name
                 self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
                 # Add attention mask to attention node
-                attention_inputs.append(add_qk_str + "_float32_mask")
+                attention_inputs.append(add_qk_str + "_mask")
                 # else:
                 #     attention_inputs.append(add_qk_str)
 

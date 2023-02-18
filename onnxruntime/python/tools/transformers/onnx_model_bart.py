@@ -268,7 +268,12 @@ class FusionBartAttention(FusionAttention):
                 ["Expand", "Unsqueeze", "Unsqueeze", "Where"],
                 [1, 0, 0, 0],
             )
-            mask_index = self.attention_mask.process_mask(mask_nodes[0].output[-1])
+            mask_index = mask_nodes[0].output[-1]
+            # print("Add QK:", add_qk)
+            # print("Attn mask:", mask_nodes[0])
+            # mask_index = self.attention_mask.process_mask(mask_nodes[0].output[-1])
+            # self.attention_mask_index = mask_index
+            # print(mask_index)
 
         mha_inputs_no_bias_fused = []
         if decoder_cross_attention:
@@ -329,6 +334,40 @@ class FusionBartAttention(FusionAttention):
 
             # Use prune graph to remove mask nodes since they are shared by all attention nodes.
             self.prune_graph = True
+
+    # def apply(self):
+    #     FusionAttention.apply(self)
+
+    #     # Remove Cast to int32 applied by attention fusion for 4D attention mask
+    #     input_name_to_nodes = self.model.input_name_to_nodes()
+    #     output_name_to_node = self.model.output_name_to_node()
+
+    #     # Get nodes in Expand --> Cast --> Concat path
+    #     expand_node = output_name_to_node[self.attention_mask_index]
+    #     print(expand_node)
+    #     cast_int32_node = input_name_to_nodes[self.attention_mask_index][0]
+    #     print(cast_int32_node)
+    #     concat_node = input_name_to_nodes[cast_int32_node.output[0]][0]
+    #     print(concat_node)
+
+    #     # Set each input of Concat to output of Expand
+    #     for i in range(len(concat_node.input)):
+    #         concat_node.input[i] = expand_node.output[0]
+
+    #     # Rename Concat output to replace 'int32' label with 'float32' label
+    #     label_int32 = concat_node.output[0]
+    #     label_float32 = label_int32.replace("int", "float")
+    #     concat_node.output[0] = label_float32
+
+    #     # Update attention fusion inputs to take new mask name
+    #     attention_nodes = input_name_to_nodes[label_int32]
+    #     for attn_node in attention_nodes:
+    #         print(attn_node.input)
+    #         attn_node.input[5] = label_float32
+
+    #     # Remove Cast node from graph
+    #     self.model.remove_node(cast_int32_node)
+    #     self.model.update_graph()
 
 
 class FusionBartReshape(FusionReshape):
