@@ -254,7 +254,13 @@ public:
 
         constexpr uint32_t dftAxis = 1;
         constexpr bool dftIsInverse = false;
-        m_dftOperator.op = wil::MakeOrThrow<GpuDFTOperator>(m_d3dDevice.Get(), dftAxis, params.isOnesided, dftIsInverse);
+        m_dftOperator.op = wil::MakeOrThrow<GpuDFTOperator>(
+            m_d3dDevice.Get(), 
+            dftAxis, 
+            params.isOnesided, 
+            dftIsInverse, 
+            Dml::GetMlDataTypeFromDmlDataType(params.dataType)
+        );
 
         m_dftOperator.inputDims = { params.batchSize * params.frameCount, params.frameSize, 1 };
         m_dftOperator.outputDims = { params.batchSize * params.frameCount, params.frameDftElementCount, 2 };
@@ -543,8 +549,9 @@ public:
         // T1: tensor(float16), tensor(float), tensor(double), tensor(bfloat16)
         MLOperatorEdgeTypeConstrant t1Constraint;
         t1Constraint.typeLabel = "T1";
-        std::array<MLOperatorEdgeDescription, 1> t1AllowedEdges
+        std::array<MLOperatorEdgeDescription, 2> t1AllowedEdges
         {
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
         };
         t1Constraint.allowedTypes = t1AllowedEdges.data();
