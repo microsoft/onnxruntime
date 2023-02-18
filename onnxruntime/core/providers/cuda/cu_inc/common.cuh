@@ -496,5 +496,25 @@ __device__ __forceinline__ T WARP_SHFL_DOWN(T value, unsigned int delta, int wid
 #endif
 }
 
+struct __align__(8) Half4 {
+  half2 x;
+  half2 y;
+};
+
+__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
+  Half4 r;
+  r.x = a.x + b.x;
+  r.y = a.y + b.y;
+  return r;
+}
+
+__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
+  return make_float2(a.x + b.x, a.y + b.y);
+}
+
+__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
+  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
 }  // namespace cuda
 }  // namespace onnxruntime

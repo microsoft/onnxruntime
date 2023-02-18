@@ -1718,6 +1718,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    true /*use_scale*/);
 }
 
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 520
 TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -1762,6 +1763,7 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
                    {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
                    true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
+#endif
 
 TEST(AttentionTest, AttentionMask1DEndNoWord) {
   int batch_size = 2;
