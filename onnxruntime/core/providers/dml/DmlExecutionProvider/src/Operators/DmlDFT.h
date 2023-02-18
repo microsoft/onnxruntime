@@ -5,8 +5,15 @@
 
 #include "../External/D3DX12/d3dx12.h"
 
-// The shader header is produced using "fxc.exe dft_shader.hlsl -E DFT -T cs_5_0 -Zi /Fh"
-#include "GeneratedShaders/stockham.h"
+// The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
+namespace DFTFloat32 
+{ 
+    #include "GeneratedShaders/stockham.h" 
+}
+namespace DFTFloat16 
+{ 
+    #include "GeneratedShaders/stockham_fp16.h" 
+}
 
 #include <wrl/client.h>
 #include <wrl/implements.h>
@@ -62,7 +69,6 @@ namespace DFTHelpers {
         // Update the pending element count
         pendingElementCount = (dispatchedElementCount < elementCount) ? elementCount - dispatchedElementCount : 0;
     }
-
 }
 
 class GpuDFTOperator : public WRL::Base<IMLOperatorKernel>
@@ -140,13 +146,13 @@ private:
     };
 
 public:
-    GpuDFTOperator(ID3D12Device* device, uint32_t axis = 1, bool isOnesided = true, bool isInverse = false)
+    GpuDFTOperator(ID3D12Device* device, uint32_t axis = 1, bool isOnesided = true, bool isInverse = false, MLOperatorTensorDataType dataType = MLOperatorTensorDataType::Float)
      : m_device(device)
      , m_axis(axis)
      , m_isOnesided(isOnesided)
      , m_isInverse(isInverse)
     {
-        PrepareGpuResources();
+        PrepareGpuResources(dataType);
     }
 
     GpuDFTOperator(IMLOperatorKernelCreationContext* context)
@@ -169,10 +175,14 @@ public:
         ORT_THROW_IF_FAILED(context->GetAttribute("onesided", MLOperatorAttributeType::Int, 1, sizeof(int64_t), reinterpret_cast<void*>(&isOnesidedInt)));
         m_isOnesided = static_cast<bool>(isOnesidedInt);
 
-        PrepareGpuResources();
+        MLOperatorEdgeDescription edgeDesc;
+        ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
+        assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
+
+        PrepareGpuResources(edgeDesc.tensorDataType);
     }
 
-    void PrepareGpuResources()
+    void PrepareGpuResources(MLOperatorTensorDataType dataType)
     {
         // Compute root signature.
         const int uavCount = 2;
@@ -209,7 +219,31 @@ public:
         // Describe and create the compute pipeline state object (PSO).
         D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
         computePsoDesc.pRootSignature = m_rootSignature.Get();
-        computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(g_DFT, sizeof(g_DFT));
+
+        switch (dataType)
+        {
+            case MLOperatorTensorDataType::Float:
+            computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat32::g_DFT, sizeof(DFTFloat32::g_DFT));
+            break;
+
+            case MLOperatorTensorDataType::Float16:
+            {
+                D3D12_FEATURE_DATA_D3D12_OPTIONS4 featureOptions = {};
+                ORT_THROW_IF_FAILED(m_device->CheckFeatureSupport(
+                    D3D12_FEATURE_D3D12_OPTIONS4,
+                    &featureOptions,
+                    sizeof(featureOptions))
+                );
+
+                ORT_THROW_HR_IF(E_INVALIDARG, !featureOptions.Native16BitShaderOpsSupported);
+
+                computePsoDesc.CS = CD3DX12_SHADER_BYTECODE(DFTFloat16::g_DFT, sizeof(DFTFloat16::g_DFT));
+            }
+            break;
+
+            default:
+            ORT_THROW_HR(E_INVALIDARG);
+        }
 
         ORT_THROW_IF_FAILED(m_device->CreateComputePipelineState(&computePsoDesc, IID_ID3D12PipelineState, &m_pipelineState));
     }
@@ -230,12 +264,6 @@ public:
             context->GetOutputTensor(0, outputTensor.GetAddressOf());
 
             if (outputTensor->IsCpuData() || inputTensor->IsCpuData())
-            {
-                return E_UNEXPECTED;
-            }
-
-            if (outputTensor->GetTensorDataType() != MLOperatorTensorDataType::Float ||
-                inputTensor->GetTensorDataType() != MLOperatorTensorDataType::Float)
             {
                 return E_UNEXPECTED;
             }
@@ -702,7 +730,7 @@ public:
         t1Constraint.typeLabel = "T1";
         std::vector<MLOperatorEdgeDescription> t1AllowedEdges
         {
-            //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
             MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
             //MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Double },
         };
