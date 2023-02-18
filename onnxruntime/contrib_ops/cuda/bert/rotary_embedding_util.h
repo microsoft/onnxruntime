@@ -13,6 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
 #pragma once
 
@@ -22,6 +24,27 @@
 namespace onnxruntime {
 namespace cuda {
 
+struct __align__(8) Half4 {
+  half2 x;
+  half2 y;
+};
+
+__device__ __forceinline__ Half4 operator+(const Half4& a, const Half4& b) {
+  Half4 r;
+  r.x = a.x + b.x;
+  r.y = a.y + b.y;
+  return r;
+}
+
+__device__ __forceinline__ float2 operator+(const float2& a, const float2& b) {
+  return make_float2(a.x + b.x, a.y + b.y);
+}
+
+__device__ __forceinline__ float4 operator+(const float4& a, const float4& b) {
+  return make_float4(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
+}
+
+#ifndef USE_ROCM
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Float8_ {
@@ -1262,6 +1285,8 @@ __device__ __inline__ void write_smem_transpose(const float2& vec, float* smem, 
     smem[transpose_idx]              = vec.x;
     smem[smem_pitch + transpose_idx] = vec.y;
 }
+
+#endif
 
 }   // namespace onnxruntime
 }   // namespace cuda

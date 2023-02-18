@@ -19,7 +19,6 @@ set(contrib_ops_excluded_files
   "bert/relative_attn_bias.h"
   "bert/relative_attn_bias_impl.cu"
   "bert/relative_attn_bias_impl.h"
-  "bert/rotary_embedding_util.cc"
   "bert/skip_layer_norm.cc"
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"

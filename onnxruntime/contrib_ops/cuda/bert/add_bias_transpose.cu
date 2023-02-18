@@ -3,9 +3,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/add_bias_transpose.h"
-#ifndef USE_ROCM
 #include "contrib_ops/cuda/bert/rotary_embedding_util.h"
-#endif
 
 using namespace onnxruntime::cuda;
 
