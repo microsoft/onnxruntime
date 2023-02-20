@@ -94,7 +94,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     src_mem = sp.GetMemoryAndReshape(node.Input(IN_INPUT), src_md, dnnl_engine);
 
     // Make dst desc, must be same as src
-    auto dst_md = dnnl::memory::desc(src_md.dims(), node.Output(OUT_OUTPUT).Type(), dnnl::memory::format_tag::any);
+    auto dst_md = dnnl::memory::desc(src_md.get_dims(), node.Output(OUT_OUTPUT).Type(), dnnl::memory::format_tag::any);
 
     // Add src + skip
     {
@@ -105,8 +105,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       auto skip_mem = sp.GetMemoryAndReshape(node.Input(IN_SKIP), skip_md, dnnl_engine);
 
       // Create and add primitive
-      auto add_skip_d = dnnl::binary::desc(dnnl::algorithm::binary_add, src_md, skip_md, dst_md);
-      auto add_skip_pd = dnnl::binary::primitive_desc(add_skip_d, dnnl_engine);
+      auto add_skip_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_add, src_md, skip_md, dst_md);
       auto add_skip = dnnl::binary(add_skip_pd);
       std::unordered_map<int, dnnl::memory> add_skip_mem_map({{DNNL_ARG_SRC_0, src_mem}, {DNNL_ARG_SRC_1, skip_mem}, {DNNL_ARG_DST, src_mem}});
       sp.AddPrimitive(add_skip, add_skip_mem_map);
@@ -121,9 +120,9 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       // Move the bias to GPU if needed
       auto bias_mem = sp.GetMemoryAndReshape(node.Input(IN_SLN_BIAS), bias_md, dnnl_engine);
       // Get bias dims
-      auto bias_dims = bias_md.dims();
+      auto bias_dims = bias_md.get_dims();
       // Get src dims
-      auto src_dims = src_md.dims();
+      auto src_dims = src_md.get_dims();
 
       // To follow the spec means our bias will always have less dimensions that our input
       // so we add the extra dimensions, reshape it and let OneDNN broadcast the value
@@ -133,8 +132,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       bias_md = bias_md.reshape(bias_dims);
 
       // Create and add primitive
-      auto add_bias_d = dnnl::binary::desc(dnnl::algorithm::binary_add, src_md, bias_md, dst_md);
-      auto add_bias_pd = dnnl::binary::primitive_desc(add_bias_d, dnnl_engine);
+      auto add_bias_pd = dnnl::binary::primitive_desc(dnnl_engine, dnnl::algorithm::binary_add, src_md, bias_md, dst_md);
       auto add_bias = dnnl::binary(add_bias_pd);
       std::unordered_map<int, dnnl::memory> add_bias_mem_map({{DNNL_ARG_SRC_0, src_mem}, {DNNL_ARG_SRC_1, bias_mem}, {DNNL_ARG_DST, src_mem}});
       sp.AddPrimitive(add_bias, add_bias_mem_map);
@@ -174,10 +172,8 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   // Get epsilon to avoid zero division
   float epsilon = GetEpsilon(node);
-  // Operation desciptor
-  auto lnorm_desc = dnnl::layer_normalization_forward::desc(prop_kind, src_md, epsilon, op_flags);
   // Primitive desciptor
-  auto lnorm_pd = dnnl::layer_normalization_forward::primitive_desc(lnorm_desc, dnnl_engine);
+  auto lnorm_pd = dnnl::layer_normalization_forward::primitive_desc(dnnl_engine, prop_kind, src_md, src_md, epsilon, op_flags);
   // Primitive
   auto lnorm_prim = dnnl::layer_normalization_forward(lnorm_pd);
 
@@ -190,8 +186,8 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   if (node.Input(scale_pos).Type() != dnnl::memory::data_type::f32) {
     //  casting to fp32 if input with other data type
     auto gamma_md = gamma_mem.get_desc();
-    auto dims = gamma_md.dims();
-    auto strides = gamma_md.data.format_desc.blocking.strides;
+    auto dims = gamma_md.get_dims();
+    auto strides = gamma_md.get_strides();
     dnnl::memory::dims gamma_strides_vec;
     for (size_t i = 0; i < dims.size(); i++) {
       gamma_strides_vec.push_back(strides[i]);
@@ -210,8 +206,8 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     if (node.Input(shift_pos).Type() != dnnl::memory::data_type::f32) {
       //  casting to fp32 if input with other data type
       auto beta_md = beta_mem.get_desc();
-      auto dims = beta_md.dims();
-      auto strides = beta_md.data.format_desc.blocking.strides;
+      auto dims = beta_md.get_dims();
+      auto strides = beta_md.get_strides();
       dnnl::memory::dims beta_strides_vec;
       for (size_t i = 0; i < dims.size(); i++) {
         beta_strides_vec.push_back(strides[i]);
@@ -249,7 +245,7 @@ void DnnlLayerNorm::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
 void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   // Get input and evaluate
-  auto input_dims = sp.GetMemory(node.Input(IN_INPUT)).get_desc().dims();
+  auto input_dims = sp.GetMemory(node.Input(IN_INPUT)).get_desc().get_dims();
   auto input_dims_size = input_dims.size();
 
   // Check the inputs are supported by OneDNN, this is mandatory since sometimes
@@ -269,14 +265,14 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     }
 
     // Get skip and evaluate
-    auto skip_dims = sp.GetMemory(node.Input(IN_SKIP)).get_desc().dims();
+    auto skip_dims = sp.GetMemory(node.Input(IN_SKIP)).get_desc().get_dims();
     if (input_dims != skip_dims) {
       ORT_THROW("Input and skip dimmentions do not match");
     }
 
     // Check if bias was provided and evaluate
     if (node.Input(IN_SLN_BIAS).Exists()) {
-      auto bias_dims = sp.GetMemory(node.Input(IN_SLN_BIAS)).get_desc().dims();
+      auto bias_dims = sp.GetMemory(node.Input(IN_SLN_BIAS)).get_desc().get_dims();
       if (bias_dims.size() != 1) {
         ORT_THROW("Bias is expected to have 1 dimension, got ", bias_dims.size());
       }
@@ -297,7 +293,7 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   }
 
   // Get gamma and evaluate
-  auto gamma_dims = sp.GetMemory(node.Input(gamma_pos)).get_desc().dims();
+  auto gamma_dims = sp.GetMemory(node.Input(gamma_pos)).get_desc().get_dims();
   if (gamma_dims.size() != 1) {
     ORT_THROW("Gamma is expected to have 1 dimension, got ", gamma_dims.size());
   }
@@ -307,7 +303,7 @@ void DnnlLayerNorm::ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   // Check if shift was provided and evaluate
   if (node.Input(shift_pos).Exists()) {
-    auto beta_dims = sp.GetMemory(node.Input(shift_pos)).get_desc().dims();
+    auto beta_dims = sp.GetMemory(node.Input(shift_pos)).get_desc().get_dims();
     if (beta_dims.size() != 1) {
       ORT_THROW("Beta is expected to have 1 dimension, got ", beta_dims.size());
     }
@@ -334,7 +330,7 @@ dnnl::memory DnnlLayerNorm::CastAndTransformMemory(DnnlSubgraphPrimitive& sp, dn
 
     // Make a new memory descriptor based on the source descriptor and given destination dataype and strides
     auto src_md = src_mem.get_desc();
-    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.dims(), dst_datatype, dst_strides);
+    dnnl::memory::desc dst_md = dnnl::memory::desc(src_md.get_dims(), dst_datatype, dst_strides);
     dst_mem = dnnl::memory(dst_md, eng);
 
     // Reorder source memory to destination memory as per the given dataype and strides
