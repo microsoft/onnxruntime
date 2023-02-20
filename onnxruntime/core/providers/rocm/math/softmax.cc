@@ -19,7 +19,9 @@ Status SoftMaxComputeHelper(
     TOut* Y,
     int64_t axis,
     RocmTuningContext* tuning_ctx) {
-  typedef typename ToHipType<T>::MappedType HipT;
+  typedef typename ToHipType<T>::MappedType HipT_IN;
+  typedef typename ToHipType<TOut>::MappedType HipT_OUT;
+  typedef typename ToHipType<T>::MappedType HipT_ACCUM;
 
   int64_t N = input_shape.SizeToDimension(axis);
   int64_t D = input_shape.SizeFromDimension(axis);
@@ -27,20 +29,20 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const HipT_IN*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    return dispatch_warpwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, IsLogSoftmax>(
+    return dispatch_warpwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D),
         gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
-  return dispatch_blockwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, IsLogSoftmax>(
+  return dispatch_blockwise_softmax_forward<HipT_IN, HipT_OUT, AccumulationType_t<HipT_ACCUM>, IsLogSoftmax>(
       stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
       gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                           \
-  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, \
-                                                 int64_t axis, RocmTuningContext* tuning_ctx);                       \
-  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y,  \
-                                                int64_t axis, RocmTuningContext* tuning_ctx);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                           \
+  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, \
+                                                       int64_t axis, RocmTuningContext* tuning_ctx);                       \
+  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y,  \
+                                                      int64_t axis, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float, float)
@@ -176,15 +178,15 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                           is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                 : static_cast<int64_t>(axis),
-                                           GetTuningContext());
+    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                              is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                    : static_cast<int64_t>(axis),
+                                              GetTuningContext());
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                  : static_cast<int64_t>(axis),
-                                            GetTuningContext());
+    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                     : static_cast<int64_t>(axis),
+                                               GetTuningContext());
   }
 
   if (!status.IsOK())

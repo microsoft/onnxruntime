@@ -14,6 +14,31 @@ from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, 
 from onnxruntime.training import ortmodule
 
 
+# Mapping from pytorch scalar type to onnx scalar type.
+_CAST_PYTORCH_TO_ONNX = {
+    "Byte": torch.onnx.TensorProtoDataType.UINT8,
+    "Char": torch.onnx.TensorProtoDataType.INT8,
+    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
+    "Float": torch.onnx.TensorProtoDataType.FLOAT,
+    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
+    "Int": torch.onnx.TensorProtoDataType.INT32,
+    "Long": torch.onnx.TensorProtoDataType.INT64,
+    "Short": torch.onnx.TensorProtoDataType.INT16,
+    "Bool": torch.onnx.TensorProtoDataType.BOOL,
+    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
+    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
+    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
+    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
+}
+
+
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+    try:
+        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
+    except AttributeError:
+        return _CAST_PYTORCH_TO_ONNX[scalar_type]
+
+
 def wrap_custom_export_function(original_func):
     # Starting from PyTorch 1.11, there has been a change to symbolic function signature
     # in terms of how additional context is accessed. More info at
@@ -120,6 +145,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
+        output_type_i=pytorch_type_to_onnx(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
