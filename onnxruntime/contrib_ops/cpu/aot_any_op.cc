@@ -149,7 +149,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     float,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<bool>()})
+    .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     AOTanyOp<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -158,7 +159,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     int64_t,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),
+    KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<bool>()})
+    .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),,
     AOTanyOp<int64_t>);
 
 }  // namespace contrib
