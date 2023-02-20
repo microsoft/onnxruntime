@@ -50,6 +50,8 @@ jobs:
 
     - template: set-version-number-variables-step.yml
 
+    - template: set-up-gradle-wrapper-step.yml
+
     - script: |
         brew install ccache
         echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
