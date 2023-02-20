@@ -95,7 +95,6 @@ namespace onnxruntime {
 namespace test {
 
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
-
 TEST_F(GraphTransformationTests, IdentityElimination) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "abs-id-max.onnx";
   std::shared_ptr<Model> model;
@@ -2266,7 +2265,7 @@ TEST_F(GraphTransformationTests, FuseConvBnAddMulFloat16) {
   for (int i = 0; i < 9; ++i) {
     values_x.push_back(x_f);
   }
-  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+  CreateMLValue<MLFloat16>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                            dims_x, values_x, &ml_value_x);
   feeds.insert(std::make_pair("X", ml_value_x));
 
@@ -3501,13 +3500,13 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
 
   OrtValue mlvalue_b_i;
   std::vector<int64_t> dims_b_i = {3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_b_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_b_i,
                        random.Uniform<float>(dims_b_i, 0.0f, 1.0f), &mlvalue_b_i);
   feeds.insert(std::make_pair("B_I", mlvalue_b_i));
 
   OrtValue mlvalue_a_i;
   std::vector<int64_t> dims_a_i = {3, 512, 3072};
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_a_i,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_a_i,
                        random.Uniform<float>(dims_a_i, 0.0f, 1.0f), &mlvalue_a_i);
   feeds.insert(std::make_pair("A_I", mlvalue_a_i));
 
@@ -4390,11 +4389,12 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     return Status::OK();
   };
 
-  const std::vector<int> opsets{11, 12, 13, 14, 15, 15};
+  const std::vector<int> opsets{11, 12, 13, 14, 15, 18};
   bool shape_test_for_opset15 = false;
 
-  for (auto& opset_version : opsets) {
+  for (auto& opset : opsets) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto opset_version = builder.DomainToVersionMap().find(kOnnxDomain)->second;
       auto* input_arg0 = builder.MakeInput<float>({{batch_size, seq_lenth, hidden_size}});
       auto* input_arg1 = builder.MakeInput<float>({{hidden_size}});
       auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
@@ -4414,7 +4414,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       auto* out = builder.MakeOutput();
 
       builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
-      if (opset_version == 15) {
+      if (opset_version >= 15) {
         if (shape_test_for_opset15) {
           auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
           shape_1.AddAttribute("start", (int64_t)1);
@@ -4442,11 +4442,11 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-    if (opset_version == 15 && shape_test_for_opset15) {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+    if (opset >= 15 && shape_test_for_opset15) {
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                             pre_graph_checker, pre_graph_checker));
     } else {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset_version, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                             pre_graph_checker, post_graph_checker));
     }
   }
@@ -4610,13 +4610,24 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
     auto* cast_out_2 = builder.MakeIntermediate();
     auto* mul_out = builder.MakeIntermediate();
     auto* add_out_2 = builder.MakeOutput();
+    auto opset = builder.DomainToVersionMap().find(kOnnxDomain)->second;
+    onnxruntime::NodeArg* axes = nullptr;
 
-    builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    if (opset >= 18) {
+      axes = builder.MakeInitializer<int64_t>({1}, {-1});
+      builder.AddNode("ReduceMean", {data_arg, axes}, {reduce_mean_out_1});
+    } else {
+      builder.AddNode("ReduceMean", {data_arg}, {reduce_mean_out_1}).AddAttribute("axes", std::vector<int64_t>{-1});
+    }
     builder.AddNode("Sub", {data_arg, reduce_mean_out_1}, {sub_out});
     builder.AddNode("Cast", {sub_out}, {cast_out_1})
         .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
     builder.AddNode("Pow", {cast_out_1, pow_initializer}, {pow_out});
-    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    if (opset >= 18) {
+      builder.AddNode("ReduceMean", {pow_out, axes}, {reduce_mean_out_2});
+    } else {
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out_2}).AddAttribute("axes", std::vector<int64_t>{-1});
+    }
     builder.AddNode("Add", {reduce_mean_out_2, add_initializer}, {add_out_1});
     builder.AddNode("Sqrt", {add_out_1}, {sqrt_out});
     builder.AddNode("Div", {cast_out_1, sqrt_out}, {div_out});
@@ -4652,7 +4663,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_5) {
   };
 
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<LayerNormFusion>();
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer), TransformerLevel::Level1,
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, {14, 18}, *logger_, std::move(transformer), TransformerLevel::Level1,
                                         1, pre_graph_checker, post_graph_checker));
 }
 

@@ -131,7 +131,18 @@
         "^test_edge_pad_cuda",
         "^test_reflect_pad_cuda",
         "^test_softplus_example_expanded_cuda",
-        "^test_softplus_expanded_cuda"
+        "^test_softplus_expanded_cuda",
+
+        // TODO: Recover these real model tests from onnx
+        "^test_vgg19",
+        "^test_zfnet512",
+        "^test_bvlc_alexnet",
+        "^test_densenet121",
+        "^test_inception_v1",
+        "^test_inception_v2",
+        "^test_resnet50",
+        "^test_shufflenet",
+        "^test_squeezenet"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",

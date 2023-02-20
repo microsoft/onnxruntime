@@ -42,7 +42,7 @@ jar {
 
 // Add explicit sources jar with pom file.
 task sourcesJar(type: Jar, dependsOn: classes) {
-	classifier = "sources"
+	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
@@ -52,7 +52,7 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 
 // Add explicit javadoc jar with pom file
 task javadocJar(type: Jar, dependsOn: javadoc) {
-	classifier = "javadoc"
+	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
 		from { generatePomFileForMavenPublication }
@@ -187,8 +187,8 @@ test {
 
 jacocoTestReport {
 	reports {
-		xml.enabled true
-		csv.enabled true
+		xml.required = true
+		csv.required = true
 		html.destination file("${buildDir}/jacocoHtml")
 	}
 }

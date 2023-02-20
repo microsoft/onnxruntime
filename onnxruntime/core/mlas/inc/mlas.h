@@ -90,7 +90,7 @@ typedef enum { CblasLeft=141, CblasRight=142} CBLAS_SIDE;
 #endif
 
 //
-// Forward declare the thread pool implementation class.
+// Forward declare the thread pool implementation class and half precision floating point.
 //
 // N.B. Avoid including ONNX Runtime headers here to keep the dependencies for
 // standalone MLAS test executables smaller.
@@ -100,9 +100,11 @@ namespace onnxruntime {
     namespace concurrency {
         class ThreadPool;
     };
-};
+    struct MLFloat16;
+};  // namespace onnxruntime
 
 using MLAS_THREADPOOL = onnxruntime::concurrency::ThreadPool;
+
 
 //
 // Platform routines.
@@ -613,7 +615,7 @@ MlasGemm(
 // Currently only supported in ARM64
 //
 #if defined(MLAS_TARGET_ARM64)
-constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 15;
+constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 30;
 #else
 constexpr size_t MLAS_SYMM_QGEMM_BUF_OVERRUN = 0;
 #endif
@@ -1085,7 +1087,8 @@ MLASCALL
 MlasReorderOutputNchw(
     const int64_t* OutputShape,
     const float* S,
-    float* D
+    float* D,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 void
@@ -1365,4 +1368,174 @@ MlasQLinearMul(
     DataType* OutputC,
     size_t N,
     bool IsScalarB
+    );
+
+//
+// Half precision routines
+//
+
+// Any type with size=2 should work
+using MLAS_FP16 = onnxruntime::MLFloat16;
+
+constexpr size_t FP16_SIZE = sizeof(uint16_t);
+
+
+bool MLASCALL
+MlasFp16AccelerationSupported();
+
+/**
+ * @brief Interface for half gemm post processors.
+ * 
+ * Example implementation of this interface includes activations,
+ * conversion from half precision to single precision, etc.
+ * 
+ * Half GEMM is computed tile by tile. When a tile of result matrix
+ * is produced, the method Process() is called to process this tile.
+ * Parameters of this method describe the location and shape of the
+ * tile.
+*/
+class MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    virtual
+    void
+    Process(
+        MLAS_FP16*, /**< the address of matrix to process */
+        size_t,     /**< the start row index of matrix */
+        size_t,     /**< the start col index of matrix */
+        size_t,     /**< the element count per row to process */
+        size_t,     /**< the element count per col to process */
+        size_t      /**< the leading dimension of matrix */
+        ) const = 0;
+
+    virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
+};
+
+/**
+ * @brief Convert half gemm result matrix to single precision float matrix
+*/
+class MLAS_HALF_GEMM_2FLOAT_PROCESSOR : public MLAS_HALF_GEMM_POSTPROCESSOR {
+public:
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR(
+        float* Output,    /**< address of the output matrix, row major */
+        size_t RowStride  /**< row stride of the output matrix */
+    ) :
+            Output_(Output),
+            RowStride_(RowStride)
+    {}
+
+    void
+    Process(
+        MLAS_FP16* C,
+        size_t StartM,
+        size_t StartN,
+        size_t CountM,
+        size_t CountN,
+        size_t ldc
+        ) const override;
+
+private:
+    float* Output_;
+    size_t RowStride_;
+};
+
+
+/**
+ * @brief Data parameters for half precision GEMM routine
+ *        All except C are [in] parameters
+*/
+struct MLAS_HALF_GEMM_DATA_PARAMS {
+    const void* A = nullptr;          /**< address of A */
+    const void* B = nullptr;          /**< address of B */
+    const MLAS_FP16* Bias = nullptr;  /**< address of Bias, vector size N */
+    MLAS_FP16* C = nullptr;           /**< address of result matrix */
+    size_t lda = 0;                   /**< leading dimension of A */
+    size_t ldb = 0;                   /**< leading dimension of B, 0 when B is pre-packed*/
+    size_t ldc = 0;                   /**< leading dimension of C*/
+    const MLAS_HALF_GEMM_POSTPROCESSOR* OutputProcessor = nullptr;
+    bool AIsfp32 = false;             /**< matrix A is fp32, needs to be casted into fp16*/
+    bool BIsfp32 = false;             /**< matrix B is fp32, needs to be casted into fp16*/
+};
+
+/**
+ * @brief Half precision Batched GEMM:  C = A * B + Bias
+ *        Either A or B can be fp32 or fp16
+ * 
+ * Note:  We only support uniform batching, so shapes and types of the
+ *        input must be same across all parameter blocks.
+ * 
+ * @param[in]  M       row size of matrix A and C
+ * @param[in]  N       column size of matrix B and C
+ * @param[in]  K       column size of matrix A and row size of matrix B
+ * @param[in]  BatchN  number of batches
+ * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
+ * @param[in]  ThreadPool 
+ * @return 
+*/
+void
+MLASCALL
+MlasHalfGemmBatch(
+    const size_t M,
+    const size_t N,
+    const size_t K,
+    const size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool = nullptr
+    );
+
+/**
+ * @brief For half precision GEMM, returns size of the
+ *        packing buffer needed for right hand side
+ * @param[in] N   Number of columns 
+ * @param[in] K   Number of rows
+ * @param[in] float2half  Whether the input is float that
+ *                        needs to be converted to half precision
+ * @return  size of the packing buffer,
+ *          0 if operation not supported
+*/
+size_t
+MLASCALL
+MlasHalfGemmPackBSize(
+    size_t N,
+    size_t K,
+    bool float2half
+    );
+
+/**
+ * @brief For half precision GEMM, pack the right hand
+ *        side matrix B
+ * 
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of matrix B 
+ * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[out] PackedB  Address of the packed matrix
+*/
+void
+MLASCALL
+MlasHalfGemmPackB(
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+/**
+ * @brief For half precision GEMM, convert the float matrix B
+ *        to half precision and pack it into a packing buffer
+ * 
+ * @param[in]  N        Number of columns
+ * @param[in]  K        Number of rows
+ * @param[in]  B        Address of matrix B 
+ * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[out] PackedB  Address of the packed matrix
+*/
+void
+MLASCALL
+MlasHalfGemmConvertPackB(
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB
     );
