@@ -286,7 +286,7 @@ bool SCELossGradFunBuilder(bool ignore_index_as_attr, const FunctionBodyBuildCon
   if (output_type_attr != nullptr) {
     const TypeProto* first_input_type_proto = ctx.getInputType(0);
     auto output_elem_type = output_type_attr->i();
-    if (first_input_type_proto == nullptr) {
+    if (first_input_type_proto != nullptr) {
       HandleDifferedInputOutputDataType(first_input_type_proto->tensor_type().elem_type(),
                                         output_elem_type,
                                         adaptor_info);
