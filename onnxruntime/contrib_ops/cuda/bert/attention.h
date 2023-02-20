@@ -20,6 +20,9 @@ class Attention final : public CudaKernel, public AttentionBase {
   Attention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
+ private:
+  MHARunner* TryGetFusedMHARunner(const AttentionParameters& parameters, int sm) const;
+
  protected:
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;

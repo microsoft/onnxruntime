@@ -276,6 +276,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
+    output_parameters->has_mask_index = nullptr != mask_index;
+    output_parameters->has_relative_position_bias = nullptr != relative_position_bias;
+    output_parameters->has_past = nullptr != past;
     output_parameters->total_token_count = static_cast<int32_t>(total_token_count);
   }
 
