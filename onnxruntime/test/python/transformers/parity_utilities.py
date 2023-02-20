@@ -16,9 +16,9 @@ def parse_arguments(argv=sys.argv[1:], namespace_filter=None):
 
     parser = argparse.ArgumentParser()
 
-    #useful EPs that don't require the use of optmizer.py
+    # useful EPs that don't require the use of optmizer.py
     parser.add_argument(
-        '-n',
+        "-n",
         "--no_optimize",
         required=False,
         action="store_false",
@@ -26,13 +26,14 @@ def parse_arguments(argv=sys.argv[1:], namespace_filter=None):
         help="Turn off onnxruntime optimizers (Default off optimizers ON)",
     )
 
-    #useful for debugging and viewing state during test runs
-    parser.add_argument('-l',
-    "--log_verbose",
-    required=False,
-    action="store_true",
-    default=False,
-    help="Set Onnxruntime log_serverity_level=0 (VERBOSE) ",
+    # useful for debugging and viewing state during test runs
+    parser.add_argument(
+        "-l",
+        "--log_verbose",
+        required=False,
+        action="store_true",
+        default=False,
+        help="Set Onnxruntime log_serverity_level=0 (VERBOSE) ",
     )
 
     args, remaining_args = parser.parse_known_args(namespace=namespace_filter)
