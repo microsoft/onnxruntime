@@ -4,14 +4,15 @@
 # --------------------------------------------------------------------------
 
 import onnx
+import torch
+import warnings
+
 from onnx import helper
 from onnx import onnx_pb as onnx_proto
-import warnings
 from onnxruntime.training import ortmodule
-import torch
 
 
-class DataObserver(object):
+class DataObserver:
     """Configurable data observer for ORTModule."""
 
     def __init__(self, log_steps=10):
@@ -63,9 +64,7 @@ class DataObserver(object):
 
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
-                warnings.warn(
-                    "Embedding padding_idx must be a scalar, but got a tensor of shape {}".format(value.shape)
-                )
+                warnings.warn(f"Embedding padding_idx must be a scalar, but got a tensor of shape {value.shape}")
                 continue
 
             padding_idx = value.item()
@@ -86,6 +85,9 @@ class DataObserver(object):
         if not self._enabled:
             return
 
+        def _default_label_preprocess(labels):
+            return labels
+
         self._loss_label_graph_input_to_ignore_idx_map.clear()
         for node in model.graph.node:
             if not (
@@ -102,9 +104,7 @@ class DataObserver(object):
             value = onnx.numpy_helper.to_array(tensor)
             if value.ndim != 0:
                 warnings.warn(
-                    "SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {}".format(
-                        value.shape
-                    )
+                    f"SoftmaxCrossEntropyLossInternal ignore_index must be a scalar, but got a tensor of shape {value.shape}"
                 )
                 continue
 
@@ -113,9 +113,6 @@ class DataObserver(object):
             # Check label inputs
             label_graph_input = None
 
-            def _default_label_preprocess(labels):
-                return labels
-
             label_preprocess_func = _default_label_preprocess
             if node.input[1] not in self._tensor_to_node_map:
                 if node.input[1] not in user_input_names:
@@ -123,34 +120,40 @@ class DataObserver(object):
                 label_graph_input = node.input[1]
             else:
                 reshape_node = self._tensor_to_node_map[node.input[1]]
-                if reshape_node.op_type == "Reshape":
-                    reshape_input = reshape_node.input[0]
-                    if reshape_input in user_input_names:
-                        label_graph_input = reshape_input
-                    else:  # Pattern defined in Bloom model.
-                        if reshape_input in self._tensor_to_node_map:
-                            slice_node = self._tensor_to_node_map[reshape_input]
-                            if slice_node.op_type == "Slice":
-                                slice_input = slice_node.input[0]
-                                starts = self._get_initializer_value(model, slice_node.input[1])
-                                ends = self._get_initializer_value(model, slice_node.input[2])
-                                axes = self._get_initializer_value(model, slice_node.input[3])
-                                steps = self._get_initializer_value(model, slice_node.input[4])
-                                if (
-                                    slice_input in user_input_names
-                                    and starts is not None
-                                    and ends is not None
-                                    and axes is not None
-                                    and steps is not None
-                                    and len(axes) == 1
-                                    and axes[0] == 1
-                                ):
-                                    label_graph_input = slice_input
+                if reshape_node.op_type != "Reshape":
+                    continue
 
-                                    def _slice_label_preprocess(labels):
-                                        return labels[:, starts[0] : ends[0] : steps[0]]
+                reshape_input = reshape_node.input[0]
+                if reshape_input in user_input_names:
+                    label_graph_input = reshape_input
+                else:  # Pattern defined in Bloom model.
+                    if reshape_input not in self._tensor_to_node_map:
+                        continue
 
-                                    label_preprocess_func = _slice_label_preprocess
+                    slice_node = self._tensor_to_node_map[reshape_input]
+                    if slice_node.op_type != "Slice":
+                        continue
+
+                    slice_input = slice_node.input[0]
+                    starts = self._get_initializer_value(model, slice_node.input[1])
+                    ends = self._get_initializer_value(model, slice_node.input[2])
+                    axes = self._get_initializer_value(model, slice_node.input[3])
+                    steps = self._get_initializer_value(model, slice_node.input[4])
+                    if (
+                        slice_input in user_input_names
+                        and starts is not None
+                        and ends is not None
+                        and axes is not None
+                        and steps is not None
+                        and len(axes) == 1
+                        and axes[0] == 1
+                    ):
+                        label_graph_input = slice_input
+
+                        def _slice_label_preprocess(labels):
+                            return labels[:, starts[0] : ends[0] : steps[0]]
+
+                        label_preprocess_func = _slice_label_preprocess
 
                 if label_graph_input is None:
                     continue
