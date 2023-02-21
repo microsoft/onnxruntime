@@ -38,10 +38,10 @@ Status SoftMaxComputeHelper(
       gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                           \
-  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, \
-                                                       int64_t axis, RocmTuningContext* tuning_ctx);                       \
-  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y,  \
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                                              \
+  template Status SoftMaxComputeHelper<T, TOut, false>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y, \
+                                                       int64_t axis, RocmTuningContext* tuning_ctx);                          \
+  template Status SoftMaxComputeHelper<T, TOut, true>(hipStream_t stream, const T* input, const TensorShape& shape, TOut* Y,  \
                                                       int64_t axis, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
