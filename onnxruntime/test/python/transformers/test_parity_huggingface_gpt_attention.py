@@ -444,6 +444,9 @@ def run(batch_size, float16, optimized, hidden_size, num_attention_heads, device
 
 
 class TestGptAttentionHuggingfaceParity(unittest.TestCase):
+    verbose = False
+    optimized = True
+
     def setUp(self):
         self.test_cases = 10  # Number of test cases per test run
 

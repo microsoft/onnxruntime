@@ -188,6 +188,9 @@ def run(
 
 
 class TestLayerNormParity(unittest.TestCase):
+    verbose = False
+    optimized = True
+
     def setUp(self):
         self.test_cases = 100  # Number of test cases per test run
         self.sequence_length = 2
