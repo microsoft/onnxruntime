@@ -186,7 +186,8 @@ def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, dis
     short_model_name = model_name.split("/")[-1].replace("stable-diffusion-", "sd")
     return f"{engine}_{short_model_name}_b{batch_size}" + ("" if disable_safety_checker else "_safe")
 
-def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count, start_memory):
+def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str,
+                     height, width, steps, num_prompts, batch_count, start_memory):
     from diffusers import OnnxStableDiffusionPipeline
 
     assert isinstance(pipe, OnnxStableDiffusionPipeline)
@@ -309,6 +310,7 @@ def run_ort(
     steps,
     num_prompts,
     batch_count,
+    start_memory,
 ):
     load_start = time.time()
     pipe = get_ort_pipeline(model_name, directory, provider, disable_safety_checker)
@@ -316,7 +318,8 @@ def run_ort(
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
-    result = run_ort_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count)
+    result = run_ort_pipeline(pipe, batch_size, image_filename_prefix,
+                              height, width, steps, num_prompts, batch_count, start_memory)
 
     result.update({
             "model_name": model_name,
