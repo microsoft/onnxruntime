@@ -6,13 +6,13 @@
 #include "../External/D3DX12/d3dx12.h"
 
 // The shader headers are produced using "GeneratedShaders/GenerateShaders.bat"
-namespace DFTFloat32 
-{ 
-    #include "GeneratedShaders/stockham.h" 
+namespace DFTFloat32
+{
+    #include "GeneratedShaders/stockham.h"
 }
-namespace DFTFloat16 
-{ 
-    #include "GeneratedShaders/stockham_fp16.h" 
+namespace DFTFloat16
+{
+    #include "GeneratedShaders/stockham_fp16.h"
 }
 
 #include <wrl/client.h>
@@ -30,7 +30,7 @@ namespace DFTHelpers {
         return static_cast<uint32_t>(temp / divisor);
     }
 
-    inline bool IsPowerOfTwo(unsigned x)
+    inline bool IsPowerOfTwo(uint32_t x)
     {
         return (x != 0) && ((x & (x - 1)) == 0);
     }
@@ -282,17 +282,17 @@ public:
             ComPtr<IUnknown> inputUnknown;
             ComPtr<ID3D12Resource> inputResource;
             inputTensor->GetDataInterface(inputUnknown.GetAddressOf());
-            inputUnknown.As(&inputResource);
+            ORT_THROW_IF_FAILED(inputUnknown.As(&inputResource));
 
             ComPtr<IUnknown> outputUnknown;
             ComPtr<ID3D12Resource> outputResource;
             outputTensor->GetDataInterface(outputUnknown.GetAddressOf());
-            outputUnknown.As(&outputResource);
+            ORT_THROW_IF_FAILED(outputUnknown.As(&outputResource));
 
             // Get optional dft_length input
             uint32_t dftLength = inputDims[m_axis];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
-            if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
+            if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)))
             {
                 MLOperatorTensor tensor(dftLengthTensor.Get());
                 dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
