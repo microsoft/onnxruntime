@@ -190,6 +190,7 @@ dependencies {
 
     implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.0.0"
     implementation 'androidx.test.ext:junit:1.1.3'
+    androidTestImplementation 'org.testng:testng:6.9.6'
     debugImplementation("com.facebook.flipper:flipper:${FLIPPER_VERSION}") {
       exclude group:'com.facebook.fbjni'
     }
@@ -212,6 +213,7 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
     androidTestImplementation 'androidx.test:runner:1.4.0'
     androidTestImplementation 'androidx.test:rules:1.4.0'
+    androidTestImplementation "androidx.test.uiautomator:uiautomator:2.2.0"
 
     implementation project(':onnxruntime-react-native')
     // specify ORT dependency here so it can be found in libs flatDir repository

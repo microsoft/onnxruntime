@@ -12,24 +12,42 @@ import androidx.test.espresso.util.TreeIterables;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.LargeTest;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.UiObject;
+import androidx.test.uiautomator.UiObjectNotFoundException;
+import androidx.test.uiautomator.UiSelector;
 
 import org.hamcrest.Matcher;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.testng.annotations.BeforeClass;
 
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom;
 import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.isRoot;
 import static androidx.test.espresso.matcher.ViewMatchers.withContentDescription;
+import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
 import static org.hamcrest.Matchers.allOf;
+
+
 
 @RunWith(AndroidJUnit4.class)
 @LargeTest
 public class OnnxruntimeModuleExampleUITests {
     public static final String TAG = OnnxruntimeModuleExampleUITests.class.getSimpleName();
+
+    @BeforeClass
+    public static void dismissANRSystemDialog() throws UiObjectNotFoundException {
+        UiDevice device = UiDevice.getInstance(getInstrumentation());
+        // If the device is running in English Locale
+        UiObject waitButton = device.findObject(new UiSelector().textContains("wait"));
+        if (waitButton.exists()) {
+            waitButton.click();
+        }
+    }
 
     @Rule
     public ActivityScenarioRule<MainActivity> activityScenarioRule = new ActivityScenarioRule<>(MainActivity.class);
@@ -116,4 +134,6 @@ public class OnnxruntimeModuleExampleUITests {
             }
         });
     }
+
+
 }
