@@ -3,12 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import sys
 import argparse
-import os
-import time
 import csv
+import os
 import statistics
+import sys
+import time
 
 SD_MODELS = {
     "1.5": "runwayml/stable-diffusion-v1-5",
@@ -95,6 +95,7 @@ def measure_gpu_memory(func, start_memory=None):
         return start_memory
 
     from concurrent.futures import ThreadPoolExecutor
+
     with ThreadPoolExecutor() as executor:
         monitor = MemoryMonitor()
         mem_thread = executor.submit(monitor.measure_gpu_usage)
@@ -119,7 +120,6 @@ def measure_gpu_memory(func, start_memory=None):
                 max_used = max(max_used, used)
             return max_used
     return None
-
 
 
 def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_safety_checker: bool):
@@ -152,7 +152,7 @@ def get_ort_pipeline(model_name: str, directory: str, provider: str, disable_saf
     return pipe
 
 
-def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_torch_compile: bool, use_xformers:bool):
+def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_torch_compile: bool, use_xformers: bool):
     from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
     from torch import channels_last, float16
 
@@ -165,6 +165,7 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
 
     if enable_torch_compile:
         import torch
+
         pipe.unet = torch.compile(pipe.unet)
         pipe.vae = torch.compile(pipe.vae)
         pipe.text_encoder = torch.compile(pipe.text_encoder)
@@ -184,8 +185,10 @@ def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, dis
     short_model_name = model_name.split("/")[-1].replace("stable-diffusion-", "sd")
     return f"{engine}_{short_model_name}_b{batch_size}" + ("" if disable_safety_checker else "_safe")
 
-def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str,
-                     height, width, steps, num_prompts, batch_count, start_memory):
+
+def run_ort_pipeline(
+    pipe, batch_size: int, image_filename_prefix: str, height, width, steps, num_prompts, batch_count, start_memory
+):
     from diffusers import OnnxStableDiffusionPipeline
 
     assert isinstance(pipe, OnnxStableDiffusionPipeline)
@@ -222,6 +225,7 @@ def run_ort_pipeline(pipe, batch_size: int, image_filename_prefix: str,
                 image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
 
     from onnxruntime import __version__ as ort_version
+
     return {
         "engine": "onnxruntime",
         "version": ort_version,
@@ -316,15 +320,18 @@ def run_ort(
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
-    result = run_ort_pipeline(pipe, batch_size, image_filename_prefix,
-                              height, width, steps, num_prompts, batch_count, start_memory)
+    result = run_ort_pipeline(
+        pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+    )
 
-    result.update({
+    result.update(
+        {
             "model_name": model_name,
             "directory": directory,
             "provider": provider,
             "disable_safety_checker": disable_safety_checker,
-        })
+        }
+    )
     return result
 
 
@@ -332,7 +339,7 @@ def run_torch(
     model_name: str,
     batch_size: int,
     disable_safety_checker: bool,
-    enable_torch_compile:bool,
+    enable_torch_compile: bool,
     use_xformers: bool,
     height,
     width,
@@ -358,17 +365,24 @@ def run_torch(
 
     if not enable_torch_compile:
         with torch.inference_mode():
-            result = run_torch_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory)
+            result = run_torch_pipeline(
+                pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+            )
     else:
-        result = run_torch_pipeline(pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory)
+        result = run_torch_pipeline(
+            pipe, batch_size, image_filename_prefix, height, width, steps, num_prompts, batch_count, start_memory
+        )
 
-    result.update({
+    result.update(
+        {
             "model_name": model_name,
             "directory": None,
             "provider": "compile" if enable_torch_compile else "xformers" if use_xformers else "default",
             "disable_safety_checker": disable_safety_checker,
-        })
+        }
+    )
     return result
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -541,11 +555,12 @@ def main():
             "average_latency",
             "median_latency",
             "first_run_memory_MB",
-            "second_run_memory_MB"
+            "second_run_memory_MB",
         ]
         csv_writer = csv.DictWriter(csv_file, fieldnames=column_names)
         csv_writer.writeheader()
         csv_writer.writerow(result)
+
 
 if __name__ == "__main__":
     try:
