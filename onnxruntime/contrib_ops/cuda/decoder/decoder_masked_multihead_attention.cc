@@ -66,6 +66,9 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   ORT_ENFORCE(past_present_share_buffer_);
   ORT_ENFORCE(parameters.head_size == parameters.v_head_size);
 
+  // TODO: SUpport mask
+  (parameters.mask_type == AttentionMaskType::MASK_NONE);
+
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
   output_shape[1] = static_cast<int64_t>(sequence_length);

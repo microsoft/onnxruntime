@@ -44,6 +44,7 @@ class GreedySearch : public IControlFlowKernel {
 
   // device helpers that is same for both GPT and encoder-decoder models.
   void SetDeviceHelpers(
+      const GenerationDeviceHelper::TransposeFunc& transpose_func,
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       const GenerationDeviceHelper::TopkFunc& topk_func,
       const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
@@ -51,6 +52,7 @@ class GreedySearch : public IControlFlowKernel {
       const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<MLFloat16>& process_logits_fp16_func,
       const GenerationDeviceHelper::InitGreedyStateFunc<float>& init_greedy_state_func,
       const GenerationDeviceHelper::InitGreedyStateFunc<MLFloat16>& init_greedy_state_fp16_func) {
+    transpose_func_ = transpose_func;
     add_to_feeds_func_ = add_to_feeds_func;
     topk_func_ = topk_func;
     device_copy_func_ = device_copy_func;
@@ -69,6 +71,7 @@ class GreedySearch : public IControlFlowKernel {
 
  private:
   // Device specific functions
+  GenerationDeviceHelper::TransposeFunc transpose_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::TopkFunc topk_func_;
   GenerationDeviceHelper::DeviceCopyFunc<float> device_copy_func_;

@@ -93,26 +93,86 @@ static std::vector<T> QKV(std::vector<T>& input, std::vector<T>& weights, std::v
   return qkv;
 }
 
+// Transpose [B, N, S, H/x, x] -> [B, N, H/x, S, x]
+// where `num_chunks` = H/x
+template <typename T>
+std::vector<T> Transpose(T* data, int batch_size, int num_heads,
+                         int num_chunks, int max_sequence_length, int virtual_head_size) {
+  std::vector<T> transposed(batch_size * num_heads * num_chunks * max_sequence_length * virtual_head_size, 0);
+
+  for (int b = 0; b < batch_size; ++b) {
+    for (int n = 0; n < num_heads; ++n) {
+      int base_offset = (b * num_heads * num_chunks * max_sequence_length * virtual_head_size) +
+                        (n * num_chunks * max_sequence_length * virtual_head_size);
+
+      for (int c = 0; c < num_chunks; ++c) {
+        for (int s = 0; s < max_sequence_length; ++s) {
+          int input_offset = base_offset + s * num_chunks * virtual_head_size + c * virtual_head_size;
+          int output_offset = base_offset + c * max_sequence_length * virtual_head_size + s * virtual_head_size;
+
+          for (int h = 0; h < virtual_head_size; ++h) {
+            transposed[output_offset + h] = data[input_offset + h];
+          }
+        }
+      }
+    }
+  }
+
+  return transposed;
+}
+
+// Given two buffers of shapes [B, N, c, M_s, c_size]
+// check for equality of the first sequence_length elements alone
+template <typename T>
+void CheckEquality(T* data_1, T* data_2, int batch_size, int num_heads, int num_chunks,
+                   int max_sequence_length, int sequence_length, int virtual_head_size) {
+  for (int b = 0; b < batch_size; ++b) {
+    for (int n = 0; n < num_heads; ++n) {
+      for (int c = 0; c < num_chunks; ++c) {
+        int base_offset = (b * num_heads * num_chunks * max_sequence_length * virtual_head_size) +
+                          (n * num_chunks * max_sequence_length * virtual_head_size) +
+                          (c * max_sequence_length * virtual_head_size);
+
+        for (int s = 0; s < sequence_length; ++s) {
+          for (int h = 0; h < virtual_head_size; ++h) {
+            auto val_1 = data_1[base_offset + s * virtual_head_size + h];
+            auto val_2 = data_2[base_offset + s * virtual_head_size + h];
+            if (val_1 != val_2) {
+              throw std::runtime_error("Equality check failed");
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Reorder from [B, N, S, H] to [B, N, H/x, S, x]
 // where x = (sizeof(T) / 16);
 template <typename T>
 static std::vector<T> ReorderKCache(std::vector<T>& unordered_k_cache,
                                     int batch_size, int num_heads, int sequence_length,
                                     int head_size, int max_sequence_length) {
-  std::vector<T> ordered = unordered_k_cache;
+  std::vector<T> ordered(unordered_k_cache.size(), 0);
+
+  // Copy V over
+  size_t v_start = unordered_k_cache.size() / 2;
+  for (size_t i = v_start; i < unordered_k_cache.size(); ++i) {
+    ordered[i] = unordered_k_cache[i];
+  }
 
   int num_inner_elements = 16 / sizeof(T);
-  int num_iter = head_size / num_inner_elements;
+  int chunks = head_size / num_inner_elements;
 
   for (int b = 0; b < batch_size; ++b) {
     for (int h = 0; h < num_heads; ++h) {
-      for (int i = 0; i < num_iter; ++i) {
+      for (int c = 0; c < chunks; ++c) {
         for (int s = 0; s < sequence_length; ++s) {
           int base_offset = (b * num_heads * max_sequence_length * head_size) +
                             (h * max_sequence_length * head_size);
 
-          int input_base_offset = base_offset + (s * head_size) + (i * num_inner_elements);
-          int output_base_offset = base_offset + (i * max_sequence_length * num_inner_elements) + (s * num_inner_elements);
+          int input_base_offset = base_offset + (s * head_size) + (c * num_inner_elements);
+          int output_base_offset = base_offset + (c * max_sequence_length * num_inner_elements) + (s * num_inner_elements);
 
           for (int e = 0; e < num_inner_elements; ++e) {
             ordered[output_base_offset + e] = unordered_k_cache[input_base_offset + e];
@@ -278,7 +338,7 @@ void ValidateReorderedMergedKWithK(T* k, T* k_cache, int batch_size, int num_hea
                          (s * chunk_size) + (h % chunk_size);
 
           if (k[offset_0] != k_cache[offset_1]) {
-            throw std::runtime_error("Not good");
+            throw std::runtime_error("Validation failed");
           }
         }
       }
@@ -445,6 +505,13 @@ TEST(DecoderMaskedSelfAttentionTest, MediumSequences_fp32) {
       auto reordered_kv_cache = ReorderKCache(kv_cache, batch_size,
                                               number_of_heads, past_sequence_length, head_size, max_sequence_length);
 
+      // Validate if reordering went well - by transposing and checking equality
+      int chunk_size = 16 / sizeof(float);
+      int num_chunks = head_size / chunk_size;
+      auto transposed = Transpose<float>(kv_cache.data(), batch_size, number_of_heads, num_chunks, max_sequence_length, chunk_size);
+      CheckEquality<float>(transposed.data(), reordered_kv_cache.data(), batch_size, number_of_heads, num_chunks,
+                           max_sequence_length, past_sequence_length, chunk_size);
+
       tester.AddInput<float>("past", past_dims, reordered_kv_cache);
 
       // Rel
@@ -474,6 +541,10 @@ TEST(DecoderMaskedSelfAttentionTest, MediumSequences_fp32) {
       auto present = MergeReorderedKCacheWithK(reordered_kv_cache, qkv_matrix + hidden_size, batch_size,
                                                number_of_heads, past_sequence_length, max_sequence_length, head_size);
 
+      // Validate our test logic
+      // We want to validate if our merged "unordered" k is the same as
+      // the merged "ordered" so that the QKT we do in our test code
+      // is equivalent to the QKT we do in the kernel
       ValidateReorderedMergedKWithK<float>(k_merged.data(), present.data(), batch_size, number_of_heads, total_sequence_length, max_sequence_length, head_size);
 
       auto k_cache_size = past_present_size / 2;
