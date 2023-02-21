@@ -40,8 +40,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
-  disable_fused_runner_ = sizeof(T) != 2 ||
-                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
+  disable_fused_self_attention_ = sizeof(T) != 2 ||
+                                  ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
@@ -113,7 +113,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  bool use_fused_runner = !disable_fused_runner_ &&
+  bool use_fused_runner = !disable_fused_self_attention_ &&
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
                           value != nullptr &&  // fused runner requires packed qkv instead of packed kv
