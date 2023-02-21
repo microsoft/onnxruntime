@@ -56,7 +56,7 @@ def measure_gpu_memory(func, start_memory=None):
                 nvmlInit()
                 device_count = nvmlDeviceGetCount()
                 if not isinstance(device_count, int):
-                    logger.error(f"nvmlDeviceGetCount result is not integer: {device_count}")
+                    print(f"nvmlDeviceGetCount result is not integer: {device_count}")
                     return None
 
                 max_gpu_usage = [0 for i in range(device_count)]
@@ -65,7 +65,7 @@ def measure_gpu_memory(func, start_memory=None):
                     for i in range(device_count):
                         info = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(i))
                         if isinstance(info, str):
-                            logger.error(f"nvmlDeviceGetMemoryInfo returns str: {info}")
+                            print(f"nvmlDeviceGetMemoryInfo returns str: {info}")
                             return None
                         max_gpu_usage[i] = max(max_gpu_usage[i], info.used / 1024**2)
                     time.sleep(0.002)  # 2ms
@@ -81,7 +81,7 @@ def measure_gpu_memory(func, start_memory=None):
                     for i in range(device_count)
                 ]
             except NVMLError as error:
-                logger.error("Error fetching GPU information using nvml: %s", error)
+                print("Error fetching GPU information using nvml: %s", error)
                 return None
 
     monitor = MemoryMonitor(False)
@@ -156,9 +156,7 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
     from diffusers import DPMSolverMultistepScheduler, StableDiffusionPipeline
     from torch import channels_last, float16
 
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_name, torch_dtype=float16, revision="fp16", use_auth_token=True
-    ).to("cuda")
+    pipe = StableDiffusionPipeline.from_pretrained(model_name, torch_dtype=float16).to("cuda")
 
     pipe.unet.to(memory_format=channels_last)  # in-place operation
 
