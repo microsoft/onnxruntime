@@ -90,7 +90,7 @@ class IdentityOp final : public OpKernel {
       // processing Tensors.
       if (X != output) {
         output->SetType(X->DataType());
-        output->SetElements({});
+        output->Clear();
         output->Reserve(X->Size());
 
         AllocatorPtr alloc;

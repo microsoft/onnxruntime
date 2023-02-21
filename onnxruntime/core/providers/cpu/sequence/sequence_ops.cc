@@ -271,7 +271,6 @@ Status SequenceErase::Compute(OpKernelContext* context) const {
 
   auto* Y = context->Output<TensorSeq>(0);
   Y->SetType(S->DataType());
-  Y->SetElements({});
   Y->Reserve(SafeInt<size_t>(num_tensors_input_seq) - 1);
 
   for (int i = 0; i < num_tensors_input_seq; ++i) {
@@ -310,7 +309,6 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
 
   // now copy the tensors to the output sequence
   Y->SetType(first_dtype);
-  Y->SetElements({});
   Y->Reserve(SafeInt<size_t>(num_inputs));
   for (int input_idx = 0; input_idx < num_inputs; ++input_idx) {
     const auto* X = context->Input<Tensor>(input_idx);
@@ -504,7 +502,6 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
                                         split_sizes));
   auto tseq = context.Output<TensorSeq>(0);
   tseq->SetType(input.DataType());
-  tseq->SetElements({});
   tseq->Reserve(static_cast<size_t>(num_outputs));
 
   // copy dimensions so we can update the selected axis in place
