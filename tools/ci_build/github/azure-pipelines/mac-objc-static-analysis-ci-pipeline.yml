@@ -17,13 +17,6 @@ jobs:
       addToPath: true
       architecture: "x64"
 
-  # testing stuff
-  - script: |
-      set -x
-      which clang
-      $(brew --prefix llvm@15)/bin/clang --version
-      $(brew --prefix llvm@15)/bin/clang-tidy --version
-
   - script: |
       pip install -r tools/ci_build/github/apple/objectivec/static_analysis/requirements.txt
     displayName: Install tools
@@ -40,7 +33,7 @@ jobs:
     displayName: Generate compile_commands.json and ONNX protobuf files
 
   - script: |
-      clang-tidy \
+      "$(brew --prefix llvm@15)/bin/clang-tidy" \
         -p="$(Build.BinariesDirectory)/Debug" \
         --checks="-*,clang-analyzer-*" \
         --header-filter="objectivec/include|objectivec/src|onnxruntime/core" \
