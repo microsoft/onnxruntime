@@ -93,9 +93,9 @@ class TensorSeq {
   void Add(Tensor&& tensor) {
     ORT_ENFORCE(IsSameDataType(tensor),
                 "TensorSeq: tensor to be added has a different data type.");
-    auto ml_tensor = TensorTypeBase::Type();
-    auto tensor_ptr = std::make_unique<Tensor>(std::move(tensor));
-    Add(OrtValue(tensor_ptr.release(), ml_tensor, ml_tensor->GetDeleteFunc()));
+    OrtValue value;
+    Tensor::InitOrtValue(std::move(tensor), value);
+    Add(std::move(value));
   }
 
   static void InitOrtValue(const TensorSeq& source_tensor_seq, std::shared_ptr<IAllocator> allocator, OrtValue& ort_value) {
