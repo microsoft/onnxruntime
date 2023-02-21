@@ -4,7 +4,6 @@
 # license information.
 # -------------------------------------------------------------------------
 import argparse
-
 import os
 import sys
 
@@ -164,8 +163,9 @@ def compare_outputs(torch_outputs, ort_outputs, atol=1e-06, verbose=True):
 
 
 def create_ort_session(onnx_model_path, use_gpu=True, optimized=True, verbose=False):
-    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions, get_available_providers
+    from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
     from onnxruntime import __version__ as onnxruntime_version
+    from onnxruntime import get_available_providers
 
     sess_options = SessionOptions()
     sess_options.graph_optimization_level = GraphOptimizationLevel.ORT_DISABLE_ALL
