@@ -122,16 +122,16 @@ class UnetOnnxModel(BertOnnxModel):
 
         self.fuse_reshape()
 
-        if (options is None) or options.enable_group_norm:
-            group_norm_fusion = FusionGroupNorm(self)
-            group_norm_fusion.apply()
+        # if (options is None) or options.enable_group_norm:
+        #     group_norm_fusion = FusionGroupNorm(self)
+        #     group_norm_fusion.apply()
 
-        if (options is None) or options.enable_bias_splitgelu:
-            bias_split_gelu_fusion = FusionBiasSplitGelu(self)
-            bias_split_gelu_fusion.apply()
+        # if (options is None) or options.enable_bias_splitgelu:
+        #     bias_split_gelu_fusion = FusionBiasSplitGelu(self)
+        #     bias_split_gelu_fusion.apply()
 
-        if (options is None) or options.enable_attention:
-            self.fuse_attention()
+        # if (options is None) or options.enable_attention:
+        #     self.fuse_attention()
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
@@ -141,7 +141,7 @@ class UnetOnnxModel(BertOnnxModel):
         # Remove reshape nodes that having same shape of input and output based on symbolic shape inference.
         self.utils.remove_useless_reshape_nodes()
 
-        self.convert_conv_to_nhwc()
+        # self.convert_conv_to_nhwc()
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
