@@ -25,7 +25,7 @@ enum AttentionQkvFormat {
   Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
 };
 
-enum AttentionKernelType{
+enum AttentionKernelType {
   AttentionKernel_Unfused,
   AttentionKernel_TrtFusedAttention,
   AttentionKernel_TrtFlashAttention,
@@ -58,13 +58,17 @@ struct AttentionParameters {
 };
 
 namespace attention {
-// Environment variable to enable or disable fused self/causal attention kernel. Default is 0 (enabled).
-constexpr const char* kDisableFusedAttention = "ORT_DISABLE_FUSED_ATTENTION";
+// Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
+constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
 
 // Environment variable to enable or disable fused cross attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATTENTION";
 
-// Environment variable to enable or disable TRT flash attention. Default is 0 (enabled).
+// Environment variable to enable or disable TRT fused causal attention kernels. Default is 0 (disabled).
+// Note that those causal attention kernels use fp16 accumulation. There is potential accuracy drop using those kernels.
+constexpr const char* kEnableFusedCausalAttention = "ORT_ENABLE_FUSED_CAUSAL_ATTENTION";
+
+// Environment variable to enable or disable TRT flash attention. This applies to both self and causal attention. Default is 0 (enabled).
 constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
