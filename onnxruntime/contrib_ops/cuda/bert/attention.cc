@@ -204,20 +204,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   CudaT* gemm_buffer_data = reinterpret_cast<CudaT*>(gemm_buffer.get());
   CudaT* output_buffer = reinterpret_cast<CudaT*>(output->MutableData<T>());
   if (is_packing_mode_) {
-    const int32_t* token_offset_data = packing_token_offset->Data<int32_t>();
-    CudaT* gemm_buffer_data_padding = gemm_buffer_data + m * n;
-    LaunchRestorePadding(
-        gemm_buffer_data_padding,
-        reinterpret_cast<CudaT*>(gemm_buffer.get()),
-        token_offset_data,
-        parameters.total_token_count,
-        n,
-        batch_size,
-        sequence_length,
-        Stream(context));
-    gemm_buffer_data = gemm_buffer_data_padding;
-
-    output_buffer = gemm_buffer_data_padding + batch_size * sequence_length * n;
+    output_buffer = gemm_buffer_data + batch_size * sequence_length * n;
   }
 
   constexpr size_t element_size = sizeof(T);
@@ -250,7 +237,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
-  // data.token_offset_data = token_offset_data;
+  data.token_offset_data = is_packing_mode_ ? packing_token_offset->Data<int32_t>() : nullptr;
 
   Status status = QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
   if (is_packing_mode_) {

@@ -252,8 +252,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                   cudaStream_t stream,
                   int max_threads_per_block,
                   T* q, T* k, T* v,
-                  AttentionQkvFormat& qkv_format,
-                  const int32_t* token_offset) {
+                  AttentionQkvFormat& qkv_format) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
@@ -261,7 +260,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
   const bool past_present_share_buffer = parameters.past_present_share_buffer;
-  //const int32_t total_token_count = parameters.total_token_count;
+  // const int32_t total_token_count = parameters.total_token_count;
   void* fused_runner = data.fused_runner;
   bool use_memory_efficient_attention = data.use_memory_efficient_attention;
 
@@ -301,10 +300,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
       // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
+      const int32_t* token_offset = data.token_offset_data;
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size, qkv_add_bias, 3);
+                             true, v_head_size, qkv_add_bias, 3, token_offset, parameters.total_token_count);
     }
   } else if (data.value == nullptr) {  // gemm_buffer == nullptr and packed kv
     // TODO: unpack kv to BNSH for unfused kernel so that we can remove the following constraint.
@@ -455,7 +455,7 @@ Status QkvToContext(
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format, data.token_offset_data));
+  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
 

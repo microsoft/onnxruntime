@@ -37,6 +37,82 @@ namespace contrib {
 namespace cuda {
 
 template <typename T>
+__global__ void AddBiasTransposeTrtPacking(const T* input,
+                                           const T* biases,
+                                           T* output,
+                                           const int32_t* token_offset,
+                                           int32_t token_count,
+                                           const int M,
+                                           const int N,
+                                           const int H) {
+  // Format 2 for TensorRT fused attention (N*H <= 1024)
+  //     Input:  (Token_Count)xMxNxH
+  //     Output: BxSxNxMxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  // This kernel could support hidden size up to 4 * 1024 when T is Half4 and input is half.
+
+  const int token_idx = blockIdx.x;
+  const int pad_token_idx = token_offset[token_idx];
+  const int MNH = M * N * H;
+
+  input += token_idx * MNH;
+  output += pad_token_idx * MNH;
+  if (token_idx < token_count) {
+    for (int i = threadIdx.x; i < MNH; i += blockDim.x) {
+      int h_id = i % H;
+      int n_id = (i / H) % N;
+      int m_id = (i / H / N) % M;
+      int target_id = n_id * M * H + m_id * H + h_id;
+      output[target_id] = input[i] + biases[i];
+    }
+  } else {
+    for (int i = threadIdx.x; i < M * N * H; i += blockDim.x) {
+      output[i] = biases[i];
+    }
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output, const int32_t* token_offset, int32_t token_count) {
+  // Format 2 for TensorRT fused attention (N*H <= 1024)
+  //     Input:  BxSxMxNxH
+  //     Output: BxSxNxMxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  // This kernel could support hidden size up to 4 * 1024 when T is Half4 and input is half.
+
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int H = blockDim.x;
+  const int N = blockDim.y;
+  const int S = gridDim.x;
+  const int M = gridDim.z;
+
+  const int packing_token_idx = b * S + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  s = padding_token_idx % S;
+  b = padding_token_idx / S;
+
+  const int NH = N * H;
+  const int offset = (b * S + s) * M * NH;
+  const int in_offset = packing_token_idx * M * NH + m * NH + n * H;
+  const int out_offset = offset + (n * M + m) * H;
+
+  const int h = threadIdx.x;
+  if (packing_token_idx < token_count) {
+    if (h < H) {
+      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    }
+  } else {
+    if (h < H) {
+      output[out_offset + h] = biases[m * NH + n * H + h];
+    }
+  }
+}
+
+template <typename T>
 __global__ void AddBiasTransposeTrt(const T* input, const T* biases, T* output) {
   // Format 2 for TensorRT fused attention (N*H <= 1024)
   //     Input:  BxSxMxNxH
@@ -232,11 +308,52 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
 
   const int h = threadIdx.x;
-  if (h < head_size) {
+  output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  if (nullptr != qkv_add_bias) {
+    qkv_add_bias[in_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases,
+                                    T* output, T* qkv_add_bias,
+                                    const int32_t* token_offset,
+                                    int32_t token_count) {
+  // Format 1 for unfused attention, or fused causal attention
+  //     Input:  BxSxMxNxH
+  //     Output: MxBxNxSxH
+  //     qkv_add_bias: BxSxMxNxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  const int packing_token_idx = b * sequence_length + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  s = padding_token_idx % sequence_length;
+  b = padding_token_idx / sequence_length;
+
+  int in_offset = n * head_size + m * NH + packing_token_idx * M * NH;
+  const int out_offset = s * head_size + n * sequence_length * H + b * NHS + m * NHS * batch_size;
+
+  const int h = threadIdx.x;
+  if (packing_token_idx < token_count) {
     output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
     if (nullptr != qkv_add_bias) {
       qkv_add_bias[in_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
     }
+  } else {
+    output[out_offset + h] = biases[m * NH + n * H + h];
   }
 }
 
@@ -284,6 +401,65 @@ __global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, 
 
   if (h < head_size) {
     output[out_offset] = input[in_offset] + biases[bias_offset];
+  }
+}
+
+// this suppose 3 matrix in total
+template <typename T>
+__global__ void AddBiasTransposeQKV(const T* input, const T* biases, T* output, int v_head_size,
+                                    const int32_t* token_offset,
+                                    int32_t token_count) {
+  // Format 1 for unfused attention
+  //     Input:  BxSx(NxH + NxH + NxH_v)  (Packed QKV where K and V has different hidden sizes)
+  //     Output: BxNxSxH + BxNxSxH + BxNxSxH_v
+  // B is batch_size, S is sequence_length, N is num_heads, H is qk_head_size, H_v is v_head_size
+  int n = threadIdx.y;        // head_num_id
+  int s = blockIdx.x;         // sequence_id
+  int b = blockIdx.y;         // batch_id
+  int m = blockIdx.z;         // matrix id (Q=0, K=1, V=2)
+  const int h = threadIdx.x;  // head_element_id
+
+  const int qk_head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+
+  const int head_size = (m == 2 ? v_head_size : qk_head_size);
+
+  const int total_head_size = num_heads * (qk_head_size + qk_head_size + v_head_size);
+
+  const int packing_token_idx = b * sequence_length + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  s = padding_token_idx % sequence_length;
+  b = padding_token_idx / sequence_length;
+
+  int in_offset;
+  int out_offset;
+  int bias_offset;
+  in_offset = packing_token_idx * (total_head_size) +  // BS
+              m * (qk_head_size * num_heads) +         // M
+              n * head_size +                          // N
+              h;                                       // H
+
+  out_offset = m * (num_heads * qk_head_size * sequence_length * batch_size) +  // M
+               b * (num_heads * head_size * sequence_length) +                  // B
+               n * (sequence_length * head_size) +                              // N
+               s * (head_size) +                                                // S
+               h;                                                               // H
+
+  bias_offset = m * (num_heads * qk_head_size) +  // M
+                n * (head_size) +                 // N
+                h;                                // H
+
+  if (packing_token_idx < token_count) {
+    if (h < head_size) {
+      output[out_offset] = input[in_offset] + biases[bias_offset];
+    }
+  } else {
+    if (h < head_size) {
+      output[out_offset] = biases[bias_offset];
+    }
   }
 }
 
@@ -367,6 +543,64 @@ __global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* outp
 }
 
 template <typename T>
+__global__ void AddBiasTransposeCutlass(const T* input, const T* biases, T* output, int v_head_size,
+                                        const int32_t* token_offset,
+                                        int32_t token_count) {
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSx(NxH + NxH + NxH_v)  (Packed QKV where K and V has different hidden sizes)
+  //     Output: BxNxSxH + BxNxSxH + BxNxSxH_v
+  // B is batch_size, S is sequence_length, N is num_heads, H is qk_head_size, H_v is v_head_size
+  int n = threadIdx.y;        // head_num_id
+  int s = blockIdx.x;         // sequence_id
+  int b = blockIdx.y;         // batch_id
+  int m = blockIdx.z;         // matrix id (Q=0, K=1, V=2)
+  const int h = threadIdx.x;  // head_element_id
+
+  const int qk_head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+
+  const int head_size = (m == 2 ? v_head_size : qk_head_size);
+
+  const int total_head_size = num_heads * (qk_head_size + qk_head_size + v_head_size);
+
+  const int packing_token_idx = b * sequence_length + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  s = padding_token_idx % sequence_length;
+  b = padding_token_idx / sequence_length;
+
+  int in_offset;
+  int out_offset;
+  int bias_offset;
+  in_offset = packing_token_idx * (total_head_size) +  // BS
+              m * (qk_head_size * num_heads) +         // M
+              n * head_size +                          // N
+              h;                                       // H
+
+  out_offset = m * (num_heads * qk_head_size * sequence_length * batch_size) +  // M
+               b * (num_heads * head_size * sequence_length) +                  // B
+               s * (num_heads * head_size) +                                    // S
+               n * (head_size) +                                                // N
+               h;                                                               // H
+
+  bias_offset = m * (num_heads * qk_head_size) +  // M
+                n * (head_size) +                 // N
+                h;                                // H
+
+  if (packing_token_idx < token_count) {
+    if (h < head_size) {
+      output[out_offset] = input[in_offset] + biases[bias_offset];
+    }
+  } else {
+    if (h < head_size) {
+      output[out_offset] = biases[bias_offset];
+    }
+  }
+}
+
+template <typename T>
 __global__ void AddBiasUnpack(int M, const T* input, const T* biases, T* output) {
   // Format 4 to unpack TRT packed input format for memory efficient attention.
   //     Input:  BxSxNxMxH
@@ -395,6 +629,49 @@ __global__ void AddBiasUnpack(int M, const T* input, const T* biases, T* output)
       output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
     } else {
       output[out_offset + h] = input[in_offset + h];
+    }
+  }
+}
+
+template <typename T>
+__global__ void AddBiasTransposeCutlass(int M, const T* input, const T* biases, T* output,
+                                        const int32_t* token_offset,
+                                        int32_t token_count) {
+  // Format 3 for cutlass memory efficient attention
+  //     Input:  BxSxMxNxH
+  //     Output: MxBxSxNxH
+  // B is batch_size, S is sequence_length, M is number of matrices, N is num_heads, H is head_size
+  int n = threadIdx.y;
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+  int m = blockIdx.z;  // matrix id
+
+  const int head_size = blockDim.x;
+  const int num_heads = blockDim.y;
+
+  const int sequence_length = gridDim.x;
+  const int batch_size = gridDim.y;
+  const int H = head_size;
+  const int NH = num_heads * head_size;
+  const int NHS = NH * sequence_length;
+
+  const int packing_token_idx = b * sequence_length + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  s = padding_token_idx % sequence_length;
+  b = padding_token_idx / sequence_length;
+
+  int in_offset = n * head_size + m * NH + packing_token_idx * M * NH;
+  const int out_offset = n * head_size + s * NH + b * NHS + m * NHS * batch_size;
+
+  const int h = threadIdx.x;
+
+  if (packing_token_idx < token_count) {
+    if (h < head_size) {
+      output[out_offset + h] = input[in_offset + h] + biases[m * NH + n * H + h];
+    }
+  } else {
+    if (h < head_size) {
+      output[out_offset + h] = biases[m * NH + n * H + h];
     }
   }
 }
@@ -518,32 +795,60 @@ template <typename T>
 void InvokeAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
-    const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count) {
+    const T* input, const T* biases, T* output, T* qkv_add_bias, const int v_head_size, int total_matrix_count,
+    const int32_t* token_offset, const int32_t token_count) {
   assert(num_heads <= max_threads_per_block);
   const dim3 grid(sequence_length, batch_size, num_matrices);
   if (qk_head_size * num_heads <= max_threads_per_block) {
     const dim3 block(qk_head_size, num_heads, 1);
-    if (format == 2) {
-      AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
-    } else if (format == 1) {
-      if (v_head_size == -1 || qk_head_size == v_head_size) {
-        AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
-      } else {
-        ORT_ENFORCE(total_matrix_count == 3);
-        AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
+
+    if (token_offset != nullptr) {
+      if (format == 2) {
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output, token_offset, token_count);
+      } else if (format == 1) {
+        if (v_head_size == -1 || qk_head_size == v_head_size) {
+          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias, token_offset, token_count);
+        } else {
+          ORT_ENFORCE(total_matrix_count == 3);
+          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size, token_offset, token_count);
+        }
+      } else if (format == 3) {
+        if (v_head_size == -1 || qk_head_size == v_head_size) {
+          AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, token_offset, token_count);
+        } else {
+          ORT_ENFORCE(total_matrix_count == 3);
+          AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size, token_offset, token_count);
+        }
+      } else if (format == 4) {  // format == 4 TODO
+        AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+      } else {  // format == 0
+        AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
       }
-    } else if (format == 3) {
-      if (v_head_size == -1 || qk_head_size == v_head_size) {
-        AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
-      } else {
-        ORT_ENFORCE(total_matrix_count == 3);
-        AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
+
+    } else {
+      if (format == 2) {
+        AddBiasTransposeTrt<T><<<grid, block, 0, stream>>>(input, biases, output);
+      } else if (format == 1) {
+        if (v_head_size == -1 || qk_head_size == v_head_size) {
+          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
+        } else {
+          ORT_ENFORCE(total_matrix_count == 3);
+          AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
+        }
+      } else if (format == 3) {
+        if (v_head_size == -1 || qk_head_size == v_head_size) {
+          AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+        } else {
+          ORT_ENFORCE(total_matrix_count == 3);
+          AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
+        }
+      } else if (format == 4) {  // format == 4
+        AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
+      } else {  // format == 0
+        AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
       }
-    } else if (format == 4) {  // format == 4
-      AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
-    } else {  // format == 0
-      AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
     }
+
   } else {
     const dim3 block(max_threads_per_block / num_heads, num_heads, 1);
     if (format == 2) {
@@ -576,7 +881,8 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const half* input, const half* biases, half* output,
-    bool enable_half4, const int v_head_size, half* qkv_add_bias, int total_matrix_count) {
+    bool enable_half4, const int v_head_size, half* qkv_add_bias, int total_matrix_count,
+    const int32_t* token_offset, const int32_t token_count) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
   if (enable_half4 && 0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
     const int H = qk_head_size / 4;
@@ -587,7 +893,7 @@ void LaunchAddBiasTranspose(
     Half4* qkv_add_bias2 = reinterpret_cast<Half4*>(qkv_add_bias);
     InvokeAddBiasTranspose<Half4>(stream, num_matrices, format, max_threads_per_block,
                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2,
-                                  qkv_add_bias2, H_v, total_matrix_count);
+                                  qkv_add_bias2, H_v, total_matrix_count, token_offset, token_count);
   } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
     const int H = qk_head_size / 2;
     const int H_v = v_head_size / 2;
@@ -597,12 +903,12 @@ void LaunchAddBiasTranspose(
     half2* qkv_add_bias2 = reinterpret_cast<half2*>(qkv_add_bias);
     InvokeAddBiasTranspose<half2>(stream, num_matrices, format, max_threads_per_block,
                                   batch_size, sequence_length, num_heads, H, input2, biases2, output2,
-                                  qkv_add_bias2, H_v, total_matrix_count);
+                                  qkv_add_bias2, H_v, total_matrix_count, token_offset, token_count);
   } else {
     InvokeAddBiasTranspose<half>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count);
+        qkv_add_bias, v_head_size, total_matrix_count, token_offset, token_count);
   }
 }
 
@@ -611,7 +917,8 @@ void LaunchAddBiasTranspose(
     cudaStream_t stream, const int num_matrices, const int format, const int max_threads_per_block,
     const int batch_size, const int sequence_length, const int num_heads, const int qk_head_size,
     const float* input, const float* biases, float* output,
-    bool /*enable_half4*/, const int v_head_size, float* qkv_add_bias, int total_matrix_count) {
+    bool /*enable_half4*/, const int v_head_size, float* qkv_add_bias, int total_matrix_count,
+    const int32_t* token_offset, const int32_t token_count) {
   total_matrix_count = std::max(num_matrices, total_matrix_count);
   if (0 == (qk_head_size % 4) && (v_head_size == -1 || 0 == (v_head_size % 4))) {
     const int H = qk_head_size / 4;
@@ -622,7 +929,7 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<float4>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, H, input2, biases2, output2,
-        qkv_add_bias2, v_head_size / 4, total_matrix_count);
+        qkv_add_bias2, v_head_size / 4, total_matrix_count, token_offset, token_count);
   } else if (0 == (qk_head_size & 1) && (v_head_size == -1 || 0 == (v_head_size & 1))) {
     const int H = qk_head_size / 2;
     const float2* input2 = reinterpret_cast<const float2*>(input);
@@ -632,12 +939,12 @@ void LaunchAddBiasTranspose(
     InvokeAddBiasTranspose<float2>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, H, input2, biases2, output2,
-        qkv_add_bias2, v_head_size / 2, total_matrix_count);
+        qkv_add_bias2, v_head_size / 2, total_matrix_count, token_offset, token_count);
   } else {
     InvokeAddBiasTranspose<float>(
         stream, num_matrices, format, max_threads_per_block,
         batch_size, sequence_length, num_heads, qk_head_size, input, biases, output,
-        qkv_add_bias, v_head_size, total_matrix_count);
+        qkv_add_bias, v_head_size, total_matrix_count, token_offset, token_count);
   }
 }
 
