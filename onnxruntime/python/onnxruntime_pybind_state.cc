@@ -198,7 +198,7 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
   py::list py_list;
   for (const auto& rtensor : seq_tensors) {
     py::object obj;
-    GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
+    GetPyObjFromTensor(rtensor.Get<Tensor>(), obj, data_transfer_manager, mem_cpy_to_host_functions);
     py_list.append(obj);
   }
   // XToolChain kills the build
