@@ -51,6 +51,7 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                     ^
 |                     |
 +---------------------+
+
 In recent pytorch, Cast nodes may be inserted before Pow to ensure that both inputs 'base' and 'power' are the same type
 due to restriction in older opsets. Therefore, Layer Normalization will also handle the case below :
 +---------------------+
@@ -67,6 +68,7 @@ X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mu
                       |                                                ^
                       |                                                |
                       +------------------------------------------------+
+
 When using Apex O2, a Cast node may be inserted between Div and Mul, Layer Normalization will also handle the case below:
 +---------------------+
 |                     |
@@ -75,7 +77,9 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cas
                       |                                               ^
                       |                                               |
                       +-----------------------------------------------+
+
 OR
+
          +---------------------+
          |                     |
          |                     v
@@ -83,6 +87,7 @@ X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Di
                                |                                               ^
                                |                                               |
                                +-----------------------------------------------+
+
 Logically since LayerNormalization supports input and scale/bias in different data types, and during the kernel execution,
 data are casted to float/double to calculate for precision, so if there is any Cast Ops in the sub-graph, we can remove it.
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
@@ -445,19 +450,23 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
 /**
 Layer Normalization will fuse LayerNormalization into one node :
+
 X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                                              ^
 |                                              |
 +----------------------------------------------+
 Additional FP16 patterns supported:
+
 X --> Cast1 --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast2 --> Mul
         |                                               ^                  ^
         |                                               |                  |
         +-----------------------------------------------+                Scale
+
 Since SimplifiedLayerNormalization supports input and scale in different data types,
 and during the kernel execution, data are casted to float/double to calculate for precision,
 so we can fuse it to a single SimplifiedLayerNormalization, the output type is same as Scale.
 This results in the graph:
+
 X ------> SimplifiedLayerNormalization
               ^
 Scale --------|
@@ -556,9 +565,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    //bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-    //                 pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
-    bool is_gpu_ep = true;
+    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
