@@ -138,7 +138,7 @@ def run(
 
 class TestGeluParity(unittest.TestCase):
     verbose = False
-    optmized = True
+    optimized = True
 
     def setUp(self):
         self.test_cases = 100  # Number of test cases per test run
