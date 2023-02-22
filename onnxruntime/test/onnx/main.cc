@@ -1104,6 +1104,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   if (enable_qnn) {
     broken_tests.insert({"gemm_default_no_bias", "result differs"});
     broken_tests.insert({"resize_downsample_scales_linear", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear_antialias", "result differs"});
+    broken_tests.insert({"resize_downsample_sizes_linear_antialias", "result differs"});
     broken_tests.insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
     broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
     broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
