@@ -934,6 +934,7 @@ class OnnxModel:
         #    self.graph_topological_sort(graph)
         OnnxModel.graph_topological_sort(self.model.graph)
 
+
     @staticmethod
     def save(
         model,
