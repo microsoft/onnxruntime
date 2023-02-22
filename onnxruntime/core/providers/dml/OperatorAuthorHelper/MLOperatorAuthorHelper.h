@@ -592,6 +592,18 @@ public:
         return MLOperatorTensor(tensor.Get());
     }
 
+    uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetInputTensorDimensionCount(inputIndex);
+    }
+
+    std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetInputTensorShape(inputIndex);
+    }
+
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;

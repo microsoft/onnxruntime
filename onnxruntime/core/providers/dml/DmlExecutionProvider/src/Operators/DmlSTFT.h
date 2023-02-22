@@ -11,12 +11,6 @@ enum DmlSTFTKernelInputIndex : uint32_t
 };
 
 // Helper to derive dimensions and attributes from either the STFT shape inferrer or the STFT kernel constructor.
-//
-// Type             | Shape Inference                         | Kernel Constructor
-// -----------------|-----------------------------------------|-----------------------------------------
-// ContextInterface | IMLOperatorShapeInferenceContextPrivate | IMLOperatorKernelCreationContextPrivate
-// ShapeInterface   | IMLOperatorShapeInferenceContextPrivate | IMLOperatorTensorShapeDescription
-template <typename ContextInterface, typename ShapeInterface>
 struct DmlSTFTParameters
 {
     uint32_t batchSize = 0; // size of first dimension of the signal tensor
@@ -29,30 +23,24 @@ struct DmlSTFTParameters
     bool hasWindowTensor = false;
     DML_TENSOR_DATA_TYPE dataType = DML_TENSOR_DATA_TYPE_UNKNOWN;
 
-    DmlSTFTParameters(ContextInterface* context, ShapeInterface* shapeInterface)
+    DmlSTFTParameters(
+        const OperatorHelper::IKernelInformationAdapter& kernelInfo,
+        const OperatorHelper::IShapeInformationAdapter& shapeInfo)
     {
-        // Attribute: onesided
-        int64_t isOnesidedInt;
-        ORT_THROW_IF_FAILED(context->GetAttribute(
-            "onesided",
-            MLOperatorAttributeType::Int,
-            1,
-            sizeof(isOnesidedInt),
-            reinterpret_cast<void*>(&isOnesidedInt)
-        ));
+        auto& attributes = kernelInfo.GetAttributes();
 
-        this->isOnesided = static_cast<bool>(isOnesidedInt);
+        // Attribute: onesided
+        this->isOnesided = attributes.template GetOptionalAttribute<bool>("onesided", true);
 
         // input 0: signal (required; tensor)
         {
             // Signal shape is expected to be [batch_size, signal_length, 1] or [batch_size, signal_length] for
             // real-valued input. It must be [batch_size, signal_length, 2] for complex input.
-            uint32_t rank;
-            ORT_THROW_IF_FAILED(shapeInterface->GetInputTensorDimensionCount(DmlSTFTKernelInputIndex::Signal, &rank));
+            uint32_t rank = shapeInfo.GetInputTensorDimensionCount(DmlSTFTKernelInputIndex::Signal);
             ML_CHECK_VALID_ARGUMENT(rank == 2 || rank == 3, "Signal shape must be 2D or 3D.");
 
-            std::array<uint32_t, 3> dims;
-            ORT_THROW_IF_FAILED(shapeInterface->GetInputTensorShape(DmlSTFTKernelInputIndex::Signal, rank, dims.data()));
+            auto dims = shapeInfo.GetInputTensorShape(DmlSTFTKernelInputIndex::Signal);
+            assert(dims.size() == rank);
             this->batchSize = dims[0];
             this->signalSize = dims[1];
 
@@ -61,8 +49,7 @@ struct DmlSTFTParameters
                 ML_CHECK_VALID_ARGUMENT(dims[2] == 1, "DML STFT only accepts real-valued input.");
             }
 
-            MLOperatorEdgeDescription edgeDesc;
-            ORT_THROW_IF_FAILED(context->GetInputEdgeDescription(0, &edgeDesc));
+            MLOperatorEdgeDescription edgeDesc = kernelInfo.GetInputEdgeDescription(0);
 
             assert(edgeDesc.edgeType == MLOperatorEdgeType::Tensor);
             this->dataType = Dml::GetDmlDataTypeFromMlDataType(edgeDesc.tensorDataType);
@@ -70,23 +57,20 @@ struct DmlSTFTParameters
 
         // input 1: frame_step (required; constant; scalar)
         {
-            ComPtr<IMLOperatorTensor> tensorInterface;
-            ORT_THROW_IF_FAILED(context->GetConstantInputTensor(DmlSTFTKernelInputIndex::FrameStep, &tensorInterface));
-
-            MLOperatorTensor tensor(tensorInterface.Get());
+            MLOperatorTensor tensor = kernelInfo.GetConstantInputTensor(DmlSTFTKernelInputIndex::FrameStep);
             this->frameStep = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
 
             ML_CHECK_VALID_ARGUMENT(this->frameStep > 0, "The frame_step must be greater than 0.");
         }
 
         // input 2: window (optional; tensor)
-        if (context->IsInputValid(DmlSTFTKernelInputIndex::Window))
+        if (kernelInfo.IsInputValid(DmlSTFTKernelInputIndex::Window))
         {
-            uint32_t rank;
-            ORT_THROW_IF_FAILED(shapeInterface->GetInputTensorDimensionCount(DmlSTFTKernelInputIndex::Window, &rank));
+            uint32_t rank = shapeInfo.GetInputTensorDimensionCount(DmlSTFTKernelInputIndex::Window);
             ML_CHECK_VALID_ARGUMENT(rank == 1, "Window shape must be 1D.");
 
-            ORT_THROW_IF_FAILED(shapeInterface->GetInputTensorShape(DmlSTFTKernelInputIndex::Window, rank, &this->frameSize));
+            auto shape = shapeInfo.GetInputTensorShape(DmlSTFTKernelInputIndex::Window);
+            this->frameSize = shape[0];
 
             ML_CHECK_VALID_ARGUMENT(this->frameSize <= this->signalSize, "The window size cannot be larger than the signal size.");
 
@@ -94,12 +78,9 @@ struct DmlSTFTParameters
         }
 
         // input 3: frame_length (optional; constant; scalar)
-        if (context->IsInputValid(DmlSTFTKernelInputIndex::FrameLength))
+        if (kernelInfo.IsInputValid(DmlSTFTKernelInputIndex::FrameLength))
         {
-            ComPtr<IMLOperatorTensor> tensorInterface;
-            ORT_THROW_IF_FAILED(context->GetConstantInputTensor(DmlSTFTKernelInputIndex::FrameLength, &tensorInterface));
-
-            MLOperatorTensor tensor(tensorInterface.Get());
+            MLOperatorTensor tensor = kernelInfo.GetConstantInputTensor(DmlSTFTKernelInputIndex::FrameLength);
             uint32_t frameLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
 
             ML_CHECK_VALID_ARGUMENT(
@@ -125,9 +106,6 @@ struct DmlSTFTParameters
         this->frameDftElementCount = this->isOnesided ? this->frameSize / 2 + 1 : this->frameSize;
     }
 };
-
-using DmlSTFTShapeInferenceParams = DmlSTFTParameters<IMLOperatorShapeInferenceContextPrivate, IMLOperatorShapeInferenceContextPrivate>;
-using DmlSTFTConstructionParams = DmlSTFTParameters<IMLOperatorKernelCreationContextPrivate, IMLOperatorTensorShapeDescription>;
 
 namespace DmlSTFTHelpers
 {
@@ -254,7 +232,10 @@ public:
         ComPtr<IMLOperatorTensorShapeDescription> shapeDescInfo;
         ORT_THROW_IF_FAILED(context->GetTensorShapeDescription(&shapeDescInfo));
 
-        DmlSTFTConstructionParams params(contextPrivate.Get(), shapeDescInfo.Get());
+        MLOperatorKernelCreationContext creationContext(context);
+        OperatorHelper::KernelInformationAdapter kernelInfo{creationContext};
+        OperatorHelper::ShapeInformationAdapter shapeInfo{creationContext};
+        DmlSTFTParameters params(kernelInfo, shapeInfo);
 
         CompileAndInitFramingOperator(params);
 
@@ -273,7 +254,7 @@ public:
         m_dftOperator.dftLength = params.frameSize;
     }
 
-    void CompileAndInitFramingOperator(const DmlSTFTConstructionParams& params)
+    void CompileAndInitFramingOperator(const DmlSTFTParameters& params)
     {
         StackAllocator<1024> stackAllocator;
 
@@ -510,9 +491,12 @@ struct STFTShapeInferrer : public WRL::Base<IMLOperatorShapeInferrer>
             ComPtr<IMLOperatorShapeInferenceContextPrivate> contextPrivate;
             ORT_THROW_IF_FAILED(context->QueryInterface(IID_PPV_ARGS(&contextPrivate)));
 
-            DmlSTFTShapeInferenceParams info(contextPrivate.Get(), contextPrivate.Get());
+            MLShapeInferenceContext inferenceContext(context);
+            OperatorHelper::KernelInformationAdapter kernelInfo{inferenceContext};
+            OperatorHelper::ShapeInformationAdapter shapeInfo{inferenceContext};
+            DmlSTFTParameters params(kernelInfo, shapeInfo);
 
-            std::array<uint32_t, 4> outputDims = { info.batchSize, info.frameCount, info.frameDftElementCount, 2 };
+            std::array<uint32_t, 4> outputDims = { params.batchSize, params.frameCount, params.frameDftElementCount, 2 };
 
             ORT_THROW_IF_FAILED(context->SetOutputTensorShape(0, onnxruntime::narrow<uint32_t>(outputDims.size()), outputDims.data()));
         }
