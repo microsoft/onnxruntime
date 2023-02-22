@@ -150,6 +150,7 @@ class FusionBiasSkipLayerNormalization(Fusion):
 
         # bias should be one dimension
         bias_index = -1
+        bias_weight = None
         for i, input in enumerate(add.input):
             initializer = self.model.get_initializer(input)
             if initializer is None:
