@@ -76,6 +76,25 @@ class DnnlSubgraphPrimitive {
   dnnl::memory GetMemoryInOrtFormat(const DnnlTensor& tensor, const dnnl::engine& eng);
   bool IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) const;
 
+  template <typename T>
+  void WriteToDnnlMemory(dnnl::memory& mem, std::vector<T> values) {
+    if (mem.get_engine().get_kind() == dnnl::engine::kind::gpu) {
+      // Create a CPU memory
+      auto cpu_memory = dnnl::memory(mem.get_desc(), GetCPUEngine());
+      // Copy data from the vector into the CPU memory data handle
+      std::copy(values.begin(), values.end(), static_cast<T*>(cpu_memory.get_data_handle()));
+      // Use reorder to copy data from CPU to GPU
+      dnnl::stream s{mem.get_engine()};
+      // mem now contains all zero
+      dnnl::reorder(cpu_memory, mem).execute(s, cpu_memory, mem);
+      // wait for reorder to complete
+      s.wait();
+    } else {
+      // Copy data from the vector into the memory data handle
+      std::copy(values.begin(), values.end(), static_cast<T*>(mem.get_data_handle()));
+    }
+  } 
+
  private:
   std::string shape_key_;
 

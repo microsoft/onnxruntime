@@ -33,7 +33,7 @@ bool IsZero(half v) {
 }
 
 template <typename T, typename ALayout, typename BLayout>
-class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
+class GemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->RegisterOp(RocBlasGemmOp<T>);
@@ -82,7 +82,7 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 };
 
 template <typename T, typename ALayout, typename BLayout>
-class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
+class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
  public:
   BatchedGemmTunableOp() {
     this->RegisterOp(RocBlasBatchedGemmOp<T>);
@@ -125,7 +125,7 @@ class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
 };
 
 template <typename T, typename ALayout, typename BLayout>
-class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemmParams<T>> {
+class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>> {
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
