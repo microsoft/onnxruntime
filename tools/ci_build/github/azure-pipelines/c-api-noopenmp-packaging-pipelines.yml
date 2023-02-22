@@ -4,7 +4,7 @@ parameters:
   type: boolean
   default: true
 
-- name: UseIncreasedTimeoutForTests 
+- name: UseIncreasedTimeoutForTests
   displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
   type: boolean
   default: false
@@ -671,6 +671,7 @@ jobs:
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     JobName: 'Windows_CI_GPU_DML_Dev'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
@@ -685,7 +686,7 @@ jobs:
     CudaVersion: '11.6'
     OrtPackageId: 'Microsoft.ML.OnnxRuntime.DirectML'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
      mkdir $(Build.ArtifactStagingDirectory)\testdata
@@ -694,6 +695,7 @@ jobs:
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'aiinfra-dml-winbuild'
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     JobName: 'Windows_CI_GPU_DML_Dev_x86'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
@@ -706,7 +708,7 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=x86 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-x86.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-x86.zip $(Build.ArtifactStagingDirectory)
@@ -716,6 +718,7 @@ jobs:
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     JobName: 'Windows_CI_GPU_DML_Dev_arm64'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
@@ -728,7 +731,7 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm64 /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm64.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm64.zip $(Build.ArtifactStagingDirectory)
@@ -738,6 +741,7 @@ jobs:
 - template: nuget/templates/dml-vs-2019.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm-zip'
     JobName: 'Windows_CI_GPU_DML_Dev_arm'
     BuildCommand: --build_dir $(Build.BinariesDirectory) --arm --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 16 2019"
@@ -750,7 +754,7 @@ jobs:
     DoEsrp: ${{ parameters.DoEsrp }}
     RunTests: 'false'
     NuPackScript: |
-     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML
+     msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /p:TargetArchitecture=arm /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
      cd $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\
      ren Microsoft.ML.OnnxRuntime.DirectML.* win-dml-arm.zip
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\win-dml-arm.zip $(Build.ArtifactStagingDirectory)

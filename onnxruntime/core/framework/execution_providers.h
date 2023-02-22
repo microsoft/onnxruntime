@@ -74,7 +74,7 @@ class ExecutionProviders {
   const_iterator end() const noexcept { return exec_providers_.cend(); }
 
   const AllocatorPtr GetDefaultCpuAllocator() const {
-    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
+    return Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(OrtMemTypeDefault);
   }
 
   OrtMemoryInfo GetDefaultCpuMemoryInfo() const {

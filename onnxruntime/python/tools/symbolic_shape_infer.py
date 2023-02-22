@@ -198,10 +198,13 @@ class SymbolicShapeInference:
             "LayerNormalization": self._infer_LayerNormalization,
             "LongformerAttention": self._infer_LongformerAttention,
             "PythonOp": self._infer_PythonOp,
+            "SimplifiedLayerNormalization": self._infer_LayerNormalization,
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "GroupNorm": self._infer_GroupNorm,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "BiasAdd": self._infer_BiasAdd,
+            "NhwcConv": self._infer_NhwcConv,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -217,9 +220,10 @@ class SymbolicShapeInference:
             "_adaptive_avg_pool2d": self._infer_aten_pool2d,
             "numpy_T": self._infer_Transpose,
             "native_group_norm": self._infer_aten_group_norm,
-            "upsample_nearest1d": self._infer_aten_upsample_nearest,
-            "upsample_nearest2d": self._infer_aten_upsample_nearest,
-            "upsample_nearest3d": self._infer_aten_upsample_nearest,
+            "upsample_nearest1d": self._infer_aten_upsample,
+            "upsample_nearest2d": self._infer_aten_upsample,
+            "upsample_nearest3d": self._infer_aten_upsample,
+            "upsample_bilinear2d": self._infer_aten_upsample,
         }
         self.run_ = True
         self.suggested_merge_ = {}
@@ -433,11 +437,15 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
             "GroupNorm",
             "BiasSplitGelu",
+            "BiasAdd",
+            "NhwcConv",
         ]
 
         if not skip_infer:
@@ -619,13 +627,13 @@ class SymbolicShapeInference:
     def _new_symbolic_shape(self, rank, node, out_idx=0):
         return [self._new_symbolic_dim_from_output(node, out_idx, i) for i in range(rank)]
 
-    def _compute_conv_pool_shape(self, node):
+    def _compute_conv_pool_shape(self, node, channels_last=False):
         sympy_shape = self._get_sympy_shape(node, 0)
         if len(node.input) > 1:
             W_shape = self._get_sympy_shape(node, 1)
             rank = len(W_shape) - 2  # number of spatial axes
-            kernel_shape = W_shape[-rank:]
-            sympy_shape[1] = W_shape[0]
+            kernel_shape = W_shape[-rank - 1 : -1] if channels_last else W_shape[-rank:]
+            sympy_shape[3 if channels_last else 1] = W_shape[0]
         else:
             W_shape = None
             kernel_shape = get_attribute(node, "kernel_shape")
@@ -634,13 +642,17 @@ class SymbolicShapeInference:
         assert len(sympy_shape) == rank + 2
 
         # only need to symbolic shape inference if input has symbolic dims in spatial axes
-        is_symbolic_dims = [not is_literal(i) for i in sympy_shape[-rank:]]
+        spatial_shape = sympy_shape[-rank - 1 : -1] if channels_last else sympy_shape[-rank:]
+        is_symbolic_dims = [not is_literal(i) for i in spatial_shape]
 
         if not any(is_symbolic_dims):
             shape = get_shape_from_value_info(self.known_vi_[node.output[0]])
             if len(shape) > 0:
                 assert len(sympy_shape) == len(shape)
-                sympy_shape[-rank:] = [sympy.Integer(d) for d in shape[-rank:]]
+                if channels_last:
+                    sympy_shape[-rank - 1 : -1] = [sympy.Integer(d) for d in shape[-rank - 1 : -1]]
+                else:
+                    sympy_shape[-rank:] = [sympy.Integer(d) for d in shape[-rank:]]
                 return sympy_shape
 
         dilations = get_attribute(node, "dilations", [1] * rank)
@@ -671,7 +683,7 @@ class SymbolicShapeInference:
 
         ceil_mode = get_attribute(node, "ceil_mode", 0)
         for i in range(rank):
-            effective_input_size = sympy_shape[-rank + i]
+            effective_input_size = sympy_shape[-rank + i + (-1 if channels_last else 0)]
             if len(total_pads) > 0:
                 effective_input_size = effective_input_size + total_pads[i]
             if ceil_mode:
@@ -680,7 +692,7 @@ class SymbolicShapeInference:
                 )
             else:
                 strided_kernel_positions = (effective_input_size - effective_kernel_shape[i]) // strides[i]
-            sympy_shape[-rank + i] = strided_kernel_positions + 1
+            sympy_shape[-rank + i + (-1 if channels_last else 0)] = strided_kernel_positions + 1
         return sympy_shape
 
     def _check_merged_dims(self, dims, allow_broadcast=True):
@@ -910,6 +922,18 @@ class SymbolicShapeInference:
             helper.make_tensor_value_info(
                 node.output[0],
                 vi.type.tensor_type.elem_type,
+                get_shape_from_sympy_shape(sympy_shape),
+            )
+        )
+
+    def _infer_NhwcConv(self, node):
+        sympy_shape = self._compute_conv_pool_shape(node, channels_last=True)
+        self._update_computed_dims(sympy_shape)
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(
+            helper.make_tensor_value_info(
+                node.output[0],
+                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
                 get_shape_from_sympy_shape(sympy_shape),
             )
         )
@@ -1386,14 +1410,14 @@ class SymbolicShapeInference:
                     )
                 )
 
-    def _infer_aten_upsample_nearest(self, node):
+    def _infer_aten_upsample(self, node):
         new_shape = None
         input_shape = self._get_shape(node, 0)
         if input_shape is not None:
             new_shape = input_shape[:2]
             output_size = self._try_get_value(node, 1)
             if output_size is not None:
-                new_shape += [dim_size.item() for dim_size in output_size]
+                new_shape += [dim_size.item() if type(dim_size) == np.int64 else dim_size for dim_size in output_size]
             else:
                 rank = len(input_shape)
                 new_shape += [str(self._new_symbolic_dim_from_output(node, 0, i)) for i in range(2, rank)]
@@ -2001,28 +2025,43 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_MultiHeadAttention(self, node):
-        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        # Without packed KV:
+        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        # Q, K and V without packing:
+        #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
         #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
         #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
-        # With packed KV:
-        #   Input 1 (key) has shape (batch_size, kv_sequence_length, num_heads, 2, head_size)
-        #   Input 2 (value) is nullptr
-        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        # Packed KV:
+        #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+        #   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
+        #   Input 2  nullptr
+        # Packed QKV:
+        #   Input 0 (batch_size, sequence_length, num_heads, 3, head_size)
+        #   Input 1  nullptr
+        #   Input 2  nullptr
+
         query_shape = self._get_shape(node, 0)
-        key_shape = self._get_shape(node, 1)
-        if query_shape is not None and len(query_shape) == 3:
+        if query_shape is not None:
+            if len(query_shape) == 3:
+                key_shape = self._get_shape(node, 1)
+                # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
+                output_shape = query_shape
+                if key_shape and len(key_shape) == 3:
+                    value_shape = self._get_shape(node, 2)
+                    if value_shape and len(value_shape) == 3:
+                        output_shape[2] = value_shape[2]
 
-            # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
-            output_shape = query_shape
-            if key_shape and len(key_shape) == 3:
-                value_shape = self._get_shape(node, 2)
-                if value_shape and len(value_shape) == 3:
-                    output_shape[2] = value_shape[2]
+                output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+            elif len(query_shape) == 5:
+                if isinstance(query_shape[2], int) and isinstance(query_shape[4], int):
+                    output_shape = [query_shape[0], query_shape[1], query_shape[2] * query_shape[4]]
+                else:
+                    output_shape = [query_shape[0], query_shape[1], f"{query_shape[2]}*{query_shape[4]}"]
 
-            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi = self.known_vi_[node.output[0]]
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+                output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
@@ -2081,6 +2120,9 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[0]]
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
+
+    def _infer_BiasAdd(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")
@@ -2455,6 +2497,7 @@ class SymbolicShapeInference:
             all_shapes_inferred = symbolic_shape_inference._infer_impl()
         symbolic_shape_inference._update_output_from_vi()
         if not all_shapes_inferred:
+            onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
             raise Exception("Incomplete symbolic shape inference")
         return symbolic_shape_inference.out_mp_
 

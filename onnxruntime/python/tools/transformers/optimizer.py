@@ -29,9 +29,12 @@ from onnx_model_bart import BartOnnxModel
 from onnx_model_bert import BertOnnxModel
 from onnx_model_bert_keras import BertOnnxModelKeras
 from onnx_model_bert_tf import BertOnnxModelTF
+from onnx_model_clip import ClipOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
+from onnx_model_vae import VaeOnnxModel
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,11 @@ MODEL_TYPES = {
         0,
     ),  # might add a class for GPT2OnnxModel for TF later.
     "tnlr": (TnlrOnnxModel, "pytorch", 1),
+    "t5": (T5OnnxModel, "pytorch", 2),
+    # Stable Diffusion models
     "unet": (UnetOnnxModel, "pytorch", 1),
+    "vae": (VaeOnnxModel, "pytorch", 1),
+    "clip": (ClipOnnxModel, "pytorch", 1),
 }
 
 
@@ -150,7 +157,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "unet"] and (num_heads == 0 or hidden_size == 0):
+    if model_type not in ["bert", "unet", "vae", "clip"] and (num_heads == 0 or hidden_size == 0):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
 
     (optimizer_class, producer, _) = MODEL_TYPES[model_type]
@@ -248,7 +255,7 @@ def optimize_model(
             else [
                 "MatMulScaleFusion",
                 "MatMulAddFusion",
-                "SimplifiedLayerNormFusion",
+                "MatmulTransposeFusion",
                 "GemmActivationFusion",
                 "BiasSoftmaxFusion",
             ]
@@ -444,10 +451,11 @@ def main():
 
     optimizer.save_model_to_file(args.output, args.use_external_data_format)
 
-    if optimizer.is_fully_optimized():
-        logger.info("The model has been fully optimized.")
-    else:
-        logger.info("The model has been optimized.")
+    if args.model_type in ["bert", "gpt2"]:
+        if optimizer.is_fully_optimized():
+            logger.info("The model has been fully optimized.")
+        else:
+            logger.info("The model has been optimized.")
 
 
 if __name__ == "__main__":
