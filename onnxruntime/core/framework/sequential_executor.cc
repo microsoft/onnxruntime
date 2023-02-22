@@ -558,6 +558,10 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     if (fstream.is_open()) {
       std::cout << "execute node:" << idx << "\n  Inputs (len:" << kernel_ctx.InputCount() << ") :\n";
       for (int i = 0; i < kernel_ctx.InputCount(); i++) {
+        std::string name = p_kernel->Node().InputDefs()[i]->Name();
+        int global_index = 0;
+        ORT_THROW_IF_ERROR(ctx.GetSessionState().GetOrtValueNameIdxMap().GetIdx(name, global_index));
+        std::cout << i << " Name:" << name << " gIdx:" << global_index << " alloc:" << ctx.GetSessionState().GetExecutionPlan()->allocation_plan[global_index].alloc_kind << "\n";
         const OrtValue* v = kernel_ctx.GetInputMLValue(i);
         if (v->IsTensor()) {
           const Tensor& t = v->Get<Tensor>();
