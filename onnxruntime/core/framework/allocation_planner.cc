@@ -1110,8 +1110,8 @@ class PlannerImpl {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
                 OrtValueIndex reusable_input{};
-                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
-                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
+                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/) {
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                   allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                   allocation_plan[output_idx_global].reused_buffer = reusable_input;
@@ -1143,7 +1143,6 @@ class PlannerImpl {
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-                std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
                 value_consumer_map_[reusable_input].insert(value_consumer_map_[output_idx_global].begin(),
@@ -1166,7 +1165,6 @@ class PlannerImpl {
                 if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                     allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
                   if (value_consumer_map_[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
-                    std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
                     allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                     allocation_plan[output_idx_global].reused_buffer = input_arg_index;
                     value_consumer_map_[input_arg_index].insert(value_consumer_map_[output_idx_global].begin(),
@@ -2264,7 +2262,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
         node_name_or_type = op_type + std::to_string(op_type_counter[op_type]++);
       }
       if (op_type == "MemcpyToHost" || op_type == "MemcpyFromHost") {
-        index_of_MemcpyFromAndToHost.push_back(node->Index());
+        index_of_MemcpyFromAndToHost.push_back(node_index);
       } else {
         node_names_by_stream_[it->second].push_back(node_name_or_type);
       }
