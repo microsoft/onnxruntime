@@ -930,7 +930,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);
@@ -941,7 +942,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);
@@ -952,7 +954,8 @@ TEST(AttentionTest, Causal_EmptyPastState) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
+            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
     RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                      batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
                      use_past_state, past_sequence_length, &past_data, &present_data);

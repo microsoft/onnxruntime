@@ -245,6 +245,7 @@ namespace OperatorHelper
         static const int sc_sinceVer_Squeeze = 11;
         static const int sc_sinceVer_TopK = 11;
         static const int sc_sinceVer_Unsqueeze = 11;
+        static const int sc_sinceVer_ConcatFromSequence = 11;
     } // namespace OnnxOperatorSet11
 
     namespace OnnxOperatorSet12

@@ -61,8 +61,8 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
     alpha = GetAlpha(node);
   }
 
-  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().dims();
-  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().dims();
+  auto src_dims = sp.GetMemory(node.Input(IN_A)).get_desc().get_dims();
+  auto weights_dims = sp.GetMemory(node.Input(IN_B)).get_desc().get_dims();
 
 
   // If this is required for transposed inputs, then this will be done later on in the code.
@@ -190,7 +190,7 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
       // Handle Binary post ops including the input memory
       if (binary_ops.count(post_ops[i]) != 0) {
         auto ori_binary_md = sp.GetMemory(node.Input(IN_BINARY_0 + binary_count).Name()).get_desc();
-        auto ori_binary_dims = ori_binary_md.dims();
+        auto ori_binary_dims = ori_binary_md.get_dims();
         auto binary_mem_dims = ori_binary_dims;
         if (ori_binary_dims.size() != output_shape.size()) {
           if (ori_binary_dims.size() > output_shape.size()) {
@@ -225,25 +225,29 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
             post_op_alpha = GetFloatAttr(node, "alpha", /*default_alpha*/ 1.0f);
             break;
           }
+          case dnnl::algorithm::eltwise_soft_relu: {
+            if (post_ops[i] == "Softplus") {
+              post_op_alpha = 1.0f;
+            }
+            break;
+          }
           default:
             post_op_alpha = 0.0;
         }
-        ops.append_eltwise(1.0f, algo, post_op_alpha, 0.0f);
+        ops.append_eltwise(algo, post_op_alpha, 0.0f);
       }
     }
     attr.set_post_ops(ops);
   }
 
   if (is_fusedmatmul) {
-    // Set the scaling of output as a post op in the primitive attribute, taking the value from alpha attribute
-    std::vector<float> alphaScale({alpha});
-    attr.set_output_scales(0, alphaScale);
+    // Set the value to scale DNNL_ARG_SRC with mask 0
+    attr.set_scales_mask(DNNL_ARG_SRC, 0);
   }
 
   auto dst_md = dnnl::memory::desc(output_shape, node.Output(OUT_Y).Type(), dnnl::memory::format_tag::any);
 
-  auto matmul_d = dnnl::matmul::desc(src_md, weights_md, dst_md);
-  auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, attr, eng);
+  auto matmul_pd = dnnl::matmul::primitive_desc(eng, src_md, weights_md, dst_md, attr);
 
   dnnl::memory matmul_src_mem, matmul_weights_mem;
   auto matmul_dst_mem = dnnl::memory(matmul_pd.dst_desc(), eng);
@@ -264,6 +268,15 @@ void DnnlMatMul::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   std::unordered_map<int, dnnl::memory> mem_map({{DNNL_ARG_SRC, matmul_src_mem},
                                                  {DNNL_ARG_WEIGHTS, matmul_weights_mem},
                                                  {DNNL_ARG_DST, matmul_dst_mem}});
+
+  if (is_fusedmatmul) {
+    // Create the memory object related to the scale
+    auto alpha_mem = dnnl::memory({{1}, dnnl::memory::data_type::f32, {1}}, eng);
+    // Write the alpha value into the memory object
+    sp.WriteToDnnlMemory<float>(alpha_mem, {alpha});
+    // Set alpha_mem to scale the output
+    mem_map.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, alpha_mem});
+  }
 
   // add to memory map with extra third input if fused with add
   if (has_postop_fusion) {

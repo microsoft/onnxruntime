@@ -124,6 +124,7 @@ set(provider_excluded_files
   "math/softmax_common.cc"
   "math/softmax_common.h"
   "math/softmax.cc"
+  "math/softmax.h"
   "nn/conv.cc"
   "nn/conv.h"
   "nn/conv_transpose.cc"
