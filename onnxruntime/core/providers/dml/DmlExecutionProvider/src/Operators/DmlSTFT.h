@@ -4,7 +4,7 @@
 
 enum DmlSTFTKernelInputIndex : uint32_t
 {
-    Signal = 0,
+    Signal,
     FrameStep,
     Window,
     FrameLength
@@ -75,6 +75,8 @@ struct DmlSTFTParameters
 
             MLOperatorTensor tensor(tensorInterface.Get());
             this->frameStep = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
+
+            ML_CHECK_VALID_ARGUMENT(this->frameStep > 0, "The frame_step must be greater than 0.");
         }
 
         // input 2: window (optional; tensor)
@@ -85,6 +87,8 @@ struct DmlSTFTParameters
             ML_CHECK_VALID_ARGUMENT(rank == 1, "Window shape must be 1D.");
 
             ORT_THROW_IF_FAILED(shapeInterface->GetInputTensorShape(DmlSTFTKernelInputIndex::Window, rank, &this->frameSize));
+
+            ML_CHECK_VALID_ARGUMENT(this->frameSize <= this->signalSize, "The window size cannot be larger than the signal size.");
 
             this->hasWindowTensor = true;
         }
@@ -102,6 +106,8 @@ struct DmlSTFTParameters
                 this->frameSize == 0 || this->frameSize == frameLength,
                 "The window size and frame_length must be equal, if both are provided."
             );
+
+            ML_CHECK_VALID_ARGUMENT(frameLength <= this->signalSize, "The frame_length cannot be larger than the signal size.");
 
             this->frameSize = frameLength;
         }
@@ -551,8 +557,8 @@ public:
         t1Constraint.typeLabel = "T1";
         std::array<MLOperatorEdgeDescription, 2> t1AllowedEdges
         {
-            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float16 },
-            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Float },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float16) },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Float) },
         };
         t1Constraint.allowedTypes = t1AllowedEdges.data();
         t1Constraint.allowedTypeCount = static_cast<uint32_t>(t1AllowedEdges.size());
@@ -562,8 +568,8 @@ public:
         t2Constraint.typeLabel = "T2";
         std::array<MLOperatorEdgeDescription, 2> t2AllowedEdges
         {
-            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int32 },
-            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, (uint64_t)MLOperatorTensorDataType::Int64 },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Int32) },
+            MLOperatorEdgeDescription { MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLOperatorTensorDataType::Int64) },
         };
         t2Constraint.allowedTypes = t2AllowedEdges.data();
         t2Constraint.allowedTypeCount = static_cast<uint32_t>(t2AllowedEdges.size());
