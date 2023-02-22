@@ -10,13 +10,14 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
+from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException, ORTModuleTorchModelException
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
+import os
 
 
 # Needed to override PyTorch methods
@@ -143,12 +144,21 @@ class ORTModule(torch.nn.Module):
         which does not need model replication and is also recommended by torch to use instead.
         """
 
-        return self._torch_module._replicate_for_data_parallel()
+        policy = os.getenv("ORTMODULE_FALLBACK_POLICY")
+        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
+            raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
+                                  "Please use torch.nn.parallel.DistributedDataParallel instead.")
+        else:
+            return self._torch_module._replicate_for_data_parallel()
 
     def add_module(self, name: str, module: Optional["Module"]) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
-        self._torch_module.add_module(name, module)
+        policy = os.getenv("ORTMODULE_FALLBACK_POLICY")
+        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
+            raise ORTModuleTorchModelException("ORTModule does not support adding modules to it.")
+        else:
+            self._torch_module.add_module(name, module)
 
     @property
     def module(self):
