@@ -51,7 +51,6 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                     ^
 |                     |
 +---------------------+
-
 In recent pytorch, Cast nodes may be inserted before Pow to ensure that both inputs 'base' and 'power' are the same type
 due to restriction in older opsets. Therefore, Layer Normalization will also handle the case below :
 +---------------------+
@@ -68,7 +67,6 @@ X --> ReduceMean --> Sub -->  Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mu
                       |                                                ^
                       |                                                |
                       +------------------------------------------------+
-
 When using Apex O2, a Cast node may be inserted between Div and Mul, Layer Normalization will also handle the case below:
 +---------------------+
 |                     |
@@ -77,9 +75,7 @@ X --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cas
                       |                                               ^
                       |                                               |
                       +-----------------------------------------------+
-
 OR
-
          +---------------------+
          |                     |
          |                     v
@@ -87,7 +83,6 @@ X --> Cast --> ReduceMean --> Sub --> Pow --> ReduceMean --> Add --> Sqrt --> Di
                                |                                               ^
                                |                                               |
                                +-----------------------------------------------+
-
 Logically since LayerNormalization supports input and scale/bias in different data types, and during the kernel execution,
 data are casted to float/double to calculate for precision, so if there is any Cast Ops in the sub-graph, we can remove it.
 Such Cast Op can be the input of the sub-graph, or an Cast Op between the Div and Mul nodes.
@@ -450,141 +445,100 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
 /**
 Layer Normalization will fuse LayerNormalization into one node :
-
 X --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
 |                                              ^
 |                                              |
 +----------------------------------------------+
 Additional FP16 patterns supported:
-
 X --> Cast1 --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Cast2 --> Mul
         |                                               ^                  ^
         |                                               |                  |
         +-----------------------------------------------+                Scale
-
 Since SimplifiedLayerNormalization supports input and scale in different data types,
 and during the kernel execution, data are casted to float/double to calculate for precision,
 so we can fuse it to a single SimplifiedLayerNormalization, the output type is same as Scale.
 This results in the graph:
-
 X ------> SimplifiedLayerNormalization
               ^
 Scale --------|
 */
 Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                             const logging::Logger& logger) const {
-  std::cout << "Entering SimplifiedLayerNormFusion" << std::endl;
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
   InlinedVector<std::reference_wrapper<Node>> nodes_to_remove;
   for (auto node_index : node_topology_list) {
     nodes_to_remove.clear();
     auto* p_pow = graph.GetNode(node_index);
-    std::cout << "p_pow: " << p_pow << std::endl;
     if (p_pow == nullptr) continue;  // we removed the node as part of an earlier fusion
 
     Node& pow_node = *p_pow;
-    std::cout << "pow_node: " << pow_node << std::endl;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) || graph.NodeProducesGraphOutput(pow_node) ||
         !IsSupportedDataType(pow_node)) {
-      std::cout << "pow_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding pow_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(pow_node);
 
     const Node* p_reduce_mean = nullptr;
 
     p_reduce_mean = graph_utils::FirstChildByType(pow_node, "ReduceMean");
-    std::cout << "p_reduce_mean: " << p_reduce_mean << std::endl;
     if (p_reduce_mean == nullptr) {
       continue;
     }
     Node& reduce_mean_node = *graph.GetNode(p_reduce_mean->Index());
-    std::cout << "reduce_mean_node: " << reduce_mean_node << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_node, "ReduceMean", {1, 11, 13, 18}) ||
         reduce_mean_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, reduce_mean_node, 1) || !IsSupportedDataType(reduce_mean_node, 1) ||
         reduce_mean_node.GetInputEdgesCount() == 0) {
-      std::cout << "reduce_mean_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding reduce_mean_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(reduce_mean_node);
 
     const Node* p_add = graph_utils::FirstChildByType(reduce_mean_node, "Add");
-    std::cout << "p_add: " << p_add << std::endl;
     if (p_add == nullptr) {
       continue;
     }
     Node& add_node = *graph.GetNode(p_add->Index());
-    std::cout << "add_node: " << add_node << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(add_node, "Add", {7, 13, 14}) ||
         add_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, add_node, 1) || !IsSupportedDataType(add_node)) {
-      std::cout << "add_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding add_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(add_node);
 
     const Node* p_sqrt = graph_utils::FirstChildByType(add_node, "Sqrt");
-    std::cout << "p_sqrt: " << p_sqrt << std::endl;
     if (p_sqrt == nullptr) {
       continue;
     }
     Node& sqrt_node = *graph.GetNode(p_sqrt->Index());
-    std::cout << "sqrt_node: " << sqrt_node << std::endl;
+
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(sqrt_node, "Sqrt", {6, 13}) ||
         sqrt_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, sqrt_node, 1) || !IsSupportedDataType(sqrt_node) ||
         sqrt_node.GetInputEdgesCount() == 0) {
-      std::cout << "sqrt_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding sqrt_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(sqrt_node);
 
     const Node* p_div = graph_utils::FirstChildByType(sqrt_node, "Div");
-    std::cout << "p_div: " << p_div << std::endl;
     if (p_div == nullptr) {
       continue;
     }
     Node& div_node = *graph.GetNode(p_div->Index());
-    std::cout << "div_node: " << div_node << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(div_node, "Div", {7, 13, 14}) ||
         div_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() ||
         !optimizer_utils::CheckOutputEdges(graph, div_node, 1) || !IsSupportedDataType(div_node)) {
-      std::cout << "div_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding div_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(div_node);
 
     // Check Div and Pow has same input, and if this input is a Cast, we can also remove it.
     const NodeArg* p_div_input = div_node.MutableInputDefs()[0];
     const NodeArg* p_pow_input = pow_node.MutableInputDefs()[0];
-
-    if (!p_pow_input || !p_div_input) {
-      continue;
-    }
-
-    const Node* p_div_input_node_0 = graph.GetProducerNode(p_div_input->Name());
-    const Node* p_pow_input_node_0 = graph.GetProducerNode(p_pow_input->Name());
-
-    if (!p_pow_input_node_0 || !p_div_input_node_0) {
-      continue;
-    }
-
-    std::cout << "p_div_input: " << p_div_input << std::endl;
-    std::cout << "OpType:" << p_div_input_node_0->OpType() << "Node Name:" << p_div_input_node_0->Name() << "NodeArg Name:" << p_div_input->Name() << std::endl;
-    std::cout << "p_pow_input: " << p_pow_input << std::endl;
-    std::cout << "OpType:" << p_pow_input_node_0->OpType() << "Node Name:" << p_pow_input_node_0->Name() << "NodeArg Name:" << p_pow_input->Name() << std::endl;
-
     if (!p_pow_input || !p_div_input || p_div_input != p_pow_input) {
       continue;
     }
@@ -601,19 +555,16 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking if
     // there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
-    std::cout << "p_pow_input_node: " << p_pow_input_node << std::endl;
     bool has_leading_cast = false;
-    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
-    std::cout << "is_gpu_ep: " << is_gpu_ep << std::endl;
+    //bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+    //                 pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
+    bool is_gpu_ep = true;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
-      std::cout << "pow_input_node: " << pow_input_node << std::endl;
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
       if (graph_utils::IsSupportedOptypeVersionAndDomain(pow_input_node, "Cast", {9, 13}) &&
           pow_input_node.GetExecutionProviderType() == pow_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, pow_input_node, 2)) {
-        std::cout << "Inserting pow_input_node to nodes_to_remove" << std::endl;
         nodes_to_remove.insert(nodes_to_remove.begin(), pow_input_node);
         has_leading_cast = true;
       }
@@ -621,38 +572,26 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // div --> mul or div --> cast --> mul
     Node* next_node = graph.GetNode(div_node.OutputNodesBegin()->Index());
-    std::cout << "next_node: " << next_node << std::endl;
     if (graph_utils::IsSupportedOptypeVersionAndDomain(*next_node, "Cast", {9, 13}) &&
         optimizer_utils::CheckOutputEdges(graph, *next_node, 1)) {
       if (!is_gpu_ep) continue;
-      std::cout << "Adding next_node to nodes_to_remove" << std::endl;
       nodes_to_remove.push_back(*next_node);
       next_node = graph.GetNode(next_node->OutputNodesBegin()->Index());
     }
 
     Node& mul_node = *next_node;
-    std::cout << "mul_node: " << mul_node << std::endl;
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         mul_node.GetExecutionProviderType() != pow_node.GetExecutionProviderType() || !IsSupportedDataType(mul_node)) {
-      std::cout << "mul_node is not supported" << std::endl;
       continue;
     }
-    std::cout << "Adding mul_node to nodes_to_remove" << std::endl;
     nodes_to_remove.push_back(mul_node);
 
     // get axes attributes
     const onnxruntime::NodeAttributes& attributes = reduce_mean_node.GetAttributes();
-    std::cout << "attributes: " << std::endl;
-    for (auto key_value : attributes) {
-      std::cout << "key: " << key_value.first << std::endl;
-      // std::cout << "value: " << key_value.second.SerializeToString() << std::endl;
-    }
     std::vector<int64_t> axes_values;
     if (attributes.find("axes") != attributes.end()) {
-      std::cout << "axes found!" << std::endl;
       axes_values = RetrieveValues<int64_t>(attributes.at("axes"));
     } else if (reduce_mean_node.InputDefs().size() == 2) {
-      std::cout << "axes NOT found" << std::endl;
       auto axes = reduce_mean_node.InputDefs()[1];
       auto axes_const = graph.GetConstantInitializer(axes->Name(), true);
       if (axes_const != nullptr && axes_const->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
@@ -672,23 +611,20 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
         if (axes_values.empty() ||
             mul_node.MutableInputDefs()[i]->Shape()->dim_size() == static_cast<int>(axes_values.size())) {
           scale = mul_node.MutableInputDefs()[i];
-          std::cout << "nd scale: " << scale << std::endl;
         }
 #else
         // Scale must be 1d.
         if (mul_node.MutableInputDefs()[i]->Shape()->dim_size() == 1) {
           scale = mul_node.MutableInputDefs()[i];
-          std::cout << "1d scale: " << scale << std::endl;
         }
 #endif
       }
     }
-    std::cout << "scale: " << scale << std::endl;
+
     if (scale == nullptr) {
       continue;
     }
 
-    std::cout << "Performing fusion!" << std::endl;
     NodeArg* x_input = has_leading_cast ? graph.GetNode(p_pow_input_node->Index())->MutableInputDefs()[0]
                                         : pow_node.MutableInputDefs()[0];
     InlinedVector<NodeArg*> layer_norm_input_defs{x_input, scale};
@@ -718,7 +654,6 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // move input edges to add (first in list) across to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
-    std::cout << "Finalizing node fusion" << std::endl;
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
 
 #ifdef ENABLE_TRAINING_CORE
