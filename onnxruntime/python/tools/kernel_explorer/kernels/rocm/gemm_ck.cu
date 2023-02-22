@@ -24,6 +24,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
 class CKGemm : public IKernelExplorer {
  public:
@@ -39,6 +40,7 @@ class CKGemm : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -85,7 +87,7 @@ class CKGemm : public IKernelExplorer {
 
  private:
   using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
@@ -109,6 +111,7 @@ class CKStridedBatchedGemm : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -159,7 +162,7 @@ class CKStridedBatchedGemm : public IKernelExplorer {
 
  private:
   using ParamsT = StridedBatchedGemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
@@ -212,5 +215,8 @@ void InitComposableKernelGemm(py::module m) {
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(float);
   REGISTER_CKSTRIDEDBATCHEDGEMM_FOR_ALL_TRANSAB(half);
 }
+#else
+void InitComposableKernelGemm(py::module) {}
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

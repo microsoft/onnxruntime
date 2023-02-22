@@ -33,6 +33,7 @@
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
 #include "core/optimizer/div_mul_fusion.h"
+#include "core/optimizer/double_qdq_pairs_remover.h"
 #include "core/optimizer/dropout_elimination.h"
 #include "core/optimizer/dynamic_quantize_matmul_fusion.h"
 #include "core/optimizer/embed_layer_norm_fusion.h"
@@ -45,6 +46,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -66,7 +68,6 @@
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
-#include "core/optimizer/identical_children_consolidation.h"
 #ifdef ENABLE_TRAINING_CORE
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
@@ -191,12 +192,16 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::move(rule_transformer));
       }
 
+      // We need to remove the duplicated QDQ Pairs before all other GraphTransformation.
+
       // no filtering on execution provider for L1 optimizations as they only use official ONNX operators
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
-      transformers.emplace_back(std::make_unique<IdenticalChildrenConsolidation>());
+      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0"){
+        transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
+      }
       transformers.emplace_back(std::make_unique<ConstantSharing>());
       transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>());
       transformers.emplace_back(std::make_unique<ConstantFolding>(cpu_execution_provider, !disable_quant_qdq));
@@ -211,7 +216,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
@@ -274,7 +279,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<GatherToSplitFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(cpu_cuda_rocm_eps));
 
-      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_rocm_eps));
+      transformers.emplace_back(std::make_unique<MatmulTransposeFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(cpu_cuda_dml_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasSoftmaxFusion>(cpu_cuda_rocm_eps));
       transformers.emplace_back(std::make_unique<BiasDropoutFusion>(cuda_rocm_eps));
@@ -329,7 +334,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
-      auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+      auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for
@@ -402,7 +407,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
         const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
-        auto cpu_allocator = cpu_execution_provider.GetAllocator(0, OrtMemTypeDefault);
+        auto cpu_allocator = cpu_execution_provider.GetAllocator(OrtMemTypeDefault);
         transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
 #else
         ORT_UNUSED_PARAMETER(cpu_execution_provider);

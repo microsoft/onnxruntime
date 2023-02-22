@@ -4,6 +4,7 @@
 #include "core/session/inference_session.h"
 #include "core/framework/kernel_registry.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/TensorSeq.h"
 #include "core/session/ort_apis.h"
 #include <unordered_map>
 

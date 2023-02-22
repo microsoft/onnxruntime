@@ -106,7 +106,10 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
 #endif
   } else if (provider_type == 2) {
 #ifdef USE_DNNL
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(session_options, 1));
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = 1;
+    dnnl_options.threadpool_args = nullptr;
+    session_options.AppendExecutionProvider_Dnnl(dnnl_options);
     std::cout << "Running simple inference with dnnl provider" << std::endl;
 #else
     return;
@@ -164,6 +167,10 @@ static constexpr PATH_TYPE SEQUENCE_MODEL_URI_2 = TSTR("testdata/optional_sequen
 #endif
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_URI = TSTR("testdata/foo_1.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_LIBRARY_TEST_MODEL_URI = TSTR("testdata/custom_op_library/custom_op_test.onnx");
+#if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
+static constexpr PATH_TYPE CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI = TSTR(
+    "testdata/custom_op_openvino_wrapper_library/custom_op_mnist_ov_wrapper.onnx");
+#endif
 static constexpr PATH_TYPE OVERRIDABLE_INITIALIZER_MODEL_URI = TSTR("testdata/overridable_initializer.onnx");
 static constexpr PATH_TYPE NAMED_AND_ANON_DIM_PARAM_URI = TSTR("testdata/capi_symbolic_dims.onnx");
 static constexpr PATH_TYPE MODEL_WITH_CUSTOM_MODEL_METADATA = TSTR("testdata/model_with_valid_ort_config_json.onnx");
@@ -245,7 +252,7 @@ TEST(CApiTest, dim_param) {
   dim_value = 0;
   dims = out0_ttsi.GetShape();
   if (!dims.empty()) dim_value = dims[0];
-  
+
   out0_ttsi.GetSymbolicDimensions(&dim_param, 1);
   ASSERT_EQ(dim_value, -1) << "symbolic dimension should be -1";
   ASSERT_EQ(strcmp(dim_param, ""), 0);
@@ -392,7 +399,7 @@ TEST(CApiTest, custom_op_handler) {
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
 #ifdef USE_CUDA
@@ -423,7 +430,7 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   cudaStreamCreateWithFlags(&compute_stream, cudaStreamNonBlocking);
   MyCustomOpSecondInputOnCpu custom_op{onnxruntime::kCudaExecutionProvider, compute_stream};
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   auto x_mem_type = custom_op.GetInputMemoryType(0);
@@ -434,7 +441,6 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
                        custom_op_domain, nullptr, false, compute_stream);
   cudaStreamDestroy(compute_stream);
-
 }
 #endif
 
@@ -456,7 +462,7 @@ TEST(CApiTest, standalone_op_handler) {
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&standalone_op);
 
 #ifdef USE_CUDA
@@ -593,7 +599,7 @@ TEST(CApiTest, multiple_varied_input_custom_op_handler) {
   MyCustomOpMultipleDynamicInputs custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1039,7 +1045,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
   // `MyCustomOpFooBar` defines a custom op with atmost 3 inputs and the second input is optional.
   // In this test, we are going to try and run 2 models - one with the optional input and one without
   // the optional input.
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1120,7 +1126,7 @@ TEST(CApiTest, optional_input_output_custom_op_handler) {
 TEST(CApiTest, custom_op_with_attributes_handler) {
   MyCustomOpWithAttributes custom_op{onnxruntime::kCpuExecutionProvider};
 
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   Ort::SessionOptions session_options;
@@ -1179,7 +1185,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
   MyCustomOp custom_op_cpu{onnxruntime::kCpuExecutionProvider};
   // We are going to test session creation only - hence it is not a problem to use the default stream as the compute stream for the custom op
   MyCustomOp custom_op_cuda{onnxruntime::kCudaExecutionProvider};
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op_cpu);
   custom_op_domain.Add(&custom_op_cuda);
 
@@ -1187,6 +1193,80 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
                        expected_values_y, 1, custom_op_domain, nullptr, true);
 }
 #endif
+
+#if defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
+TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
+  // Tests a custom operator that wraps an OpenVINO MNIST model (.xml and .bin files serialized into node attributes).
+  // The custom op extracts the serialized .xml/.bin bytes and creates an in-memory OpenVINO model
+  // during kernel creation. The custom op is passed an image of a hand-drawn "1" as an input during computation, which
+  // is then inferenced using OpenVINO C++ APIs.
+  std::vector<Input> inputs(1);
+  inputs[0].name = "Input3";
+  inputs[0].dims = {1, 1, 28, 28};
+
+  // Float image with the digit "1".
+  inputs[0].values = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.75f, 1.0f, 0.75f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.85f, 0.99f, 0.85f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 0.99f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.98f, 1.0f, 0.98f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.99f, 1.0f, 0.99f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.94f, 0.99f, 0.94f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.1f, 0.75f, 0.75f, 0.75f, 0.1f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  // prepare expected outputs
+  std::vector<int64_t> expected_output_dims = {1, 10};
+
+  // Digit 1 (index 1) has the highest probability (before applying softmax)
+  std::vector<float> expected_vals = {-5.34957457f, 13.1904755f, -4.79670954f, -3.59232116f, 2.31260920f,
+                                      -4.27866220f, -4.31867933f, 0.587718308f, -2.33952785f, -3.88515306f};
+
+  const ORTCHAR_T* lib_name;
+#if defined(_WIN32)
+  lib_name = ORT_TSTR("custom_op_openvino_wrapper_library.dll");
+#elif defined(__APPLE__)
+  lib_name = ORT_TSTR("libcustom_op_openvino_wrapper_library.dylib");
+#else
+  lib_name = ORT_TSTR("./libcustom_op_openvino_wrapper_library.so");
+#endif
+
+  Ort::SessionOptions session_opts;
+  Ort::CustomOpConfigs custom_op_configs;
+
+  custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+  session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
+
+  Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+  RunSession(default_allocator.get(), session,
+             inputs,
+             "Plus214_Output_0",
+             expected_output_dims,
+             expected_vals,
+             nullptr);
+}
+#endif  // defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 
 // It has memory leak. The OrtCustomOpDomain created in custom_op_library.cc:RegisterCustomOps function was not freed
 #if defined(__ANDROID__)
@@ -1251,7 +1331,7 @@ TEST(CApiTest, test_custom_op_library_registration_error) {
 #elif defined(__APPLE__)
   lib_name = ORT_TSTR("libcustom_op_invalid_library.dylib");
 #else
-  lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
+lib_name = ORT_TSTR("./libcustom_op_invalid_library.so");
 #endif
 
   Ort::SessionOptions session_options;
@@ -1486,7 +1566,6 @@ TEST(CApiTest, io_binding) {
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
 TEST(CApiTest, io_binding_cuda) {
-
   Ort::SessionOptions session_options;
 #ifdef USE_TENSORRT
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Tensorrt(session_options, 0));
@@ -1617,7 +1696,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> x_shape = {3, 2};
   std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto input_data = cuda_allocator.GetAllocation(x_values.size() * sizeof(float));
-  
+
   ASSERT_NE(input_data.get(), nullptr);
   cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
@@ -1628,7 +1707,7 @@ TEST(CApiTest, cuda_graph) {
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
   auto output_data = cuda_allocator.GetAllocation(expected_y.size() * sizeof(float));
-  
+
   ASSERT_NE(output_data.get(), nullptr);
 
   // Create an OrtValue tensor backed by data on CUDA memory
@@ -2601,6 +2680,7 @@ TEST(CApiTest, GH_11717) {
 }
 #endif
 
+#ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   Ort::SessionOptions session_options{};
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
@@ -2627,3 +2707,4 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
   ASSERT_TRUE(output_dims == expected_output_dims);
 }
+#endif

@@ -24,6 +24,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
 class CKGemmFastGelu : public IKernelExplorer {
  public:
@@ -40,6 +41,7 @@ class CKGemmFastGelu : public IKernelExplorer {
     auto supports_b = opb == BlasOp::N ? std::is_same_v<BLayout, Row> : std::is_same_v<BLayout, Col>;
     ORT_ENFORCE(supports_a && supports_b);
 
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     // rocblas handle is not used for ck
     params_.handle = nullptr;
@@ -90,7 +92,7 @@ class CKGemmFastGelu : public IKernelExplorer {
 
  private:
   using ParamsT = GemmFastGeluParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
+  using OpT = Op<ParamsT>;
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;
@@ -122,5 +124,8 @@ void InitComposableKernelGemmFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);
   REGISTER_OP_FOR_ALL_TRANSAB(half);
 }
+#else
+void InitComposableKernelGemmFastGelu(py::module) {}
+#endif  // USE_COMPOSABLE_KERNEL
 
 }  // namespace onnxruntime

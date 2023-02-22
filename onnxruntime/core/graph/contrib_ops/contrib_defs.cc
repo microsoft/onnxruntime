@@ -1155,6 +1155,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(Sampling, 1,
                                 .Input(5, "prefix_vocab_mask", "Mask of vocabulary for first step. Words that masked with 0 are not allowed to be generated, and 1 is allowed. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
                                 .Input(6, "attention_mask", "Custom attention mask. Shape is (batch_size, sequence_length)", "I", OpSchema::Optional)
                                 .Input(7, "presence_mask", "Presence penalty mask. Shape is (batch_size, vocab_size)", "I", OpSchema::Optional)
+                                .Input(8, "seed", "Seed for random number generator. Shape is (1)", "I", OpSchema::Optional)
                                 .Output(0, "sequences", "Word IDs of generated sequences. Shape is (batch_size, max_sequence_length)", "I")
                                 .Output(1, "filtered_logits", "Filtered logits as input to the mutinomial function for debug purpose. Shape is (batch_size, vocab_size)", "T", OpSchema::Optional)
                                 .TypeConstraint("T", {"tensor(float)"}, "Constrain input and output types to float tensors.")
@@ -2706,6 +2707,10 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
   if (MlasNchwcGetBlockSize() > 1) {
     RegisterNchwcSchemas();
   }
+#endif
+
+#ifdef USE_MPI
+  RegisterCollectiveOps();
 #endif
 }
 

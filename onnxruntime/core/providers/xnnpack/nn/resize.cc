@@ -81,8 +81,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
       break;
     }
 
-    std::string keep_aspect_ratio_policy = "stretch";
-    info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", &mode, "stretch");
+    std::string keep_aspect_ratio_policy = info.GetAttrOrDefault<std::string>("keep_aspect_ratio_policy", "stretch");
     if (keep_aspect_ratio_policy != "stretch") {
       break;
     }
@@ -203,9 +202,8 @@ Resize::Resize(const OpKernelInfo& info) : UpsampleBase(info), XnnpackKernel{inf
     output_dims_.resize(input_dims);
     if (sizes && sizes->Shape().Size() == 4) {
       scales_.resize(input_shape.NumDimensions());
-      auto size_span = sizes->DataAsSpan<int64_t>();
-      ParseScalesDataFromOutputSize(size_span, input_shape.GetDims(), scales_);
-      std::copy(size_span.begin(), size_span.end(), output_dims_.begin());
+      ORT_THROW_IF_ERROR(ParseSizesData(sizes, output_dims_, input_shape.GetDims()));
+      ORT_THROW_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_dims_, input_shape.GetDims(), scales_));
       scales_cached_ = true;
     } else {
       ComputeOutputShape(scales_, input_shape.GetDims(), output_dims_);
@@ -303,14 +301,14 @@ Status Resize::Compute(OpKernelContext* ctx) const {
     std::vector<float> scales_array(X->Shape().GetDims().size());
 
     if (scales != nullptr && scales->Shape().Size() != 0) {
-      ParseScalesData(scales, scales_array);
+      ORT_RETURN_IF_ERROR(ParseScalesData(scales, scales_array, output_shape.size()));
       // Compute output shape from scales and input dims
       ComputeOutputShape(scales_array, X->Shape().GetDims(), output_shape);
     } else {
       const Tensor* sizes = ctx->Input<Tensor>(sizes_input_idx_);
       // When sizes input is available directly populate it into the output_dims array.
-      memcpy(output_shape.data(), sizes->Data<int64_t>(), sizes->SizeInBytes());
-      ParseScalesDataFromOutputSize(output_shape, X->Shape().GetDims(), scales_array);
+      ORT_RETURN_IF_ERROR(ParseSizesData(sizes, output_shape, X->Shape().GetDims()));
+      ORT_RETURN_IF_ERROR(ParseScalesDataAndAdjustOutputSize(output_shape, X->Shape().GetDims(), scales_array));
     }
   }
   output_shape[0] = X->Shape()[0];

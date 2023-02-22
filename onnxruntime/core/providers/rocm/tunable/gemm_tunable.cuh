@@ -33,7 +33,7 @@ bool IsZero(half v) {
 }
 
 template <typename T, typename ALayout, typename BLayout>
-class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
+class GemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   GemmTunableOp() {
     this->RegisterOp(RocBlasGemmOp<T>);
@@ -42,10 +42,12 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
     this->RegisterNestedTunableOp(&rocblas_gemm_tunable_op_);
 #endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
 
+#ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
   }
 
   const GemmParams<T>* PreTuning(const GemmParams<T>* params) override {
@@ -80,7 +82,7 @@ class GemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
 };
 
 template <typename T, typename ALayout, typename BLayout>
-class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
+class BatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
  public:
   BatchedGemmTunableOp() {
     this->RegisterOp(RocBlasBatchedGemmOp<T>);
@@ -123,14 +125,16 @@ class BatchedGemmTunableOp : public tunable::TunableOp<BatchedGemmParams<T>> {
 };
 
 template <typename T, typename ALayout, typename BLayout>
-class StridedBatchedGemmTunableOp : public tunable::TunableOp<StridedBatchedGemmParams<T>> {
+class StridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>> {
  public:
   StridedBatchedGemmTunableOp() {
     this->RegisterOp(RocBlasStridedBatchedGemmOp<T>);
+#ifdef USE_COMPOSABLE_KERNEL
     for (auto&& [_, op] : GetCKStridedBatchedGemmTypeStringAndOps<T, ALayout, BLayout>()) {
       ORT_UNUSED_PARAMETER(_);
       this->RegisterOp(std::move(op));
     }
+#endif
   }
 
   const StridedBatchedGemmParams<T>* PreTuning(const StridedBatchedGemmParams<T>* params) override {

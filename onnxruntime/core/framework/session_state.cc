@@ -100,8 +100,8 @@ void SessionState::SetupAllocators() {
       } else {
         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
         // in order to support scenarios such as the CUDA EP's per-thread allocator.
-        allocators_[memory_info] = [&provider](int id, OrtMemType mem_type) {
-          return provider->GetAllocator(id, mem_type);
+        allocators_[memory_info] = [&provider](OrtMemType mem_type) {
+          return provider->GetAllocator(mem_type);
         };
       }
     }
@@ -112,7 +112,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
   AllocatorPtr result;
   auto entry = allocators_.find(location);
   if (entry != allocators_.cend()) {
-    result = entry->second(location.id, location.mem_type);
+    result = entry->second(location.mem_type);
   }
 
   return result;
@@ -121,7 +121,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
   for (const auto& iter : allocators_) {
     if (iter.first.device == device) {
-      return iter.second(device.Id(), iter.first.mem_type);
+      return iter.second(iter.first.mem_type);
     }
   }
   return nullptr;
@@ -294,7 +294,7 @@ bool SessionState::IsSparseInitializer(int ort_value_index) const {
 }
 #endif
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 Status SessionState::GetInitializedTensors(
     const std::unordered_set<std::string>& interested_weights,
     bool allow_missing_weights, NameMLValMap& retrieved_weights) const {
@@ -451,7 +451,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   }
 
                 } else {  // caching of pre-packed weights' turned OFF
-                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(0, OrtMemType::OrtMemTypeDefault);
+                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
                                                       session_cpu_alloc,  // use allocator tied to this session
                                                       is_packed,
@@ -1004,7 +1004,7 @@ Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       const auto& ep = node.GetExecutionProviderType();
-      if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider) {
+      if (!ep.empty() && ep != kCpuExecutionProvider && ep != kCudaExecutionProvider && ep != kRocmExecutionProvider) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
@@ -1349,6 +1349,21 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SequentialPlannerContext context(session_options.execution_mode,
                                    session_options.execution_order,
                                    session_options.enable_mem_reuse);
+
+#ifdef _WIN32
+
+  PathString partition_config_file =
+      ToWideString(session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, ""));
+
+#else
+
+  PathString partition_config_file =
+      session_options.config_options.GetConfigOrDefault(
+          kNodePartitionConfigFile, "");
+
+#endif
+
   auto status = SequentialPlanner::CreatePlan(parent_node, *graph_viewer_, valid_outer_scope_node_args,
                                               execution_providers_, kernel_create_info_map_,
                                               subgraphs_kernel_create_info_maps,
@@ -1357,8 +1372,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #ifdef ORT_ENABLE_STREAM
                                               GetStreamHandleRegistryInstance(),
 #endif
-                                              session_options.config_options.GetConfigOrDefault(
-                                                  kNodePartitionConfigFile, ""),
+                                              partition_config_file,
                                               Logger(),
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
@@ -1373,9 +1387,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   SetMemoryProfiler(mem_profiler.release());
 #endif
 
+  // Note: For Training Prepacking should be always disabled.
+  // For inference it is enabled by default, but users can choose to disable it via session options.
+  const bool disable_prepacking =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
-  // Further more, NCCL kernels require initializers to be allocated
+  // Further more, in training scenarios NCCL kernels require initializers to be allocated
   // contiguously.
   //
   // In inferencing scenarios, however, we often want to pre-process and then
@@ -1387,13 +1405,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   //  out of memory error in some training tests. Need to create kernel first,
   //  and let the kernel tells us whether the initializer needs to be traced.
   //
-#if defined(ENABLE_TRAINING_CORE)
-  std::unique_ptr<ITensorAllocator> tensor_allocator(
-      ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_));
-#else
-  std::unique_ptr<ITensorAllocator> tensor_allocator(
-      ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_));
-#endif
+  std::unique_ptr<ITensorAllocator> tensor_allocator = nullptr;
+  if (disable_prepacking) {
+    tensor_allocator = ITensorAllocator::Create(enable_mem_pattern_, *p_seq_exec_plan_, *this, weights_buffers_);
+  } else {
+    tensor_allocator = ITensorAllocator::Create(false, *p_seq_exec_plan_, *this, weights_buffers_);
+  }
 
   const auto& initializer_allocation_order = p_seq_exec_plan_->initializer_allocation_order;
 
@@ -1456,15 +1473,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-#ifndef ENABLE_TRAINING_CORE
-  const auto disable_prepacking =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0");
-
-  if (disable_prepacking != "1") {
+  if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
-#endif
 
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInputOutputNamesToNodeMapping(*graph_viewer_, *this, valid_outer_scope_node_args));

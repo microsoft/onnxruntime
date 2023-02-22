@@ -42,12 +42,12 @@
 #ifdef ENABLE_NVTX_PROFILE
 #include "core/providers/cuda/nvtx_profile.h"
 #endif
-#if defined(ORT_USE_NCCL)
+#if defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/cuda/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(ENABLE_TRAINING)
 #include "orttraining/training_ops/rocm/communication/nccl_service.h"
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
@@ -86,6 +86,7 @@ using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/cuda/cuda_provider_options.h"
 #include "core/providers/cann/cann_provider_options.h"
+#include "core/providers/dnnl/dnnl_provider_options.h"
 
 // The filename extension for a shared library is different per platform
 #ifdef _WIN32
@@ -109,6 +110,8 @@ ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 ProviderInfo_CANN* TryGetProviderInfo_CANN();
 ProviderInfo_CANN& GetProviderInfo_CANN();
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
+ProviderInfo_Dnnl& GetProviderInfo_Dnnl();
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM();
 ProviderInfo_ROCM& GetProviderInfo_ROCM();
 ProviderHostCPU& GetProviderHostCPU();
@@ -281,7 +284,7 @@ struct ProviderHostImpl : ProviderHost {
   bool IAllocator__CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) override { return IAllocator::CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out); }
 
   // IExecutionProvider (direct)
-  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, int id, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(id, mem_type); }
+  AllocatorPtr IExecutionProvider__GetAllocator(const IExecutionProvider* p, OrtMemType mem_type) override { return p->IExecutionProvider::GetAllocator(mem_type); }
   void IExecutionProvider__InsertAllocator(IExecutionProvider* p, AllocatorPtr allocator) override { return p->IExecutionProvider::InsertAllocator(allocator); }
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
@@ -841,7 +844,7 @@ struct ProviderHostImpl : ProviderHost {
   // OpKernelInfo (wrapped)
   std::unique_ptr<OpKernelInfo> CopyOpKernelInfo(const OpKernelInfo& info) override { return onnxruntime::CopyOpKernelInfo(info); }
   void OpKernelInfo__operator_delete(OpKernelInfo* p) override { delete p; }
-  AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, int device_id, OrtMemType mem_type) override { return p->GetAllocator(device_id, mem_type); }
+  AllocatorPtr OpKernelInfo__GetAllocator(const OpKernelInfo* p, OrtMemType mem_type) override { return p->GetAllocator(mem_type); }
   const IExecutionProvider* OpKernelInfo__GetExecutionProvider(const OpKernelInfo* p) override { return p->GetExecutionProvider(); }
   Status OpKernelInfo__GetAttr_int64(const OpKernelInfo* p, const std::string& name, int64_t* value) override { return p->GetAttr(name, value); }
   Status OpKernelInfo__GetAttr_float(const OpKernelInfo* p, const std::string& name, float* value) override { return p->GetAttr(name, value); }
@@ -972,6 +975,9 @@ struct ProviderHostImpl : ProviderHost {
   void TensorSeq__SetType(TensorSeq* p, MLDataType data_type) override { p->SetType(data_type); }
   size_t TensorSeq__Size(const TensorSeq* p) noexcept override { return p->Size(); }
   const Tensor& TensorSeq__Get(const TensorSeq* p, size_t i) override { return p->Get(i); }
+  const OrtValue& TensorSeq__GetAt(const TensorSeq* p, size_t i) override { return p->GetAt(i); }
+  void TensorSeq__Add(TensorSeq* p, const OrtValue& tensor) override { p->Add(tensor); }
+  void TensorSeq__Add(TensorSeq* p, OrtValue&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Add(TensorSeq* p, Tensor&& tensor) override { p->Add(std::move(tensor)); }
   void TensorSeq__Reserve(TensorSeq* p, size_t capacity) override { p->Reserve(capacity); }
 
@@ -1015,10 +1021,6 @@ struct ProviderHostImpl : ProviderHost {
 #if defined(USE_CANN)
   RandomGenerator& RandomGenerator__Default() override { return RandomGenerator::Default(); }
 
-  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) {
-    MurmurHash3::x86_128(key, len, seed, out);
-  }
-
   std::unique_ptr<Model> cann__CreateModel(const GraphViewer& graph_viewer, const logging::Logger& logger) {
     std::unordered_map<std::string, int> domain_to_version_map;
     domain_to_version_map[kOnnxDomain] = graph_viewer.DomainToVersionMap().at(kOnnxDomain);
@@ -1033,6 +1035,14 @@ struct ProviderHostImpl : ProviderHost {
   }
 #endif
 
+  void MurmurHash3__x86_128(const void* key, int len, uint32_t seed, void* out) override {
+    MurmurHash3::x86_128(key, len, seed, out);
+  }
+
+#ifdef _WIN32
+  std::string ToUTF8String(const std::wstring& s) override { return onnxruntime::ToUTF8String(s); }
+#endif
+
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
 } provider_host_;
 #if defined(_MSC_VER) && !defined(__clang__)
@@ -1044,7 +1054,7 @@ struct ProviderSharedLibrary {
       return;
 
     auto full_path = Env::Default().GetRuntimePath() +
-      PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
+                     PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
     ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
 
     void (*PProvider_SetHost)(void*);
@@ -1289,6 +1299,10 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options);
 }
 
+std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
+  return s_library_dnnl.Get().CreateExecutionProviderFactory(dnnl_options);
+}
+
 ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
   return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
 }
@@ -1319,6 +1333,20 @@ ProviderInfo_CANN& GetProviderInfo_CANN() {
     return *info;
 
   ORT_THROW("CANN Provider not available, can't get interface for it");
+}
+
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl() try {
+  return reinterpret_cast<ProviderInfo_Dnnl*>(s_library_dnnl.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
+}
+
+ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
+  if (auto* info = TryGetProviderInfo_Dnnl())
+    return *info;
+
+  ORT_THROW("oneDNN Provider not available, can't get interface for it");
 }
 
 ProviderInfo_ROCM* TryGetProviderInfo_ROCM() try {
@@ -1368,7 +1396,7 @@ void NvtxRangeCreator::EndImpl() {
 }  // namespace profile
 #endif
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_CUDA().GetINcclService();
@@ -1376,7 +1404,7 @@ INcclService& INcclService::GetInstance() {
 }  // namespace cuda
 #endif
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace rocm {
 INcclService& INcclService::GetInstance() {
   return GetProviderInfo_ROCM().GetINcclService();
@@ -1685,7 +1713,16 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA
+
+// Need to use 'new' here, so disable C26409
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
   *out = new OrtCUDAProviderOptionsV2();
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
   (*out)->device_id = 0;
   (*out)->cudnn_conv_algo_search = OrtCudnnConvAlgoSearch::OrtCudnnConvAlgoSearchExhaustive;
   (*out)->gpu_mem_limit = std::numeric_limits<size_t>::max();
@@ -1770,7 +1807,19 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAP
 
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
 #ifdef USE_CUDA
+
+// Need to use 'delete' here, so disable C26409
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 26409)
+#endif
+
   delete ptr;
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
+
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -1873,6 +1922,106 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 
 ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
 #ifdef USE_CANN
+  delete ptr;
+#else
+  ORT_UNUSED_PARAMETER(ptr);
+#endif
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
+                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options) {
+  API_IMPL_BEGIN
+  auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(dnnl_options);
+  if (!factory) {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                    "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+  }
+
+  options->provider_factories.push_back(factory);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  *out = new OrtDnnlProviderOptions();
+  (*out)->use_arena = true;
+  (*out)->threadpool_args = nullptr;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(out);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateDnnlProviderOptions,
+                    _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  onnxruntime::ProviderOptions provider_options_map;
+  for (size_t i = 0; i != num_keys; ++i) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "key/value cannot be empty");
+    }
+
+    provider_options_map[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  onnxruntime::s_library_dnnl.Get().UpdateProviderOptions(reinterpret_cast<void*>(dnnl_options), provider_options_map);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  API_IMPL_BEGIN
+#ifdef USE_DNNL
+  onnxruntime::ProviderOptions options =
+      onnxruntime::s_library_dnnl.Get().GetProviderOptions(reinterpret_cast<const void*>(dnnl_options));
+  onnxruntime::ProviderOptions::iterator it = options.begin();
+  std::string options_str = "";
+
+  while (it != options.end()) {
+    if (options_str == "") {
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    } else {
+      options_str += ";";
+      options_str += it->first;
+      options_str += "=";
+      options_str += it->second;
+    }
+    it++;
+  }
+
+  *ptr = onnxruntime::StrDup(options_str, allocator);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "oneDNN execution provider is not enabled in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
+#ifdef USE_DNNL
   delete ptr;
 #else
   ORT_UNUSED_PARAMETER(ptr);

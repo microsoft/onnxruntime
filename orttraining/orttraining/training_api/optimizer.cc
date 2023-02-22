@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 
-#include "orttraining/training_api/include/utils.h"
-#include "orttraining/training_api/include/optimizer.h"
+#include "orttraining/training_api/utils.h"
+#include "orttraining/training_api/optimizer.h"
 
 namespace onnxruntime {
 namespace training {
@@ -19,7 +20,7 @@ namespace {
 constexpr char GROUP_ZERO_NAME[] = "group0";
 
 // TODO: don't hard code the state names, should get the state names according to the optimizer types.
-// TODO: Conolidate with frontend tooling
+// TODO: Consolidate with frontend tooling
 const std::vector<std::string> MOMENT_STATE_NAMES{"momentum0", "momentum1"};
 
 constexpr std::array AdamWOptimizerInputs = {
@@ -131,7 +132,11 @@ Status Optimizer::ConstructInputs() {
       ORT_ENFORCE(!tensors.empty(), "Tensors vector cannot be empty while building a tensor sequence.");
 
       auto tensor_seq = std::make_unique<TensorSeq>(tensors.front().DataType());
-      tensor_seq->SetElements(std::move(tensors));
+      tensor_seq->Reserve(tensors.size());
+      for (auto& tensor : tensors)
+      {
+        tensor_seq->Add(std::move(tensor));
+      }
       inputs->emplace_back(
           OrtValue(tensor_seq.release(), DataTypeImpl::GetType<TensorSeq>(),
                    DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc()));

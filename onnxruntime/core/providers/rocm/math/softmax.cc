@@ -11,13 +11,14 @@
 namespace onnxruntime {
 namespace rocm {
 
-template <typename T, bool is_log_softmax>
+template <typename T, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
     hipStream_t stream,
     const T* X,
     const TensorShape& input_shape,
     T* Y,
-    int64_t axis) {
+    int64_t axis,
+    RocmTuningContext* tuning_ctx) {
   typedef typename ToHipType<T>::MappedType HipT;
 
   int64_t N = input_shape.SizeToDimension(axis);
@@ -26,20 +27,20 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const HipT*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_warpwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  } else {
-    dispatch_blockwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, is_log_softmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-        gsl::narrow_cast<int>(N));
+    return dispatch_warpwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, IsLogSoftmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D),
+        gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
   }
-
-  return Status::OK();
+  return dispatch_blockwise_softmax_forward<HipT, HipT, AccumulationType_t<HipT>, IsLogSoftmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N), tuning_ctx);
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                          \
-  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                           \
+  template Status SoftMaxComputeHelper<T, false>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y, \
+                                                 int64_t axis, RocmTuningContext* tuning_ctx);                       \
+  template Status SoftMaxComputeHelper<T, true>(hipStream_t stream, const T* input, const TensorShape& shape, T* Y,  \
+                                                int64_t axis, RocmTuningContext* tuning_ctx);
 
 SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
 // MIOpen double data type not supported
@@ -176,11 +177,13 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (log_softmax_) {
     status = SoftMaxComputeHelper<T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                 : static_cast<int64_t>(axis));
+                                                                 : static_cast<int64_t>(axis),
+                                           GetTuningContext());
   } else {
     status = SoftMaxComputeHelper<T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                             is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                  : static_cast<int64_t>(axis));
+                                                                  : static_cast<int64_t>(axis),
+                                            GetTuningContext());
   }
 
   if (!status.IsOK())

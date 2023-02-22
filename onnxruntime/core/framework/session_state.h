@@ -161,7 +161,8 @@ class SessionState {
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
+// This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -446,7 +447,7 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
+  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
            OrtMemoryInfoLessThanIgnoreNameAndAllocType>
       allocators_;
 
