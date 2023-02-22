@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2022, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -76,8 +76,8 @@ public final class OrtTrainingSession implements AutoCloseable {
         createTrainingSession(
             OnnxRuntime.ortApiHandle,
             OnnxRuntime.ortTrainingApiHandle,
-            env.nativeHandle,
-            options.nativeHandle,
+            env.getNativeHandle(),
+            options.getNativeHandle(),
             checkpoint.nativeHandle,
             trainPath,
             evalPath,
@@ -463,7 +463,7 @@ public final class OrtTrainingSession implements AutoCloseable {
             "Unknown output name " + s + ", expected one of " + trainOutputNames.toString());
       }
     }
-    long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+    long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
     OnnxValue[] outputValues =
         trainStep(
@@ -606,7 +606,7 @@ public final class OrtTrainingSession implements AutoCloseable {
             "Unknown output name " + s + ", expected one of " + evalOutputNames.toString());
       }
     }
-    long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+    long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
     OnnxValue[] outputValues =
         evalStep(
@@ -740,7 +740,7 @@ public final class OrtTrainingSession implements AutoCloseable {
    */
   public void optimizerStep(OrtSession.RunOptions runOptions) throws OrtException {
     checkClosed();
-    long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+    long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
     optimizerStep(
         OnnxRuntime.ortApiHandle, OnnxRuntime.ortTrainingApiHandle, nativeHandle, runOptionsHandle);
   }

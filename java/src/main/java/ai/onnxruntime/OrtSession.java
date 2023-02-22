@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -71,7 +71,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, String modelPath, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelPath, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelPath, options.getNativeHandle()),
         allocator);
   }
 
@@ -87,7 +88,8 @@ public class OrtSession implements AutoCloseable {
   OrtSession(OrtEnvironment env, byte[] modelArray, OrtAllocator allocator, SessionOptions options)
       throws OrtException {
     this(
-        createSession(OnnxRuntime.ortApiHandle, env.nativeHandle, modelArray, options.nativeHandle),
+        createSession(
+            OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
         allocator);
   }
 
@@ -293,7 +295,7 @@ public class OrtSession implements AutoCloseable {
               "Unknown output name " + s + ", expected one of " + outputNames.toString());
         }
       }
-      long runOptionsHandle = runOptions == null ? 0 : runOptions.nativeHandle;
+      long runOptionsHandle = runOptions == null ? 0 : runOptions.getNativeHandle();
 
       OnnxValue[] outputValues =
           run(
@@ -515,7 +517,7 @@ public class OrtSession implements AutoCloseable {
       }
     }
 
-    final long nativeHandle;
+    private final long nativeHandle;
 
     private final List<Long> customLibraryHandles;
 
@@ -553,6 +555,15 @@ public class OrtSession implements AutoCloseable {
       if (closed) {
         throw new IllegalStateException("Trying to use a closed SessionOptions");
       }
+    }
+
+    /**
+     * Package accessor for the native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
     }
 
     /**
@@ -1153,7 +1164,7 @@ public class OrtSession implements AutoCloseable {
   /** Used to control logging and termination of a call to {@link OrtSession#run}. */
   public static class RunOptions implements AutoCloseable {
 
-    final long nativeHandle;
+    private final long nativeHandle;
 
     private boolean closed = false;
 
@@ -1164,6 +1175,15 @@ public class OrtSession implements AutoCloseable {
      */
     public RunOptions() throws OrtException {
       this.nativeHandle = createRunOptions(OnnxRuntime.ortApiHandle);
+    }
+
+    /**
+     * Package accessor for native pointer.
+     *
+     * @return The native pointer.
+     */
+    long getNativeHandle() {
+      return nativeHandle;
     }
 
     /**

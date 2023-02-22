@@ -186,6 +186,15 @@ public final class OrtEnvironment implements AutoCloseable {
   }
 
   /**
+   * Package accessor for native pointer.
+   *
+   * @return The native pointer.
+   */
+  long getNativeHandle() {
+    return nativeHandle;
+  }
+
+  /**
    * Create a session using the default {@link SessionOptions}, model and the default memory
    * allocator.
    *
