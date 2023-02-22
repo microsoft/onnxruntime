@@ -280,11 +280,11 @@ jobs:
     displayName: Stop Android Emulator
     condition: always()
 
-  - script: |
-      xcrun simctl delete iPhoneRNTest
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-    displayName: Stop iOS Simulator
-    condition: always()
+  #- script: |
+  #    xcrun simctl delete iPhoneRNTest
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+  #  displayName: Stop iOS Simulator
+  #  condition: always()
 
   - script: |
       git restore .
