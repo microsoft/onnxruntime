@@ -755,16 +755,16 @@ TEST(ConvTest, Fuse_Conv_Bias) {
   std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 28};
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_shape, X_data, &ml_value);
   feeds.insert(std::make_pair("X", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), W_shape, W_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), W_shape, W_data, &ml_value);
   feeds.insert(std::make_pair("W", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), B_shape, B_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), B_shape, B_data, &ml_value);
   feeds.insert(std::make_pair("B", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
   feeds.insert(std::make_pair("Z", ml_value));
 
   std::vector<std::string> output_names{"R"};
@@ -802,16 +802,16 @@ TEST(ConvTest, Fuse_Conv_Bias_Slice) {
   std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 4, 2};
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_shape, X_data, &ml_value);
   feeds.insert(std::make_pair("X", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), W_shape, W_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), W_shape, W_data, &ml_value);
   feeds.insert(std::make_pair("W", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), B_shape, B_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), B_shape, B_data, &ml_value);
   feeds.insert(std::make_pair("B", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
   feeds.insert(std::make_pair("Z", ml_value));
 
   std::vector<std::string> output_names{"R"};
@@ -845,13 +845,13 @@ TEST(ConvTest, Fuse_Conv_No_Bias) {
   std::vector<float> Z_data(Z_count, 1.f);
   std::vector<int64_t> Z_shape{1, 1, 28};
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), X_shape, X_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), X_shape, X_data, &ml_value);
   feeds.insert(std::make_pair("X", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), W_shape, W_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), W_shape, W_data, &ml_value);
   feeds.insert(std::make_pair("W", ml_value));
 
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), Z_shape, Z_data, &ml_value);
   feeds.insert(std::make_pair("Z", ml_value));
 
   std::vector<std::string> output_names{"R"};
