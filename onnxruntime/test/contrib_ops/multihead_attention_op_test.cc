@@ -181,7 +181,7 @@ static void RunMultiHeadAttentionKernel(
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
@@ -195,7 +195,7 @@ static void RunMultiHeadAttentionKernel(
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
@@ -209,7 +209,7 @@ static void RunMultiHeadAttentionKernel(
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "0"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(
@@ -224,7 +224,7 @@ static void RunMultiHeadAttentionKernel(
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"}}};
     RunMultiHeadAttentionTest(
@@ -239,7 +239,7 @@ static void RunMultiHeadAttentionKernel(
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
             {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"},
             {onnxruntime::contrib::attention::kDisableFusedCrossAttention, "1"},
             {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
     RunMultiHeadAttentionTest(

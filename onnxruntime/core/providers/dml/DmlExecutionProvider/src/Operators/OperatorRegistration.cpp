@@ -12,7 +12,98 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include <mutex>
+
 using namespace Microsoft::WRL;
+
+#include "core/framework/TensorSeq.h"
+#include "core/providers/cpu/sequence/sequence_ops.h"
+#include "core/providers/cpu/tensor/concatbase.h"
+
+namespace onnxruntime {
+
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceAt);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceConstruct);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceEmpty);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceLength);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, ConcatFromSequence);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert);
+
+}
+
+namespace onnxruntime {
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceAt,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceAt);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceConstruct,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorTypes())
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
+    SequenceConstruct);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceEmpty,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes()),
+    SequenceEmpty);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceLength,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .OutputMemoryType(OrtMemTypeCPUInput, 0)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()),
+    SequenceLength);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceErase,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceErase);
+
+ONNX_OPERATOR_KERNEL_EX(
+    SequenceInsert,
+    kOnnxDomain,
+    11,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .TypeConstraint("S", DataTypeImpl::AllFixedSizeSequenceTensorTypes())
+        .TypeConstraint("I", std::vector<MLDataType>{
+                                 DataTypeImpl::GetTensorType<int32_t>(),
+                                 DataTypeImpl::GetTensorType<int64_t>()}),
+    SequenceInsert);
+
+}
 
 namespace Dml
 {
@@ -35,6 +126,21 @@ enum class SupportedTensorDataTypes : uint32_t
     UInt64 = 1<<13,
     Complex64 = 1<<14,
     Complex128 = 1<<15,
+    SequenceFloat32 = 1<<16,
+    SequenceUInt8 = 1<<17,
+    SequenceInt8 = 1<<18,
+    SequenceUInt16 = 1<<19,
+    SequenceInt16 = 1<<20,
+    SequenceInt32 = 1<<21,
+    SequenceInt64 = 1<<22,
+    SequenceString = 1<<23,
+    SequenceBool = 1<<24,
+    SequenceFloat16 = 1<<25,
+    SequenceFloat64 = 1<<26,
+    SequenceUInt32 = 1<<27,
+    SequenceUInt64 = 1<<28,
+    SequenceComplex64 = 1<<29,
+    SequenceComplex128 = 1<<30,
     Ints8to32 = UInt8|Int8|UInt16|Int16|UInt32|Int32,
     Ints32to64 = UInt32|Int32|UInt64|Int64,
     Ints8to64 = UInt8|Int8|UInt16|Int16|UInt32|Int32|UInt64|Int64,
@@ -44,6 +150,8 @@ enum class SupportedTensorDataTypes : uint32_t
     NumericDefault = Ints8to32|Float16to32, // Only simple numbers, not bool, complex, or string.
     Scalars8to32 = UInt8|Int8|UInt16|Int16|UInt32|Int32|Float16to32|Bool,
     AllScalars = UInt8|Int8|UInt16|Int16|UInt32|Int32|UInt64|Int64|Float16|Float32|Float64|Bool,
+    AllSequences = SequenceUInt8|SequenceInt8|SequenceUInt16|SequenceInt16|SequenceUInt32|SequenceInt32|
+                   SequenceUInt64|SequenceInt64|SequenceFloat16|SequenceFloat32|SequenceFloat64|SequenceBool,
     Ints8Bit = UInt8|Int8,
     Ints16Bit = UInt16|Int16,
     Ints32Bit = UInt32|Int32,
@@ -116,6 +224,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Split13);
 DML_OP_EXTERN_CREATION_FUNCTION(Transpose);
 DML_OP_EXTERN_CREATION_FUNCTION(Tile);
 DML_OP_EXTERN_CREATION_FUNCTION(Concat);
+DML_OP_EXTERN_CREATION_FUNCTION(ConcatFromSequence);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice7);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice10);
 DML_OP_EXTERN_CREATION_FUNCTION(Slice11);
@@ -284,6 +393,7 @@ DML_OP_EXTERN_QUERY_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_QUERY_FUNCTION(Attention);
 
 constexpr static std::array<const char*, 1> typeNameListDefault = {"T"};
+constexpr static std::array<const char*, 1> typeNameListDefaultV = {"V"};
 constexpr static std::array<const char*, 2> typeNameListAttention = {"T", "M"};
 constexpr static std::array<const char*, 2> typeNameListTwo = { "T1", "T2" };
 constexpr static std::array<const char*, 2> typeNameListLayerNorm = { "T", "U" };
@@ -315,6 +425,7 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListFloat1
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListUInt8to64 = {SupportedTensorDataTypes::UInt8to64};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListNumericDefault = { SupportedTensorDataTypes::NumericDefault };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListAllScalars = {SupportedTensorDataTypes::AllScalars};
+constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListAllScalarsAndSequences = {SupportedTensorDataTypes::AllScalars | SupportedTensorDataTypes::AllSequences};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListEyeLike = { SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::AllScalars};
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListBool = {SupportedTensorDataTypes::Bool};
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListPow12 = {SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::NumericDefault};
@@ -457,6 +568,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
+    {REG_INFO_DYNAMIC_OUTPUTS(11, ConcatFromSequence,       typeNameListDefault,            supportedTypeListAllScalarsAndSequences,DmlGraphSupport::NotSupported)}, // Adds negative axis.
     {REG_INFO_VER(  7,  Slice,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_VER( 10,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},  // Adds negative axes.
     {REG_INFO_VER( 11,  Slice,                              typeNameListSlice10,            supportedTypeListSlice10,               DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3, 4), std::nullopt, QuerySlice)},
@@ -497,8 +609,8 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     // Data reorganization that merely changes the dimensions while keeping the data identical.
     {REG_INFO_COPY( 7,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO_COPY(14,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
-    {REG_INFO_COPY(16,  Identity,                           typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(14,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(16,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
@@ -764,9 +876,36 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
 };
 
 template<typename T>
-MLOperatorEdgeDescription EdgeDesc()
+MLOperatorEdgeDescription TensorEdgeDesc()
 {
     return {MLOperatorEdgeType::Tensor, static_cast<uint64_t>(MLTypeTraits<T>::TensorType)};
+}
+
+template<typename T>
+MLOperatorEdgeDescription SequenceEdgeDesc()
+{
+    return {MLOperatorEdgeType::SequenceTensor, static_cast<uint64_t>(MLTypeTraits<T>::TensorType)};
+}
+
+void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry)
+{
+    using namespace onnxruntime;
+
+    static const BuildKernelCreateInfoFn function_table[] = {
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceAt)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceConstruct)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceEmpty)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceLength)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert)>,
+    };
+
+    for (auto& function_table_entry : function_table) {
+        KernelCreateInfo info = function_table_entry();
+        if (info.kernel_def != nullptr) {  // filter disabled entries where type is void
+            ORT_THROW_IF_ERROR(registry->Register(std::move(info)));
+        }
+    }
 }
 
 void RegisterDmlOperators(IMLOperatorRegistry* registry)
@@ -818,20 +957,35 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
             std::vector<MLOperatorTensorDataType> supportedTypeList;
             SupportedTensorDataTypes supportedTypes = information.supportedTensorDataTypes[i];
 
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(EdgeDesc<float>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(EdgeDesc<uint8_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(EdgeDesc<int8_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(EdgeDesc<uint16_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int16  )) edgeDescs.push_back(EdgeDesc<int16_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int32  )) edgeDescs.push_back(EdgeDesc<int32_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Int64  )) edgeDescs.push_back(EdgeDesc<int64_t>());
-            //if (bool(supportedTypes & SupportedTensorDataTypes::String )) edgeDescs.push_back(EdgeDesc<std::string>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Bool   )) edgeDescs.push_back(EdgeDesc<bool>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(EdgeDesc<::MLFloat16>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::Float64)) edgeDescs.push_back(EdgeDesc<double>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt32 )) edgeDescs.push_back(EdgeDesc<uint32_t>());
-            if (bool(supportedTypes & SupportedTensorDataTypes::UInt64 )) edgeDescs.push_back(EdgeDesc<uint64_t>());
+            // Scalars
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(TensorEdgeDesc<float>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(TensorEdgeDesc<uint8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(TensorEdgeDesc<int8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(TensorEdgeDesc<uint16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int16  )) edgeDescs.push_back(TensorEdgeDesc<int16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int32  )) edgeDescs.push_back(TensorEdgeDesc<int32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int64  )) edgeDescs.push_back(TensorEdgeDesc<int64_t>());
+            //if (bool(supportedTypes & SupportedTensorDataTypes::String )) edgeDescs.push_back(TensorEdgeDesc<std::string>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Bool   )) edgeDescs.push_back(TensorEdgeDesc<bool>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float16)) edgeDescs.push_back(TensorEdgeDesc<::MLFloat16>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Float64)) edgeDescs.push_back(TensorEdgeDesc<double>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt32 )) edgeDescs.push_back(TensorEdgeDesc<uint32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt64 )) edgeDescs.push_back(TensorEdgeDesc<uint64_t>());
 
+            // Sequences
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceFloat32)) edgeDescs.push_back(SequenceEdgeDesc<float>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceUInt8  )) edgeDescs.push_back(SequenceEdgeDesc<uint8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceInt8   )) edgeDescs.push_back(SequenceEdgeDesc<int8_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceUInt16 )) edgeDescs.push_back(SequenceEdgeDesc<uint16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceInt16  )) edgeDescs.push_back(SequenceEdgeDesc<int16_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceInt32  )) edgeDescs.push_back(SequenceEdgeDesc<int32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceInt64  )) edgeDescs.push_back(SequenceEdgeDesc<int64_t>());
+            //if (bool(supportedTypes & SupportedTensorDataTypes::SequenceString )) edgeDescs.push_back(SequenceEdgeDesc<std::string>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceBool   )) edgeDescs.push_back(SequenceEdgeDesc<bool>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceFloat16)) edgeDescs.push_back(SequenceEdgeDesc<::MLFloat16>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceFloat64)) edgeDescs.push_back(SequenceEdgeDesc<double>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceUInt32 )) edgeDescs.push_back(SequenceEdgeDesc<uint32_t>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::SequenceUInt64 )) edgeDescs.push_back(SequenceEdgeDesc<uint64_t>());
             typeConstraints[i].allowedTypeCount = static_cast<uint32_t>(edgeDescs.size() - lastEdgeDescSize);
             lastEdgeDescSize = edgeDescs.size();
         }

@@ -118,14 +118,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 #endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
-    std::vector<Tensor> tensors;
-    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
-    }
-    target_tensor_seq->SetElements(std::move(tensors));
-    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
-    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+    TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
   }
@@ -208,17 +201,19 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
       target_tensor_seq.Add(std::move(*target_tensor));
     }
+    const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
+
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
+        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), stream});
       } else {
         if (stream)
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), *stream));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
         else
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
       }
       ++source_iter;
       ++target_iter;
@@ -508,65 +503,6 @@ static common::Status CopyInputsAcrossDevices(const SessionState& session_state,
   return Status::OK();
 }
 
-// public method to do a single copy. used by external partners
-common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
-                                         const OrtValue& orig_mlvalue, OrtValue& new_mlvalue) {
-  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor()) {
-    new_mlvalue = orig_mlvalue;
-    return Status::OK();
-  }
-
-  MLValueCopyInfo copy_info;
-  // Sets copy_info.target_device.
-  ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
-#if !defined(DISABLE_SPARSE_TENSORS)
-  copy_info.source_device = (orig_mlvalue.IsTensor())
-                                ? orig_mlvalue.Get<Tensor>().Location().device
-                                : orig_mlvalue.Get<SparseTensor>().Location().device;
-#else
-  copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
-#endif
-
-  // copy_info.target_device is not set leaving to be equal to CPU.
-  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue, nullptr);
-}
-
-static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
-                                               gsl::span<const OrtValue> fetches,
-                                               std::vector<OrtValue>& user_fetches,
-                                               gsl::span<const MLValueCopyInfo> copy_info,
-                                               gsl::span<Stream* const> fetch_streams) {
-  auto num_outputs = fetches.size();
-  user_fetches.resize(num_outputs);
-
-  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
-#if !defined(DISABLE_SPARSE_TENSORS)
-  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
-#endif
-
-  for (size_t idx = 0; idx < num_outputs; ++idx) {
-#if !defined(DISABLE_SPARSE_TENSORS)
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
-                                           &batched_data_transfers, &batched_sparse_data_transfers));
-#else
-    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
-                                           &batched_data_transfers));
-#endif
-  }
-
-  if (!batched_data_transfers.empty()) {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
-  }
-
-#if !defined(DISABLE_SPARSE_TENSORS)
-  if (!batched_sparse_data_transfers.empty()) {
-    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
-  }
-#endif
-
-  return Status::OK();
-}
-
 #ifdef ORT_ENABLE_STREAM
 struct DeviceStreamCollectionHolder {
   DeviceStreamCollectionHolder(
@@ -608,6 +544,80 @@ static void UpdateWithParentStream(DeviceStreamCollection& device_stream_collect
   }
 }
 #endif
+
+// public method to do a single copy. used by external partners
+common::Status CopyOneInputAcrossDevices(const SessionState& session_state, const std::string& input_name,
+                                         const OrtValue& orig_mlvalue, OrtValue& new_mlvalue) {
+  if (!orig_mlvalue.IsTensor() && !orig_mlvalue.IsSparseTensor()) {
+    new_mlvalue = orig_mlvalue;
+    return Status::OK();
+  }
+
+  MLValueCopyInfo copy_info;
+  // Sets copy_info.target_device.
+  ORT_RETURN_IF_ERROR(CalculateStaticCopyInfoForFeed(session_state, input_name, copy_info));
+#if !defined(DISABLE_SPARSE_TENSORS)
+  copy_info.source_device = (orig_mlvalue.IsTensor())
+                                ? orig_mlvalue.Get<Tensor>().Location().device
+                                : orig_mlvalue.Get<SparseTensor>().Location().device;
+#else
+  copy_info.source_device = orig_mlvalue.Get<Tensor>().Location().device;
+#endif
+
+  Stream* device_stream = nullptr;
+#ifdef ORT_ENABLE_STREAM
+  DeviceStreamCollectionHolder device_stream_collection_holder(session_state);
+  if (device_stream_collection_holder.p_ != nullptr) {
+    DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
+    gsl::span<Stream*> streams = device_stream_collection->GetStreams();
+    for (Stream* stream : streams) {
+      if (stream && stream->GetDevice().Type() != OrtDevice::CPU) {
+        device_stream = stream;
+        break;
+      }
+    }
+  }
+#endif
+
+  // copy_info.target_device is not set leaving to be equal to CPU.
+  return BatchOrCopyMLValue(session_state, copy_info, orig_mlvalue, new_mlvalue, device_stream);
+}
+
+static common::Status CopyOutputsAcrossDevices(const SessionState& session_state,
+                                               gsl::span<const OrtValue> fetches,
+                                               std::vector<OrtValue>& user_fetches,
+                                               gsl::span<const MLValueCopyInfo> copy_info,
+                                               gsl::span<Stream* const> fetch_streams) {
+  auto num_outputs = fetches.size();
+  user_fetches.resize(num_outputs);
+
+  std::vector<IDataTransfer::SrcDstPair> batched_data_transfers;
+#if !defined(DISABLE_SPARSE_TENSORS)
+  std::vector<IDataTransfer::SparseSrcDstPair> batched_sparse_data_transfers;
+#endif
+
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
+                                           &batched_data_transfers, &batched_sparse_data_transfers));
+#else
+    ORT_RETURN_IF_ERROR(BatchOrCopyMLValue(session_state, copy_info[idx], fetches[idx], user_fetches[idx], fetch_streams[idx],
+                                           &batched_data_transfers));
+#endif
+  }
+
+  if (!batched_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensors(batched_data_transfers));
+  }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+  if (!batched_sparse_data_transfers.empty()) {
+    ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopySparseTensors(batched_sparse_data_transfers));
+  }
+#endif
+
+  return Status::OK();
+}
 
 static common::Status
 ExecuteGraphImpl(const SessionState& session_state,

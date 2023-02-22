@@ -90,7 +90,7 @@ class ApiNode final : public api::NodeRef {
   void CopyAttributes(const api::NodeRef& node) override;
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
-  const std::string& GetExecutionProviderType() const override;
+  std::string_view GetExecutionProviderType() const override;
   virtual int SinceVersion() const override;
 
  private:
@@ -401,7 +401,7 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
   }
 }
 
-const std::string& ApiNode::GetExecutionProviderType() const {
+std::string_view ApiNode::GetExecutionProviderType() const {
   return node_.GetExecutionProviderType();
 }
 
@@ -831,21 +831,77 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
+CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                               const std::vector<int64_t>& /*perm*/,
+                               const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
+  // special case some kernels based on the ORT implementation details
+  if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
+    if (node.IsOp("MaxPool")) {
+      // MaxPool has higher perf in the NHWC variant when supported. HandleMaxPool does the support checks.
+      return CostCheckResult::kPushTranspose;
+    }
+
+    if (node.IsOp("Resize")) {
+      // Resize is included because it has higher perf in the NHWC variant when
+      // the input X is 4D int8 tensor and the mode is linear
+      auto X_value_info = graph.GetValueInfo(node.Inputs()[0]);
+      auto X_shape = X_value_info->Shape();
+      auto X_dtype = X_value_info->DType();
+      auto mode = node.GetAttributeString("mode");
+      if (X_shape && X_shape->size() == 4 &&
+          (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+          mode && *mode == "linear") {
+        return CostCheckResult::kPushTranspose;
+      }
+    }
+  }
+
+  return CostCheckResult::kFallThrough;
+}
+
 namespace layout_transformer {
 
+// Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
+// data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
+// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
+// Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
+// as many of the layout transposes as possible.
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
-#if !defined(USE_CUDA) && !defined(USE_ROCM) && !defined(USE_QNN)
-    std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
-#else
-    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    std::unordered_set<std::string_view> ort_specific_ops =
+    { "FusedConv",
+      "QLinearAveragePool",
+      "QLinearGlobalAveragePool"
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+      // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
+      // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
+      // onnx_layout_transformation::HandleResize is used.
+      ,
+      "Resize"
 #endif
+    };
+
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;
   }();
 
   return ort_layout_sensitive_ops;
+}
+
+// Cost check for aggressively pushing the Transpose nodes involved in the layout transformation further out.
+static CostCheckResult
+PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                             const std::vector<int64_t>& perm,
+                             const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+  // we aggressively push the layout transpose nodes
+  if (perm == ChannelFirstToLastPerm(perm.size()) ||
+      perm == ChannelLastToFirstPerm(perm.size())) {
+    return CostCheckResult::kPushTranspose;
+  }
+
+  // for other nodes use the default ORT cost check
+  return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
@@ -924,6 +980,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
     OptimizeResult result =
         onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
                                              onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                             PostLayoutTransformCostCheck,
                                              layout_sensitive_ops);
     if (result.error_msg) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",

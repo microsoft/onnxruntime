@@ -297,8 +297,8 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
 
 /** \brief Graph optimization level
  *
- * Refer to https://www.onnxruntime.ai/docs/resources/graph-optimizations.html
- * for an in-depth understanding of Graph Optimizations
+ * Refer to https://www.onnxruntime.ai/docs/performance/graph-optimizations.html#graph-optimization-levels
+ * for an in-depth understanding of the Graph Optimization Levels.
  */
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
