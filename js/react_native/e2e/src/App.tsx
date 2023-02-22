@@ -39,7 +39,9 @@ export default class App extends React.PureComponent<{}, State> {
         this.setState({imagePath});
 
         const modelPath = await MNIST.getLocalModelPath();
+        console.log("Before creating session - rn");
         const session : InferenceSession = await InferenceSession.create(modelPath);
+        console.log("After creatnig session - rn");
         this.setState({session});
 
         void this.infer();

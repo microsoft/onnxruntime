@@ -61,7 +61,9 @@ class OnnxruntimeSessionHandler implements SessionHandler {
   async loadModel(options: InferenceSession.SessionOptions): Promise<void> {
     try {
       // load a model
+      console.log("Before loading a model.");
       const results: Binding.ModelLoadInfoType = await this.#inferenceSession.loadModel(this.#key, options);
+      console.log("After loading a model.");
       // resolve promise if onnxruntime session is successfully created
       if (results.key !== this.#key) {
         throw new Error('Session key is invalid');
