@@ -1,7 +1,7 @@
 jobs:
   - job: Build_QNN_EP
     pool: Onnxruntime-QNNEP-Ubuntu-2004-CPU
-    timeoutInMinutes: 30
+    timeoutInMinutes: 60
     workspace:
       clean: all
 
