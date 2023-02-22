@@ -76,6 +76,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     bool trt_context_memory_sharing_enable = false;
     bool trt_layer_norm_fp32_fallback = false;
     bool trt_timing_cache_enable = false;
+    bool trt_force_timing_cache = false;
 
 #ifdef _MSC_VER
     std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
@@ -257,6 +258,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     tensorrt_options.trt_context_memory_sharing_enable = trt_context_memory_sharing_enable;
     tensorrt_options.trt_layer_norm_fp32_fallback = trt_layer_norm_fp32_fallback;
     tensorrt_options.trt_timing_cache_enable = trt_timing_cache_enable;
+    tensorrt_options.trt_force_timing_cache = trt_force_timing_cache;
     session_options.AppendExecutionProvider_TensorRT_V2(tensorrt_options);
 
     OrtCUDAProviderOptions cuda_options;

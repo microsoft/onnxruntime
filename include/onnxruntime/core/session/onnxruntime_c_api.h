@@ -528,6 +528,8 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_dla_core;                             // DLA core number. Default 0
   int trt_dump_subgraphs;                       // dump TRT subgraph. Default 0 = false, nonzero = true
   int trt_engine_cache_enable;                  // enable engine caching. Default 0 = false, nonzero = true
+  int trt_timing_cache_enable;                  // enable TensorRT timing cache. Default 0 = false, nonzero = true
+  int trt_force_timing_cache;                   // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
   const char* trt_engine_cache_path;            // specify engine cache path
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path
@@ -3632,7 +3634,7 @@ struct OrtApi {
   * 2. For windows, ort will infer the group id from a logical processor id, for example, assuming there are two groups with each has 64 logical processors,
   *    an id of 64 will be inferred as the last processor of the 1st group, while 65 will be interpreted as the 1st processor of the second group.
   *    Hence 64-65 is an invalid configuration, because a windows thread cannot be attached to processors across group boundary.
-  * 
+  *
   *  \since Version 1.14
   */
   ORT_API2_STATUS(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions* tp_options, const char* affinity_string);

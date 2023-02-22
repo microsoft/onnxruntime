@@ -422,6 +422,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       timing_cache_enable_ = (std::stoi(timing_cache_enable_env) == 0 ? false : true);
     }
 
+    const std::string timing_force_match_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kForceTimingCache);
+    if (!timing_force_match_env.empty()) {
+      force_timing_cache_match_ = (std::stoi(timing_force_match_env) == 0 ? false : true);
+    }
+
     if (engine_cache_enable_ || int8_enable_ || timing_cache_enable_) {
       const std::string engine_cache_path = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kEngineCachePath);
       cache_path_ = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCachePath);
@@ -1404,7 +1409,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     if (!has_dynamic_shape) {
       const std::string cache_path = GetCachePath(cache_path_, trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
-      const std::string timing_cache_path = cache_path + ".timing";
+      cudaDeviceProp prop;
+      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
+      const std::string timing_cache_path = GetTimingCachePath(cache_path_, prop);
       {
         // ifstream file check, engine serialization/deserialization and engine build are in critical section. It needs lock protection to prevent race condition when inferencing with multithreading.
         auto lock = GetApiLock();
@@ -1460,15 +1467,21 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                      "TensorRT EP could not create timing cache: " + timing_cache_path);
             }
-            trt_config->setTimingCache(*timing_cache, false);
+            trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
         }
 
         // Build engine
+          auto engine_build_start = std::chrono::steady_clock::now();
           trt_engine = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(trt_builder->buildEngineWithConfig(*trt_network, *trt_config));
           if (trt_engine == nullptr) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                    "TensorRT EP could not build engine for fused node: " + fused_node.Name());
           }
+          auto engine_build_stop = std::chrono::steady_clock::now();
+          LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " <<
+                  std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+
           if (engine_cache_enable_) {
             nvinfer1::IHostMemory* serializedModel = trt_engine->serialize();
             size_t engine_size = serializedModel->size();
@@ -1602,7 +1615,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       const std::string cache_path = GetCachePath(trt_state->engine_cache_path, trt_state->trt_node_name_with_precision);
       const std::string engine_cache_path = cache_path + ".engine";
       const std::string profile_cache_path = cache_path + ".profile";
-      const std::string timing_cache_path = cache_path + ".timing";
+      cudaDeviceProp prop;
+      CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, 0));
+      const std::string timing_cache_path = GetTimingCachePath(trt_state->engine_cache_path, prop);
       if (trt_state->engine_cache_enable && trt_engine == nullptr) {
         std::ifstream engine_file(engine_cache_path, std::ios::binary | std::ios::in);
         std::ifstream profile_file(profile_cache_path, std::ios::binary | std::ios::in);
@@ -1846,14 +1861,20 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
               return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                                      "TensorRT EP could not create timing cache: " + timing_cache_path);
             }
-            trt_config->setTimingCache(*timing_cache, false);
+            trt_config->setTimingCache(*timing_cache, force_timing_cache_match_);
+            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Deserialized timing cache from " + timing_cache_path;
         }
 
         // Build engine
         {
           auto lock = GetApiLock();
+          auto engine_build_start = std::chrono::steady_clock::now();
           *(trt_state->engine) = tensorrt_ptr::unique_pointer<nvinfer1::ICudaEngine>(
               trt_builder->buildEngineWithConfig(*trt_state->network->get(), *trt_config));
+          auto engine_build_stop = std::chrono::steady_clock::now();
+          LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_state->trt_node_name_with_precision << " took: " <<
+                  std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
+
         }
         if (trt_state->engine == nullptr) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP Failed to Build Engine.");
