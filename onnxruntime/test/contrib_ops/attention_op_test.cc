@@ -1721,7 +1721,7 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    true /*use_scale*/);
 }
 
-#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 520
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
 TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;

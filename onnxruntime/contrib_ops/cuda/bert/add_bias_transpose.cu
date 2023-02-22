@@ -646,7 +646,7 @@ void InvokeAddBiasTranspose(
   if (do_rotary) {
 #ifdef USE_ROCM
     ORT_THROW("Rotary attention is not supported on ROCm");
-#elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 520
+#elif !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
     if (format != 1 && format != 2 && format != 3) {
       ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
