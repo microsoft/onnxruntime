@@ -232,7 +232,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("do_rotary",
-              "Whether use rotary position embedding. Default value is 0.",
+              "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT,
               OPTIONAL_VALUE)
         .Attr("mask_filter_value",
