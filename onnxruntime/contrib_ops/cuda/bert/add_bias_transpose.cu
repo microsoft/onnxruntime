@@ -225,6 +225,10 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   //     Input:  BxSxMxNxH
   //     Output: MxBxNxSxH
   //     qkv_add_bias: BxSxMxNxH
+  // Format 2 for fused TRT attention
+  //     Input:  BxSxMxNxH
+  //     Output: BxSxNxMxH
+  //     qkv_add_bias: BxSxMxNxH
   // Format 3 for cutlass memory efficient attention
   //     Input:  BxSxMxNxH
   //     Output: MxBxSxNxH
@@ -249,13 +253,15 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
   extern __shared__ __align__(sizeof(float2)) char smem_[];
 
   int tidx = threadIdx.x;
+  const int head_idx = tidx * vec_size;
 
-  if (tidx * vec_size < head_size) {
-    const bool is_masked = tidx * vec_size >= head_size;
+  if (head_idx < head_size) {
+    const bool is_masked = head_idx >= head_size;
 
-    const int src_q_idx = n * head_size + (s * M) * NH + b * NHS * M + tidx * vec_size;
-    const int src_k_idx = n * head_size + (1 + s * M) * NH + b * NHS * M + tidx * vec_size;
-    const int src_v_idx = n * head_size + (2 + s * M) * NH + b * NHS * M + tidx * vec_size;
+    const int input_offset_base = n * head_size + (s * M) * NH + b * NHS * M;
+    const int src_q_idx = input_offset_base + head_idx;
+    const int src_k_idx = input_offset_base + NH + head_idx;
+    const int src_v_idx = input_offset_base + 2 * NH + head_idx;
 
     Vec_t q, k, v;
     Vec_t q_bias, k_bias, v_bias;
@@ -265,9 +271,9 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
       k = *reinterpret_cast<const Vec_t*>(&input[src_k_idx]);
       v = *reinterpret_cast<const Vec_t*>(&input[src_v_idx]);
 
-      q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + tidx * vec_size]);
-      k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + tidx * vec_size]);
-      v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + tidx * vec_size]);
+      q_bias = *reinterpret_cast<const Vec_t*>(&biases[n * H + head_idx]);
+      k_bias = *reinterpret_cast<const Vec_t*>(&biases[NH + n * H + head_idx]);
+      v_bias = *reinterpret_cast<const Vec_t*>(&biases[2 * NH + n * H + head_idx]);
     }
 
     q = add(q, q_bias);
@@ -280,8 +286,8 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
     T* k_smem = q_smem + rotary_embedding_dim;
 
     const int half_rotary_dim = rotary_embedding_dim / 2;
-    const int half_idx        = (tidx * vec_size) / half_rotary_dim;
-    const int intra_half_idx  = (tidx * vec_size) % half_rotary_dim;
+    const int half_idx        = (head_idx) / half_rotary_dim;
+    const int intra_half_idx  = (head_idx) % half_rotary_dim;
     const int smem_pitch      = half_rotary_dim;
 
     if (do_rotary) {
@@ -317,15 +323,26 @@ __global__ void AddBiasTransposeQKV(int M, const T* input, const T* biases, T* o
 
     // Format 1
     if (format == 1) {
-      dest_q_idx = s * head_size + n * sequence_length * H + b * NHS + tidx * vec_size;
-      dest_k_idx = s * head_size + n * sequence_length * H + b * NHS + NHS * batch_size + tidx * vec_size;
-      dest_v_idx = s * head_size + n * sequence_length * H + b * NHS + 2 * NHS * batch_size + tidx * vec_size;
+      const int output_offset_base = s * head_size + n * sequence_length * H + b * NHS;
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + NHS * batch_size + head_idx;
+      dest_v_idx = output_offset_base + 2 * NHS * batch_size + head_idx;
     }
 
+    // Format 2
+    if (format == 2) {
+      const int output_offset_base = M * (b * NHS + s * NH + n * H);
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + H + head_idx;
+      dest_v_idx = output_offset_base + 2 * H + head_idx;
+    }
+
+    // Format 3
     if (format == 3) {
-      dest_q_idx = n * H + s * NH + b * NHS + tidx * vec_size;
-      dest_k_idx = n * H + s * NH + b * NHS + NHS * batch_size + tidx * vec_size;
-      dest_v_idx = n * H + s * NH + b * NHS + 2 * NHS * batch_size + tidx * vec_size;
+      const int output_offset_base = n * H + s * NH + b * NHS;
+      dest_q_idx = output_offset_base + head_idx;
+      dest_k_idx = output_offset_base + NHS * batch_size + head_idx;
+      dest_v_idx = output_offset_base + 2 * NHS * batch_size + head_idx;
     }
 
     if (!is_masked) {
@@ -630,8 +647,8 @@ void InvokeAddBiasTranspose(
 #ifdef USE_ROCM
     ORT_THROW("Rotary attention is not supported on ROCm");
 #elif defined(__CUDA_ARCH__) && __CUDA_ARCH__ > 520
-    if (format != 1 && format != 3) {
-      ORT_THROW("format must be 1 or 3 for rotary attention");
+    if (format != 1 && format != 2 && format != 3) {
+      ORT_THROW("format must be 1, 2 or 3 for rotary attention");
     }
     if (v_head_size != -1 && qk_head_size != v_head_size) {
       ORT_THROW("qk_head_size must be equal to v_head_size for rotary attention");
