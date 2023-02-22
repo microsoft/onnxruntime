@@ -103,7 +103,6 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
-      std::cout << "Attempting SimplifiedLayerNormFusion" << std::endl;
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
