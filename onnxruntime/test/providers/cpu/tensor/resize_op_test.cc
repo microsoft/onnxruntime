@@ -1845,7 +1845,7 @@ void TestAntialiasing(std::map<std::string, std::string> attributes,
 
   test.AddOutput<T>("Y", output_shape, output_data);
   // TensorRT 8.5 supports operators up to Opset 17. Temporarily exclude TensorRT EP due to accurarcy issue.  
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(ResizeOpTest, Antialias_Bilinear_No_ExcludeOutside) {
