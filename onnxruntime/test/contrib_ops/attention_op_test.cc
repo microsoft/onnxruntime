@@ -1721,7 +1721,6 @@ TEST(AttentionTest, AttentionWithNormFactor) {
                    true /*use_scale*/);
 }
 
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
 TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -1762,11 +1761,10 @@ TEST(AttentionTest, AttentionWithNeoXRotaryEmbedding) {
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional, use_past_state, past_sequence_length, past_data, present_data,
                    AttentionMaskType::MASK_2D_KEY_PADDING, 0 /*input_hidden_size*/, 0 /*max_sequence_length*/,
-                   false /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, {} /*qkv_sizes*/,
+                   true /*disable_cpu*/, false /*disable_cuda*/, true /*disable_rocm*/, {} /*qkv_sizes*/,
                    {} /*relative_position_bias_data*/, 0 /*kv_sequence_length*/, false /*past_present_share_buffer*/,
                    true /*use_scale*/, true /*use_neox_rotary_embedding*/);
 }
-#endif
 
 TEST(AttentionTest, AttentionMask1DEndNoWord) {
   int batch_size = 2;
