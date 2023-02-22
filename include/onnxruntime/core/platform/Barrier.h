@@ -78,4 +78,23 @@ class Barrier {
 struct Notification : Barrier {
   Notification() : Barrier(1){};
 };
+
+struct LockFreeMutex {
+  std::atomic_bool __occupied{false};
+  void lock() {
+    bool occupied = false;
+    while (!__occupied.compare_exchange_weak(
+        occupied,
+        true,
+        std::memory_order_relaxed,
+        std::memory_order_relaxed)) {
+      occupied = false;
+      _mm_pause();
+    }
+  }
+  void unlock() {
+    __occupied.store(false, std::memory_order_relaxed);
+  }
+};
+
 }  // namespace onnxruntime
