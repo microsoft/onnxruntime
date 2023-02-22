@@ -28,7 +28,7 @@ using namespace onnxruntime;
 
 namespace onnxruntime {
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
 namespace cuda {
 cuda::INcclService& GetINcclService();
 }
@@ -164,7 +164,7 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     info = CUDAExecutionProviderInfo::FromProviderOptions(options);
   }
 
-#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   cuda::INcclService& GetINcclService() override {
     return cuda::GetINcclService();
   }

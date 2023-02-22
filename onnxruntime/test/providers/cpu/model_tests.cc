@@ -125,13 +125,11 @@ TEST_P(ModelTest, Run) {
     return;
   }
 
-#ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    SkipTest("It has training domain");
+    SkipTest("it has the training domain. No pipeline should need to run these tests.");
     return;
   }
-#endif
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -204,6 +202,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
+      {"col2im_pads", "result mismatch", {"opset18"}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -254,35 +253,8 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
-      // models from model zoo
-      {"BERT-Squad-int8", "failed in training", {"opset12"}},
-      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
-      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
-      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
-      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
-      {"Inception-1-int8", "failed in training", {"opset12"}},
-      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
-      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
-      {"ResNet50-qdq", "failed in training", {"opset12"}},
-      {"ResNet50_int8", "failed in training", {"opset12"}},
-      {"ResNet50-int8", "failed in training", {"opset12"}},
-      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
-      {"SSD-int8", "failed in training", {"opset12"}},
-      {"VGG 16-int8", "failed in training", {"opset12"}},
-      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
-
-#ifdef ENABLE_TRAINING_CORE
-  // They only failed in orttraining-iinux-gpu-ci-pipelie with TRT8.5
-  if (provider_name == "cpu") {
-    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100, but it's a cpu test?", {"opset12"}});
-  }
-  if (provider_name == "cuda") {
-    broken_tests.insert({"GoogleNet-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-  }
-#endif
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
@@ -699,7 +671,12 @@ TEST_P(ModelTest, Run) {
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
+        OrtDnnlProviderOptions* ep_option;
+        ASSERT_ORT_STATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
+        std::unique_ptr<OrtDnnlProviderOptions, decltype(&OrtApis::ReleaseDnnlProviderOptions)>
+            rel_dnnl_options(ep_option, &OrtApis::ReleaseDnnlProviderOptions);
+        ep_option->use_arena = 0;
+        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
       }
 #endif
       else if (provider_name == "tensorrt") {

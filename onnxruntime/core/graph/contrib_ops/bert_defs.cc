@@ -126,33 +126,65 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 }
 
 void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+
+  // Q, K and V without packing:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+  //   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+
+  // Packed KV:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
+  //   Input 2  nullptr
+
+  // Packed QKV:
+  //   Input 0 (batch_size, sequence_length, num_heads, 3, head_size)
+  //   Input 1  nullptr
+  //   Input 2  nullptr
 
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
   // Shape inference
-  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+  if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
-    if (query_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+
+    if (query_dims.size() != 3 && query_dims.size() != 5) {
+      fail_shape_inference("Inputs 0 (query) shall be 3 or 5 dimensions");
     }
 
-    auto& value_shape = getInputShape(ctx, 2);
-    auto& value_dims = value_shape.dim();
-    if (value_dims.size() != 3) {
-      fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+    if (query_dims.size() == 5) {  // packed QKV
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      *output_shape.add_dim() = query_dims[2] * query_dims[4];
+      updateOutputShape(ctx, 0, output_shape);
+      return;
     }
 
-    ONNX_NAMESPACE::TensorShapeProto output_shape;
-    *output_shape.add_dim() = query_dims[0];
-    *output_shape.add_dim() = query_dims[1];
-    *output_shape.add_dim() = value_dims[2];
-    updateOutputShape(ctx, 0, output_shape);
+    if (hasInputShape(ctx, 2)) {
+      auto& value_shape = getInputShape(ctx, 2);
+      auto& value_dims = value_shape.dim();
+      if (value_dims.size() != 3) {
+        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+      }
+
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      *output_shape.add_dim() = value_dims[2];
+      updateOutputShape(ctx, 0, output_shape);
+      return;
+    }
+
+    if (hasInputShape(ctx, 1)) {
+      auto& key_shape = getInputShape(ctx, 1);
+      if (key_shape.dim().size() == 5) {  // packed KV
+        ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
+      }
+    }
   }
 }
 
@@ -234,7 +266,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T",
                OpSchema::Optional)
         .Input(5,
-               "extra_add",
+               "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
@@ -283,24 +315,33 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size)",
-               "T")
+               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "value",
                "Value with shape (batch_size, kv_sequence_length, v_hidden_size)",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
                "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
                "M",
+               OpSchema::Optional)
+        .Input(5,
+               "relative_position_bias",
+               "relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
+               " or (1, num_heads, sequence_length, total_sequence_length)",
+               "T",
                OpSchema::Optional)
         .Output(0,
                 "output",
@@ -655,6 +696,42 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         "Constrain token_offset to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           RestorePaddingTypeAndShapeInference(ctx);
+        }));
+
+constexpr const char* GatedRelativePositionBias_ver1_doc = R"DOC(
+  query_layer = (query_layer + query_bias).reshape(batch_size, seq_len, num_heads, head_size).transpose(1, 2)
+  gate_u, gate_r = torch.sigmoid(
+      self.gate_ur_linear(query_layer).view(batch_size, num_head, seq_len, 2, D/2).sum(-1, keepdim=False)
+  ).chunk(2, dim=-1)
+  gate_u_1 = gate_u * (gate_r * self.eco_a - 1.0) + 2.0
+  rel_pos_bias = gate_u_1 * rel_pos
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    GatedRelativePositionBias, 1,
+    OpSchema()
+        .SetDoc(GatedRelativePositionBias_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Input(0, "query_layer", "tensor with shape (batch_size, seq_len, num_heads x head_size)", "T")
+        .Input(1, "query_bias", "1-d tensor with shape (num_heads x head_size)", "T")
+        .Input(2, "rel_pos", "tensor with shape (1, num_head, seq_len, seq_len)", "T")
+        .Input(3, "weight", "gemm weight for the gated_ur_linear, shape (head_size, D), D is divisible by 2", "T")
+        .Input(4, "bias", "bias for the gated_ur_linear, shape (D)", "T")
+        .Input(5, "eco_a", "tensor of shape (1, num_heads, 1, 1)", "T")
+        .Output(0, "output", "output tensor with shape (batch_size, num_heads, seq_len, seq_len)", "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+          int64_t num_heads = getAttribute(ctx, "num_heads", -1L);
+          if (hasInputShape(ctx, 0)) {
+            auto& query_layer_shape = getInputShape(ctx, 0);
+            TensorShapeProto output_shape;
+            *output_shape.add_dim() = query_layer_shape.dim(0);
+            output_shape.add_dim()->set_dim_value(num_heads);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            *output_shape.add_dim() = query_layer_shape.dim(1);
+            updateOutputShape(ctx, 0, output_shape);
+          }
         }));
 
 }  // namespace contrib

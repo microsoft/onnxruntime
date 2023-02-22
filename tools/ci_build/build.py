@@ -192,10 +192,12 @@ def parse_arguments():
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
 
-    parser.add_argument("--disable_nccl", action="store_true", help="Disable Nccl.")
+    parser.add_argument("--enable_nccl", action="store_true", help="Enable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
-    parser.add_argument("--use_mpi", nargs="?", default=True, const=True, type=_str_to_bool)
+    parser.add_argument(
+        "--use_mpi", nargs="?", default=False, const=True, type=_str_to_bool, help="Disabled by default."
+    )
 
     # enable ONNX tests
     parser.add_argument(
@@ -938,7 +940,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -972,6 +974,8 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
+            if args.use_rocm:
+                cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     # By default cmake does not check TLS/SSL certificates. Here we turn it on.
     # But, in some cases you may also need to supply a CA file.
     add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
@@ -2372,6 +2376,11 @@ def main():
     # GDK builds don't support testing
     if args.use_gdk:
         args.test = False
+
+    # enable_training is a higher level flag that enables all training functionality.
+    if args.enable_training:
+        args.enable_training_apis = True
+        args.enable_training_ops = True
 
     configs = set(args.config)
 

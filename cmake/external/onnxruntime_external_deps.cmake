@@ -115,7 +115,7 @@ FetchContent_Declare(
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   SOURCE_SUBDIR  cmake
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS 3.18.0 NAMES Protobuf
+  FIND_PACKAGE_ARGS 3.20.2 NAMES Protobuf
 )
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
@@ -462,7 +462,7 @@ if (onnxruntime_USE_CUDA)
 endif()
 
 if(onnxruntime_USE_SNPE)
-    include(find_snpe.cmake)
+    include(external/find_snpe.cmake)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${SNPE_NN_LIBS})
 endif()
 

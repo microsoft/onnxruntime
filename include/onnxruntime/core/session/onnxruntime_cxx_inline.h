@@ -733,6 +733,12 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_CAN
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options) {
+  ThrowOnError(GetApi().SessionOptionsAppendExecutionProvider_Dnnl(this->p_, &provider_options));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider(
     const std::string& provider_name,
     const std::unordered_map<std::string, std::string>& provider_options) {
@@ -1843,15 +1849,23 @@ inline void CustomOpApi::ReleaseKernelInfo(_Frees_ptr_opt_ OrtKernelInfo* info_c
 }
 
 inline std::vector<std::string> GetAvailableProviders() {
-  int len;
   char** providers;
+  int len;
+
+  auto release_fn = [&len](char** providers) {
+    // This should always return nullptr.
+    ThrowOnError(GetApi().ReleaseAvailableProviders(providers, len));
+  };
+
   ThrowOnError(GetApi().GetAvailableProviders(&providers, &len));
-  std::vector<std::string> available_providers(providers, providers + len);
-  ThrowOnError(GetApi().ReleaseAvailableProviders(providers, len));
+  std::unique_ptr<char*, decltype(release_fn)> guard(providers, release_fn);
+  std::vector<std::string> available_providers;
+  available_providers.reserve(static_cast<size_t>(len));
+  for (int i = 0; i < len; ++i) {
+    available_providers.emplace_back(providers[i]);
+  }
   return available_providers;
 }
-
-SessionOptions& AddInitializer(const char* name, const OrtValue* ort_val);
 
 template <typename TOp, typename TKernel>
 void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::string, std::string>& out,

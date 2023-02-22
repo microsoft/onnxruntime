@@ -32,6 +32,7 @@ class GemmTunable : public IKernelExplorer {
               double beta,
               DeviceArray& c, int64_t ldc) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -48,7 +49,7 @@ class GemmTunable : public IKernelExplorer {
     params_.c = static_cast<T*>(c.ptr());
     params_.ldc = ldc;
 
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   ~GemmTunable() {
@@ -91,6 +92,7 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
     this->CopyAsBsCsPointersToDevice(as, bs, cs, batch);
 
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = this->TuningContext();
     params_.stream = this->Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -108,7 +110,7 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
     params_.ldc = ldc;
     params_.batch = batch;
 
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   ~BatchedGemmTunable() {
@@ -149,6 +151,7 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
                             DeviceArray& c, int64_t ldc, int64_t stride_c,
                             int64_t batch) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+    params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
     params_.opa = opa;
@@ -169,7 +172,7 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
     params_.stride_c = stride_c;
     params_.batch = batch;
 
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   ~StridedBatchedGemmTunable() {

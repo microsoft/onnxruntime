@@ -167,4 +167,6 @@ namespace Dml
         uint32_t m_minDimensionCount = NchwDimensionCount;
         uint32_t m_guaranteedBaseOffsetAlignment = 0;
     };
+
+    using TensorSequenceDesc = std::vector<TensorDesc>;
 }

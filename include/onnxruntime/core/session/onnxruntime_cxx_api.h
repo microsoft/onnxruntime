@@ -87,7 +87,7 @@ struct Global {
 template <typename T>
 #ifdef ORT_API_MANUAL_INIT
 const OrtApi* Global<T>::api_{};
-inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
+inline void InitApi() noexcept { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION); }
 
 // Used by custom operator libraries that are not linked to onnxruntime. Sets the global API object, which is
 // required by C++ APIs.
@@ -103,7 +103,7 @@ inline void InitApi() { Global<void>::api_ = OrtGetApiBase()->GetApi(ORT_API_VER
 //   // ...
 // }
 //
-inline void InitApi(const OrtApi* api) { Global<void>::api_ = api; }
+inline void InitApi(const OrtApi* api) noexcept { Global<void>::api_ = api; }
 #else
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -118,7 +118,7 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 #endif
 
 /// This returns a reference to the OrtApi interface in use
-inline const OrtApi& GetApi() { return *Global<void>::api_; }
+inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 
 /// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
@@ -579,6 +579,8 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
+  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+  SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options);
   /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
