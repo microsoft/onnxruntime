@@ -1,9 +1,12 @@
 package com.example.reactnativeonnxruntimemodule;
 
 import android.util.Log;
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.TextView;
 
+import androidx.test.espresso.InjectEventSecurityException;
 import androidx.test.espresso.NoMatchingViewException;
 import androidx.test.espresso.UiController;
 import androidx.test.espresso.ViewAction;
@@ -78,6 +81,7 @@ public class OnnxruntimeModuleExampleUITests {
 
             @Override
             public void perform(UiController uiController, View view) {
+                uiController.loopMainThreadUntilIdle();
                 TextView textView = (TextView)view;
                 text[0] = textView.getText().toString();
             }
