@@ -43,7 +43,6 @@
 #include "core/common/denormal.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/spin_pause.h"
-//#include "core/platform/ort_mutex.h"
 #include "core/platform/Barrier.h"
 
 // ORT thread pool overview
