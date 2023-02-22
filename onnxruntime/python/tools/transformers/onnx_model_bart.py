@@ -5,10 +5,12 @@
 import logging
 
 from fusion_attention import AttentionMask, FusionAttention
+from fusion_options import FusionOptions
 from fusion_reshape import FusionReshape
 from onnx import numpy_helper, TensorProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +26,10 @@ class FusionBartAttention(FusionAttention):
         hidden_size: int,
         num_heads: int,
         attention_mask: AttentionMask,
+        fuse_mha_bias: bool = False,
     ):
         super().__init__(model, hidden_size, num_heads, attention_mask)
+        self.fuse_mha_bias = fuse_mha_bias
 
     def check_runtime_shape_path(
         self,
@@ -485,11 +489,13 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
 
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        self.attention_fusion.fuse_mha_bias = options.fuse_mha_bias
+        super().optimize(options, add_dynamic_axes)
+
     def fuse_attention(self):
         self.attention_fusion.apply()
 
     def preprocess(self):
         self.adjust_reshape_and_expand()
         self.bart_reshape_fusion_preprocess.apply()
-
-

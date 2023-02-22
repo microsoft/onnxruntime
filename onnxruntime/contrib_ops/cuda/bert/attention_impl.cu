@@ -320,7 +320,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     }
   } else {  // gemm_buffer == nullptr
     assert(data.query != nullptr && data.key != nullptr && data.value != nullptr);
-    std::cout << "Passed QKV assert" << std::endl;
+    // std::cout << "Passed QKV assert" << std::endl;
 
     // DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
     // DUMP_ATTENTION_D("query_bias", data.bias, num_heads, qk_head_size);
@@ -331,7 +331,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
-      std::cout << "This should not print" << std::endl;
+      // std::cout << "This should not print" << std::endl;
 
       // For fused cross attention, besides adding bias, K and V needed to be packed:
       //   K (BxSxNxH), V (BxSxNxH) => BxSxNx2xH
@@ -572,7 +572,7 @@ Status QkvToContext(
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    std::cout << "Preparing to run MHA using memory efficient attention" << std::endl;
+    // std::cout << "Preparing to run MHA using memory efficient attention" << std::endl;
 
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
@@ -594,8 +594,8 @@ Status QkvToContext(
     p.stream = stream;
     run_memory_efficient_attention(p);
 
-    std::cout << "Dumping MHA output" << std::endl;
-    DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    // std::cout << "Dumping MHA output" << std::endl;
+    // DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
@@ -627,10 +627,10 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
-  std::cout << "Dumping QK info" << std::endl;
-  DUMP_ATTENTION_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
-  DUMP_ATTENTION_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
-  DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
+  // std::cout << "Dumping QK info" << std::endl;
+  // DUMP_ATTENTION_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
+  // DUMP_ATTENTION_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
+  // DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length, total_sequence_length);
@@ -664,9 +664,9 @@ Status QkvToContext(
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
-  std::cout << "Dumping softmax info" << std::endl;
-  DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
-  DUMP_ATTENTION_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
+  // std::cout << "Dumping softmax info" << std::endl;
+  // DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
+  // DUMP_ATTENTION_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;
@@ -680,8 +680,8 @@ Status QkvToContext(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  max_threads_per_block, false, temp_output, data.output);
-  std::cout << "Dumping reshape info" << std::endl;
-  DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  // std::cout << "Dumping reshape info" << std::endl;
+  // DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return result;
 
   // Change attention dump for model_opt.onnx
