@@ -126,9 +126,6 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
             eps1[1]->GetAllocator(OrtMemType::OrtMemTypeDefault).get())
       << "EPs do not have the same default allocator";
-  ASSERT_EQ(eps[0]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get(),
-            eps1[1]->GetAllocator(0, OrtMemType::OrtMemTypeDefault).get())
-      << "EPs do not have the same default allocator";
 }
 
 TEST(XnnpackEP, TestAddEpUsingPublicApi) {

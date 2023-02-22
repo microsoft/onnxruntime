@@ -53,14 +53,6 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   Status OnRunEnd(bool sync_stream) override;
 #endif
 
-#ifdef MIGRAPHX_STREAM_SYNC
-  Status Sync() const override;
-
-  Status OnRunStart() override;
-
-  Status OnRunEnd(bool sync_stream) override;
-#endif
-
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_lookup*/) const override;

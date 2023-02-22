@@ -438,13 +438,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         } else {
           qnn_options[key] = value;
         }
-      } else if (key == "runtime") {
-        std::set<std::string> qnn_supported_runtime = {"CPU", "GPU", "DSP", "HTP"};
-        if (qnn_supported_runtime.find(value) != qnn_supported_runtime.end()) {
-          qnn_options[key] = value;
-        } else {
-          ORT_THROW("Wrong configuration value for the key 'runtime'. Select from CPU, GPU, DSP, HTP.");
-        }
       } else if (key == "profiling_level") {
         qnn_options[key] = value;
       } else if (key == "rpc_control_latency") {

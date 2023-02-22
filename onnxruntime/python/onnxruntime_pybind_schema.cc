@@ -82,12 +82,6 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
               return CannProviderFactoryCreator::Create(&provider_options);
             }(),
 #endif
-#ifdef USE_CANN
-            []() {
-              OrtCANNProviderOptions provider_options{};
-              return CannProviderFactoryCreator::Create(&provider_options);
-            }(),
-#endif
         };
 
         for (const auto& f : factories) {

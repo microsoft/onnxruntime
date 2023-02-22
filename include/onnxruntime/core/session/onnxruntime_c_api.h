@@ -3500,7 +3500,6 @@ struct OrtApi {
    *       that should be used to add it.
    *
    * QNN supported keys:
-   *   "runtime": QNN runtime engine, options: "CPU", "GPU", "DSP", "HTP".
    *   "backend_path": file path to QNN backend library.
    *   "profiling_level": QNN profiling level, options: "basic", "detailed".
    *   "rpc_control_latency": QNN RPC control latency.

@@ -165,21 +165,6 @@ namespace Microsoft.ML.OnnxRuntime
                 envLogLevel = value;
             }
         }
-
-
-        /// <summary>
-        /// Get/Set log level property of OrtEnv instance
-        /// </summary>
-        /// <returns>env log level</returns>
-        public LogLevel EnvLogLevel
-        {
-            get { return envLogLevel; }
-            set
-            {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(Handle, value));
-                envLogLevel = value;
-            }
-        }
         #endregion
 
         #region SafeHandle

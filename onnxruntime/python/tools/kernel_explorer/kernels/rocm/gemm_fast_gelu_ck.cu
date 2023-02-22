@@ -1,11 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-<<<<<<<< HEAD:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_ck.cu
-#include "python/tools/kernel_explorer/kernels/rocm/gemm_ck.h"
-========
 #include "python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.h"
->>>>>>>> main:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.cu
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -16,16 +12,6 @@
 #include <utility>
 #include <vector>
 
-<<<<<<<< HEAD:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_ck.cu
-#include "core/providers/rocm/rocm_common.h"
-#include "core/providers/rocm/tunable/gemm_common.h"
-#include "core/providers/rocm/tunable/gemm_ck.cuh"
-#include "python/tools/kernel_explorer/device_array.h"
-#include "python/tools/kernel_explorer/kernel_explorer_interface.h"
-
-using namespace onnxruntime::rocm::tunable::blas;
-using namespace onnxruntime::rocm::tunable::blas::internal;
-========
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_common.h"
 #include "contrib_ops/rocm/bert/gemm_fast_gelu_ck.cuh"
 #include "python/tools/kernel_explorer/device_array.h"
@@ -33,7 +19,6 @@ using namespace onnxruntime::rocm::tunable::blas::internal;
 
 using namespace onnxruntime::contrib::rocm::blas;
 using namespace onnxruntime::contrib::rocm::blas::internal;
->>>>>>>> main:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.cu
 
 namespace py = pybind11;
 
@@ -106,13 +91,8 @@ class CKGemmFastGelu : public IKernelExplorer {
   }
 
  private:
-<<<<<<<< HEAD:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_ck.cu
-  using ParamsT = GemmParams<T>;
-  using OpT = rocm::tunable::Op<ParamsT>;
-========
   using ParamsT = GemmFastGeluParams<T>;
   using OpT = Op<ParamsT>;
->>>>>>>> main:onnxruntime/python/tools/kernel_explorer/kernels/rocm/gemm_fast_gelu_ck.cu
   ParamsT params_;
   std::vector<OpT> ops_;
   std::vector<std::string> type_strings_;

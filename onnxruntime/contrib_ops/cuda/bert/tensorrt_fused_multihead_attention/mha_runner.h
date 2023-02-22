@@ -71,8 +71,6 @@ class MHARunner {
 
   virtual int getSFromMaxSeqLen(const int max_seq_len) const = 0;
 
-  virtual int getSFromMaxSeqLen(const int max_seq_len) const = 0;
-
  protected:
   int mS;
   int mB;
@@ -111,8 +109,6 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   bool isValid(int s) const override;
 
   int getSFromMaxSeqLen(const int max_seq_len) const override;
-
-  virtual int getSFromMaxSeqLen(const int max_seq_len) const override;
 
  private:
   int mSm;
