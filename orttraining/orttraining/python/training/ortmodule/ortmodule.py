@@ -15,9 +15,9 @@ from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
 
+import os
 import torch
 from typing import Iterator, Optional, Tuple, TypeVar, Callable
-import os
 
 
 # Needed to override PyTorch methods
@@ -148,8 +148,8 @@ class ORTModule(torch.nn.Module):
         if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
             raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
                                   "Please use torch.nn.parallel.DistributedDataParallel instead.")
-        else:
-            return self._torch_module._replicate_for_data_parallel()
+        
+        return self._torch_module._replicate_for_data_parallel()
 
     def add_module(self, name: str, module: Optional["Module"]) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
@@ -157,8 +157,8 @@ class ORTModule(torch.nn.Module):
         policy = os.getenv("ORTMODULE_FALLBACK_POLICY")
         if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
             raise ORTModuleTorchModelException("ORTModule does not support adding modules to it.")
-        else:
-            self._torch_module.add_module(name, module)
+        
+        self._torch_module.add_module(name, module)
 
     @property
     def module(self):
