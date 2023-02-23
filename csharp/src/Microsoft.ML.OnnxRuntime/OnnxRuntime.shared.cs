@@ -62,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// To be called only from constructor
         /// </summary>
-        private void SetLangugageProjection()
+        private void SetLanguageProjection()
         {
             try
             {
