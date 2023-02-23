@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include "core/common/common.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -10,9 +12,10 @@ namespace rocm {
 
 template <typename T>
 Status LaunchSkipLayerNormKernel(
-    bool tuning,
+    RocmTuningContext* tuning,
     hipStream_t stream,
     T* output,         // output tensor
+    T* skip_input_bias_add_output, // optional output tensor
     const T* input,    // input tensor
     const T* skip,     // skip tensor
     const T* gamma,    // Layer normalization gamma tensor

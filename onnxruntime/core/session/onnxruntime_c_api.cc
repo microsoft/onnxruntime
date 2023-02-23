@@ -835,7 +835,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     }
 
     if (!input[i]) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, 
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
         MakeString("NULL input supplied for input ", input_names[i]).c_str());
     }
 
@@ -862,7 +862,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
       fetches.emplace_back();
     }
   }
-  
+
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
@@ -873,7 +873,7 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
   if (!status.IsOK())
     return ToOrtStatus(status);
-  
+
   // We do it in two loops to make sure copy __ctors does not throw
   InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
   output_unique_ptrs.reserve(output_names_len);
@@ -1045,7 +1045,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   for (auto& v : value_dups) {
     *out_ptr++ = v.release();
   }
-  
+
   *output = ortvalues_alloc.release();
   *output_count = outputs.size();
   return nullptr;
@@ -1820,43 +1820,29 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, 
 }
 #endif
 
-static ORT_STATUS_PTR OrtCreateValueImplSeqHelperTensor(const Tensor& tensor, Tensor& out) {
-  auto data_type = tensor.DataType();
-  ORT_API_RETURN_IF_ERROR(CreateTensorImplForSeq(data_type,
-                                                 tensor.Shape().GetDims().data(), tensor.Shape().NumDimensions(),
-                                                 out));
-  size_t num_elements = narrow<size_t>(tensor.Shape().Size());
-  ORT_API_RETURN_IF_ERROR(c_api_internal::PopulateTensorWithData(out, tensor.IsDataTypeString(),
-                                                                 tensor.DataRaw(), num_elements, data_type->Size()));
-  return nullptr;
-}
-
 static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                                   _Outptr_ OrtValue** out) {
   using namespace c_api_internal;
-  std::vector<Tensor> tensors;
-  tensors.resize(num_values);
-  auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  auto dtype = in[0]->Get<Tensor>().DataType();
+  auto seq_ptr = std::make_unique<TensorSeq>(dtype);
+  seq_ptr->Reserve(num_values);
 
   for (size_t idx = 0; idx < num_values; ++idx) {
     ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
-    auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
-    auto tensor_elem_type = one_tensor.DataType();
+    auto tensor_elem_type = in[idx]->Get<Tensor>().DataType();
 
     // sequences must have tensors of the same data type
-    if (idx > 0 && (tensor_elem_type != dtype)) {
+    if (tensor_elem_type != dtype) {
       return OrtApis::CreateStatus(ORT_FAIL,
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
 
-    ORT_API_RETURN_IF_ERROR(OrtCreateValueImplSeqHelperTensor(one_tensor, tensors[idx]));
+    seq_ptr->Add(*in[idx]);
   }
 
   // create OrtValue with this vector
   auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<TensorSeq>();
-  auto seq_ptr = std::make_unique<TensorSeq>(dtype);
-  seq_ptr->SetElements(std::move(tensors));
   value->Init(seq_ptr.release(),
               ml_type,
               ml_type->GetDeleteFunc());
