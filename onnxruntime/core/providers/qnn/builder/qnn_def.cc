@@ -282,7 +282,7 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
     if (qnn_tensor_size != qnn_tensor_buf_size) {
       ss << "Data length mismatch for static tensor. node_name: " << node_name
          << " tensor_name: " << tensor_name
-         << ". size calcualted from shape: " << qnn_tensor_size
+         << ". size calculated from shape: " << qnn_tensor_size
          << ", tensor.clientBuf.dataSize: " << qnn_tensor_buf_size;
       error_msg = ss.str();
       return false;

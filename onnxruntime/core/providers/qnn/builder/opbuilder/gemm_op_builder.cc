@@ -41,11 +41,11 @@ Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
   NodeAttrHelper node_helper(node_unit);
   auto alpha = node_helper.Get("alpha", (float)1.0);
   if (alpha != 1.0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only suport alpha=1.0.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support alpha=1.0.");
   }
   auto beta = node_helper.Get("beta", (float)1.0);
   if (beta != 1.0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only suport beta=1.0.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support beta=1.0.");
   }
 
   // input C shape need to be [M] or [1, M]

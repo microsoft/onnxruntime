@@ -125,7 +125,7 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const auto& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
   const auto& indices_input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[1]);
 
-  // Calcualte the output shape
+  // Calculate the output shape
   std::vector<uint32_t> qnn_output_shape;
   auto input_rank = input_tensor_wrapper.GetTensorRank();
   auto indices_rank = indices_input_tensor_wrapper.GetTensorRank();

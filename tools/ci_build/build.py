@@ -484,7 +484,7 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
-    parser.add_argument("--use_qnn", action='store_true', help="Build with QNN support.")
+    parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
@@ -1174,10 +1174,7 @@ def generate_build_tree(
 
     if args.use_qnn:
         if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
-            raise BuildError(
-                "qnn_home paths must be specified and valid.",
-                "qnn_home='{}' valid={}.".format(qnn_home, False),
-            )
+            raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
         cmake_args += ["-Donnxruntime_USE_QNN=ON"]
 
     if args.use_coreml:

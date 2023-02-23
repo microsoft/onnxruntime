@@ -25,7 +25,7 @@ enum {
   DL_GLOBAL = 0x0004,
 };
 
-// specify this address to distingiush from NULL pointer
+// specify this address to distinguish from NULL pointer
 #define DL_DEFAULT (void*)(0x4)
 
 enum ProfilingLevel { OFF,
