@@ -31,7 +31,7 @@ void DnnlTranspose::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto dnnl_engine = sp.GetEngine();
 
   auto data_mem = sp.GetMemory(node.Input(IN_DATA));
-  auto data_dims = data_mem.get_desc().dims();
+  auto data_dims = data_mem.get_desc().get_dims();
   auto ndata_dims = data_dims.size();
 
   auto perm = GetPerm(node);

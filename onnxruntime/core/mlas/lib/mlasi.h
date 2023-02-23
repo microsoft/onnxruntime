@@ -107,6 +107,8 @@ Abstract:
 #include "core/common/cpuid_info.h"
 using MLAS_CPUIDINFO = onnxruntime::CPUIDInfo;
 
+#include "core/framework/float16.h"
+
 #else  // BUILD_MLAS_NO_ONNXRUNTIME
 
 class MLASCPUIDInfo
@@ -120,6 +122,8 @@ class MLASCPUIDInfo
 
     // ARM
     bool HasArmNeonDot() const { return has_arm_neon_dot_; }
+
+    bool HasFp16VectorAcceleration() const { return has_fp16_; }
 
     uint32_t GetCurrentCoreIdx() const { return 0xFFFFFFFF; }
 
@@ -135,6 +139,7 @@ class MLASCPUIDInfo
     MLASCPUIDInfo();
 
     bool has_arm_neon_dot_{false};
+    bool has_fp16_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
@@ -179,7 +184,49 @@ enum MlasUArch {
 
 #endif // MLAS_TARGET_ARM64
 
-#endif // BUILD_MLAS_NO_ONNXRUNTIME
+//
+// Define MLAS_FP16
+//
+#include "mlas_float16.h"
+
+namespace onnxruntime
+{
+struct MLFloat16 {
+    uint16_t val{0};
+
+    MLFloat16() = default;
+    explicit constexpr MLFloat16(uint16_t x) : val(x) {}
+    explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+
+    float ToFloat() const { return MLAS_Half2Float(val); }
+
+    operator float() const { return ToFloat(); }
+
+    MLFloat16& operator=(float ff)
+    {
+        val = MLAS_Float2Half(ff);
+        return *this;
+    }
+};
+
+inline bool
+operator==(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val == right.val;
+}
+
+inline bool
+operator!=(const MLFloat16& left, const MLFloat16& right)
+{
+    return left.val != right.val;
+}
+
+}
+
+#endif  // BUILD_MLAS_NO_ONNXRUNTIME
+
+static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
+
 
 //
 // Define the maximum number of threads supported by this implementation.
@@ -700,9 +747,9 @@ extern "C" {
 // thread to perform additional work.
 //
 
-#define MLAS_SGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_DGEMM_THREAD_COMPLEXITY                (64 * 1024)
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (64 * 1024)
+#define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
