@@ -218,33 +218,33 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
-  - task: CopyFiles@2
-    inputs:
+  #- task: CopyFiles@2
+  #  inputs:
       # Mobile build:
       #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
       #  contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
-    displayName: Copy Android package to Android e2e test directory
+  #    sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+  #    contents: onnxruntime-*.aar
+  #    targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+  #  displayName: Copy Android package to Android e2e test directory
 
-  - template: android-dump-logs-from-steps.yml
-    parameters:
-      steps:
-      - task: Gradle@3
-        inputs:
-          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-          options: '--stacktrace'
-          tasks: ':app:connectedDebugAndroidTest'
-          publishJUnitResults: true
-          testResultsFiles: '**/TEST-*.xml'
-          testRunTitle: 'React Native Android e2e Test results'
-          javaHomeOption: 'path'
-          jdkDirectory: '$(JAVA_HOME_11_X64)'
-          sonarQubeRunAnalysis: false
-          spotBugsAnalysis: false
-        displayName: Run React Native Android e2e Tests
+  #- template: android-dump-logs-from-steps.yml
+  #  parameters:
+  #    steps:
+  #    - task: Gradle@3
+  #      inputs:
+  #        gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+  #        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #        options: '--stacktrace'
+  #        tasks: ':app:connectedDebugAndroidTest'
+  #        publishJUnitResults: true
+  #        testResultsFiles: '**/TEST-*.xml'
+  #        testRunTitle: 'React Native Android e2e Test results'
+  #        javaHomeOption: 'path'
+  #        jdkDirectory: '$(JAVA_HOME_11_X64)'
+  #        sonarQubeRunAnalysis: false
+  #        spotBugsAnalysis: false
+  #      displayName: Run React Native Android e2e Tests
 
   - script: |
       export FORCE_BUNDLING=1
