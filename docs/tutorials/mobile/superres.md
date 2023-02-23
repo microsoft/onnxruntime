@@ -102,8 +102,7 @@ Add the following dependencies to the app `build.gradle`:
 
 ```gradle
 implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
-// TODO: update with released version aar package when available
-implementation files('libs/onnxruntime-extensions-android-0.6.0.aar')
+implementation 'com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.release'
 ```
 
 #### Project resources
