@@ -242,7 +242,7 @@ jobs:
         inputs:
           gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
           workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-          options: '--stacktrace'
+          options: '--info'
           tasks: ':app:connectedDebugAndroidTest'
           publishJUnitResults: true
           testResultsFiles: '**/TEST-*.xml'
