@@ -145,7 +145,7 @@ class ORTModule(torch.nn.Module):
         """
 
         policy = os.getenv("ORTMODULE_FALLBACK_POLICY")
-        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
+        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE.name:
             raise NotImplementedError("ORTModule is not compatible with torch.nn.DataParallel. "
                                   "Please use torch.nn.parallel.DistributedDataParallel instead.")
         
@@ -155,7 +155,7 @@ class ORTModule(torch.nn.Module):
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
         policy = os.getenv("ORTMODULE_FALLBACK_POLICY")
-        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE:
+        if policy and policy is _FallbackPolicy.FALLBACK_DISABLE.name:
             raise ORTModuleTorchModelException("ORTModule does not support adding modules to it.")
         
         self._torch_module.add_module(name, module)
