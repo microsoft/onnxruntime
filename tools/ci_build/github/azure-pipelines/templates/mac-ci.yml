@@ -27,7 +27,7 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.15'
+    MACOSX_DEPLOYMENT_TARGET: '11.0'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
