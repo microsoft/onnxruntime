@@ -604,6 +604,24 @@ public:
         return shapeDesc.GetInputTensorShape(inputIndex);
     }
 
+    uint32_t GetSequenceInputCount(uint32_t inputIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputCount(inputIndex);
+    }
+
+    uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex);
+    }
+
+    std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const
+    {
+        auto shapeDesc = GetTensorShapeDescription();
+        return shapeDesc.GetSequenceInputTensorShape(inputIndex, sequenceIndex);
+    }
+
  private:
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContext> m_impl;
     Microsoft::WRL::ComPtr<IMLOperatorKernelCreationContextPrivate> m_implPrivate;
