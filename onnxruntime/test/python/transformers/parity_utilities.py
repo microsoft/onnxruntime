@@ -22,7 +22,7 @@ def parse_arguments(namespace_filter=None):
         required=False,
         action="store_false",
         default=True,
-        dest='optimize'
+        dest='optimize',
         help="Turn off onnxruntime optimizers (Default off optimizers ON)",
     )
 
