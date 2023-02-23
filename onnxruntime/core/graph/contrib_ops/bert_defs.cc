@@ -302,6 +302,118 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
+constexpr const char* PackingAttention_ver1_doc = R"DOC(
+This is the packed version of Attention.
+
+)DOC";
+
+// Shape inference for Attention and QAttention
+void PackedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Input 0 has 3D shape (token_count, input_hidden_size)
+  // Input 1 has 2D shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
+  // Input 2 has 1D shape (hidden_size + hidden_size + v_hidden_size)
+  // Input 3 has 2D shape (batch_size, sequence_length)
+  // Input 4 has 1D shape (batch_size + 1)
+  // Input 5 has 4D shape (batch_size, num_heads, sequence_length, sequence_length)
+  // Output 0 has 3D shape (token_count, v_hidden_size)
+
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
+    auto& input_shape = getInputShape(ctx, 0);
+    auto& input_dims = input_shape.dim();
+    int input_dim_size = input_dims.size();
+    if (input_dim_size != 2) {
+      fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    }
+
+    auto& bias_shape = getInputShape(ctx, 2);
+    auto& bias_dims = bias_shape.dim();
+    if (bias_dims.size() != 1) {
+      fail_shape_inference("Invalid bias shape");
+    }
+
+    int64_t v_hidden_size = -1;
+    std::vector<int64_t> qkv_hidden_sizes;
+    getRepeatedAttribute(ctx, "qkv_hidden_sizes", qkv_hidden_sizes);
+
+    if (qkv_hidden_sizes.size() != 0) {
+      if (qkv_hidden_sizes.size() != 3) {
+        fail_shape_inference("qkv_hidden_sizes should have 3 elements")
+      }
+      v_hidden_size = qkv_hidden_sizes[2];
+    } else {
+      v_hidden_size = bias_shape.dim(0).dim_value() / 3;
+    }
+
+    ONNX_NAMESPACE::TensorShapeProto output_shape;
+    for (auto& dim : input_dims) {
+      *output_shape.add_dim() = dim;
+    }
+
+    output_shape.mutable_dim(input_dim_size - 1)->set_dim_value(v_hidden_size);
+    updateOutputShape(ctx, 0, output_shape);
+  }
+}
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    PackedAttention, 1,
+    OpSchema()
+        .SetDoc(Attention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("qkv_hidden_sizes",
+              "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
+              AttributeProto::INTS,
+              OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "Input tensor with shape (token_count, input_hidden_size)",
+               "T")
+        .Input(1,
+               "weights",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
+               "T")
+        .Input(2,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
+               "T")
+        .Input(3,
+               "packing_token_offset",
+               "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
+               "M")
+        .Input(4,
+               "cumulative_sequence_length",
+               "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
+               "M")
+        .Input(5,
+               "relative_position_bias",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "2D output tensor with shape (token_count, v_hidden_size)",
+                "T")
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain mask index to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          PackedAttentionTypeAndShapeInference(ctx);
+        }));
+
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
 Multi-Head Self/Cross Attention. Bias from input projection is included.
 
