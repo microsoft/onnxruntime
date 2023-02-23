@@ -309,6 +309,6 @@ if __name__ == "__main__":
     args, remaining_args = parse_arguments(namespace_filter=unittest)
 
     TestLayerNormParity.verbose = args.log_verbose
-    TestLayerNormParity.optimized = args.no_optimize
+    TestLayerNormParity.optimized = args.optimize
 
     unittest.main(argv=remaining_args)

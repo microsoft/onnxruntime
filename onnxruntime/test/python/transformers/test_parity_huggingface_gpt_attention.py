@@ -535,6 +535,6 @@ if __name__ == "__main__":
     args, remaining_args = parse_arguments(namespace_filter=unittest)
 
     TestGptAttentionHuggingfaceParity.verbose = args.log_verbose
-    TestGptAttentionHuggingfaceParity.optimized = args.no_optimize
+    TestGptAttentionHuggingfaceParity.optimized = args.optimize
 
     unittest.main(argv=remaining_args)

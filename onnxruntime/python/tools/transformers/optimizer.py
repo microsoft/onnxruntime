@@ -105,7 +105,7 @@ def optimize_by_onnxruntime(
     sess_options.optimized_model_filepath = optimized_model_path
 
     if verbose:
-        print("Using onnxruntime to optomize model - Debug level Set to verbose")
+        print("Using onnxruntime to optimize model - Debug level Set to verbose")
         sess_options.log_severity_level = 0
 
     kwargs = {}

@@ -239,6 +239,6 @@ if __name__ == "__main__":
     args, remaining_args = parse_arguments(namespace_filter=unittest)
 
     TestGeluParity.verbose = args.log_verbose
-    TestGeluParity.optimized = args.no_optimize
+    TestGeluParity.optimized = args.optimize
 
     unittest.main(argv=remaining_args)
