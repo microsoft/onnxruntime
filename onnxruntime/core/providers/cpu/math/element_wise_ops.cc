@@ -3,6 +3,7 @@
 
 #include "core/providers/cpu/math/element_wise_ops.h"
 
+#include "core/common/narrow.h"
 #include "core/framework/data_types_internal.h"
 #include "core/framework/math.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -51,23 +52,15 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES(kCpuExecutionProvider, kOnnxDomain, Pow,
 //
 // reduce the supported type lists to what's allowed in this build
 //
-using Max8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
-using Max12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 using EnabledMax8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 8, Input, 0);
 using EnabledMax12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Max, 12, Input, 0);
 
-using Min8Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
-using Min12Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 using EnabledMin8Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 8, Input, 0);
 using EnabledMin12Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Min, 12, Input, 0);
 
-using ModTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
 using EnabledModTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Mod, Input, 0);
 
-using Pow7Types = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
-using Pow12BaseTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 0);
-using Pow12ExpTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 12, Input, 1);
 using EnabledPow7Types = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain, Pow, 7, Input, 0);
 using EnabledPow12BaseTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST(kCpuExecutionProvider, kOnnxDomain,
                                                                   Pow, 12, Input, 0);
@@ -119,45 +112,45 @@ void Exp<float>::operator()(std::ptrdiff_t first, std::ptrdiff_t last) const {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<bool>()),                                           \
       KERNEL_CLASS<TYPE>);
 
-#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS) \
-  ONNX_CPU_OPERATOR_KERNEL(                                                                                 \
-      OP_TYPE,                                                                                              \
-      VERSION,                                                                                              \
-      KernelDefBuilder()                                                                                    \
-          .TypeConstraint("T", CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS),                                     \
+#define REG_ELEMENTWISE_KERNEL_NONT(OP_TYPE, VERSION, KERNEL_CLASS, CONSTRAINTS) \
+  ONNX_CPU_OPERATOR_KERNEL(                                                      \
+      OP_TYPE,                                                                   \
+      VERSION,                                                                   \
+      KernelDefBuilder()                                                         \
+          .TypeConstraint("T", CONSTRAINTS),                                     \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                              CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS)          \
+                                              CONSTRAINTS)                                     \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                          \
       OP_TYPE,                                                                                 \
       VERSION_FROM,                                                                            \
       VERSION_TO,                                                                              \
       KernelDefBuilder()                                                                       \
-          .TypeConstraint("T", CONSTRAINTS, ENABLED_TYPES_CONSTRAINTS),                        \
+          .TypeConstraint("T", CONSTRAINTS),                                                   \
       KERNEL_CLASS);
 
-#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS,               \
-                                      T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS, \
-                                      T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS) \
-  ONNX_CPU_OPERATOR_KERNEL(                                                         \
-      OP_TYPE,                                                                      \
-      VERSION,                                                                      \
-      KernelDefBuilder()                                                            \
-          .TypeConstraint("T", T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS)        \
-          .TypeConstraint("T1", T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS),      \
+#define REG_ELEMENTWISE_KERNEL_NONT_2(OP_TYPE, VERSION, KERNEL_CLASS, \
+                                      T1_CONSTRAINTS,                 \
+                                      T2_CONSTRAINTS)                 \
+  ONNX_CPU_OPERATOR_KERNEL(                                           \
+      OP_TYPE,                                                        \
+      VERSION,                                                        \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T", T1_CONSTRAINTS)                        \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                      \
       KERNEL_CLASS);
 
 #define REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(OP_TYPE, VERSION_FROM, VERSION_TO, KERNEL_CLASS, \
-                                                T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS,    \
-                                                T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS)    \
+                                                T1_CONSTRAINTS,                                  \
+                                                T2_CONSTRAINTS)                                  \
   ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                                                            \
       OP_TYPE,                                                                                   \
       VERSION_FROM,                                                                              \
       VERSION_TO,                                                                                \
       KernelDefBuilder()                                                                         \
-          .TypeConstraint("T", T1_CONSTRAINTS, T1_ENABLED_TYPES_CONSTRAINTS)                     \
-          .TypeConstraint("T1", T2_CONSTRAINTS, T2_ENABLED_TYPES_CONSTRAINTS),                   \
+          .TypeConstraint("T", T1_CONSTRAINTS)                                                   \
+          .TypeConstraint("T1", T2_CONSTRAINTS),                                                 \
       KERNEL_CLASS);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Add, 7, 12, float, Add);
@@ -246,10 +239,14 @@ REG_ELEMENTWISE_TYPED_KERNEL(Neg, 13, int32_t, Neg);
 REG_ELEMENTWISE_TYPED_KERNEL(Neg, 13, int64_t, Neg);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Floor, 6, 12, float, Floor);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Floor, 6, 12, double, Floor);
 REG_ELEMENTWISE_TYPED_KERNEL(Floor, 13, float, Floor);
+REG_ELEMENTWISE_TYPED_KERNEL(Floor, 13, double, Floor);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Ceil, 6, 12, float, Ceil);
+REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Ceil, 6, 12, double, Ceil);
 REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 13, float, Ceil);
+REG_ELEMENTWISE_TYPED_KERNEL(Ceil, 13, double, Ceil);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Reciprocal, 6, 12, float, Reciprocal);
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Reciprocal, 6, 12, double, Reciprocal);
@@ -262,25 +259,18 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, float, Sqrt);
 REG_ELEMENTWISE_TYPED_KERNEL(Sqrt, 13, double, Sqrt);
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Pow, 7, 11, Pow,
-                                      BuildKernelDefConstraintsFromTypeList<Pow7Types>(),
                                       BuildKernelDefConstraintsFromTypeList<EnabledPow7Types>());
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 12, 12, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_KERNEL_NONT_2(Pow, 13, 14, Pow,
-                                        BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                                        BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                                         BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_KERNEL_NONT_2(Pow, 15, Pow,
-                              BuildKernelDefConstraintsFromTypeList<Pow12BaseTypes>(),
                               BuildKernelDefConstraintsFromTypeList<EnabledPow12BaseTypes>(),
-                              BuildKernelDefConstraintsFromTypeList<Pow12ExpTypes>(),
                               BuildKernelDefConstraintsFromTypeList<EnabledPow12ExpTypes>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Exp, 6, 12, float, Exp);
@@ -303,16 +293,16 @@ REG_ELEMENTWISE_TYPED_KERNEL(Sum, 13, double, Sum_8);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Max, 6, 7, float, Max_6);
 
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, BuildKernelDefConstraintsFromTypeList<Max8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>());
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 8, 11, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Max, 12, 12, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, BuildKernelDefConstraintsFromTypeList<Max12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
+REG_ELEMENTWISE_KERNEL_NONT(Max, 13, Max_8, BuildKernelDefConstraintsFromTypeList<EnabledMax12Types>());
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Min, 6, 7, float, Min_6);
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, BuildKernelDefConstraintsFromTypeList<Min8Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>());
-REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 8, 11, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin8Types>());
+REG_ELEMENTWISE_VERSIONED_KERNEL_NONT(Min, 12, 12, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
-REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, BuildKernelDefConstraintsFromTypeList<Min12Types>(), BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
+REG_ELEMENTWISE_KERNEL_NONT(Min, 13, Min_8, BuildKernelDefConstraintsFromTypeList<EnabledMin12Types>());
 
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, float, Less);
 REG_ELEMENTWISE_LOGICALOP_VERSIONED_TYPED_KERNEL(Less, 7, 8, double, Less);
@@ -383,6 +373,42 @@ REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint8_t, BitShift);
 //REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint16_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint32_t, BitShift);
 REG_ELEMENTWISE_TYPED_KERNEL(BitShift, 11, uint64_t, BitShift);
+
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int8_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int16_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int32_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, int64_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, uint8_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, uint16_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, uint32_t, BitwiseAnd);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseAnd, 18, uint64_t, BitwiseAnd);
+
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, int8_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, int16_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, int32_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, int64_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, uint8_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, uint16_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, uint32_t, BitwiseNot);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseNot, 18, uint64_t, BitwiseNot);
+
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, int8_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, int16_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, int32_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, int64_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, uint8_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, uint16_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, uint32_t, BitwiseOr);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseOr, 18, uint64_t, BitwiseOr);
+
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, int8_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, int16_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, int32_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, int64_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint8_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint16_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint32_t, BitwiseXor);
+REG_ELEMENTWISE_TYPED_KERNEL(BitwiseXor, 18, uint64_t, BitwiseXor);
 
 REG_ELEMENTWISE_VERSIONED_TYPED_KERNEL(Erf, 9, 12, float, Erf);
 // Supposed to add BFloat16 but we are not supporting now, however, separate registration
@@ -510,7 +536,7 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](E y) {
                          return static_cast<T>(std::pow(X, y));
                        });
@@ -522,18 +548,18 @@ void PowImpl(OpKernelContext& context) {
 
         // optimize for X^2 and X^3
         if (Y == 2) {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
                            return static_cast<T>(x * x);
                          });
 
         } else if (Y == 3) {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [](T x) {
                            return static_cast<T>(x * x * x);
                          });
         } else {
-          std::transform(X.cbegin(), X.cend(), output.begin(),
+          std::transform(X.begin(), X.end(), output.begin(),
                          [Y](T x) {
                            return static_cast<T>(std::pow(x, Y));
                          });
@@ -544,7 +570,7 @@ void PowImpl(OpKernelContext& context) {
         auto Y = per_iter_bh.SpanInput1<E>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, E y) {
                          return static_cast<T>(std::pow(x, y));
                        });
@@ -1165,7 +1191,122 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
-class Sin final : public OpKernel {
+Status BitwiseAnd<T>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs {
+      [](BroadcastHelper& per_iter_bh) {
+        const T X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+            [X](T y) {
+                return std::bit_and<T>()(X, y);
+            });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+            [Y](T x) {
+                return static_cast<T>(std::bit_and<T>()(x, Y));
+            });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), std::bit_and<T>());
+      }};
+  
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
+}
+
+template <typename T>
+Status BitwiseNot<T>::Compute(OpKernelContext* context) const {
+  auto& input = *context->Input<Tensor>(0);
+  auto& output = *context->Output(0, input.Shape());
+
+  std::transform(EigenMap<T>(input).array().begin(), EigenMap<T>(input).array().end(), EigenMap<T>(output).array().begin(), std::bit_not<T>());
+
+  return Status::OK();
+}
+
+template <typename T>
+Status BitwiseOr<T>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [X](T y) {
+                         return std::bit_or<T>()(X, y);
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y](T x) {
+                         return static_cast<T>(std::bit_or<T>()(x, Y));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), std::bit_or<T>());
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
+}
+
+template <typename T>
+Status BitwiseXor<T>::Compute(OpKernelContext* context) const {
+  ProcessBroadcastSpanFuncs funcs{
+      [](BroadcastHelper& per_iter_bh) {
+        const T X = per_iter_bh.ScalarInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(Y.begin(), Y.end(), output.begin(),
+                       [X](T y) {
+                         return std::bit_xor<T>()(X, y);
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        const T Y = per_iter_bh.ScalarInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), output.begin(),
+                       [Y](T x) {
+                         return static_cast<T>(std::bit_xor<T>()(x, Y));
+                       });
+      },
+      [](BroadcastHelper& per_iter_bh) {
+        auto X = per_iter_bh.SpanInput0<T>();
+        auto Y = per_iter_bh.SpanInput1<T>();
+        auto output = per_iter_bh.OutputSpan<T>();
+
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(), std::bit_xor<T>());
+      }};
+
+  UntypedBroadcastTwo(*context, funcs, 1.0f);
+  return Status::OK();
+}
+
+template <typename T>
+  class Sin final : public OpKernel {
  public:
   Sin(const OpKernelInfo& info) : OpKernel(info) {
   }
@@ -1342,11 +1483,11 @@ class Asinh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::asinh(in[index]);
@@ -1374,11 +1515,11 @@ class Acosh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::acosh(in[index]);
@@ -1406,11 +1547,11 @@ class Atanh final : public OpKernel {
     auto& X = *context->Input<Tensor>(0);
     auto& Y = *context->Output(0, X.Shape());
 
-    auto X_data = X.template Data<float>();
-    auto Y_data = Y.template MutableData<float>();
+    auto X_data = X.Data<float>();
+    auto Y_data = Y.MutableData<float>();
 
-    auto in = gsl::make_span(X_data, gsl::narrow<ptrdiff_t>(X.Shape().Size()));
-    auto out = gsl::make_span(Y_data, gsl::narrow<ptrdiff_t>(Y.Shape().Size()));
+    auto in = gsl::make_span(X_data, narrow<ptrdiff_t>(X.Shape().Size()));
+    auto out = gsl::make_span(Y_data, narrow<ptrdiff_t>(Y.Shape().Size()));
 
     for (size_t index = 0; index < in.size(); ++index) {
       out[index] = std::atanh(in[index]);
@@ -1556,7 +1697,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
   auto* Y = context->Output(0, x_shape);
   const size_t N = static_cast<size_t>(x_shape.Size());
 
-  MlasComputeErf(X->template Data<float>(), Y->template MutableData<float>(), N);
+  MlasComputeErf(X->Data<float>(), Y->MutableData<float>(), N);
 
   return Status::OK();
 }
@@ -1585,7 +1726,6 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
@@ -1595,7 +1735,6 @@ ONNX_CPU_OPERATOR_KERNEL(
     KernelDefBuilder()
         .TypeConstraint(
             "T",
-            BuildKernelDefConstraintsFromTypeList<ModTypes>(),
             BuildKernelDefConstraintsFromTypeList<EnabledModTypes>()),
     Mod);
 
@@ -1609,7 +1748,7 @@ void BroadCastFMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](T y) {
                          return static_cast<T>(std::fmod(X, y));
                        });
@@ -1619,7 +1758,7 @@ void BroadCastFMod(OpKernelContext* context) {
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) {
                          return static_cast<T>(std::fmod(x, Y));
                        });
@@ -1629,7 +1768,7 @@ void BroadCastFMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, T y) {
                          return static_cast<T>(std::fmod(x, y));
                        });
@@ -1655,7 +1794,7 @@ void BroadCastMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X](T y) {
                          return Modulus(X, y);
                        });
@@ -1665,7 +1804,7 @@ void BroadCastMod(OpKernelContext* context) {
         const T& Y = per_iter_bh.ScalarInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y](T x) {
                          return Modulus(x, Y);
                        });
@@ -1675,7 +1814,7 @@ void BroadCastMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<T>();
         auto output = per_iter_bh.OutputSpan<T>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](T x, T y) {
                          return Modulus(x, y);
                        });
@@ -1691,7 +1830,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(Y.cbegin(), Y.cend(), output.begin(),
+        std::transform(Y.begin(), Y.end(), output.begin(),
                        [X_fl = math::halfToFloat(X.val)](const MLFloat16& y) {
                          return MLFloat16(math::floatToHalf(std::fmod(X_fl, math::halfToFloat(y.val))));
                        });
@@ -1701,7 +1840,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         const MLFloat16 Y = per_iter_bh.ScalarInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.cbegin(), X.cend(), output.begin(),
+        std::transform(X.begin(), X.end(), output.begin(),
                        [Y_fl = math::halfToFloat(Y.val)](const MLFloat16& x) {
                          return MLFloat16(math::floatToHalf(std::fmod(math::halfToFloat(x.val), Y_fl)));
                        });
@@ -1711,7 +1850,7 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
         auto Y = per_iter_bh.SpanInput1<MLFloat16>();
         auto output = per_iter_bh.OutputSpan<MLFloat16>();
 
-        std::transform(X.cbegin(), X.cend(), Y.cbegin(), output.begin(),
+        std::transform(X.begin(), X.end(), Y.begin(), output.begin(),
                        [](const MLFloat16& x, const MLFloat16& y) {
                          auto x_fl = math::halfToFloat(x.val);
                          auto y_fl = math::halfToFloat(y.val);

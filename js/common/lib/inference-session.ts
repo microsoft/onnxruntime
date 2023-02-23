@@ -117,7 +117,7 @@ export declare namespace InferenceSession {
 
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -132,7 +132,7 @@ export declare namespace InferenceSession {
 
     /**
      * Store configurations for a session. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_session_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later
@@ -157,13 +157,14 @@ export declare namespace InferenceSession {
 
   // Currently, we have the following backends to support execution providers:
   // Backend Node.js binding: supports 'cpu' and 'cuda'.
-  // Backend WebAssembly: supports 'wasm'.
+  // Backend WebAssembly: supports 'cpu', 'wasm' and 'xnnpack'.
   // Backend ONNX.js: supports 'webgl'.
   interface ExecutionProviderOptionMap {
     cpu: CpuExecutionProviderOption;
     cuda: CudaExecutionProviderOption;
     wasm: WebAssemblyExecutionProviderOption;
     webgl: WebGLExecutionProviderOption;
+    xnnpack: XnnpackExecutionProviderOption;
   }
 
   type ExecutionProviderName = keyof ExecutionProviderOptionMap;
@@ -183,11 +184,13 @@ export declare namespace InferenceSession {
   }
   export interface WebAssemblyExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'wasm';
-    // TODO: add flags
   }
   export interface WebGLExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'webgl';
     // TODO: add flags
+  }
+  export interface XnnpackExecutionProviderOption extends ExecutionProviderOption {
+    readonly name: 'xnnpack';
   }
   // #endregion
 
@@ -201,7 +204,7 @@ export declare namespace InferenceSession {
   export interface RunOptions {
     /**
      * Log severity level. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/common/logging/severity.h
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/common/logging/severity.h
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
@@ -230,7 +233,7 @@ export declare namespace InferenceSession {
 
     /**
      * Set a single run configuration entry. See
-     * https://github.com/microsoft/onnxruntime/blob/master/include/onnxruntime/core/session/
+     * https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/
      * onnxruntime_run_options_config_keys.h
      *
      * This setting is available only in WebAssembly backend. Will support Node.js binding and react-native later

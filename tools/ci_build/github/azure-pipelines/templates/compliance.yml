@@ -50,7 +50,7 @@ steps:
   continueOnError: true
 
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-uploadtotsa.TSAUpload@1
-  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/master'))
+  condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   displayName: 'TSA Upload'
   inputs:
     tsaVersion: TsaV2

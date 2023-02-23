@@ -34,6 +34,9 @@ def unique_element(lst):
     return lst[0]
 
 
+skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
+
+
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
 
@@ -42,6 +45,11 @@ class TestSymbolicShapeInference(unittest.TestCase):
         for filename in Path(test_model_dir).rglob("*.onnx"):
             if filename.name.startswith("."):
                 continue  # skip some bad model files
+
+            # https://github.com/onnx/models/issues/562
+            if any(model_name in str(filename) for model_name in skipped_models):
+                print(f"Skip symbolic shape inference on : {str(filename)}")
+                continue
 
             print("Running symbolic shape inference on : " + str(filename))
             SymbolicShapeInference.infer_shapes(

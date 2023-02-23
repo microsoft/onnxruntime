@@ -225,7 +225,7 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
       x_dims[3],  // width
       rois_ptr->Data<T>(),
       num_roi_cols,
-      Y.template MutableData<T>(),
+      Y.MutableData<T>(),
       mode_,
       batch_indices_ptr->Data<int32_t>(),
       context->GetOperatorThreadPool());

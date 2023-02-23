@@ -1,8 +1,9 @@
 {
-  "notificationAliases": ["chasun@microsoft.com"],
-  "areaPath": "Vienna\\ONNX Runtime\\Shared Core",
-  "codebaseName": "onnxruntime_master",
-  "instanceUrl": "https://msdata.visualstudio.com/",
-  "projectName": "Vienna",
-  "ignoreBranchName": true
+  "notificationAliases": ["ort-engsys@microsoft.com"],
+  "areaPath": "ONNX Runtime\\Engineering Systems",
+  "codebaseName": "onnxruntime",
+  "instanceUrl": "https://aiinfra.visualstudio.com/",
+  "projectName": "ONNX Runtime",
+  "ignoreBranchName": true,
+  "template": "AIINFRA_TSA"
 }

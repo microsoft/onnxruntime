@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+# pylint: disable=W0511
 
 import copy
 import functools
@@ -11,14 +12,13 @@ import random
 import traceback
 import types
 import warnings
-from distutils.version import LooseVersion
 from typing import List
+from packaging.version import Version as LooseVersion
 
 import numpy as np
 import torch
-from onnx import TensorProto
 from torch._C import _from_dlpack
-from torch.utils.dlpack import from_dlpack, to_dlpack
+from torch.utils.dlpack import to_dlpack
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import OrtValue
@@ -60,15 +60,14 @@ def _ortvalue_from_torch_tensor(torch_tensor):
         torch_tensor = torch_tensor.to(torch.uint8)
     if torch_tensor.device.type == "ort":
         return C.aten_ort_tensor_to_ort_value(torch_tensor)
-    else:
-        return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
+    return C.OrtValue.from_dlpack(to_dlpack(torch_tensor), is_bool_tensor)
 
 
-def _ortvalues_to_torch_tensor(ortvalues, device):
+def _ortvalues_to_torch_tensor(ortvalues, device=None):
     if len(ortvalues) == 0:
         return tuple()
 
-    if "ort" == device.type:
+    if device is not None and "ort" == device.type:
         if not hasattr(C, "to_aten_ort_device_tensor"):
             raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
         return tuple(C.to_aten_ort_device_tensor(ov) for ov in ortvalues)
@@ -94,32 +93,6 @@ def _ortvalues_to_torch_tensor(ortvalues, device):
         for i in range(0, len(bool_indices)):
             j = bool_indices[i]
             res[j] = res[j].to(torch.bool)
-
-    return tuple(res)
-
-
-def _ortvalues_to_torch_tensor_list(ortvalues, device, c_class=False):
-    if len(ortvalues) == 0:
-        return tuple()
-
-    if "ort" == device.type:
-        if not hasattr(C, "to_aten_ort_device_tensor"):
-            raise AttributeError("onnxruntime is missing to_aten_ort_device_tensor needed to support device == 'ort'.")
-        return tuple(C.to_aten_ort_device_tensor(ov if c_class else ov._ortvalue) for ov in ortvalues)
-
-    if not isinstance(ortvalues, list):
-        raise TypeError("ortvalues must be a list not %r." % type(ortvalues))
-
-    if c_class:
-        res = [_from_dlpack(ov.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i].element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
-    else:
-        res = [_from_dlpack(ov._ortvalue.to_dlpack()) for ov in ortvalues]
-        for i in range(0, len(res)):
-            if ortvalues[i]._ortvalue.element_type() == TensorProto.BOOL:
-                res[i] = res[i].to(torch.bool)
 
     return tuple(res)
 
@@ -221,10 +194,16 @@ def get_device_from_inputs(args, kwargs):
 def _create_iobinding(io_binding, inputs, model, device):
     """Creates IO binding for a `model` inputs and output"""
     for idx, value_info in enumerate(model.graph.input):
-        io_binding.bind_ortvalue_input(value_info.name, OrtValue(_ortvalue_from_torch_tensor(inputs[idx])))
+        io_binding.bind_ortvalue_input(
+            value_info.name,
+            OrtValue(
+                _ortvalue_from_torch_tensor(inputs[idx] if inputs[idx].is_contiguous() else inputs[idx].contiguous())
+            ),
+        )
 
+    device_id = get_device_index(device)
     for value_info in model.graph.output:
-        io_binding.bind_output(value_info.name, device.type, device_id=get_device_index(device))
+        io_binding.bind_output(value_info.name, device.type, device_id=device_id)
 
 
 def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.Module, user_module: torch.nn.Module):

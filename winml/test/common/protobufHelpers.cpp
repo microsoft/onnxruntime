@@ -193,7 +193,6 @@ TensorFloat16Bit ProtobufHelpers::LoadTensorFloat16FromProtobufFile(
 
     auto& raw_data = tensorProto.raw_data();
     auto buff = raw_data.c_str();
-    const size_t type_size = sizeof(uint16_t);
 
     memcpy((void*)data, (void*)buff, raw_data.size() * sizeof(char));
 

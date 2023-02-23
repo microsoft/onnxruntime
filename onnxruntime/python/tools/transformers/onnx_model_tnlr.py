@@ -172,8 +172,8 @@ class FusionTnlrAttention(FusionAttention):
         add = k_nodes[-2]
         matmul = k_nodes[-1]
 
-        extra_add_qk_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
-        if extra_add_qk_nodes is None:
+        relative_position_bias_nodes = self.model.match_parent_path(add_qk, ["Reshape", "Where"], [1, 0])
+        if relative_position_bias_nodes is None:
             return
 
         if matmul.input[0] == root_input:
@@ -189,7 +189,7 @@ class FusionTnlrAttention(FusionAttention):
                 self.hidden_size,
                 root_input,
                 attention_last_node.output[0],
-                extra_add_qk_nodes[0].input[0],
+                relative_position_bias_nodes[0].input[0],
             )
             if new_node is None:
                 return

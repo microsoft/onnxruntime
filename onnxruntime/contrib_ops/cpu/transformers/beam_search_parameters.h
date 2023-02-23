@@ -4,13 +4,13 @@
 #pragma once
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
-#include "beam_search_shared.h"
+#include "contrib_ops/cpu/transformers/generation_shared.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-struct BeamSearchParameters : public IBeamSearchParameters {
+struct BeamSearchParameters : public IGenerationParameters {
   Status Validate() const;
 
   int BatchBeamSize() const { return batch_size * num_beams; }

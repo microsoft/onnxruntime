@@ -30,27 +30,40 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
           {"Reshape", {}},
+          {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
+          {"Split", {}},
           {"Squeeze", {}},
           {"Unsqueeze", {}}};
 }
 
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
+          {"GlobalAveragePool", {}},
+          {"LeakyRelu", {}},
+          {"ReduceMean", {}},
+          {"Relu", {}},
+          {"Sigmoid", {}},
           {"Softmax", {}},
-          {"LeakyRelu", {}}};
+          {"Sqrt", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
-          {"Mul", {}}};
+          {"Div", {}},
+          {"Mul", {}},
+          {"Pow", {}},
+          {"Sub", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
   return {{"Concat", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetConvTransposeOpVersionsMap() {
+  return {{"ConvTranspose", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
@@ -95,6 +108,14 @@ void RegisterConvSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
+  // register selector for ConvTranspose op
+  // it shares selector with Conv op, they have the same input/output def.
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetConvTransposeOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNodeGroupSelector>();
@@ -115,6 +136,7 @@ void SelectorManager::CreateSelectors() {
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
+  RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
 }

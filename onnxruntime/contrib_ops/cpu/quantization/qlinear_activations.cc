@@ -4,6 +4,7 @@
 #include "qlinear_activations.h"
 #include "qlinear_lookup_table.h"
 
+#include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
@@ -50,10 +51,10 @@ Status QLinearLookupBase<T>::ComputeBase(OpKernelContext* context, Transformer f
   using onnxruntime::TensorOpCost;
   using onnxruntime::concurrency::ThreadPool;
   ThreadPool* tp = context->GetOperatorThreadPool();
-  const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.template Data<T>());
-  uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.template MutableData<T>());
+  const uint8_t* x_data = reinterpret_cast<const uint8_t*>(X.Data<T>());
+  uint8_t* y_data = reinterpret_cast<uint8_t*>(Y.MutableData<T>());
   ThreadPool::TryParallelFor(
-      tp, N, TensorOpCost{1.0, 1.0, 1.0},
+      tp, narrow<std::ptrdiff_t>(N), TensorOpCost{1.0, 1.0, 1.0},
       [this, x_data, y_data, &table](std::ptrdiff_t first, std::ptrdiff_t last) {
         QLinearLookupTableTransform(
             x_data + first,
@@ -110,4 +111,3 @@ REGISTER_QLINEAR_LOOKUPTABLE_TYPED_KERNEL(QLinearSigmoid, 1, uint8_t, QLinearSig
 
 }  // namespace contrib
 }  // namespace onnxruntime
-

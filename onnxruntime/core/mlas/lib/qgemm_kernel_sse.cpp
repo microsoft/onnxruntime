@@ -26,6 +26,7 @@ struct MLAS_GEMM_U8X8_KERNEL_SSE
 
     static constexpr size_t PackedK = 2;
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{0, 0, 0};
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_SSE::PackedK;
@@ -492,4 +493,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchSse = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_SSE::PackedK,
     0,
+    1  // assembly kernel M stride
 };

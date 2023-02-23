@@ -8,13 +8,14 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 
 class OrtValueNameIdxMap;
 class FuncManager;
 class DataTransferManager;
+struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
 // view of all data needed for constructing a Kernel instance.
@@ -30,9 +31,9 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   OpKernelInfo(const OpKernelInfo& other);
 
-  const OrtMemoryInfo& GetMemoryInfo(int device_id, OrtMemType mem_type) const;
+  const OrtMemoryInfo& GetMemoryInfo(OrtMemType mem_type) const;
 
-  AllocatorPtr GetAllocator(int device_id, OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   const KernelDef& GetKernelDef() const;
 

@@ -5,9 +5,8 @@
 
 #include <string>
 #include <unordered_map>
-#include "core/common/common.h"
+#include "core/common/status.h"
 #include "core/common/optional.h"
-#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 

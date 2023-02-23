@@ -27,13 +27,13 @@ Status Relu<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   Tensor* Y = context->Output(0, X->Shape());
 
-  const T* src_data = X->template Data<T>();
-  T* dst_data = Y->template MutableData<T>();
+  const T* src_data = X->Data<T>();
+  T* dst_data = Y->MutableData<T>();
 
   armnn::NetworkId* pNetworkId;
   ReluLayersIterator it = Relu::reluLayers.find((OpKernel*)this);
   if (it == Relu::reluLayers.end()) {
-    
+
     armnn::NetworkId networkId;
     armnn::INetworkPtr myNetwork = armnn::INetwork::Create();
 

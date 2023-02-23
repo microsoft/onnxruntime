@@ -30,8 +30,10 @@ class Logger;
 }
 
 namespace session_state_utils {
-using SaveTensorFunction = std::function<Status(int idx, const OrtValue& value, const OrtCallback& d,
-                                                bool constant, bool sparse)>;
+using SaveTensorFunction = std::function<Status(const std::string& name, int idx, const OrtValue& value,
+                                                const OrtCallback& d, bool constant, bool sparse)>;
+using MemoryProfileFunction = std::function<void(ITensorAllocator& planner)>;
+
 common::Status SaveInitializedTensors(
     const Env& env, const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
     const GraphViewer& graph, const AllocatorPtr& default_cpu_memory_info,
@@ -41,9 +43,11 @@ common::Status SaveInitializedTensors(
     const logging::Logger& logger,
     const DataTransferManager& data_transfer_mgr,
     const ExecutionPlanBase& exec_plan,
-    const SessionOptions& session_options);
+    const SessionOptions& session_options,
+    const MemoryProfileFunction& memory_profile_func);
+    
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,
-                                                 const std::vector<const NodeArg*>& implicit_inputs);
+                                                 gsl::span<const NodeArg* const> implicit_inputs);
 }  // namespace session_state_utils
 }  // namespace onnxruntime

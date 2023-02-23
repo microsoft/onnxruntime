@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
 #include "core/framework/op_kernel.h"
 #include "core/util/math_cpuonly.h"
 #include "core/providers/cpu/element_wise_ranged_transform.h"
@@ -426,6 +427,42 @@ class BitShift final : public OpKernel {
   bool shift_left_;
 };
 
+template <typename T>
+class BitwiseAnd final : public OpKernel {
+ public:
+  explicit BitwiseAnd(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseNot final : public OpKernel {
+ public:
+  explicit BitwiseNot(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseOr final : public OpKernel {
+ public:
+  explicit BitwiseOr(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
+template <typename T>
+class BitwiseXor final : public OpKernel {
+ public:
+  explicit BitwiseXor(const OpKernelInfo& info) : OpKernel(info) {
+  }
+
+  Status Compute(OpKernelContext* context) const override;
+};
+
 // PRelu is activation function, but it's closer to binary elementwise ops in implementation
 template <typename T>
 class PRelu final : public OpKernel {
@@ -456,12 +493,12 @@ class Erf final : public OpKernel {
 
 template <typename T>
 auto MakeEigenArrayMap(Tensor& t) -> EigenVectorArrayMap<T> {
-  return EigenVectorArrayMap<T>(t.template MutableData<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
+  return EigenVectorArrayMap<T>(t.MutableData<T>(), narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 template <typename T>
 auto MakeEigenArrayMap(const Tensor& t) -> ConstEigenVectorArrayMap<T> {
-  return ConstEigenVectorArrayMap<T>(t.template Data<T>(), gsl::narrow<ptrdiff_t>(t.Shape().Size()));
+  return ConstEigenVectorArrayMap<T>(t.Data<T>(), narrow<ptrdiff_t>(t.Shape().Size()));
 }
 
 struct BroadcastIterator {
@@ -751,7 +788,7 @@ struct OutputBroadcaster {
   OutputBroadcaster(size_t span_size, Tensor& tensor, ptrdiff_t start_offset = 0, ptrdiff_t end_offset = 0)
       : element_size_(tensor.DataType()->Size()),
         span_size_(span_size) {
-    ptrdiff_t len = gsl::narrow<ptrdiff_t>(tensor.Shape().Size());
+    ptrdiff_t len = narrow<ptrdiff_t>(tensor.Shape().Size());
     ptrdiff_t real_end = (end_offset <= 0) ? len : end_offset;
     if (start_offset != 0 || end_offset != 0) {  // Keep original semantic
       ORT_ENFORCE(start_offset >= 0 && real_end >= 0 && start_offset <= real_end && real_end <= len,

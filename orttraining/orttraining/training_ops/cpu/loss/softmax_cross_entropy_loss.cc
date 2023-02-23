@@ -11,7 +11,7 @@
 #include "core/providers/cpu/controlflow/scan_utils.h"
 #include "orttraining/training_ops/cpu/loss/cross_entropy.h"
 #include "orttraining/training_ops/cpu/loss/softmax_cross_entropy_loss.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -107,7 +107,7 @@ Status SoftmaxCrossEntropyLoss<T1, T2>::Compute(OpKernelContext* context) const 
     ORT_ENFORCE(p_ignore_index->Shape().IsScalar(), "ignore_index should be a scalar.");
     ignore_index = *(p_ignore_index->template Data<int64_t>());
   }
-  
+
   const TensorShape logit_shape{logit.Shape()};
   const TensorShape label_shape{label.Shape()};
   VerifyLogitWeightAndLabelShape(logit_shape, label_shape, p_weight ? &p_weight->Shape() : nullptr);
@@ -384,6 +384,16 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
     auto* transposed_data = (*transpose_output.GetMutable<Tensor>()).template Data<T1>();
     memcpy(d_logit_data, transposed_data, probability_shape.Size() * sizeof(T1));
     d_logit->Reshape(new_shape);
+  }
+
+  // Bias.
+  const Tensor* p_bias = context->Input<Tensor>(5);
+  if (p_bias) {
+    ORT_ENFORCE(probability_shape.Size() == p_bias->Shape().Size());
+    const T1* bias_data = p_bias->Data<T1>();
+    for (size_t i = 0; i < static_cast<size_t>(probability_shape.Size()); ++i) {
+      d_logit_data[i] += bias_data[i];
+    }
   }
 
   return Status::OK();

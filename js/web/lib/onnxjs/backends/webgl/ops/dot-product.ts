@@ -7,7 +7,7 @@ import {getGlsl} from '../glsl-source';
 import {WebGLInferenceHandler} from '../inference-handler';
 import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
 
-import {getActicationSnippet, InternalActivationAttributes} from './fuse-utils';
+import {getActivationSnippet, InternalActivationAttributes} from './fuse-utils';
 import {calculateIm2ColDims} from './im2col';
 
 const createDotProductProgramMetadata = (hasBias: boolean, attributes: InternalActivationAttributes) => ({
@@ -35,7 +35,7 @@ const createDotProductProgramInfo =
 
       const initValue = (inputs.length < 3) ? '0.0' : '_B(b)';
       const sharedDim = Math.ceil(xshape[1] * kshape[2] * kshape[3] / 4);
-      const {activationFunction, applyActivation} = getActicationSnippet(attributes);
+      const {activationFunction, applyActivation} = getActivationSnippet(attributes);
       const glsl = getGlsl(inferenceHandler.session.backend.glContext.version);
       const shaderSource = `
 ${activationFunction}

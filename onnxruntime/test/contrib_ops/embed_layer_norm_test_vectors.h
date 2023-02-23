@@ -381,6 +381,66 @@ inline OpData EmbedLayerNormBatch1_PositionIds(bool diff_order = false) {
                 position_ids_data);
 }
 
+inline OpData EmbedLayerNormBatch3_PositionIds_BroadCast() {
+  int batch_size = 3;
+  int sequence_size = 2;
+  int hidden_size = 4;
+
+  std::vector<int32_t> input_ids_data = {
+      1, 3, 1, 3, 1, 3};
+
+  std::vector<int32_t> segment_ids_data = {};
+
+  std::vector<int32_t> mask_data = {
+      1, 1, 1, 1, 1, 1};
+
+  std::vector<float> word_embedding_data = {
+      0.2f, 0.1f, 0.4f, -0.6f,
+      0.3f, 0.2f, 0.5f, 0.6f,
+      0.6f, 0.7f, 0.0f, -0.1f,
+      0.8f, 0.6f, 0.9f, 1.2f,
+      0.1f, 0.3f, 0.5f, 0.9f,
+      1.0f, -2.0f, 1.1f, 0.8f};
+
+  std::vector<float> position_embedding_data = {
+      0.1f, 0.1f, 0.4f, 0.6f,
+      0.6f, 0.0f, 0.8f, 0.6f,
+      0.3f, 0.9f, -2.0f, 0.8f};
+
+  std::vector<float> segment_embedding_data = {};
+
+  std::vector<float> gamma_data = {
+      0.25f, 0.15f, 0.45f, -0.66f};
+
+  std::vector<float> beta_data = {
+      0.6f, 0.2f, 0.5f, -0.6f};
+
+  std::vector<int32_t> position_ids_data;
+  position_ids_data = std::vector<int32_t>{0, 1};
+
+  std::vector<float> output_data;
+  output_data = std::vector<float>{
+      0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
+      0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291,
+      0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
+      0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291,
+      0.39587587118148804, 0.03670068085193634, 0.7449488639831543, -1.4981462955474854,
+      0.61326867341995239, -0.046796366572380066, 0.81048583984375, -1.1954958438873291};
+
+  std::vector<int32_t> mask_index_data = {
+      2, 2, 2};
+
+  std::vector<float> embedding_sum_output_data = {};
+
+  return OpData(batch_size, sequence_size, hidden_size, input_ids_data, segment_ids_data,
+                mask_data, word_embedding_data, position_embedding_data, segment_embedding_data,
+                gamma_data, beta_data, output_data, mask_index_data, kEpsilon,
+                /*has_mask=*/true,
+                /*has_segment=*/false,
+                embedding_sum_output_data,
+                position_ids_data);
+}
+
 inline OpData EmbedLayerNormBatch1_EmbeddingSum() {
   int batch_size = 1;
   int sequence_size = 2;

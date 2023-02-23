@@ -32,6 +32,7 @@ def _optimization_suffix(optimization_level_str: str, optimization_style: Optimi
 
 def _create_config_file_path(
     model_path_or_dir: pathlib.Path,
+    output_dir: typing.Optional[pathlib.Path],
     optimization_level_str: str,
     optimization_style: OptimizationStyle,
     enable_type_reduction: bool,
@@ -40,9 +41,16 @@ def _create_config_file_path(
         "required_operators_and_types" if enable_type_reduction else "required_operators",
         _optimization_suffix(optimization_level_str, optimization_style, ".config"),
     )
+
     if model_path_or_dir.is_dir():
-        return model_path_or_dir / config_name
-    return model_path_or_dir.with_suffix(f".{config_name}")
+        return (output_dir or model_path_or_dir) / config_name
+
+    model_config_path = model_path_or_dir.with_suffix(f".{config_name}")
+
+    if output_dir is not None:
+        return output_dir / model_config_path.name
+
+    return model_config_path
 
 
 def _create_session_options(
@@ -173,10 +181,18 @@ def parse_args():
         os.path.basename(__file__),
         description="""Convert the ONNX format model/s in the provided directory to ORT format models.
         All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the
-        same directory. A configuration file will also be created containing the list of required operators for all
+        given output directory, if specified, or the same directory.
+        A configuration file will also be created containing the list of required operators for all
         converted models. This configuration file should be used as input to the minimal build via the
         `--include_ops_by_config` parameter.
         """,
+    )
+
+    parser.add_argument(
+        "--output_dir",
+        type=pathlib.Path,
+        help="Provide an output directory for the converted model/s and configuration file. "
+        "If unspecified, the converted ORT format model/s will be in the same directory as the ONNX model/s.",
     )
 
     parser.add_argument(
@@ -250,6 +266,12 @@ def parse_args():
 def convert_onnx_models_to_ort():
     args = parse_args()
 
+    output_dir = None
+    if args.output_dir is not None:
+        if not args.output_dir.is_dir():
+            args.output_dir.mkdir(parents=True)
+        output_dir = args.output_dir.resolve(strict=True)
+
     optimization_styles = [OptimizationStyle[style_str] for style_str in args.optimization_style]
     # setting optimization level is not expected to be needed by typical users, but it can be set with this
     # environment variable
@@ -279,7 +301,7 @@ def convert_onnx_models_to_ort():
 
         converted_models = _convert(
             model_path_or_dir=model_path_or_dir,
-            output_dir=None,
+            output_dir=output_dir,
             optimization_level_str=optimization_level_str,
             optimization_style=optimization_style,
             custom_op_library=custom_op_library,
@@ -327,7 +349,11 @@ def convert_onnx_models_to_ort():
             )
 
             config_file = _create_config_file_path(
-                model_path_or_dir, optimization_level_str, optimization_style, args.enable_type_reduction
+                model_path_or_dir,
+                output_dir,
+                optimization_level_str,
+                optimization_style,
+                args.enable_type_reduction,
             )
 
             create_config_from_models(converted_models, config_file, args.enable_type_reduction)

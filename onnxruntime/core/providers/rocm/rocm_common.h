@@ -10,45 +10,18 @@
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 #include "core/providers/rocm/shared_inc/fast_divmod.h"
 #include "core/util/math.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace rocm {
 
-#define HIP_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(HIP_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIP error executing ", #expr))
-
-#define ROCBLAS_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(ROCBLAS_CALL(expr)          \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ROCBLAS error executing ", #expr))
-
-#define HIPSPARSE_RETURN_IF_ERROR(expr)           \
-  ORT_RETURN_IF_ERROR(HIPSPARSE_CALL(expr)        \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPSPARSE error executing ", #expr))
-
-#define HIPRAND_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(HIPRAND_CALL(expr)          \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPRAND error executing ", #expr))
-
-#define MIOPEN_RETURN_IF_ERROR(expr)              \
-  ORT_RETURN_IF_ERROR(MIOPEN_CALL(expr)           \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOPEN error executing ", #expr))
-
-#define MIOPEN2_RETURN_IF_ERROR(expr, m)          \
-  ORT_RETURN_IF_ERROR(MIOPEN_CALL2(expr, m)       \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "MIOPEN2 error executing ", #expr))
-
-#define HIPFFT_RETURN_IF_ERROR(expr)              \
-  ORT_RETURN_IF_ERROR(HIPFFT_CALL(expr)           \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "HIPFFT error executing ", #expr))
+#define HIP_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIP_CALL(expr))
+#define ROCBLAS_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(ROCBLAS_CALL(expr))
+#define HIPSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIPSPARSE_CALL(expr))
+#define HIPRAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIPRAND_CALL(expr))
+#define MIOPEN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(MIOPEN_CALL(expr))
+#define MIOPEN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(MIOPEN_CALL2(expr, m))
+#define HIPFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIPFFT_CALL(expr))
 
 // Type mapping for MLFloat16 to half
 template <typename T>
@@ -82,6 +55,12 @@ inline bool CalculateFdmStrides(gsl::span<fast_divmod> p, const std::vector<int6
     }
   }
   return true;
+}
+
+inline int warpSizeDynamic() {
+  hipDeviceProp_t deviceProp;
+  HIP_CALL_THROW(hipGetDeviceProperties(&deviceProp, 0));
+  return deviceProp.warpSize;
 }
 
 }  // namespace rocm

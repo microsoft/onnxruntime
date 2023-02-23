@@ -10,4 +10,4 @@ This package (onnxruntime-common) is not designed for using directly. Please con
 
 ## License
 
-License information can be found [here](https://github.com/microsoft/onnxruntime/blob/master/README.md#license).
+License information can be found [here](https://github.com/microsoft/onnxruntime/blob/main/README.md#license).

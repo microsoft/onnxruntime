@@ -34,7 +34,7 @@ bool CanSafelyRemoveNode(const Node& node_to_remove, const InlinedHashSet<const 
 void SafelyRemoveNodes(Graph& graph, gsl::span<Node* const> nodes_to_remove, const Node* ignore_target) {
   InlinedHashSet<const Node*> removal_set;
   removal_set.reserve(nodes_to_remove.size());
-  removal_set.insert(nodes_to_remove.cbegin(), nodes_to_remove.cend());
+  removal_set.insert(nodes_to_remove.begin(), nodes_to_remove.end());
 
   for (Node* node : nodes_to_remove) {
     if (node && node != ignore_target && CanSafelyRemoveNode(*node, removal_set)) {
@@ -112,9 +112,9 @@ Status ReplaceWithNew::Run(Graph& graph, const NodesToOptimize& selected_nodes) 
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_nodes,
-                                  const SatRuntimeOptimizationSaveContext& save_context,
+                                  const SatRuntimeOptimizationSaveContext& /*save_context*/,
                                   SavedState& saved_state, bool& graph_modified) const {
-  // make temporary node, use it to look up kernel def hash, remove temporary node
+  // make temporary node, save its op schema, remove temporary node
   const RuntimeState runtime_state{graph, selected_nodes};
   Node* replacement{};
   ORT_RETURN_IF_ERROR(CreateReplacementNode(graph, selected_nodes,
@@ -125,12 +125,7 @@ Status ReplaceWithNew::RunForSave(Graph& graph, const NodesToOptimize& selected_
                                             /* only_update_dest_definitions */ true, &replacement));
 
   ORT_RETURN_IF_NOT(graph.SetOpSchemaFromRegistryForNode(*replacement), "Failed to set node op schema.");
-
-  const KernelCreateInfo* kernel_create_info{};
-  ORT_RETURN_IF_ERROR(save_context.kernel_registry_manager.get().SearchKernelRegistry(*replacement,
-                                                                                      &kernel_create_info));
-  const auto replacement_kernel_def_hash = kernel_create_info->kernel_def->GetHash();
-  saved_state.produced_nodes.push_back({replacement->Index(), replacement_kernel_def_hash});
+  saved_state.produced_node_op_schemas.push_back(replacement->Op());
 
   ORT_RETURN_IF_NOT(graph.RemoveNode(replacement->Index()), "Failed to remove node.");
 

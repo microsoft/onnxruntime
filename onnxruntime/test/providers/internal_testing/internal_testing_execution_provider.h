@@ -17,14 +17,16 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const std::vector<const KernelRegistry*>& /*kernel_registries*/) const override;
+                const IKernelLookup& /*kernel_lookup*/) const override;
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   DataLayout GetPreferredLayout() const override;
-
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
+  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
 
   InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
     debug_output_ = debug_output;
@@ -52,6 +54,10 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   bool debug_output_{false};
   bool enable_static_kernels_{false};
   DataLayout preferred_layout_;
+
+  // used for testing allocator sharing as a few EPs (e.g. CUDA, TRT, TVM) override GetAllocator and have a local
+  // AllocatorPtr that can get out of sync with the allocator lists in the base IExecutionProvider
+  AllocatorPtr local_allocator_;
 };
 
 }  // namespace internal_testing_ep

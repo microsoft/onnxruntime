@@ -773,14 +773,14 @@ namespace Microsoft.ML.OnnxRuntime
 
             if (prepackedWeightsContainer == null)
             {
-                NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSession(envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, out session));
             }
 
             else
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateSessionWithPrepackedWeightsContainer(
-                    envHandle, NativeMethods.GetPlatformSerializedString(modelPath),
+                    envHandle, NativeOnnxValueHelper.GetPlatformSerializedString(modelPath),
                     options.Handle, prepackedWeightsContainer.Pointer, out session));
             }
 

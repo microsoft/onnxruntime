@@ -22,7 +22,7 @@ parameters:
 - name: python_version
   displayName: 'Python version used for build'
   type: object
-  default: ["'3.7'", "'3.8'", "'3.9'"]
+  default: ["'3.8'"]
 
 - name: cpu_build_py_parameters
   displayName: 'Extra parameters to pass to build.py for CPU package.'
@@ -40,6 +40,14 @@ parameters:
   default: '20.04'
 
 trigger: none
+
+resources:
+  repositories:
+  - repository: manylinux
+    type: Github
+    endpoint: Microsoft
+    name: pypa/manylinux
+    ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 stages:
 - template: templates/py-packaging-selectable-stage.yml

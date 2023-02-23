@@ -43,7 +43,7 @@ CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const std::vector<const KernelRegistry*>& /*kernel_registries*/) const {
+                                       const IKernelLookup& /*kernel_lookup*/) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // We do not run CoreML EP on subgraph, instead we cover this in the control flow nodes
@@ -139,11 +139,13 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       ORT_UNUSED_PARAMETER(state);
     };
 
-    compute_info.compute_func = [](FunctionState state, const OrtCustomOpApi* api, OrtKernelContext* context) {
-      Ort::CustomOpApi ort{*api};
+    compute_info.compute_func = [](FunctionState state, const OrtApi* /* api */, OrtKernelContext* context) {
+      Ort::KernelContext ctx(context);
+
+      const size_t num_inputs = ctx.GetInputCount();
+      const size_t num_outputs = ctx.GetOutputCount();
+
       coreml::Model* model = reinterpret_cast<coreml::Model*>(state);
-      const size_t num_inputs = ort.KernelContext_GetInputCount(context);
-      const size_t num_outputs = ort.KernelContext_GetOutputCount(context);
       const auto& model_inputs = model->GetInputs();
       const auto& model_outputs = model->GetOutputs();
 
@@ -154,26 +156,23 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       inputs.reserve(model_inputs.size());
       for (size_t i = 0; i < model_inputs.size(); i++) {
         const auto& input_name = model_inputs[i];
-        const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-        auto* tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-
-        auto shape = ort.GetTensorShape(tensor_info);
+        auto input_tensor = ctx.GetInput(i);
+        auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+        auto shape = tensor_info.GetShape();
         // If we have an empty shape, this is a scalar input,
         // Since all the input output of CoreML EP is MultiArray, we will make the scalar input as a {1} MultiArray
         if (shape.empty())
           shape.push_back(1);
 
-        const void* inputBuffer = ort.GetTensorData<void>(input_tensor);
+        // CoreML MLMultiArray API expect input to be non-const
+        // https://developer.apple.com/documentation/coreml/mlmultiarray/2881219-initwithdatapointer?language=objc
+        void* inputBuffer = const_cast<void*>(input_tensor.GetTensorRawData());
         inputs.emplace(
             input_name,
             coreml::OnnxTensorData{
-                coreml::OnnxTensorInfo{ort.GetTensorElementType(tensor_info), shape},
-                // CoreML MLMultiArray API expect input to be non-const
-                // https://developer.apple.com/documentation/coreml/mlmultiarray/2881219-initwithdatapointer?language=objc
-                const_cast<void*>(inputBuffer),
+                coreml::OnnxTensorInfo{tensor_info.GetElementType(), shape},
+                inputBuffer,
             });
-
-        ort.ReleaseTensorTypeAndShapeInfo(tensor_info);
       }
 
       // From this point we will need to take the exclusive lock on the model until the Predict is
@@ -199,19 +198,19 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
           if (model->IsInt64Output(output_name))
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
 
-          auto* output_tensor =
-              ort.KernelContext_GetOutput(context, i, output_shape.data(), output_shape.size());
+          auto output_tensor =
+              ctx.GetOutput(i, output_shape.data(), output_shape.size());
 
           void* output_buffer;
           switch (output_type) {
             case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-              output_buffer = ort.GetTensorMutableData<float>(output_tensor);
+              output_buffer = output_tensor.GetTensorMutableData<float>();
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-              output_buffer = ort.GetTensorMutableData<int32_t>(output_tensor);
+              output_buffer = output_tensor.GetTensorMutableData<int32_t>();
               break;
             case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-              output_buffer = ort.GetTensorMutableData<int64_t>(output_tensor);
+              output_buffer = output_tensor.GetTensorMutableData<int64_t>();
               break;
             default:
               return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -243,7 +242,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [](ComputeContext* /*context*/, FunctionState* /*state*/) { return 0; };
     compute_info.release_state_func = [](FunctionState /*state*/) {};
-    compute_info.compute_func = [](FunctionState /* state */, const OrtCustomOpApi* /* api */,
+    compute_info.compute_func = [](FunctionState /* state */, const OrtApi* /* api */,
                                    OrtKernelContext* /* context */) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Compute is not supported in this build.");
     };

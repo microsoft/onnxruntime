@@ -8,6 +8,7 @@
 
 #include "core/providers/cpu/rnn/deep_cpu_gru.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -145,6 +146,11 @@ void DefaultActivationsSimpleWeightsNoBias(std::string direction,
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.4750208f, 0.450166f, 0.4255575f,
       0.45016602f, 0.40131235f, 0.35434368f,
@@ -163,6 +169,11 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsNoBiasTwoRows) {
 }
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.6082785f, 0.50623393f, 0.4426924f,
       0.5803454f, 0.4527356f, 0.36886263f,
@@ -178,6 +189,11 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsNoBiasTwoRows) {
 }
 
 TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBias) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       // forward output for input sequence 0
       0.4750208f, 0.450166f, 0.4255575f,
@@ -208,6 +224,11 @@ TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBias) {
 }
 
 TEST(GRUTest, BidirectionalDefaultActivationsSimpleWeightsNoBiasLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       // forward output for input sequence 0
       0.4750208f, 0.450166f, 0.4255575f,
@@ -292,6 +313,11 @@ void DefaultActivationsSimpleWeightsWithBias(std::string direction,
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallel) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.16783132f, -0.11754231f, 0.11977843f,
       0.2046872f, -0.10372487f, 0.15365849f,
@@ -303,6 +329,11 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallel) {
 }
 
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.15024948f, -0.11097029f, -0.02121867f,
       0.18887489f, -0.09747667f, 0.02093463f,
@@ -315,6 +346,11 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearB
 }
 
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.20910699f, -0.18880953f, -0.04005555f,
       0.29700265f, -0.15308119f, 0.04537245f,
@@ -328,6 +364,11 @@ TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasBatchParallelLinearB
 
 // test forward !batch_parallel_ path with linear_before_reset
 TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.15024948f, -0.11097029f, -0.02121867f,
       0.19538902f, -0.19016478f, -0.05644283f};
@@ -339,6 +380,11 @@ TEST(GRUTest, ForwardDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
 
 // test reverse !batch_parallel_ path with linear_before_reset
 TEST(GRUTest, ReverseDefaultActivationsSimpleWeightsWithBiasLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   std::vector<float> Y_data{
       0.20910699f, -0.18880953f, -0.04005555f,
       0.12252139f, -0.12032216f, -0.05064924f};
@@ -538,6 +584,11 @@ void DeepCpuGruOpTestContext::RunTest(const std::vector<float>& X,
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBasic) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -556,6 +607,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBasic) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpBackwardBasic) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "reverse";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -575,6 +631,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpBackwardBasic) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpBidirectionalBasic) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -598,6 +659,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpBidirectionalBasic) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardActivation) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"tanh", "sigmoid"};
 
@@ -617,6 +683,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardActivation) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardInitialHiddenState) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -636,6 +707,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardInitialHiddenState) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatch) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -663,6 +739,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatch) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatchLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -690,6 +771,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpForwardBatchLinearBeforeReset) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -730,6 +816,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLength) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLengthLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -770,6 +861,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpGrowBatchSequenceLengthLinearBeforeReset) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeResetB1) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -791,6 +887,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeResetB2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -811,6 +912,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeReset) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -839,6 +945,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithBidirectionalLinearBeforeRe
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpShorterSeqInMiddle) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -872,6 +983,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpShorterSeqInMiddle) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpZeroSeqInMiddle) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -905,6 +1021,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpZeroSeqInMiddle) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithPartialZero) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -933,6 +1054,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthWithPartialZero) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthShorterThanInputSequenceLength) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "bidirectional";
   const std::vector<std::string> activations = {"sigmoid", "tanh", "sigmoid", "tanh"};
 
@@ -962,6 +1088,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthShorterThanInputSequenceLength)
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthAllZeros) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -990,6 +1121,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSequenceLengthAllZeros) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUOpSingleBatchMultipleHiddenThreads) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 
@@ -1020,6 +1156,11 @@ TEST(GRUTest, ONNXRuntime_TestGRUOpSingleBatchMultipleHiddenThreads) {
 }
 
 TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationClipping) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(1817): The parameter is incorrect.";
+  }
+
   const std::string direction = "forward";
   const std::vector<std::string> activations = {"sigmoid", "tanh"};
 

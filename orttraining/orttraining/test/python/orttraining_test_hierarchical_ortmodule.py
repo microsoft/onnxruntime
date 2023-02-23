@@ -1,11 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+from collections.abc import Iterable
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from collections.abc import Iterable
 from torch.utils.checkpoint import checkpoint
+
 from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule import HierarchicalORTModule
 
@@ -140,11 +142,52 @@ class MainWithMultiModuleOutputs(nn.Module):
         return y1, y2
 
 
+class G(nn.Module):
+    def __init__(self):
+        super(G, self).__init__()
+        self.l1 = nn.Linear(2, 2)
+
+    def forward(self, x):
+        if x.dtype == torch.float16:
+            x = x.to(torch.float32)
+        x = self.l1(x)
+        return x if x.dtype == torch.float32 else x.to(torch.float16)
+
+    def forward_fp16(self, x):
+        assert x.dtype == torch.float16
+        return self.l1(x.to(torch.float32)).to(torch.float16)
+
+
+class MainWithModuleMultipleCalls(nn.Module):
+    # Module with mixed precision.
+    def __init__(self):
+        super(MainWithModuleMultipleCalls, self).__init__()
+        self.b = B()
+        self.g = G()
+
+    def forward(self, x):
+        x = self.g(x)
+        x = self.g(x.to(torch.float16)).to(torch.float32)
+        return self.b(x)
+
+
+class MainWithNonForwardCall(nn.Module):
+    # Module with mixed precision.
+    def __init__(self):
+        super(MainWithNonForwardCall, self).__init__()
+        self.b = B()
+        self.g = G()
+
+    def forward(self, x):
+        x = self.g.forward_fp16(x.to(torch.float16)).to(torch.float32)
+        return self.b(x)
+
+
 def test_hierarchical_ortmodule():
-    def count_ortmodule(module):
-        n = 1 if isinstance(module, ORTModule) else 0
+    def count_ortmodule(module, is_iterated=False):
+        n = 1 if type(module).__name__ == ("_IteratedORTModule" if is_iterated else "ORTModule") else 0
         for sub in module._modules.values():
-            n = n + count_ortmodule(sub)
+            n = n + count_ortmodule(sub, is_iterated)
         return n
 
     def call_backward(y):
@@ -162,7 +205,7 @@ def test_hierarchical_ortmodule():
         else:
             torch.allclose(y, y_ref)
 
-    def trial(module_to_wrap, args, expected_num_ortmodule):
+    def trial(module_to_wrap, args, expected_num_ortmodule, expected_num_iterated_ortmodule=0):
         # Run baseline model.
         m = module_to_wrap
 
@@ -185,6 +228,7 @@ def test_hierarchical_ortmodule():
 
         # Some sub-modules become ORTModule.
         assert expected_num_ortmodule == count_ortmodule(m)
+        assert expected_num_iterated_ortmodule == count_ortmodule(m, is_iterated=True)
 
         call_allclose(y, y_ref)
         call_allclose(g, g_ref)
@@ -196,6 +240,8 @@ def test_hierarchical_ortmodule():
         trial(MainWithMultiModuleOutputs(), [torch.rand(2).requires_grad_()], 10)
         trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "reverse"], 6)
         trial(MainWithNonTensorInput(), [torch.rand(2).requires_grad_(), "normal"], 6)
+        trial(MainWithModuleMultipleCalls(), [torch.rand(2).requires_grad_()], 2, 1)
+        trial(MainWithNonForwardCall(), [torch.rand(2).requires_grad_()], 3)
 
 
 if __name__ == "__main__":

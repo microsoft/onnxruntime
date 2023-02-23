@@ -5,6 +5,7 @@
 #include "core/providers/acl/acl_provider_factory.h"
 #include <atomic>
 #include "acl_execution_provider.h"
+#include "acl_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
 
 namespace onnxruntime {
@@ -24,13 +25,13 @@ std::unique_ptr<IExecutionProvider> ACLProviderFactory::CreateProvider() {
   return std::make_unique<ACLExecutionProvider>(info);
 }
 
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena) {
+std::shared_ptr<IExecutionProviderFactory> ACLProviderFactoryCreator::Create(int use_arena) {
   return std::make_shared<onnxruntime::ACLProviderFactory>(use_arena != 0);
 }
 
 }  // namespace onnxruntime
 
 ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_ACL, _In_ OrtSessionOptions* options, int use_arena) {
-  options->provider_factories.push_back(onnxruntime::CreateExecutionProviderFactory_ACL(use_arena));
+  options->provider_factories.push_back(onnxruntime::ACLProviderFactoryCreator::Create(use_arena));
   return nullptr;
 }

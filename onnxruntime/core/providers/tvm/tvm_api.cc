@@ -1,7 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <glob.h>  // glob(), globfree()
+#endif
 #include <string.h>  // memset()
 #include <unordered_map>
 #include <fstream>
@@ -12,6 +16,7 @@
 #include <tvm/target/codegen.h>
 
 #include "core/common/common.h"
+#include "core/common/path.h"
 
 #include "tvm_api.h"
 
@@ -28,8 +33,7 @@ TvmModule TVMCompile(const TvmEPOptions& options,
                      const std::string& onnx_txt,
                      const std::string& model_path,
                      int opset,
-                     const TVMTensorShapes& input_shapes)
-{
+                     const TVMTensorShapes& input_shapes) {
   ::tvm::Array<TvmIntArray> shapes;
   for (size_t i = 0; i < input_shapes.size(); ++i)
   {
@@ -59,30 +63,45 @@ TvmModule TVMCompile(const TvmEPOptions& options,
   return mod;
 }
 
-std::vector<std::string> glob(const std::string& pattern) {
+std::vector<std::string> glob(const std::string& dir, const std::string& extension) {
   std::vector<std::string> filenames;
-
+#ifdef _WIN32
+  std::string pattern = dir + "/*." + extension;
+  WIN32_FIND_DATA fd;
+  HANDLE hFind = ::FindFirstFile(pattern.c_str(), &fd);
+  if (hFind != INVALID_HANDLE_VALUE) {
+    do {
+      if ( !(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) ) {
+        filenames.push_back(
+          dir +
+          ToUTF8String(PathString{k_preferred_path_separator}) +
+          fd.cFileName);
+      }
+    } while (::FindNextFile(hFind, &fd));
+    ::FindClose(hFind);
+  }
+#else
   glob_t glob_result;
   memset(&glob_result, 0, sizeof(glob_result));
 
+  std::string pattern = dir + "/*." + extension;
   int return_value = glob(pattern.c_str(), GLOB_TILDE, NULL, &glob_result);
   ORT_ENFORCE(return_value == 0, "No results of glob for pattern: " + pattern);
 
   for (size_t i = 0; i < glob_result.gl_pathc; ++i) {
     filenames.push_back(std::string(glob_result.gl_pathv[i]));
   }
-
   globfree(&glob_result);
-
+#endif
   return filenames;
 }
 
-std::string filter_lib_paths(const std::vector<std::string>& lib_paths) {
+std::string filter_lib_paths(const std::vector<std::string>& lib_paths, const std::string& lib_ext) {
   std::string lib_path;
   size_t counter = 0;
   for (const auto& path : lib_paths) {
-    if (path.find("libtvm_runtime.so") != std::string::npos ||
-        path.find("liboctomized_model.so") != std::string::npos) {
+    if (path.find("libtvm_runtime." + lib_ext) != std::string::npos ||
+        path.find("liboctomized_model." + lib_ext) != std::string::npos) {
       ++counter;
     } else {
       lib_path = path;
@@ -117,10 +136,17 @@ static std::unordered_map<std::string, uint64_t> str2dev_type = {
 };
 
 TvmModule TVMSoCompile(const TvmEPOptions& options) {
-  const std::string dir = options.so_folder;
-  const std::string lib_path = filter_lib_paths(glob(dir + "/*.so"));
-  const std::string consts_path = dir + "/consts";
-  const auto& ro_paths = glob(dir + "/*.ro");
+  const std::string& dir = options.so_folder;
+#ifdef _WIN32
+  std::string lib_ext = "dll";
+#else
+  std::string lib_ext = "so";
+#endif
+  const std::string lib_path = filter_lib_paths(glob(dir, lib_ext), lib_ext);
+  const std::string consts_path = dir +
+                                  ToUTF8String(PathString{k_preferred_path_separator}) +
+                                  "consts";
+  const auto& ro_paths = glob(dir, "ro");
   ORT_ENFORCE(ro_paths.size() == 1, "It should be only one ro file in folder: " + dir);
   const std::string vm_exec_code_path = ro_paths[0];
 
@@ -176,8 +202,7 @@ TvmModule TVMSoCompile(const TvmEPOptions& options) {
 
 void TVMSetInputs(TvmModule& mod,
                   std::vector<size_t>& inds,
-                  std::vector<DLTensor>& inputs)
-{
+                  std::vector<DLTensor>& inputs) {
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   TvmPackedFunc set_input_zero_copy = mod.GetFunction("set_input_zero_copy", false);
   for (size_t i = 0; i < inds.size(); ++i) {
@@ -191,8 +216,7 @@ void TVMSetInputs(TvmModule& mod,
 
 void TVM_VM_SetInputs(TvmModule& mod,
                       std::vector<size_t>& inds,
-                      std::vector<DLTensor>& inputs)
-{
+                      std::vector<DLTensor>& inputs) {
   size_t num_total_args = inputs.size() + 1;
   std::vector<TVMValue> tvm_values(num_total_args);
   std::vector<int> tvm_type_codes(num_total_args);
@@ -205,12 +229,36 @@ void TVM_VM_SetInputs(TvmModule& mod,
 
   TvmPackedFunc set_input = mod.GetFunction("set_input", false);
   ::tvm::runtime::TVMRetValue rv;
-  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
+  set_input.CallPacked(::tvm::runtime::TVMArgs(tvm_values.data(), tvm_type_codes.data(), int(num_total_args)), &rv);
+}
+
+void TVMSetOutputsZeroCopy(TvmModule& mod,
+                           std::vector<DLTensor>& outputs) {
+  TvmPackedFunc set_output = mod.GetFunction("set_output_zero_copy", false);
+  for (size_t i = 0; i < outputs.size(); ++i) {
+    set_output(i, &outputs[i]);
+  }
+}
+
+void TVM_VM_SetOutputsZeroCopy(TvmModule& mod,
+                               std::vector<DLTensor>& outputs) {
+  size_t num_total_args = outputs.size() + 1;
+  std::vector<TVMValue> tvm_values(num_total_args);
+  std::vector<int> tvm_type_codes(num_total_args);
+  tvm_rt::TVMArgsSetter setter(tvm_values.data(), tvm_type_codes.data());
+  const std::string func_name = "main";
+  setter(0, func_name.c_str());
+  for (size_t k = 0; k < num_total_args - 1; ++k) {
+    setter(k+1, &outputs[k]);
+  }
+
+  TvmPackedFunc set_output = mod.GetFunction("set_outputs", false);
+  tvm_rt::TVMRetValue rv;
+  set_output.CallPacked(tvm_rt::TVMArgs(tvm_values.data(), tvm_type_codes.data(), num_total_args), &rv);
 }
 
 void TVMGetOutputs(TvmModule& mod,
-                   std::vector<DLTensor>& outputs)
-{
+                   std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     get_output(i, &outputs[i]);
@@ -218,8 +266,7 @@ void TVMGetOutputs(TvmModule& mod,
 }
 
 void TVM_VM_GetOutputs(TvmModule& mod,
-                       std::vector<DLTensor>& outputs)
-{
+                       std::vector<DLTensor>& outputs) {
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < outputs.size(); ++i) {
     // TODO(vvchernov): think about improvement of memory management
@@ -229,8 +276,7 @@ void TVM_VM_GetOutputs(TvmModule& mod,
 }
 
 void TVMGetOutputShapes(TvmModule& mod,
-                        TVMTensorShapes& output_shapes)
-{
+                        TVMTensorShapes& output_shapes) {
   size_t size = output_shapes.size();
   TvmPackedFunc get_output = mod.GetFunction("get_output", false);
   for (size_t i = 0; i < size; ++i) {
@@ -245,15 +291,13 @@ void TVMGetOutputShapes(TvmModule& mod,
   }
 }
 
-void TVMRun(TvmModule& mod)
-{
+void TVMRun(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("run", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve graph executor run.");
   run();
 }
 
-void TVM_VM_Run(TvmModule& mod)
-{
+void TVM_VM_Run(TvmModule& mod) {
   TvmPackedFunc run = mod.GetFunction("invoke", false);
   ORT_ENFORCE(run != nullptr, "Unable to retrieve virtual machine invoke.");
   run("main");

@@ -17,16 +17,15 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
   // Save the model and config.
   ONNX_NAMESPACE::ModelProto model_proto;
   ORT_RETURN_IF_ERROR(Model::Load(model_istream, &model_proto));
-  ORT_RETURN_IF_ERROR(Model::Load(model_proto, model_, nullptr, *logger_));
+  ORT_RETURN_IF_ERROR(Model::Load(model_proto, original_model_, nullptr, *logger_));
   config_ = config;
 
   // Handle original model inputs, outputs and trainable initializers.
   // We need to move all the initializers to graph inputs and keep the order in config,
   // it's possible that the graph already has some initializers in graph inputs,
   // so we need to NOT assign these initializers to the user inputs list.
-  Graph& graph = model_->MainGraph();
-  std::unordered_set<std::string> initializer_names(config.initializer_names.begin(),
-                                                    config.initializer_names.end());
+  Graph& graph = original_model_->MainGraph();
+  std::unordered_set<std::string> initializer_names(config.initializer_names.begin(), config.initializer_names.end());
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   for (auto& node_arg : graph_inputs) {
     if (initializer_names.find(node_arg->Name()) == initializer_names.end()) {
@@ -41,8 +40,7 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 
   graph_info_.initializer_names_to_train.assign(config.initializer_names_to_train.begin(),
                                                 config.initializer_names_to_train.end());
-  graph_info_.initializer_names.assign(config.initializer_names.begin(),
-                                       config.initializer_names.end());
+  graph_info_.initializer_names.assign(config.initializer_names.begin(), config.initializer_names.end());
 
   std::vector<const NodeArg*> input_args;
   for (const auto& input_name : graph_info_.user_input_names) {
@@ -70,23 +68,23 @@ Status OrtModuleGraphBuilder::Initialize(std::istream& model_istream,
 // 3) build gradient graph, and finally 4) adjust the graph inputs and outputs.
 Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* input_shapes_ptr) {
   // Make a copy of the original model.
-  auto model_proto = model_->ToProto();
-  ORT_RETURN_IF_ERROR(Model::Load(model_proto, gradient_model_, nullptr, *logger_));
+  auto original_model_proto = original_model_->ToProto();
+  ORT_RETURN_IF_ERROR(Model::Load(original_model_proto, forward_model_, nullptr, *logger_));
 
   // Replace the user input shapes if input_shapes_ptr is not null_ptr.
   if (input_shapes_ptr) {
-    SetConcreteInputShapes(*input_shapes_ptr);
+    ORT_RETURN_IF_ERROR(SetConcreteInputShapes(*input_shapes_ptr));
   }
 
-  // Optimize the inference graph, and if needed, build the gradient graph.
-  std::unordered_set<std::string> x_node_arg_names;
-  ORT_RETURN_IF_ERROR(OptimizeInferenceGraph(x_node_arg_names));
+  // If this graph will be used only for inferencing, stop right here.
+  // No need to apply the optimizations for training or build a gradient graph.
   if (!config_.build_gradient_graph) {
-    // This graph will be used only for inferencing, so stop right here.
-    // No need to build a gradient graph.
     return Status::OK();
   }
 
+  // Optimize the inference graph and build the gradient graph.
+  std::unordered_set<std::string> x_node_arg_names;
+  ORT_RETURN_IF_ERROR(OptimizeForwardGraph(x_node_arg_names));
   ORT_RETURN_IF_ERROR(BuildGradientGraph(x_node_arg_names));
 
   if (config_.enable_caching) {
@@ -105,7 +103,7 @@ Status OrtModuleGraphBuilder::Build(const std::vector<std::vector<int64_t>>* inp
   return Status::OK();
 }
 
-std::string OrtModuleGraphBuilder::GetModel() const {
+std::string OrtModuleGraphBuilder::GetGradientModel() const {
   std::string model_str;
   if (!gradient_model_->ToProto().SerializeToString(&model_str)) {
     ORT_THROW("Fail to serialize gradient model to string.");
@@ -113,22 +111,22 @@ std::string OrtModuleGraphBuilder::GetModel() const {
   return model_str;
 }
 
-std::string OrtModuleGraphBuilder::GetInferenceOptimizedModel() const {
+std::string OrtModuleGraphBuilder::GetForwardModel() const {
   std::string model_str;
-  if (!inference_optimized_model_->ToProto().SerializeToString(&model_str)) {
-    ORT_THROW("Fail to serialize inference optimized model to string.");
+  if (!forward_model_->ToProto().SerializeToString(&model_str)) {
+    ORT_THROW("Fail to serialize forward model to string.");
   }
   return model_str;
 }
 
-void OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes) {
+Status OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector<int64_t>>& input_shapes) {
   ORT_ENFORCE(input_shapes.size() == graph_info_.user_input_names.size(),
               "The size of concrete input shapes and the size of user inputs does not match.");
-  Graph& gradient_graph = gradient_model_->MainGraph();
+  Graph& forward_graph = forward_model_->MainGraph();
   std::vector<const NodeArg*> input_args;
   size_t input_index = 0;
   for (const auto& input_name : graph_info_.user_input_names) {
-    NodeArg* input_node_arg = gradient_graph.GetNodeArg(input_name);
+    NodeArg* input_node_arg = forward_graph.GetNodeArg(input_name);
     ONNX_NAMESPACE::TensorShapeProto new_shape;
     for (size_t i = 0; i < input_shapes[input_index].size(); i++) {
       new_shape.add_dim()->set_dim_value(input_shapes[input_index][i]);
@@ -140,18 +138,19 @@ void OrtModuleGraphBuilder::SetConcreteInputShapes(const std::vector<std::vector
   }
 
   // Move over all training initializer inputs. They already have the concrete shapes.
-  const std::vector<const NodeArg*>& graph_inputs = gradient_graph.GetInputsIncludingInitializers();
+  const std::vector<const NodeArg*>& graph_inputs = forward_graph.GetInputsIncludingInitializers();
   for (; input_index < graph_inputs.size(); input_index++) {
     input_args.emplace_back(graph_inputs[input_index]);
   }
 
-  gradient_graph.SetInputs(input_args);
+  forward_graph.SetInputs(input_args);
+  return forward_graph.Resolve();
 }
 
-Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::string>& x_node_arg_names) {
+Status OrtModuleGraphBuilder::OptimizeForwardGraph(std::unordered_set<std::string>& x_node_arg_names) {
   // Resolve original graph, register and apply transformers for pre-training.
-  Graph& gradient_graph = gradient_model_->MainGraph();
-  ORT_RETURN_IF_ERROR(gradient_graph.Resolve());
+  Graph& forward_graph = forward_model_->MainGraph();
+  ORT_RETURN_IF_ERROR(forward_graph.Resolve());
 
   GraphTransformerManager graph_transformation_mgr{2};
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
@@ -178,16 +177,15 @@ Status OrtModuleGraphBuilder::OptimizeInferenceGraph(std::unordered_set<std::str
 
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     ORT_RETURN_IF_ERROR(
-        graph_transformation_mgr.ApplyTransformers(gradient_graph, static_cast<TransformerLevel>(i), *logger_));
+        graph_transformation_mgr.ApplyTransformers(forward_graph, static_cast<TransformerLevel>(i), *logger_));
   }
-
-  // Save a copy of inference optimized model
-  ORT_RETURN_IF_ERROR(Model::Load(gradient_model_->ToProto(), inference_optimized_model_, nullptr, *logger_));
 
   return Status::OK();
 }
 
 Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::string>& x_node_arg_names) {
+  // Copy the forward graph to create the gradient graph.
+  ORT_RETURN_IF_ERROR(Model::Load(forward_model_->ToProto(), gradient_model_, nullptr, *logger_));
   Graph& gradient_graph = gradient_model_->MainGraph();
 
   // Build gradient graph.
@@ -199,7 +197,8 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   GradientGraphBuilder grad_graph_builder(&gradient_graph, y_node_arg_names, x_node_arg_names, "",
                                           gradient_graph_config, *logger_);
 
-  const std::unordered_set<std::string>& non_differentiable_output_names = grad_graph_builder.GetNonDifferentiableYNodeArgNames();
+  const std::unordered_set<std::string>& non_differentiable_output_names =
+      grad_graph_builder.GetNonDifferentiableYNodeArgNames();
   for (size_t i = 0; i < graph_info_.user_output_names.size(); ++i) {
     if (non_differentiable_output_names.count(graph_info_.user_output_names[i]) > 0) {
       graph_info_.output_grad_indices_non_differentiable.emplace_back(i);
@@ -207,6 +206,8 @@ Status OrtModuleGraphBuilder::BuildGradientGraph(const std::unordered_set<std::s
   }
 
   ORT_RETURN_IF_ERROR(grad_graph_builder.Build());
+
+  UpdatePythonOpInputsRequireGradInfo(grad_graph_builder.GetPythonOpInputRequireGradInfo());
 
   return Status::OK();
 }
@@ -300,7 +301,8 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       full_shape_outputs.add_ints(static_cast<int64_t>(i));
     }
 
-    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) == non_differentiable_indices.end()) {
+    if (std::find(non_differentiable_indices.begin(), non_differentiable_indices.end(), i) ==
+        non_differentiable_indices.end()) {
       yield_output_node_args.emplace_back(gradient_graph.GetNodeArg(grad_name));
       graph_info_.module_output_gradient_name.emplace_back(grad_name);
     }
@@ -353,14 +355,15 @@ void OrtModuleGraphBuilder::HandleOutputsAndGrads() {
       int duplicate_counter = 0;
       for (size_t idx : indices) {
         std::string indexed_arg_name = arg_name + "_" + std::to_string(duplicate_counter++);
-        auto& indexed_node_arg = gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
+        auto& indexed_node_arg =
+            gradient_graph.GetOrCreateNodeArg(indexed_arg_name, yield_output_node_args[idx]->TypeAsProto());
         sum_input_node_args.push_back(&indexed_node_arg);
         yield_output_node_args[idx] = &indexed_node_arg;
       }
 
       // Insert the Sum node to sum-up the duplicated gradients
-      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient",
-                             sum_input_node_args, sum_output_node_arg, {}, kOnnxDomain);
+      gradient_graph.AddNode("Sum_for_" + arg_name, "Sum", "Sum up duplicated gradient", sum_input_node_args,
+                             sum_output_node_arg, {}, kOnnxDomain);
     }
   }
 
@@ -442,6 +445,37 @@ void OrtModuleGraphBuilder::FindModuleOutputNeededForBackward() {
       if (id_to_exec_order[n->Index()] > yield_node_order) {
         graph_info_.module_output_indices_requires_save_for_backward.emplace_back(i);
         break;
+      }
+    }
+  }
+
+  // Graph resolve will have the YieldOp outputs' shapes inferred. To avoid lossing these information when
+  // transferring model from backend to frontend (in case any graph optimization requires these shape information),
+  // add them to graph's ValueInfo.
+  for (const auto& node_def : yield_node->OutputDefs()) {
+    if (node_def->TypeAsProto()) {
+      gradient_graph.AddValueInfo(node_def);
+    }
+  }
+}
+
+void OrtModuleGraphBuilder::UpdatePythonOpInputsRequireGradInfo(
+    const std::unordered_map<std::string, std::vector<int64_t>>& python_op_input_require_grad_info) {
+  Graph& gradient_graph = gradient_model_->MainGraph();
+  // Input require grad info are not alwarys correct after torch export.
+  // So we update the info here according to ORT gradient graph.
+  // Be noted: we only update PythonOp that is differentiable.
+  GraphViewer gradient_graph_viewer(gradient_graph);
+  const auto& gradient_node_topology_list = gradient_graph_viewer.GetNodesInTopologicalOrder();
+  for (auto node_index : gradient_node_topology_list) {
+    auto& node = *gradient_graph.GetNode(node_index);
+    if (node.OpType() == "PythonOp") {
+      if (python_op_input_require_grad_info.find(node.Name()) != python_op_input_require_grad_info.end()) {
+        auto input_requires_grads_attr = graph_utils::GetNodeAttribute(node, "input_requires_grads");
+        if (input_requires_grads_attr != nullptr) {
+          node.ClearAttribute("input_requires_grads");
+        }
+        node.AddAttribute("input_requires_grads", python_op_input_require_grad_info.at(node.Name()));
       }
     }
   }

@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
 #include "word_conv_embedding.h"
 
 #include "core/util/math.h"
@@ -52,10 +53,9 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
   int64_t unfolded_segment_size = unfolded_width * unfolded_kernal_size;
   int64_t conv_res_segment_size = unfolded_width * num_filters;
   int64_t memcpy_size = unfolded_kernal_size * sizeof(float);
-
-  auto unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * unfolded_segment_size);
-  auto conv_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
-  auto conv_activation_result_p = IAllocator::MakeUniquePtr<float>(allocator, seq_len * conv_res_segment_size);
+  auto unfolded_buffer_p = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(seq_len) * unfolded_segment_size);
+  auto conv_result_p = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(seq_len) * conv_res_segment_size);
+  auto conv_activation_result_p = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(seq_len) * conv_res_segment_size);
 
   int64_t word_inx = 0;
   while (word_inx < seq_len) {
@@ -76,7 +76,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       int64_t word_unfolded_width = std::max<int64_t>(words_len_ptr[tmp_word_inx], filter_width) - filter_width + 1;
       words_unfolded_width += word_unfolded_width;
       for (int64_t unfolded_inx = 0; unfolded_inx < word_unfolded_width; unfolded_inx++) {
-        memcpy(words_unfolded_buffer_p, current_word_input, memcpy_size);
+        memcpy(words_unfolded_buffer_p, current_word_input, onnxruntime::narrow<size_t>(memcpy_size));
         current_word_input += char_embedding_size;
         words_unfolded_buffer_p += unfolded_kernal_size;
       }
@@ -94,7 +94,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {
         conv_buf_p[unfolded_inx * num_filters + filter_inx] += bias[filter_inx];
       }
-    MlasComputeTanh(conv_buf_p, pactivationbuf, words_unfolded_width * num_filters);
+    MlasComputeTanh(conv_buf_p, pactivationbuf, words_unfolded_width * SafeInt<size_t>(num_filters));
 
     float* activationbuf_cur_ptr = pactivationbuf;
     for (int64_t pool_word_inx = word_inx; pool_word_inx < tmp_word_inx; pool_word_inx++) {
@@ -187,21 +187,21 @@ Status WordConvEmbedding::Compute(OpKernelContext* ctx) const {
   ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&alloc));
 
   // allocate memory for char look up
-  // seq_len * word_len * char_embedding_size
-  size_t chars_embeddings_size = seq_len * word_len * char_embedding_size;
+  // SafeInt<size_t>(seq_len) * word_len * char_embedding_size
+  size_t chars_embeddings_size = SafeInt<size_t>(seq_len) * word_len * char_embedding_size;
   auto chars_embeddings_ptr = IAllocator::MakeUniquePtr<float>(alloc, chars_embeddings_size);
-  auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, seq_len);
+  auto words_length_ptr = IAllocator::MakeUniquePtr<int>(alloc, onnxruntime::narrow<size_t>(seq_len) );
   std::memset(chars_embeddings_ptr.get(), 0, chars_embeddings_size * sizeof(float));
-  std::memset(words_length_ptr.get(), 0, seq_len * sizeof(int));
+  std::memset(words_length_ptr.get(), 0, SafeInt<size_t>(seq_len) * sizeof(int));
 
-  CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), seq_len, word_len);
+  CalculateLengthOfEachWordInSequence(seq_ptr, words_length_ptr.get(), onnxruntime::narrow<size_t>(seq_len) , onnxruntime::narrow<size_t>(word_len));
 
   CharEmbeddingLookup(seq_ptr,
                       w_char_embedding.Data<float>(),
-                      seq_len,
-                      word_len,
-                      char_embedding_size,
-                      filter_width,
+                      onnxruntime::narrow<size_t>(seq_len),
+                      onnxruntime::narrow<size_t>(word_len),
+                      onnxruntime::narrow<size_t>(char_embedding_size),
+                      onnxruntime::narrow<size_t>(filter_width),
                       words_length_ptr.get(),
                       chars_embeddings_ptr.get());
 

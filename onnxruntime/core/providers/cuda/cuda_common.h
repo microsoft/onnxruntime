@@ -9,45 +9,18 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 namespace onnxruntime {
 namespace cuda {
 
-#define CUDA_RETURN_IF_ERROR(expr)               \
-  ORT_RETURN_IF_ERROR(CUDA_CALL(expr)            \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDA error executing ", #expr))
-
-#define CUBLAS_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(CUBLAS_CALL(expr)          \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUBLAS error executing ", #expr))
-
-#define CUSPARSE_RETURN_IF_ERROR(expr)           \
-  ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr)        \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUSPARSE error executing ", #expr))
-
-#define CURAND_RETURN_IF_ERROR(expr)             \
-  ORT_RETURN_IF_ERROR(CURAND_CALL(expr)          \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CURAND error executing ", #expr))
-
-#define CUDNN_RETURN_IF_ERROR(expr)              \
-  ORT_RETURN_IF_ERROR(CUDNN_CALL(expr)           \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN error executing ", #expr))
-
-#define CUDNN2_RETURN_IF_ERROR(expr, m)          \
-  ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m)       \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUDNN2 error executing ", #expr))
-
-#define CUFFT_RETURN_IF_ERROR(expr)              \
-  ORT_RETURN_IF_ERROR(CUFFT_CALL(expr)           \
-                          ? common::Status::OK() \
-                          : ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "CUFFT error executing ", #expr))
+#define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
+#define CUBLAS_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUBLAS_CALL(expr))
+#define CUSPARSE_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUSPARSE_CALL(expr))
+#define CURAND_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CURAND_CALL(expr))
+#define CUDNN_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDNN_CALL(expr))
+#define CUDNN2_RETURN_IF_ERROR(expr, m) ORT_RETURN_IF_ERROR(CUDNN_CALL2(expr, m))
+#define CUFFT_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUFFT_CALL(expr))
 
 // Type mapping for MLFloat16 to half
 template <typename T>

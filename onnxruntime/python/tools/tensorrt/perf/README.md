@@ -6,16 +6,16 @@ This script mainly focus on benchmarking ORT TensorRT EP performance compared wi
 ### Linux GPU TensorRT Perf CI Pipeline
 - [x] **Build ORT** Build ORT from source. Specify _branch_ variable if not master.
 - [x] **Post to Dashboard** Post to ONNX Runtime EP Dashboard (No Docker).
-- [ ] **Run in Docker (CUDA 11.0)** Check to run in CUDA 11.0 vs 10.2 (default). 
+- [ ] **Run in Docker (CUDA 11.0)** Check to run in CUDA 11.0 vs 10.2 (default).
 - [ ] **Configure EPs** Choose which EPs to run against. Specify _epList_ variable.
 - **ModelGroups**: Select which model groups to run. (i.e. selected-models, specify _selected-models_ variable)
 
-#### Variables (under Advanced Options) 
+#### Variables (under Advanced Options)
 - **branch**: (*default: master*) Specified branch to run against.
-- **epList**: List of EPs to run separated by spaces [from available options](https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/tensorrt/perf/benchmark.py#L26) _i.e. "CPUExecutionProvider TensorrtExecutionProvider"_
-- **selected-models**: Specified path to model json file or model folder if selected-models in ModelGroups. 
+- **epList**: List of EPs to run separated by spaces [from available options](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/tensorrt/perf/benchmark.py#L26) _i.e. "CPUExecutionProvider TensorrtExecutionProvider"_
+- **selected-models**: Specified path to model json file or model folder if selected-models in ModelGroups.
 
-## Usage Locally 
+## Usage Locally
 You can use following command to test whether models can be run using TensorRT and run benchmark:
 ```
 ./perf.sh
@@ -61,8 +61,8 @@ However, benchmark.py creates only one process to run all the model inferences o
 - **--cuda_ep_options**: Optional argument. Comma-separated key/value pairs denoting CUDA EP options. Ex: `--cuda_ep_options device_id=0,arena_extend_strategy=kNextPowerOfTwo`. Refer to [CUDA Execution Provider Options](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options) for a complete list of options.
 
 
-### Validation Configuration 
-- **--percent_mismatch**: The allowed percentage of values to be incorrect when comparing given outputs to ORT outputs. 
+### Validation Configuration
+- **--percent_mismatch**: The allowed percentage of values to be incorrect when comparing given outputs to ORT outputs.
 - **--rtol**: The relative tolerance for validating ORT outputs.
 - **--atol**: The absolute tolerance for validating ORT outputs.
 
@@ -148,7 +148,7 @@ The output of running benchmark:
 ```
 python comparison_script.py -p "prev" -c "current" -o "output.csv"
 ```
-- **compare_latency.py**: creates a csv file with any regressions in average latencies 
+- **compare_latency.py**: creates a csv file with any regressions in average latencies
 - **new_failures.py**: creates a csv file with any new failures
 
 ## Others
@@ -169,18 +169,18 @@ ort_build_latest.py: This script should be run before running run_perf_machine.s
 - **-c, --cuda_home**: CUDA home directory.
 - **-b, --branch**: (*default: master*) ORT branch name you are perf testing on.
 
-### Running Perf Script 
-run_perf_docker.sh: Runs the perf script in docker environment. 
+### Running Perf Script
+run_perf_docker.sh: Runs the perf script in docker environment.
 - **-d, --docker_image**: Name of perf docker image.
 - **-o, --option**: Name of which models you want to run {i.e. selected-models}
 - **-p, --perf_dir**: Path to perf directory.
 - **-m, --model_path**: Model path relative to workspace (/). If option is selected-models, include path to models either json or folder.
 
-run_perf_machine.sh: Runs the perf script directly. 
+run_perf_machine.sh: Runs the perf script directly.
 - **-o, --option**: Name of which models you want to run {i.e. selected-models}
 - **-m, --model_path**: Model path relative to workspace (~/). If option is selected-models, include path to models either json or folder.
 
 ## Dependencies
 - When inferencing model using CUDA float16, this script following script to convert nodes in model graph from float32 to float16. It also modifies the converting script a little bit to better cover more model graph conversion.
 https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
-- For dynamic input shape models, the script runs symbolic shape inference on the model. https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/symbolic_shape_infer.py
+- For dynamic input shape models, the script runs symbolic shape inference on the model. https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py

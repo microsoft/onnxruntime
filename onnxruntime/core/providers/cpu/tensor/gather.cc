@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-//https://github.com/onnx/onnx/blob/master/docs/Operators.md#Gather
+//https://github.com/onnx/onnx/blob/main/docs/Operators.md#Gather
 #include "core/providers/cpu/tensor/gather.h"
 #include "core/common/common.h"
+#include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/framework/op_kernel_type_control_utils.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/op_kernel_type_control.h"
@@ -26,8 +28,6 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 #endif
 }  // namespace op_kernel_type_control
 
-using IndexTypes = ORT_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
-                                                                  Gather, Input, 1);
 using EnabledIndexTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(kCpuExecutionProvider, kOnnxDomain,
                                                                          Gather, Input, 1);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -36,7 +36,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     10,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -45,7 +45,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     12,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 ONNX_CPU_OPERATOR_KERNEL(
@@ -53,7 +53,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     13,
     KernelDefBuilder()
         .TypeConstraint("T", DataTypeImpl::AllTensorTypes())
-        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<IndexTypes>(), BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
+        .TypeConstraint("Tind", BuildKernelDefConstraintsFromTypeList<EnabledIndexTypes>()),
     Gather);
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const {
@@ -63,20 +63,20 @@ Status GatherBase::PrepareForCompute(OpKernelContext* context, Prepare& p) const
   const TensorShape& indices_shape = p.indices_tensor->Shape();
 
   const auto input_rank = input_data_shape.NumDimensions();
-  p.axis = HandleNegativeAxis(axis_, input_rank);
+  p.axis = HandleNegativeAxis(axis_, narrow<int64_t>(input_rank));
 
   std::vector<int64_t> shape;
   shape.reserve(input_rank - 1 + indices_shape.NumDimensions());
 
   // replace the dimension for p.axis with the shape from the indices
   for (int64_t i = 0; i < p.axis; ++i)
-    shape.push_back(input_data_shape[i]);
+    shape.push_back(input_data_shape[narrow<size_t>(i)]);
 
   for (const auto dim : indices_shape.GetDims())
     shape.push_back(dim);
 
   for (int64_t i = p.axis + 1; i < static_cast<int64_t>(input_rank); ++i)
-    shape.push_back(input_data_shape[i]);
+    shape.push_back(input_data_shape[narrow<size_t>(i)]);
 
   p.output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
@@ -88,10 +88,10 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
                       const size_t element_bytes, const int64_t block_size, const int64_t M,
                       const int64_t N, const int64_t data_batch_bytes, const int64_t gathered_batch_bytes,
                       const TensorShape& input_data_shape, const int64_t axis, concurrency::ThreadPool* tp) {
-  const Tin* indices_data = indices_tensor->template Data<Tin>();
+  const Tin* indices_data = indices_tensor->Data<Tin>();
 
   // Check the indices first in case there's a out of bound index.
-  auto axis_dim_limit = input_data_shape[axis];
+  auto axis_dim_limit = input_data_shape[narrow<size_t>(axis)];
 
   for (int64_t i = 0; i < N; ++i) {
     Tin idx = indices_data[i];
@@ -117,10 +117,10 @@ Status GatherCopyData(const Tensor* indices_tensor, const uint8_t* src_base, uin
       reinterpret_cast<std::string*>(dst_base)[dst_offset / element_bytes] =
           reinterpret_cast<const std::string*>(src_base)[src_offset / element_bytes];
     } else {
-      memcpy(dst_base + dst_offset, src_base + src_offset, block_size);
+      memcpy(dst_base + dst_offset, src_base + src_offset, narrow<size_t>(block_size));
     }
   };
-  concurrency::ThreadPool::TryParallelFor(tp, M * N, static_cast<double>(block_size),
+  concurrency::ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(M) * N, static_cast<double>(block_size),
                                           [&lambda](ptrdiff_t first, ptrdiff_t last) {
                                             for (int index = static_cast<int>(first), end = static_cast<int>(last); index < end; ++index) {
                                               lambda(index);
@@ -139,12 +139,12 @@ Status Gather::Compute(OpKernelContext* context) const {
   bool is_string_type = p.input_tensor->IsDataTypeString();
 
   const size_t element_bytes = p.input_tensor->DataType()->Size();
-  const int64_t block = input_data_shape.SizeFromDimension(p.axis + 1);
-  const int64_t block_size = block * element_bytes;
-  const int64_t M = input_data_shape.SizeToDimension(p.axis);
+  const int64_t block = input_data_shape.SizeFromDimension(SafeInt<size_t>(p.axis) + 1);
+  const int64_t block_size = SafeInt<int64_t>(element_bytes) * block ;
+  const int64_t M = input_data_shape.SizeToDimension(narrow<size_t>(p.axis));
   const int64_t N = p.indices_tensor->Shape().Size();
-  const int64_t data_batch_bytes = input_data_shape.SizeFromDimension(p.axis) * element_bytes;
-  const int64_t gathered_batch_bytes = N * block * element_bytes;
+  const int64_t data_batch_bytes = input_data_shape.SizeFromDimension(narrow<size_t>(p.axis)) * element_bytes;
+  const int64_t gathered_batch_bytes = N * block * SafeInt<int64_t>(element_bytes);
 
   const auto* src_base = static_cast<const uint8_t*>(p.input_tensor->DataRaw());
   auto* dst_base = static_cast<uint8_t*>(p.output_tensor->MutableDataRaw());

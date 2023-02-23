@@ -6,7 +6,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/op.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;

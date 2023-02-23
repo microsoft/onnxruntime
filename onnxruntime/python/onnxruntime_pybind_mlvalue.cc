@@ -75,14 +75,14 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.begin(), span.end());
   TensorShape shape(std::move(dims));
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.cbegin(), span.cend());
+  std::vector<int64_t> dims(span.begin(), span.end());
   TensorShape shape(std::move(dims));
   return shape;
 }
@@ -160,19 +160,23 @@ AllocatorPtr GetCudaAllocator(OrtDevice::DeviceId id) {
   // Current approach is not thread-safe, but there are some bigger infra pieces to put together in order to make
   // multi-threaded CUDA allocation work we need to maintain a per-thread CUDA allocator
 
-  static auto* id_to_allocator_map = new std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>();
+  // We are leaking this map so we do not accidentally destroy CUDA Allocator instance
+  // after we unloaded CUDA provider library. Appeasing static analysis warning and using make_unique.
+  static auto* id_to_allocator_map = std::make_unique<std::unordered_map<OrtDevice::DeviceId, AllocatorPtr>>().release();
 
-  if (id_to_allocator_map->find(id) == id_to_allocator_map->end()) {
+  auto hit = id_to_allocator_map->find(id);
+  if (hit == id_to_allocator_map->end()) {
     // TODO: Expose knobs so that users can set fields associated with OrtArenaCfg so that we can pass it to the following method
-    id_to_allocator_map->insert({id, GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr)});
+    auto cuda_allocator = GetProviderInfo_CUDA().CreateCudaAllocator(id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, nullptr);
+    hit = id_to_allocator_map->emplace(id, std::move(cuda_allocator)).first;
   }
 
-  return (*id_to_allocator_map)[id];
+  return hit->second;
 }
 
 std::unique_ptr<IDataTransfer> GetGPUDataTransfer() {
   // Using default stream
-  return GetProviderInfo_CUDA().CreateGPUDataTransfer(nullptr);
+  return GetProviderInfo_CUDA().CreateGPUDataTransfer();
 }
 
 #endif
@@ -491,26 +495,24 @@ static void CreateSequenceOfTensors(AllocatorPtr alloc, const std::string& name_
     throw std::runtime_error("Input is not of sequence type");
   }
 
+  // set the seq type
+  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
+      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
+  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
+
   // populate the seq
-  std::vector<Tensor> tensors;
   auto list_size = PyList_Size(pylist_obj);
   if (list_size > 0) {
-    tensors.resize(list_size);
     for (Py_ssize_t i = 0; i < list_size; ++i) {
       auto* py_obj = PyList_GetItem(pylist_obj, i);
       if (!PyObjectCheck_NumpyArray(py_obj)) {
         throw std::runtime_error("CreateSequenceOfTensors: Input is not a tensor");
       }
       auto p_tensor = CreateTensor(alloc, name_input, reinterpret_cast<PyArrayObject*>(py_obj));
-      tensors[i] = std::move(*p_tensor);
+      p_seq_tensors->Add(std::move(*p_tensor));
     }
   }
 
-  // set the seq type
-  MLDataType seq_dtype = OrtTypeInfo::ElementTypeFromProto(
-      static_cast<ONNX_NAMESPACE::TensorProto_DataType>(type_proto.sequence_type().elem_type().tensor_type().elem_type()));
-  auto p_seq_tensors = std::make_unique<TensorSeq>(seq_dtype);
-  p_seq_tensors->SetElements(std::move(tensors));
   auto ml_tensor_sequence = DataTypeImpl::GetType<TensorSeq>();
   p_mlvalue->Init(p_seq_tensors.release(),
                   ml_tensor_sequence,

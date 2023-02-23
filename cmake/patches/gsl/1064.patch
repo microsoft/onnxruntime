@@ -1,0 +1,26 @@
+diff --git a/include/gsl/assert b/include/gsl/assert
+index a6012048..a5c216f8 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -48,7 +48,7 @@
+ #if defined(__clang__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress("x")]]
+ #else
+-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
++#if defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #else
+ #define GSL_SUPPRESS(x)
+diff --git a/include/gsl/byte b/include/gsl/byte
+index 9231340b..f92a91c9 100644
+--- a/include/gsl/byte
++++ b/include/gsl/byte
+@@ -24,7 +24,7 @@
+ #if defined(__clang__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress("x")]]
+ #else
+-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER)
++#if defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #else
+ #define GSL_SUPPRESS(x)

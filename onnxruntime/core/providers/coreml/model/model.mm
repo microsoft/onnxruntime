@@ -17,6 +17,10 @@
 #import <CoreML/CoreML.h>
 #import <Foundation/Foundation.h>
 
+// force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
+// to manually do this
+asm(".linker_option \"-framework\", \"CoreML\"");
+
 // Model input for a CoreML model
 // All the input onnx tensors values will be converted to MLMultiArray(s)
 @interface OnnxTensorFeatureProvider : NSObject <MLFeatureProvider> {
@@ -186,7 +190,9 @@
   compiled_model_path_ = [compileUrl path];
 
   MLModelConfiguration* config = [MLModelConfiguration alloc];
-  config.computeUnits = MLComputeUnitsAll;
+  config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
+                            ? MLComputeUnitsCPUOnly
+                            : MLComputeUnitsAll;
   _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
 
   if (error != NULL) {
@@ -212,7 +218,6 @@
   }
 
   MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-  options.usesCPUOnly = coreml_flags_ & COREML_FLAG_USE_CPU_ONLY;
   NSError* error = nil;
   id<MLFeatureProvider> output_feature = [_model predictionFromFeatures:input_feature
                                                                 options:options
@@ -264,7 +269,7 @@
         break;
       }
       // For this case, since Coreml Spec only uses int32 for model output while onnx provides
-      // int64 for model output data type. We are doing a type casting (int32 -> int64) here 
+      // int64 for model output data type. We are doing a type casting (int32 -> int64) here
       // when copying the model to ORT
       case ONNX_NAMESPACE::TensorProto_DataType_INT64:
         if (model_output_type == MLMultiArrayDataTypeInt32) {
@@ -309,9 +314,11 @@ class Execution {
 };
 
 Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags) {
-  execution_ = [[CoreMLExecution alloc] initWithPath:path
-                                              logger:logger
-                                        coreml_flags:coreml_flags];
+  @autoreleasepool {
+    execution_ = [[CoreMLExecution alloc] initWithPath:path
+                                                logger:logger
+                                          coreml_flags:coreml_flags];
+  }
 }
 
 Status Execution::LoadModel() {
@@ -320,7 +327,10 @@ Status Execution::LoadModel() {
   }
 
   if (HAS_VALID_BASE_OS_VERSION) {
-    auto status = [execution_ loadModel];
+    Status status{};
+    @autoreleasepool {
+      status = [execution_ loadModel];
+    }
     model_loaded = status.IsOK();
     return status;
   }
@@ -333,7 +343,9 @@ Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>&
   ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
 
   if (HAS_VALID_BASE_OS_VERSION) {
-    return [execution_ predict:inputs outputs:outputs];
+    @autoreleasepool {
+      return [execution_ predict:inputs outputs:outputs];
+    }
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+ ");

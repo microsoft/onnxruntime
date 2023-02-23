@@ -12,7 +12,7 @@
 #include <vector>
 #include <string>
 #include <map>
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <stddef.h>
@@ -148,7 +148,8 @@ struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;
-struct TensorSeq;
+class TensorSeq;
+class SessionState;
 
 class If;
 class Loop;
@@ -165,12 +166,15 @@ enum class Mode : int;
 struct EinsumComputePreprocessor;
 template <typename T>
 struct EinsumTypedComputeProcessor;
+struct SessionOptions;
 
 namespace contrib {
 class ATen;
 class Group;
 class PassThrough;
 class YieldOp;
+class AdamWOptimizerBase;
+class SGDOptimizerV2Base;
 }  // namespace contrib
 
 class UnsqueezeBase;
@@ -231,11 +235,14 @@ constexpr const char* kMSDomain = "com.microsoft";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
+constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
 constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
+constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
+constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)> >;
@@ -249,16 +256,25 @@ std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const c
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer(void* stream);
+std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
-                                                   const std::string& provider_type,
-                                                   gsl::span<const KernelRegistry* const> kernel_registries,
+                                                   const IExecutionProvider::IKernelLookup& kernel_lookup,
                                                    gsl::span<const NodeIndex> tentative_nodes);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
+namespace profiling {
+
+std::string demangle(const char* name);
+std::string demangle(const std::string& name);
+
+}  // namespace profiling
+
 namespace logging {
+
+unsigned int GetThreadId();
+unsigned int GetProcessId();
 
 struct Category {
   static const char* onnxruntime;  ///< General output
@@ -300,6 +316,10 @@ template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
 
 }  // namespace utils
+
+// This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.
+// So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
+void InitProviderOrtApi();
 
 }  // namespace onnxruntime
 

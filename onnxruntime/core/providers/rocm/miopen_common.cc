@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "miopen_common.h"
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 
@@ -81,6 +81,13 @@ miopenDataType_t MiopenTensor::GetDataType() {
   ORT_THROW("miopen engine currently supports only single/half/int32/int8 precision data types.");
 }
 
+#if ROCM_VERSION >= 50000
+template<>
+miopenDataType_t MiopenTensor::GetDataType<double>() {
+  return miopenDouble;
+}
+#endif
+
 template<>
 miopenDataType_t MiopenTensor::GetDataType<float>() {
   return miopenFloat;
@@ -106,63 +113,6 @@ template <>
 miopenDataType_t MiopenTensor::GetDataType<int8_t>() {
   return miopenInt8;
 }
-
-template <>
-const float Consts<float>::One = 1;
-
-template <>
-const double Consts<double>::One = 1;
-
-template <>
-const float Consts<float>::Zero = 0;
-
-template <>
-const double Consts<double>::Zero = 0;
-
-const float Consts<half>::Zero = 0;
-
-const float Consts<half>::One = 1;
-
-const float Consts<BFloat16>::Zero = 0;
-
-const float Consts<BFloat16>::One = 1;
-
-#if ROCM_VERSION >= 40300
-const float ReduceConsts<half>::One = 1;
-
-const float ReduceConsts<half>::Zero = 0;
-
-const float ReduceConsts<BFloat16>::One = 1;
-
-const float ReduceConsts<BFloat16>::Zero = 0;
-#else
-// Up until ROCm 4.2, miopenReduceTensor() required alpha/beta to be the same data
-// type as the input type. This differs from cudnnReduceTensor() and other
-// MIOpen/cuDNN APIs where alpha/beta are float when input type is half (float16).
-template <>
-const half ReduceConsts<half>::One = 1.f;
-
-template <>
-const half ReduceConsts<half>::Zero = 0.f;
-
-template <>
-const BFloat16 ReduceConsts<BFloat16>::One = 1.f;
-
-template <>
-const BFloat16 ReduceConsts<BFloat16>::Zero = 0.f;
-#endif
-
-template <>
-const float ReduceConsts<float>::One = 1;
-
-template <>
-const double ReduceConsts<double>::One = 1;
-
-template <>
-const float ReduceConsts<float>::Zero = 0;
-
-template <>
-const double ReduceConsts<double>::Zero = 0;
 
 }  // namespace rocm
 }  // namespace onnxruntime

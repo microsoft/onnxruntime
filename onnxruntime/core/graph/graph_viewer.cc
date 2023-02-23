@@ -91,8 +91,8 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     }
 
     // create set of node indexes as we need quick lookups and don't care about the order
-    filtered_node_indices_ = std::unordered_set<NodeIndex>(filter_info->nodes.cbegin(),
-                                                           filter_info->nodes.cend());
+    filtered_node_indices_ = FilteredNodeSet(filter_info->nodes.cbegin(),
+                                             filter_info->nodes.cend());
 
     const auto& metadef = filter_info->GetMetaDef();
 

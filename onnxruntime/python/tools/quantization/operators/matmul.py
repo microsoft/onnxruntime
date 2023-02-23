@@ -3,29 +3,62 @@ import itertools
 import onnx
 from onnx import onnx_pb as onnx_proto
 
-from ..quant_utils import QuantizedValue, QuantizedValueType, find_by_name, get_mul_node
+from ..quant_utils import TENSOR_NAME_QUANT_SUFFIX, QuantizedValue, QuantizedValueType, find_by_name, get_mul_node
 from .base_operator import QuantOperatorBase
 from .qdq_base_operator import QDQOperatorBase
+
+
+class QOpMatMul(QuantOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def should_quantize(self):
+        if not self.quantizer.should_quantize_node(self.node):
+            return False
+
+        if (not self.quantizer.is_float_tensor(self.node.input[1])) and (
+            not self.quantizer.is_float_tensor(self.node.input[0])
+        ):
+            return False
+
+        # do not quantize non-constant B matrices for matmul
+        if self.quantizer.q_matmul_const_b_only:
+            if not self.quantizer.find_initializer_in_path(self.node.input[1]):
+                print("Ignore MatMul due to non constant B: {}[{}]".format(self.quantizer.graph_scope, self.node.name))
+                return False
+        return True
+
 
 """
     Used when quantize mode is QuantizationMode.IntegerOps.
 """
 
 
-class MatMulInteger(QuantOperatorBase):
+class MatMulInteger(QOpMatMul):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
     def quantize(self):
         node = self.node
         assert node.op_type == "MatMul"
-
+        #  Get Quantized from both activation(input[0]) and weight(input[1])
         (
             quantized_input_names,
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
+        ) = self.quantizer.quantize_activation(node, [0])
+
+        (
+            quantized_input_names_weight,
+            zero_point_names_weight,
+            scale_names_weight,
+            nodes_weight,
+        ) = self.quantizer.quantize_weight(node, [1], reduce_range=True, op_level_per_channel=True)
+        quantized_input_names.extend(quantized_input_names_weight)
+        zero_point_names.extend(zero_point_names_weight)
+        scale_names.extend(scale_names_weight)
+        nodes.extend(nodes_weight)
 
         matmul_integer_output = node.output[0] + "_output_quantized"
         matmul_integer_name = node.name + "_quant" if node.name != "" else ""
@@ -83,20 +116,32 @@ class MatMulInteger(QuantOperatorBase):
 """
 
 
-class QLinearMatMul(QuantOperatorBase):
+class QLinearMatMul(QOpMatMul):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
     def quantize(self):
         node = self.node
         assert node.op_type == "MatMul"
-
+        #  Get Quantized from both activation(input[0]) and weight(input[1])
         (
             quantized_input_names,
             zero_point_names,
             scale_names,
             nodes,
-        ) = self.quantizer.quantize_inputs(node, [0, 1], reduce_range=True, op_level_per_channel=True)
+        ) = self.quantizer.quantize_activation(node, [0])
+
+        (
+            quantized_input_names_weight,
+            zero_point_names_weight,
+            scale_names_weight,
+            nodes_weight,
+        ) = self.quantizer.quantize_weight(node, [1], reduce_range=True, op_level_per_channel=True)
+        quantized_input_names.extend(quantized_input_names_weight)
+        zero_point_names.extend(zero_point_names_weight)
+        scale_names.extend(scale_names_weight)
+
+        nodes.extend(nodes_weight)
         (
             data_found,
             output_scale_name,
@@ -107,7 +152,7 @@ class QLinearMatMul(QuantOperatorBase):
         if not data_found or quantized_input_names is None:
             return super().quantize()
 
-        qlinear_matmul_output = node.output[0] + "_quantized"
+        qlinear_matmul_output = node.output[0] + TENSOR_NAME_QUANT_SUFFIX
         qlinear_matmul_name = node.name + "_quant" if node.name != "" else ""
 
         qlinear_matmul_inputs = []
@@ -161,6 +206,6 @@ class QDQMatMul(QDQOperatorBase):
             # only support per-channel quantization on weight
             if self.quantizer.is_per_channel() and find_by_name(tensor_name, self.quantizer.model.initializer()):
                 channel_axis = self.quantizer.qdq_op_type_per_channel_support_to_axis.get(node.op_type, 1)
-                self.quantizer.quantize_tensor_per_channel(tensor_name, channel_axis)
+                self.quantizer.quantize_weight_tensor_per_channel(tensor_name, channel_axis)
             else:
-                self.quantizer.quantize_tensor(tensor_name)
+                self.quantizer.quantize_activation_tensor(tensor_name)

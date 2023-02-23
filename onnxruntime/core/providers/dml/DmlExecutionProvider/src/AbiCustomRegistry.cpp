@@ -7,7 +7,7 @@
 namespace Windows::AI::MachineLearning::Adapter
 {
 
-AbiCustomRegistry::AbiCustomRegistry() : 
+AbiCustomRegistry::AbiCustomRegistry() :
     m_kernelRegistry(std::make_shared<onnxruntime::CustomRegistry>()),
     m_internalRegInfoMap(std::make_shared<InternalRegistrationInfoMap>())
 {
@@ -83,7 +83,7 @@ void AbiCustomRegistry::SetAttributesAndDefaults(onnx::OpSchema& schema, const M
         if (defaultVal == defaultAttributes.end())
         {
             schema.Attr(attribute.name, "", ToProto(attribute.type), attribute.required);
-        } 
+        }
         else
         {
             ML_CHECK_BOOL(!attribute.required);
@@ -262,9 +262,9 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
     // TODO - Split apart multiple op-sets with a common domain into multiple registries, as required by Lotus
     // for correct lookup (Bug 4662).
     THROW_IF_NOT_OK(m_customRegistryOpsetVerMap[registryKey]->RegisterOpSet(
-        schemaVector, 
-        opSetId->domain, 
-        baseline_version, 
+        schemaVector,
+        opSetId->domain,
+        baseline_version,
         opSetId->version));
 
     return S_OK;
@@ -272,7 +272,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorSetSchema(
     ORT_CATCH_RETURN
 }
 
-// Convert the list of attribute defaults in a kernel registration into a 
+// Convert the list of attribute defaults in a kernel registration into a
 // map of AttributeValue entries, which own their own memory
 AttributeMap AbiCustomRegistry::GetDefaultAttributes(
     const MLOperatorKernelDescription* opKernel
@@ -328,7 +328,7 @@ AttributeMap AbiCustomRegistry::GetDefaultAttributes(
 HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     const MLOperatorKernelDescription* opKernel,
     IMLOperatorKernelFactory* operatorKernelFactory,
-    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept 
+    _In_opt_ IMLOperatorShapeInferrer* shapeInferrer) const noexcept
 {
     return RegisterOperatorKernel(opKernel, operatorKernelFactory, shapeInferrer, nullptr, false, false, false);
 }
@@ -364,13 +364,13 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         return E_INVALIDARG;
     }
-    
+
     const char* providerType = nullptr;
     if (opKernel->executionOptions != 0)
     {
-        return E_INVALIDARG;        
-    }    
-    
+        return E_INVALIDARG;
+    }
+
     if (opKernel->executionType == MLOperatorExecutionType::Cpu)
     {
         providerType = onnxruntime::kCpuExecutionProvider;
@@ -400,7 +400,15 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
     {
         builder.InputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
     }
-        
+    else if (name == "Shape")
+    {
+        builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
+    }
+    else if (name == "Size")
+    {
+        builder.OutputMemoryType(::OrtMemType::OrtMemTypeCPUInput, 0);
+    }
+
     std::vector<uint32_t> constantCpuInputCapture;
     constantCpuInputCapture.assign(requiredConstantCpuInputs, requiredConstantCpuInputs + constantCpuInputCount);
 
@@ -422,13 +430,14 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
 
         for (uint32_t j = 0; j < opKernel->typeConstraints[i].allowedTypeCount; ++j)
         {
+            auto edgeType = opKernel->typeConstraints[i].allowedTypes[j].edgeType;
             // TODO - handle non-tensor types
-            if (opKernel->typeConstraints[i].allowedTypes[j].edgeType != MLOperatorEdgeType::Tensor)
+            if (edgeType == MLOperatorEdgeType::Undefined)
             {
                 ORT_THROW_IF_FAILED(E_NOTIMPL);
             }
 
-            types.push_back(ToTensorDataType(opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
+            types.push_back(ToMLDataType(edgeType, opKernel->typeConstraints[i].allowedTypes[j].tensorDataType));
         }
 
         builder.TypeConstraint(opKernel->typeConstraints[i].typeLabel, types);
@@ -457,7 +466,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
                     constantCpuInputCapture,
                     shapeInferrerCapture.Get(),
                     &defaultAttributesCapture);
-			return Status::OK();
+            return Status::OK();
         };
 
     onnxruntime::KernelCreateInfo create_info(builder.Build(), lotusKernelCreateFn);
@@ -472,15 +481,22 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         if (supportsGraph)
         {
             GraphNodeFactoryRegistration graphReg;
-            graphReg.factory = 
-                [kernelFactoryCapture,
+            graphReg.factory = [
+                kernelFactoryCapture,
                 shapeInferrerCapture,
                 defaultAttributesCapture,
-                constantCpuInputCapture](const onnxruntime::Node& node, MLOperatorTensorGetter& constantInputGetter, const void* executionHandle, DmlGraphNodeCreateInfo* graphNodeCreateInfo)
+                constantCpuInputCapture
+                ]
+                (
+                    const onnxruntime::Node& node,
+                    MLOperatorTensorGetter& constantInputGetter,
+                    const void* executionHandle,
+                    /*out*/ DmlGraphNodeCreateInfo* graphNodeCreateInfo
+                )
                 {
                     onnxruntime::ProtoHelperNodeContext nodeContext(node);
                     onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
-                
+
                     // Use the same list of required constant inputs for the shape inferrer and the kernel.
                     EdgeShapes outputShapes;
                     InferAndVerifyOutputSizes(node, &defaultAttributesCapture, shapeInferrerCapture.Get(), constantCpuInputCapture, constantInputGetter, nullptr, outputShapes);
@@ -517,7 +533,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
             {
                 onnxruntime::ProtoHelperNodeContext nodeContext(node);
                 onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> protoHelper(&nodeContext);
-                              
+
                 // Create the kernel while allowing input shape and output shape queries according to options
                 ComPtr<MLSupportQueryContext> supportContext = MLSupportQueryContext::Create(
                         &protoHelper,
@@ -537,8 +553,7 @@ HRESULT STDMETHODCALLTYPE AbiCustomRegistry::RegisterOperatorKernel(
         // Currently unsupported for external operators
         if (canAliasFirstInput ||
             supportsGraph ||
-            requiredInputCountForGraph ||
-            requiredConstantCpuInputs)
+            requiredInputCountForGraph)
         {
             ORT_THROW_HR(E_INVALIDARG);
         }

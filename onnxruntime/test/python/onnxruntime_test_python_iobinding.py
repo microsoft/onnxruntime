@@ -1,3 +1,7 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# pylint: disable=C0115,W0212,C0103,C0114
+
 import unittest
 
 import numpy as np
@@ -10,7 +14,7 @@ from onnx.mapping import NP_TYPE_TO_TENSOR_TYPE
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
-from onnxruntime.capi._pybind_state import SessionIOBinding
+from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 
 
 class TestIOBinding(unittest.TestCase):
@@ -122,6 +126,8 @@ class TestIOBinding(unittest.TestCase):
                     bind.bind_ortvalue_input("X", ort_value)
                     bind.bind_output("Y", device)
                     sess._sess.run_with_iobinding(bind, None)
+                    ortvaluevector = bind.get_outputs()
+                    self.assertIsInstance(ortvaluevector, OrtValueVector)
                     ortvalue = bind.get_outputs()[0]
                     y = ortvalue.numpy()
                     assert_almost_equal(x, y)

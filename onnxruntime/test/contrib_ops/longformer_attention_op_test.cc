@@ -29,6 +29,7 @@ static void RunAttentionTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
 
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   bool enable_cpu = false;
   if (enable_cpu || enable_cuda) {
     OpTester tester("LongformerAttention", 1, onnxruntime::kMSDomain);
@@ -64,17 +65,18 @@ static void RunAttentionTest(
 
     tester.AddInput<int32_t>("global", global_dims, global_data);
 
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     if (enable_cuda) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+    if (enable_cpu) {
+      execution_providers.push_back(DefaultCpuExecutionProvider());
     }
 
-    if (enable_cpu) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultCpuExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-    }
+    tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
 
@@ -110,9 +112,9 @@ static void GetTinyLongformerData(
       0.05767727f, 0.03186193f, -0.01058707f, 0.00119207f, -0.00613069f, 0.00137152f, 0.00948873f, -0.01503408f};
 
   bias_data = {
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+      0.02f, -0.01f, -0.03f, 0.02f, 0.01f, 0.0005f, 0.01f, -0.02f,
+      0.01f, 0.005f, 0.01f, -0.01f, 0.02f, 0.008f, 0.01f, -0.001f,
+      -0.03f, 0.03f, 0.01f, -0.002f, 0.002f, -0.03f, 0.01f, 0.008f};
 
   global_weight_data = {
       0.0294202f, -0.01245436f, -0.03289853f, 0.02588101f, 0.01704302f, 0.0005645f, 0.01802721f, -0.02043311f,
@@ -141,9 +143,9 @@ static void GetTinyLongformerData(
       -0.01059994f, 0.01091084f, -0.00090001f, -0.00103661f, 0.0260281f, -0.01601363f, -0.00342217f, 0.0198724f};
 
   global_bias_data = {
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+      -0.01f, 0.01f, -0.0009f, -0.001f, 0.02f, -0.01f, -0.003f, 0.01f,
+      -0.004f, 0.001f, -0.03f, 0.006f, -0.02f, 0.008f, 0.009f, 0.004f,
+      -0.01f, -0.002f, -0.01f, 0.003f, 0.03f, -0.01f, -0.001f, 0.02f};
 }
 
 // Run test on tiny longformer model with batch size 1 and sequence length 4 or 8
@@ -198,7 +200,7 @@ static void RunTinyLongformerBatch1(
   return RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, use_float16);
 }
 
-TEST(LongformerAttentionTest, LongformerAttention_NoGlobal) {
+TEST(LongformerAttentionTest, LongformerAttention_Format1_NoGlobal) {
   // last word is masked.
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
 
@@ -206,61 +208,38 @@ TEST(LongformerAttentionTest, LongformerAttention_NoGlobal) {
   std::vector<int> global_data = {0, 0, 0, 0, 0, 0, 0, 0};
 
   std::vector<float> output_data = {
-      0.0793f, 0.0678f, 0.0705f, 0.0456f, 0.0197f, -0.0301f, 0.0010f, -0.0511f,
-      0.0607f, 0.0545f, 0.0659f, 0.0324f, 0.0102f, -0.0317f, 0.0017f, -0.0328f,
-      0.0738f, 0.0416f, 0.0322f, 0.0258f, 0.0063f, -0.0222f, 0.0053f, -0.0309f,
-      0.0725f, 0.0451f, 0.0149f, 0.0241f, -0.0071f, -0.0231f, 0.0028f, -0.0369f,
-      0.0738f, 0.0303f, 0.0137f, 0.0230f, -0.0089f, -0.0342f, -0.0085f, -0.0450f,
-      0.0658f, 0.0278f, -0.0035f, 0.0129f, -0.0117f, -0.0357f, -0.0190f, -0.0424f,
-      0.0860f, 0.0322f, -0.0218f, 0.0194f, -0.0096f, -0.0354f, -0.0265f, -0.0639f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+      0.04935503f, 0.09777762f, 0.080508679f, 0.043586157f, 0.021670891f, -0.060086727f, 0.011003745f, -0.043082085f,
+      0.030698329f, 0.084516019f, 0.075875372f, 0.030447651f, 0.012232142f, -0.061684664f, 0.011670727f, -0.024751294f,
+      0.043819577f, 0.071589649f, 0.042219087f, 0.023776785f, 0.0082963137f, -0.052200478f, 0.015257062f, -0.022881128f,
+      0.042480543f, 0.075072303f, 0.024976324f, 0.02212034f, -0.0051459596f, -0.053096619f, 0.012826156f, -0.028897678f,
+      0.043811984f, 0.060341693f, 0.023737304f, 0.02106005f, -0.006941377f, -0.064169027f, 0.0014586616f, -0.037011269f,
+      0.035779588f, 0.05780342f, 0.0065651359f, 0.0108707f, -0.009737955f, -0.065662488f, -0.0089816339f, -0.034388386f,
+      0.056027573f, 0.062186595f, -0.01182458f, 0.017458128f, -0.007595225f, -0.06538119f, -0.016503287f, -0.055929951f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
 }
 
-/*
-* This following case is generated from the first self-attention of a tiny longformer model like the following:
-    import torch
-    from transformers import AutoModel
-    model = AutoModel.from_pretrained("patrickvonplaten/longformer-random-tiny")
-    input_ids = torch.arange(7).unsqueeze(0)
-    attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=input_ids.device)
-    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=input_ids.device)
-    global_attention_mask[:, [0, 1,]] = 1
-    outputs = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
-*/
-
-TEST(LongformerAttentionTest, LongformerAttention_GlobalStart) {
+TEST(LongformerAttentionTest, LongformerAttention_Format1_GlobalStart) {
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
 
   // Global at the start of the sequence
   std::vector<int> global_data = {1, 1, 0, 0, 0, 0, 0, 0};
 
   std::vector<float> output_data = {
-      -0.0356f, 0.0521f, -0.0198f, 0.0005f, 0.0245f, -0.0014f, -0.0170f, -0.0123f,
-      -0.0356f, 0.0521f, -0.0198f, 0.0005f, 0.0245f, -0.0014f, -0.0169f, -0.0122f,
-      0.0738f, 0.0416f, 0.0322f, 0.0258f, 0.0063f, -0.0222f, 0.0053f, -0.0309f,
-      0.0719f, 0.0473f, 0.0291f, 0.0279f, 0.0008f, -0.0289f, 0.0004f, -0.0416f,
-      0.0716f, 0.0449f, 0.0283f, 0.0269f, 0.0017f, -0.0332f, -0.0104f, -0.0461f,
-      0.0659f, 0.0457f, 0.0193f, 0.0208f, 0.0017f, -0.0341f, -0.0176f, -0.0445f,
-      0.0780f, 0.0519f, 0.0128f, 0.0263f, 0.0056f, -0.0335f, -0.0219f, -0.0578f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+      -0.045565117f, 0.05013489f, -0.029825294f, 0.0034495876f, 0.054528885f, -0.011395404f, -0.01799028f, 0.007753480f,
+      -0.04556668f, 0.05010877f, -0.029804626f, 0.003465367f, 0.054491505f, -0.011396205f, -0.017886724f, 0.0078192977f,
+      0.043819577f, 0.071589649f, 0.042219087f, 0.023776785f, 0.0082963137f, -0.052200478f, 0.015257062f, -0.022881128f,
+      0.041874513f, 0.077329829f, 0.039112404f, 0.025902566f, 0.0027558794f, -0.058892913f, 0.010357748f, -0.03357362f,
+      0.041588653f, 0.074910186f, 0.03832721f, 0.024912203f, 0.0037148837f, -0.06321992f, -0.00037646585f, -0.03805575f,
+      0.035857923f, 0.075681195f, 0.029317651f, 0.018762534f, 0.0036572944f, -0.064060912f, -0.007641451f, -0.03648905f,
+      0.048029676f, 0.081865683f, 0.022818407f, 0.024291465f, 0.0076162969f, -0.063553929f, -0.011883155f, -0.04981004f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
 }
 
-/*
-* This following case is generated from the first self-attention of a tiny longformer model like the following:
-    import torch
-    from transformers import AutoModel
-    model = AutoModel.from_pretrained("patrickvonplaten/longformer-random-tiny")
-    input_ids = torch.LongTensor([[97, 24, 71, 5, 8]]))
-    attention_mask = torch.ones(input_ids.shape, dtype=torch.long, device=input_ids.device)
-    global_attention_mask = torch.zeros(input_ids.shape, dtype=torch.long, device=input_ids.device)
-    global_attention_mask[:, [0, 1,]] = 1
-    outputs = model(input_ids, attention_mask=attention_mask, global_attention_mask=global_attention_mask)
-*/
-TEST(LongformerAttentionTest, LongformerAttention_UseCompactMemory) {
+TEST(LongformerAttentionTest, LongformerAttention_Format1_NoCompactMemory) {
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f, -10000.0f, -10000.0f};
 
   std::vector<int> global_data = {1, 1, 0, 0, 0, 0, 0, 0};
@@ -276,43 +255,43 @@ TEST(LongformerAttentionTest, LongformerAttention_UseCompactMemory) {
       0.5219f, 0.1777f, 0.7090f, -2.1933f, 0.5258f, -0.0639f, -0.8511f, 1.1738f};
 
   std::vector<float> output_data = {
-      -0.0330f, 0.0517f, -0.0292f, 0.0194f, -0.0154f, 0.0012f, -0.0041f, -0.0518f,
-      -0.0331f, 0.0517f, -0.0291f, 0.0194f, -0.0154f, 0.0011f, -0.0041f, -0.0517f,
-      0.0421f, 0.0627f, 0.0445f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
-      0.0419f, 0.0626f, 0.0447f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
-      0.0421f, 0.0627f, 0.0445f, 0.0328f, 0.0196f, -0.0712f, -0.0233f, -0.0875f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+      -0.042999879f, 0.049746618f, -0.03921134f, 0.022377649f, 0.014597901f, -0.008852208f, -0.0051137861f, -0.0317555f,
+      -0.0430619f, 0.049675107f, -0.039144009f, 0.022413466f, 0.014596507f, -0.00886563f, -0.0051382119f, -0.031742509f,
+      0.0120557f, 0.092630297f, 0.054536056f, 0.030807339f, 0.021582549f, -0.10123824f, -0.013279535f, -0.079527803f,
+      0.011912746f, 0.092575297f, 0.054668114f, 0.030843586f, 0.021580728f, -0.10122664f, -0.013295304f, -0.079535671f,
+      0.012123509f, 0.092629217f, 0.054470878f, 0.030805945f, 0.021572994f, -0.10122325f, -0.01326612f, -0.079525866f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
-          {onnxruntime::contrib::longformer::kUseCompactMemory, "1"},
+          {onnxruntime::contrib::longformer::kUseCompactMemory, "0"},
       }};
 
   RunTinyLongformerBatch1(mask_data, global_data, input_data, output_data, false);
 }
 
-TEST(LongformerAttentionTest, LongformerAttention_Float16) {
+TEST(LongformerAttentionTest, LongformerAttention_Format1_Float16) {
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
 
   // Global at the start of the sequence
   std::vector<int> global_data = {1, 1, 0, 0, 0, 0, 0, 0};
 
   std::vector<float> output_data = {
-      -0.0356f, 0.0521f, -0.0198f, 0.0005f, 0.0245f, -0.0014f, -0.0170f, -0.0123f,
-      -0.0356f, 0.0521f, -0.0198f, 0.0005f, 0.0245f, -0.0014f, -0.0169f, -0.0122f,
-      0.0738f, 0.0416f, 0.0322f, 0.0258f, 0.0063f, -0.0222f, 0.0053f, -0.0309f,
-      0.0719f, 0.0473f, 0.0291f, 0.0279f, 0.0008f, -0.0289f, 0.0004f, -0.0416f,
-      0.0716f, 0.0449f, 0.0283f, 0.0269f, 0.0017f, -0.0332f, -0.0104f, -0.0461f,
-      0.0659f, 0.0457f, 0.0193f, 0.0208f, 0.0017f, -0.0341f, -0.0176f, -0.0445f,
-      0.0780f, 0.0519f, 0.0128f, 0.0263f, 0.0056f, -0.0335f, -0.0219f, -0.0578f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
+      -0.045562744f, 0.05014038f, -0.029830933f, 0.0034484863f, 0.054504395f, -0.011383057f, -0.017990112f, 0.00774765f,
+      -0.045532227f, 0.050079346f, -0.029800415f, 0.0034713745f, 0.054504395f, -0.011390686f, -0.0178833f, 0.007820129f,
+      0.043823242f, 0.071594238f, 0.042205811f, 0.023788452f, 0.0083084106f, -0.052185059f, 0.015258789f, -0.022903442f,
+      0.041870117f, 0.077331543f, 0.039123535f, 0.025909424f, 0.0027542114f, -0.058898926f, 0.010360718f, -0.033599854f,
+      0.04156494f, 0.074890137f, 0.038330078f, 0.024917603f, 0.003715515f, -0.063232422f, -0.00037002563f, -0.03805542f,
+      0.035858154f, 0.075683594f, 0.029327393f, 0.01876831f, 0.0036621094f, -0.064086914f, -0.007644653f, -0.036499023f,
+      0.048034668f, 0.081848145f, 0.02279663f, 0.024291992f, 0.0076179504f, -0.063537598f, -0.011878967f, -0.049804688f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   RunTinyLongformerBatch1(mask_data, global_data, output_data, true);
 }
 
-TEST(LongformerAttentionTest, LongformerAttention_FullWindow) {
+TEST(LongformerAttentionTest, LongformerAttention_Format1_FullWindow) {
   // last word is masked.
   std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, -10000.0f};
 
@@ -320,37 +299,15 @@ TEST(LongformerAttentionTest, LongformerAttention_FullWindow) {
   std::vector<int> global_data = {0, 0, 0, 0};
 
   std::vector<float> output_data = {
-      0.0793f, 0.0678f, 0.0705f, 0.0456f, 0.0197f, -0.0301f, 0.0010f, -0.0511f,
-      0.0793f, 0.0678f, 0.0705f, 0.0456f, 0.0197f, -0.0301f, 0.0010f, -0.0511f,
-      0.0793f, 0.0678f, 0.0705f, 0.0456f, 0.0197f, -0.0301f, 0.0010f, -0.0511f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000};
+      0.04935503f, 0.09777762f, 0.080508679f, 0.043586157f, 0.021670891f, -0.060086727f, 0.011003745f, -0.043082085f,
+      0.049329545f, 0.097794257f, 0.08051388f, 0.043572858f, 0.021667825f, -0.060093321f, 0.011015881f, -0.043088093f,
+      0.049349822f, 0.097794116f, 0.080487557f, 0.043577947f, 0.021671539f, -0.060104892f, 0.011019757f, -0.043095518f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
-  // One doulbe-sided window will cover the whole sequence.
+  // One double-sided window will cover the whole sequence.
   bool window_cover_whole_sequence = true;
   RunTinyLongformerBatch1(mask_data, global_data, output_data, false, window_cover_whole_sequence);
 }
-
-/*
-// TODO: enable the following tests after removing the limitations of CUDA kernels.
-TEST(LongformerAttentionTest, LongformerAttention_GlobalMiddle) {
-  std::vector<float> mask_data = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -10000.0f};
-
-  // Global in the middle of sequence
-  std::vector<int> global_data = {0, 1, 0, 0, 1, 0, 0, 0};
-
-  std::vector<float> output_data = {
-      0.0909f, 0.0482f, 0.0273f, 0.0339f, 0.0124f, -0.0186f, 0.0056f, -0.0441f,
-      -0.0356f, 0.0521f, -0.0198f, 0.0005f, 0.0245f, -0.0014f, -0.0169f, -0.0122f,
-      0.0738f, 0.0416f, 0.0322f, 0.0258f, 0.0063f, -0.0222f, 0.0053f, -0.0309f,
-      0.0725f, 0.0451f, 0.0149f, 0.0241f, -0.0071f, -0.0231f, 0.0028f, -0.0369f,
-      -0.0355f, 0.0521f, -0.0198f, 0.0004f, 0.0245f, -0.0014f, -0.0169f, -0.0122f,
-      0.0653f, 0.0431f, 0.0032f, 0.0156f, -0.0061f, -0.0293f, -0.0188f, -0.0404f,
-      0.0803f, 0.0502f, -0.0089f, 0.0212f, -0.0030f, -0.0275f, -0.0244f, -0.0560f,
-      0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.0000f};
-
-  RunTinyLongformerBatch1(mask_data, global_data, output_data, false);
-}
-*/
 
 }  // namespace test
 }  // namespace onnxruntime

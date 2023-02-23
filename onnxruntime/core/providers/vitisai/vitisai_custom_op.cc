@@ -105,8 +105,9 @@ VitisAICustomOp::VitisAICustomOp(const ComputeContext* context,
 VitisAICustomOp::~VitisAICustomOp() {}
 
 
-Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) const { 
-  Ort::CustomOpApi ort{*api};
+Status VitisAICustomOp::Compute(OrtKernelContext* context) const { 
+
+  Ort::KernelContext ctx(context);
   const unsigned num_inputs = (unsigned) xg_->get_nb_inputs();
 
   ssize_t batch_size = 1;
@@ -116,10 +117,10 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
   // Initialize input tensors.
   try {
     for (unsigned i = 0; i < num_inputs; ++i) {
-      const OrtValue* input_tensor = ort.KernelContext_GetInput(context, i);
-      auto tensor_info = ort.GetTensorTypeAndShape(input_tensor);
-      auto tensor_type = ort.GetTensorElementType(tensor_info);
-      auto ort_shape = ort.GetTensorShape(tensor_info);
+      auto input_tensor = ctx.GetInput(i);
+      auto tensor_info = input_tensor.GetTensorTypeAndShapeInfo();
+      auto tensor_type = tensor_info.GetElementType();
+      auto ort_shape = tensor_info.GetShape();
       std::vector<ssize_t> tensor_shape{ort_shape.begin(), ort_shape.end()};
       batch_size = tensor_shape[0];
       
@@ -127,7 +128,7 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
       
-      void* input_data = const_cast<void*>(ort.GetTensorData<void>(input_tensor));
+      void* input_data = const_cast<void*>(input_tensor.GetTensorRawData());
       in_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
         new pyxir::XBuffer(input_data, 4, "f", tensor_shape.size(), tensor_shape,
                             false, false)));
@@ -146,14 +147,13 @@ Status VitisAICustomOp::Compute(const OrtApi* api, OrtKernelContext* context) co
       out_shape[0] = batch_size;
       std::vector<int64_t> ort_shape{out_shape.begin(), out_shape.end()};
 
-      OrtValue* output_tensor = ort.KernelContext_GetOutput(context, i, ort_shape.data(), ort_shape.size());
-      auto tensor_info = ort.GetTensorTypeAndShape(output_tensor);
-      auto tensor_type = ort.GetTensorElementType(tensor_info);
+      auto output_tensor = ctx.GetOutput(i, ort_shape.data(), ort_shape.size());
+      const auto tensor_type = output_tensor.GetTensorTypeAndShapeInfo().GetElementType();
       if (tensor_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
           "VITIS-AI EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.");
 
-      void* output_data = ort.GetTensorMutableData<void>(output_tensor);
+      void* output_data = output_tensor.GetTensorMutableRawData();
       out_tensors.push_back(std::shared_ptr<pyxir::XBuffer>(
         new pyxir::XBuffer(output_data, 4, "f", out_shape.size(), out_shape,
                             false, false)));

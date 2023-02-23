@@ -21,5 +21,13 @@ class InPlaceAccumulator final : public OpKernel {
   InPlaceAccumulator(const OpKernelInfo& info) : OpKernel(info) {}
   Status Compute(OpKernelContext* context) const override;
 };
+
+template <typename T>
+class InPlaceAccumulatorV2 final : public OpKernel {
+ public:
+  InPlaceAccumulatorV2(const OpKernelInfo& info) : OpKernel(info) {}
+  Status Compute(OpKernelContext* context) const override;
+};
+
 }  // namespace contrib
 }  // namespace onnxruntime

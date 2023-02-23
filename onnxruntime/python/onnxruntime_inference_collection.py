@@ -182,6 +182,8 @@ class Session:
         :param output_names: name of the outputs
         :param input_feed: dictionary ``{ input_name: input_value }``
         :param run_options: See :class:`onnxruntime.RunOptions`.
+        :return: list of results, every result is either a numpy array,
+            a sparse tensor, a list or a dictionary.
 
         ::
 
@@ -228,6 +230,8 @@ class Session:
             for n, v in input_dict_ort_values.items():
                 input_dict[n] = v._get_c_value()
             result = sess.run_with_ort_values(input_dict, output_names, run_options)
+            if not isinstance(result, C.OrtValueVector):
+                raise TypeError("run_with_ort_values() must return a instance of type 'OrtValueVector'.")
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
@@ -281,6 +285,25 @@ class Session:
         :param run_options: See :class:`onnxruntime.RunOptions`.
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
+
+    def get_tuning_results(self):
+        return self._sess.get_tuning_results()
+
+    def set_tuning_results(self, results, *, error_on_invalid=False):
+        return self._sess.set_tuning_results(results, error_on_invalid)
+
+    def run_with_ortvaluevector(self, run_options, feed_names, feeds, fetch_names, fetches, fetch_devices):
+        """
+        Compute the predictions similar to other run_*() methods but with minimal C++/Python conversion overhead.
+
+        :param run_options: See :class:`onnxruntime.RunOptions`.
+        :param feed_names: list of input names.
+        :param feeds: list of input OrtValue.
+        :param fetch_names: list of output names.
+        :param fetches: list of output OrtValue.
+        :param fetch_devices: list of output devices.
+        """
+        self._sess.run_with_ortvaluevector(run_options, feed_names, feeds, fetch_names, fetches, fetch_devices)
 
 
 class InferenceSession(Session):
@@ -534,12 +557,13 @@ class IOBinding:
         Returns the output OrtValues from the Run() that preceded the call.
         The data buffer of the obtained OrtValues may not reside on CPU memory
         """
-        returned_ortvalues = []
+        outputs = self._iobinding.get_outputs()
+        if not isinstance(outputs, C.OrtValueVector):
+            raise TypeError("get_outputs() must return an instance of type 'OrtValueVector'.")
+        return [OrtValue(ortvalue) for ortvalue in outputs]
 
-        for ortvalue in self._iobinding.get_outputs():
-            returned_ortvalues.append(OrtValue(ortvalue))
-
-        return returned_ortvalues
+    def get_outputs_as_ortvaluevector(self):
+        return self._iobinding.get_outputs()
 
     def copy_outputs_to_cpu(self):
         """Copy output contents to CPU (if on another device). No-op if already on the CPU."""

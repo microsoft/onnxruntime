@@ -1,10 +1,9 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
-import java.io.IOException;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -18,21 +17,7 @@ import java.nio.ShortBuffer;
  * A Java object wrapping an OnnxTensor. Tensors are the main input to the library, and can also be
  * returned as outputs.
  */
-public class OnnxTensor implements OnnxValue {
-  static {
-    try {
-      OnnxRuntime.init();
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to load onnx-runtime library", e);
-    }
-  }
-
-  private final long nativeHandle;
-
-  private final long allocatorHandle;
-
-  private final TensorInfo info;
-
+public class OnnxTensor extends OnnxTensorLike {
   /**
    * This reference is held for OnnxTensors backed by a Java nio buffer to ensure the buffer does
    * not go out of scope while the OnnxTensor exists.
@@ -44,19 +29,13 @@ public class OnnxTensor implements OnnxValue {
   }
 
   OnnxTensor(long nativeHandle, long allocatorHandle, TensorInfo info, Buffer buffer) {
-    this.nativeHandle = nativeHandle;
-    this.allocatorHandle = allocatorHandle;
-    this.info = info;
+    super(nativeHandle, allocatorHandle, info);
     this.buffer = buffer;
   }
 
   @Override
   public OnnxValueType getType() {
     return OnnxValueType.ONNX_TYPE_TENSOR;
-  }
-
-  long getNativeHandle() {
-    return nativeHandle;
   }
 
   /**
@@ -90,14 +69,14 @@ public class OnnxTensor implements OnnxValue {
         case BOOL:
           return getBool(OnnxRuntime.ortApiHandle, nativeHandle);
         case STRING:
-          return getString(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle);
+          return getString(OnnxRuntime.ortApiHandle, nativeHandle);
         case UNKNOWN:
         default:
           throw new OrtException("Extracting the value of an invalid Tensor.");
       }
     } else {
       Object carrier = info.makeCarrier();
-      getArray(OnnxRuntime.ortApiHandle, nativeHandle, allocatorHandle, carrier);
+      getArray(OnnxRuntime.ortApiHandle, nativeHandle, carrier);
       if ((info.type == OnnxJavaType.STRING) && (info.shape.length != 1)) {
         // We read the strings out from native code in a flat array and then reshape
         // to the desired output shape.
@@ -106,11 +85,6 @@ public class OnnxTensor implements OnnxValue {
         return carrier;
       }
     }
-  }
-
-  @Override
-  public TensorInfo getInfo() {
-    return info;
   }
 
   @Override
@@ -284,13 +258,12 @@ public class OnnxTensor implements OnnxValue {
 
   private native long getLong(long apiHandle, long nativeHandle, int onnxType) throws OrtException;
 
-  private native String getString(long apiHandle, long nativeHandle, long allocatorHandle)
-      throws OrtException;
+  private native String getString(long apiHandle, long nativeHandle) throws OrtException;
 
   private native boolean getBool(long apiHandle, long nativeHandle) throws OrtException;
 
-  private native void getArray(
-      long apiHandle, long nativeHandle, long allocatorHandle, Object carrier) throws OrtException;
+  private native void getArray(long apiHandle, long nativeHandle, Object carrier)
+      throws OrtException;
 
   private native void close(long apiHandle, long nativeHandle);
 
@@ -301,7 +274,7 @@ public class OnnxTensor implements OnnxValue {
    * @param input A uint16_t representing an IEEE half precision float.
    * @return A float.
    */
-  private static float fp16ToFloat(short input) {
+  static float fp16ToFloat(short input) {
     int output =
         ((input & 0x8000) << 16) | (((input & 0x7c00) + 0x1C000) << 13) | ((input & 0x03FF) << 13);
     return Float.intBitsToFloat(output);
@@ -716,73 +689,20 @@ public class OnnxTensor implements OnnxValue {
    */
   private static OnnxTensor createTensor(
       OnnxJavaType type, OrtAllocator allocator, Buffer data, long[] shape) throws OrtException {
-    int bufferPos;
-    long bufferSizeLong = data.remaining() * (long) type.size;
-    if (bufferSizeLong > (Integer.MAX_VALUE - (8 * type.size))) {
-      // The maximum direct byte buffer size is a little below Integer.MAX_VALUE depending
-      // on the JVM, so we check for something 8 elements below the maximum size which
-      // should be allocatable (assuming there is enough memory) on all 64-bit JVMs.
-      throw new IllegalStateException(
-          "Cannot allocate a direct buffer of the requested size and type, size "
-              + data.remaining()
-              + ", type = "
-              + type);
-    }
-    // Now we know we're in range
-    int bufferSize = data.remaining() * type.size;
-    Buffer tmp;
-    if (data.isDirect()) {
-      tmp = data;
-      bufferPos = data.position() * type.size;
-    } else {
-      // Copy the data to a new direct buffer, then restore the state of the input.
-      int origPosition = data.position();
-      ByteBuffer buffer = ByteBuffer.allocateDirect(bufferSize).order(ByteOrder.nativeOrder());
-      switch (type) {
-        case FLOAT:
-          tmp = buffer.asFloatBuffer().put((FloatBuffer) data);
-          break;
-        case DOUBLE:
-          tmp = buffer.asDoubleBuffer().put((DoubleBuffer) data);
-          break;
-        case UINT8:
-        case INT8:
-          // buffer is already a ByteBuffer, no cast needed.
-          tmp = buffer.put((ByteBuffer) data);
-          break;
-        case INT16:
-          tmp = buffer.asShortBuffer().put((ShortBuffer) data);
-          break;
-        case INT32:
-          tmp = buffer.asIntBuffer().put((IntBuffer) data);
-          break;
-        case INT64:
-          tmp = buffer.asLongBuffer().put((LongBuffer) data);
-          break;
-        case BOOL:
-        case STRING:
-        case UNKNOWN:
-        default:
-          throw new IllegalStateException(
-              "Impossible to reach here, managed to cast a buffer as an incorrect type");
-      }
-      data.position(origPosition);
-      tmp.rewind();
-      bufferPos = 0;
-    }
-    TensorInfo info = TensorInfo.constructFromBuffer(tmp, shape, type);
+    OrtUtil.BufferTuple tuple = OrtUtil.prepareBuffer(data, type);
+    TensorInfo info = TensorInfo.constructFromBuffer(tuple.data, shape, type);
     return new OnnxTensor(
         createTensorFromBuffer(
             OnnxRuntime.ortApiHandle,
             allocator.handle,
-            tmp,
-            bufferPos,
-            bufferSize,
+            tuple.data,
+            tuple.pos,
+            tuple.byteSize,
             shape,
             info.onnxType.value),
         allocator.handle,
         info,
-        tmp);
+        tuple.data);
   }
 
   private static native long createTensor(

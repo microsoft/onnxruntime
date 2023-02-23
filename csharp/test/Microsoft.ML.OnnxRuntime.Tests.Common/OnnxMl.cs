@@ -62,7 +62,7 @@ namespace Onnx {
             "Z0VudHJ5UHJvdG8SCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJImsKEFRl",
             "bnNvckFubm90YXRpb24SEwoLdGVuc29yX25hbWUYASABKAkSQgoccXVhbnRf",
             "cGFyYW1ldGVyX3RlbnNvcl9uYW1lcxgCIAMoCzIcLm9ubnguU3RyaW5nU3Ry",
-            "aW5nRW50cnlQcm90byLYAgoKR3JhcGhQcm90bxIdCgRub2RlGAEgAygLMg8u",
+            "aW5nRW50cnlQcm90byKeAwoKR3JhcGhQcm90bxIdCgRub2RlGAEgAygLMg8u",
             "b25ueC5Ob2RlUHJvdG8SDAoEbmFtZRgCIAEoCRImCgtpbml0aWFsaXplchgF",
             "IAMoCzIRLm9ubnguVGVuc29yUHJvdG8SMwoSc3BhcnNlX2luaXRpYWxpemVy",
             "GA8gAygLMhcub25ueC5TcGFyc2VUZW5zb3JQcm90bxISCgpkb2Nfc3RyaW5n",
@@ -70,56 +70,57 @@ namespace Onnx {
             "CgZvdXRwdXQYDCADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEigKCnZhbHVl",
             "X2luZm8YDSADKAsyFC5vbm54LlZhbHVlSW5mb1Byb3RvEjcKF3F1YW50aXph",
             "dGlvbl9hbm5vdGF0aW9uGA4gAygLMhYub25ueC5UZW5zb3JBbm5vdGF0aW9u",
-            "IrgFCgtUZW5zb3JQcm90bxIMCgRkaW1zGAEgAygDEhEKCWRhdGFfdHlwZRgC",
-            "IAEoBRIqCgdzZWdtZW50GAMgASgLMhkub25ueC5UZW5zb3JQcm90by5TZWdt",
-            "ZW50EhYKCmZsb2F0X2RhdGEYBCADKAJCAhABEhYKCmludDMyX2RhdGEYBSAD",
-            "KAVCAhABEhMKC3N0cmluZ19kYXRhGAYgAygMEhYKCmludDY0X2RhdGEYByAD",
-            "KANCAhABEgwKBG5hbWUYCCABKAkSEgoKZG9jX3N0cmluZxgMIAEoCRIQCghy",
-            "YXdfZGF0YRgJIAEoDBIzCg1leHRlcm5hbF9kYXRhGA0gAygLMhwub25ueC5T",
-            "dHJpbmdTdHJpbmdFbnRyeVByb3RvEjUKDWRhdGFfbG9jYXRpb24YDiABKA4y",
-            "Hi5vbm54LlRlbnNvclByb3RvLkRhdGFMb2NhdGlvbhIXCgtkb3VibGVfZGF0",
-            "YRgKIAMoAUICEAESFwoLdWludDY0X2RhdGEYCyADKARCAhABGiUKB1NlZ21l",
-            "bnQSDQoFYmVnaW4YASABKAMSCwoDZW5kGAIgASgDItoBCghEYXRhVHlwZRIN",
-            "CglVTkRFRklORUQQABIJCgVGTE9BVBABEgkKBVVJTlQ4EAISCAoESU5UOBAD",
-            "EgoKBlVJTlQxNhAEEgkKBUlOVDE2EAUSCQoFSU5UMzIQBhIJCgVJTlQ2NBAH",
-            "EgoKBlNUUklORxAIEggKBEJPT0wQCRILCgdGTE9BVDE2EAoSCgoGRE9VQkxF",
-            "EAsSCgoGVUlOVDMyEAwSCgoGVUlOVDY0EA0SDQoJQ09NUExFWDY0EA4SDgoK",
-            "Q09NUExFWDEyOBAPEgwKCEJGTE9BVDE2EBAiKQoMRGF0YUxvY2F0aW9uEgsK",
-            "B0RFRkFVTFQQABIMCghFWFRFUk5BTBABImgKEVNwYXJzZVRlbnNvclByb3Rv",
-            "EiEKBnZhbHVlcxgBIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SIgoHaW5kaWNl",
-            "cxgCIAEoCzIRLm9ubnguVGVuc29yUHJvdG8SDAoEZGltcxgDIAMoAyKVAQoQ",
-            "VGVuc29yU2hhcGVQcm90bxItCgNkaW0YASADKAsyIC5vbm54LlRlbnNvclNo",
-            "YXBlUHJvdG8uRGltZW5zaW9uGlIKCURpbWVuc2lvbhITCglkaW1fdmFsdWUY",
-            "ASABKANIABITCglkaW1fcGFyYW0YAiABKAlIABISCgpkZW5vdGF0aW9uGAMg",
-            "ASgJQgcKBXZhbHVlIqUFCglUeXBlUHJvdG8SLQoLdGVuc29yX3R5cGUYASAB",
-            "KAsyFi5vbm54LlR5cGVQcm90by5UZW5zb3JIABIxCg1zZXF1ZW5jZV90eXBl",
-            "GAQgASgLMhgub25ueC5UeXBlUHJvdG8uU2VxdWVuY2VIABInCghtYXBfdHlw",
-            "ZRgFIAEoCzITLm9ubnguVHlwZVByb3RvLk1hcEgAEjEKDW9wdGlvbmFsX3R5",
-            "cGUYCSABKAsyGC5vbm54LlR5cGVQcm90by5PcHRpb25hbEgAEjoKEnNwYXJz",
-            "ZV90ZW5zb3JfdHlwZRgIIAEoCzIcLm9ubnguVHlwZVByb3RvLlNwYXJzZVRl",
-            "bnNvckgAEi0KC29wYXF1ZV90eXBlGAcgASgLMhYub25ueC5UeXBlUHJvdG8u",
-            "T3BhcXVlSAASEgoKZGVub3RhdGlvbhgGIAEoCRpCCgZUZW5zb3ISEQoJZWxl",
-            "bV90eXBlGAEgASgFEiUKBXNoYXBlGAIgASgLMhYub25ueC5UZW5zb3JTaGFw",
-            "ZVByb3RvGi4KCFNlcXVlbmNlEiIKCWVsZW1fdHlwZRgBIAEoCzIPLm9ubngu",
-            "VHlwZVByb3RvGjwKA01hcBIQCghrZXlfdHlwZRgBIAEoBRIjCgp2YWx1ZV90",
-            "eXBlGAIgASgLMg8ub25ueC5UeXBlUHJvdG8aLgoIT3B0aW9uYWwSIgoJZWxl",
-            "bV90eXBlGAEgASgLMg8ub25ueC5UeXBlUHJvdG8aSAoMU3BhcnNlVGVuc29y",
-            "EhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFwZRgCIAEoCzIWLm9ubnguVGVu",
-            "c29yU2hhcGVQcm90bxomCgZPcGFxdWUSDgoGZG9tYWluGAEgASgJEgwKBG5h",
-            "bWUYAiABKAlCBwoFdmFsdWUiNQoST3BlcmF0b3JTZXRJZFByb3RvEg4KBmRv",
-            "bWFpbhgBIAEoCRIPCgd2ZXJzaW9uGAIgASgDIuUBCg1GdW5jdGlvblByb3Rv",
-            "EgwKBG5hbWUYASABKAkSDQoFaW5wdXQYBCADKAkSDgoGb3V0cHV0GAUgAygJ",
-            "EhEKCWF0dHJpYnV0ZRgGIAMoCRIdCgRub2RlGAcgAygLMg8ub25ueC5Ob2Rl",
-            "UHJvdG8SEgoKZG9jX3N0cmluZxgIIAEoCRIuCgxvcHNldF9pbXBvcnQYCSAD",
-            "KAsyGC5vbm54Lk9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YCiABKAlK",
-            "BAgCEANKBAgDEARSDXNpbmNlX3ZlcnNpb25SBnN0YXR1cyrkAQoHVmVyc2lv",
-            "bhISCg5fU1RBUlRfVkVSU0lPThAAEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8x",
-            "MBABEhkKFUlSX1ZFUlNJT05fMjAxN18xMF8zMBACEhgKFElSX1ZFUlNJT05f",
-            "MjAxN18xMV8zEAMSGAoUSVJfVkVSU0lPTl8yMDE5XzFfMjIQBBIYChRJUl9W",
-            "RVJTSU9OXzIwMTlfM18xOBAFEhgKFElSX1ZFUlNJT05fMjAxOV85XzE5EAYS",
-            "FwoTSVJfVkVSU0lPTl8yMDIwXzVfOBAHEg4KCklSX1ZFUlNJT04QCCouCg5P",
-            "cGVyYXRvclN0YXR1cxIQCgxFWFBFUklNRU5UQUwQABIKCgZTVEFCTEUQAUIC",
-            "SANiBnByb3RvMw=="));
+            "SgQIAxAESgQIBBAFSgQIBhAKUgppcl92ZXJzaW9uUhBwcm9kdWNlcl92ZXJz",
+            "aW9uUgxwcm9kdWNlcl90YWdSBmRvbWFpbiK4BQoLVGVuc29yUHJvdG8SDAoE",
+            "ZGltcxgBIAMoAxIRCglkYXRhX3R5cGUYAiABKAUSKgoHc2VnbWVudBgDIAEo",
+            "CzIZLm9ubnguVGVuc29yUHJvdG8uU2VnbWVudBIWCgpmbG9hdF9kYXRhGAQg",
+            "AygCQgIQARIWCgppbnQzMl9kYXRhGAUgAygFQgIQARITCgtzdHJpbmdfZGF0",
+            "YRgGIAMoDBIWCgppbnQ2NF9kYXRhGAcgAygDQgIQARIMCgRuYW1lGAggASgJ",
+            "EhIKCmRvY19zdHJpbmcYDCABKAkSEAoIcmF3X2RhdGEYCSABKAwSMwoNZXh0",
+            "ZXJuYWxfZGF0YRgNIAMoCzIcLm9ubnguU3RyaW5nU3RyaW5nRW50cnlQcm90",
+            "bxI1Cg1kYXRhX2xvY2F0aW9uGA4gASgOMh4ub25ueC5UZW5zb3JQcm90by5E",
+            "YXRhTG9jYXRpb24SFwoLZG91YmxlX2RhdGEYCiADKAFCAhABEhcKC3VpbnQ2",
+            "NF9kYXRhGAsgAygEQgIQARolCgdTZWdtZW50Eg0KBWJlZ2luGAEgASgDEgsK",
+            "A2VuZBgCIAEoAyLaAQoIRGF0YVR5cGUSDQoJVU5ERUZJTkVEEAASCQoFRkxP",
+            "QVQQARIJCgVVSU5UOBACEggKBElOVDgQAxIKCgZVSU5UMTYQBBIJCgVJTlQx",
+            "NhAFEgkKBUlOVDMyEAYSCQoFSU5UNjQQBxIKCgZTVFJJTkcQCBIICgRCT09M",
+            "EAkSCwoHRkxPQVQxNhAKEgoKBkRPVUJMRRALEgoKBlVJTlQzMhAMEgoKBlVJ",
+            "TlQ2NBANEg0KCUNPTVBMRVg2NBAOEg4KCkNPTVBMRVgxMjgQDxIMCghCRkxP",
+            "QVQxNhAQIikKDERhdGFMb2NhdGlvbhILCgdERUZBVUxUEAASDAoIRVhURVJO",
+            "QUwQASJoChFTcGFyc2VUZW5zb3JQcm90bxIhCgZ2YWx1ZXMYASABKAsyES5v",
+            "bm54LlRlbnNvclByb3RvEiIKB2luZGljZXMYAiABKAsyES5vbm54LlRlbnNv",
+            "clByb3RvEgwKBGRpbXMYAyADKAMilQEKEFRlbnNvclNoYXBlUHJvdG8SLQoD",
+            "ZGltGAEgAygLMiAub25ueC5UZW5zb3JTaGFwZVByb3RvLkRpbWVuc2lvbhpS",
+            "CglEaW1lbnNpb24SEwoJZGltX3ZhbHVlGAEgASgDSAASEwoJZGltX3BhcmFt",
+            "GAIgASgJSAASEgoKZGVub3RhdGlvbhgDIAEoCUIHCgV2YWx1ZSKlBQoJVHlw",
+            "ZVByb3RvEi0KC3RlbnNvcl90eXBlGAEgASgLMhYub25ueC5UeXBlUHJvdG8u",
+            "VGVuc29ySAASMQoNc2VxdWVuY2VfdHlwZRgEIAEoCzIYLm9ubnguVHlwZVBy",
+            "b3RvLlNlcXVlbmNlSAASJwoIbWFwX3R5cGUYBSABKAsyEy5vbm54LlR5cGVQ",
+            "cm90by5NYXBIABIxCg1vcHRpb25hbF90eXBlGAkgASgLMhgub25ueC5UeXBl",
+            "UHJvdG8uT3B0aW9uYWxIABI6ChJzcGFyc2VfdGVuc29yX3R5cGUYCCABKAsy",
+            "HC5vbm54LlR5cGVQcm90by5TcGFyc2VUZW5zb3JIABItCgtvcGFxdWVfdHlw",
+            "ZRgHIAEoCzIWLm9ubnguVHlwZVByb3RvLk9wYXF1ZUgAEhIKCmRlbm90YXRp",
+            "b24YBiABKAkaQgoGVGVuc29yEhEKCWVsZW1fdHlwZRgBIAEoBRIlCgVzaGFw",
+            "ZRgCIAEoCzIWLm9ubnguVGVuc29yU2hhcGVQcm90bxouCghTZXF1ZW5jZRIi",
+            "CgllbGVtX3R5cGUYASABKAsyDy5vbm54LlR5cGVQcm90bxo8CgNNYXASEAoI",
+            "a2V5X3R5cGUYASABKAUSIwoKdmFsdWVfdHlwZRgCIAEoCzIPLm9ubnguVHlw",
+            "ZVByb3RvGi4KCE9wdGlvbmFsEiIKCWVsZW1fdHlwZRgBIAEoCzIPLm9ubngu",
+            "VHlwZVByb3RvGkgKDFNwYXJzZVRlbnNvchIRCgllbGVtX3R5cGUYASABKAUS",
+            "JQoFc2hhcGUYAiABKAsyFi5vbm54LlRlbnNvclNoYXBlUHJvdG8aJgoGT3Bh",
+            "cXVlEg4KBmRvbWFpbhgBIAEoCRIMCgRuYW1lGAIgASgJQgcKBXZhbHVlIjUK",
+            "Ek9wZXJhdG9yU2V0SWRQcm90bxIOCgZkb21haW4YASABKAkSDwoHdmVyc2lv",
+            "bhgCIAEoAyLlAQoNRnVuY3Rpb25Qcm90bxIMCgRuYW1lGAEgASgJEg0KBWlu",
+            "cHV0GAQgAygJEg4KBm91dHB1dBgFIAMoCRIRCglhdHRyaWJ1dGUYBiADKAkS",
+            "HQoEbm9kZRgHIAMoCzIPLm9ubnguTm9kZVByb3RvEhIKCmRvY19zdHJpbmcY",
+            "CCABKAkSLgoMb3BzZXRfaW1wb3J0GAkgAygLMhgub25ueC5PcGVyYXRvclNl",
+            "dElkUHJvdG8SDgoGZG9tYWluGAogASgJSgQIAhADSgQIAxAEUg1zaW5jZV92",
+            "ZXJzaW9uUgZzdGF0dXMq5AEKB1ZlcnNpb24SEgoOX1NUQVJUX1ZFUlNJT04Q",
+            "ABIZChVJUl9WRVJTSU9OXzIwMTdfMTBfMTAQARIZChVJUl9WRVJTSU9OXzIw",
+            "MTdfMTBfMzAQAhIYChRJUl9WRVJTSU9OXzIwMTdfMTFfMxADEhgKFElSX1ZF",
+            "UlNJT05fMjAxOV8xXzIyEAQSGAoUSVJfVkVSU0lPTl8yMDE5XzNfMTgQBRIY",
+            "ChRJUl9WRVJTSU9OXzIwMTlfOV8xORAGEhcKE0lSX1ZFUlNJT05fMjAyMF81",
+            "XzgQBxIOCgpJUl9WRVJTSU9OEAgqLgoOT3BlcmF0b3JTdGF0dXMSEAoMRVhQ",
+            "RVJJTUVOVEFMEAASCgoGU1RBQkxFEAFCAkgDYgZwcm90bzM="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Onnx.Version), typeof(global::Onnx.OperatorStatus), }, null, new pbr::GeneratedClrTypeInfo[] {
@@ -251,19 +252,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<AttributeProto> _parser = new pb::MessageParser<AttributeProto>(() => new AttributeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<AttributeProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[0]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AttributeProto() {
       OnConstruction();
     }
@@ -271,6 +276,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AttributeProto(AttributeProto other) : this() {
       name_ = other.name_;
       refAttrName_ = other.refAttrName_;
@@ -294,6 +300,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AttributeProto Clone() {
       return new AttributeProto(this);
     }
@@ -305,6 +312,7 @@ namespace Onnx {
     /// The name field MUST be present for this version of the IR.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -322,6 +330,7 @@ namespace Onnx {
     /// NOTE: This should ONLY be used in function (sub-graph). It's invalid to be used in main graph.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string RefAttrName {
       get { return refAttrName_; }
       set {
@@ -336,6 +345,7 @@ namespace Onnx {
     /// A human-readable documentation for this attribute. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -355,6 +365,7 @@ namespace Onnx {
     /// change was made to accommodate proto3 implementations.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.AttributeProto.Types.AttributeType Type {
       get { return type_; }
       set {
@@ -369,6 +380,7 @@ namespace Onnx {
     /// Exactly ONE of the following fields must be present for this version of the IR
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public float F {
       get { return f_; }
       set {
@@ -383,6 +395,7 @@ namespace Onnx {
     /// int
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public long I {
       get { return i_; }
       set {
@@ -397,6 +410,7 @@ namespace Onnx {
     /// UTF-8 string
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pb::ByteString S {
       get { return s_; }
       set {
@@ -411,6 +425,7 @@ namespace Onnx {
     /// tensor value
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TensorProto T {
       get { return t_; }
       set {
@@ -425,6 +440,7 @@ namespace Onnx {
     /// graph
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.GraphProto G {
       get { return g_; }
       set {
@@ -439,6 +455,7 @@ namespace Onnx {
     /// sparse tensor value
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.SparseTensorProto SparseTensor {
       get { return sparseTensor_; }
       set {
@@ -454,6 +471,7 @@ namespace Onnx {
     /// optional ValueProto v = 12;         // value - subsumes everything but graph
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto Tp {
       get { return tp_; }
       set {
@@ -470,6 +488,7 @@ namespace Onnx {
     /// list of floats
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<float> Floats {
       get { return floats_; }
     }
@@ -483,6 +502,7 @@ namespace Onnx {
     /// list of ints
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<long> Ints {
       get { return ints_; }
     }
@@ -496,6 +516,7 @@ namespace Onnx {
     /// list of UTF-8 strings
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<pb::ByteString> Strings {
       get { return strings_; }
     }
@@ -509,6 +530,7 @@ namespace Onnx {
     /// list of tensors
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TensorProto> Tensors {
       get { return tensors_; }
     }
@@ -522,6 +544,7 @@ namespace Onnx {
     /// list of graph
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.GraphProto> Graphs {
       get { return graphs_; }
     }
@@ -535,6 +558,7 @@ namespace Onnx {
     /// list of sparse tensors
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.SparseTensorProto> SparseTensors {
       get { return sparseTensors_; }
     }
@@ -548,16 +572,19 @@ namespace Onnx {
     /// list of type protos
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TypeProto> TypeProtos {
       get { return typeProtos_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as AttributeProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(AttributeProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -587,6 +614,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -614,11 +642,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -682,6 +712,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -741,6 +772,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -790,6 +822,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(AttributeProto other) {
       if (other == null) {
         return;
@@ -850,6 +883,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -953,6 +987,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -1054,6 +1089,7 @@ namespace Onnx {
     #region Nested types
     /// <summary>Container for nested types declared in the AttributeProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static partial class Types {
       /// <summary>
       /// Note: this enum is structurally identical to the OpSchema::AttrType
@@ -1094,19 +1130,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<ValueInfoProto> _parser = new pb::MessageParser<ValueInfoProto>(() => new ValueInfoProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<ValueInfoProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[1]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ValueInfoProto() {
       OnConstruction();
     }
@@ -1114,6 +1154,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ValueInfoProto(ValueInfoProto other) : this() {
       name_ = other.name_;
       type_ = other.type_ != null ? other.type_.Clone() : null;
@@ -1122,6 +1163,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ValueInfoProto Clone() {
       return new ValueInfoProto(this);
     }
@@ -1133,6 +1175,7 @@ namespace Onnx {
     /// This field MUST be present in this version of the IR.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -1148,6 +1191,7 @@ namespace Onnx {
     /// inputs and outputs of the top-level graph.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto Type {
       get { return type_; }
       set {
@@ -1162,6 +1206,7 @@ namespace Onnx {
     /// A human-readable documentation for this value. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -1170,11 +1215,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as ValueInfoProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(ValueInfoProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -1189,6 +1236,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -1201,11 +1249,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -1230,6 +1280,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -1250,6 +1301,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -1268,6 +1320,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(ValueInfoProto other) {
       if (other == null) {
         return;
@@ -1288,6 +1341,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -1320,6 +1374,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -1366,19 +1421,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<NodeProto> _parser = new pb::MessageParser<NodeProto>(() => new NodeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<NodeProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[2]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public NodeProto() {
       OnConstruction();
     }
@@ -1386,6 +1445,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public NodeProto(NodeProto other) : this() {
       input_ = other.input_.Clone();
       output_ = other.output_.Clone();
@@ -1398,6 +1458,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public NodeProto Clone() {
       return new NodeProto(this);
     }
@@ -1411,6 +1472,7 @@ namespace Onnx {
     /// namespace Value
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Input {
       get { return input_; }
     }
@@ -1424,6 +1486,7 @@ namespace Onnx {
     /// namespace Value
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Output {
       get { return output_; }
     }
@@ -1436,6 +1499,7 @@ namespace Onnx {
     /// This field MAY be absent in ths version of the IR.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -1450,6 +1514,7 @@ namespace Onnx {
     /// The symbolic identifier of the Operator to execute.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string OpType {
       get { return opType_; }
       set {
@@ -1464,6 +1529,7 @@ namespace Onnx {
     /// The domain of the OperatorSet that specifies the operator named by op_type.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Domain {
       get { return domain_; }
       set {
@@ -1480,6 +1546,7 @@ namespace Onnx {
     /// Additional named attributes.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.AttributeProto> Attribute {
       get { return attribute_; }
     }
@@ -1491,6 +1558,7 @@ namespace Onnx {
     /// A human-readable documentation for this node. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -1499,11 +1567,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as NodeProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(NodeProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -1522,6 +1592,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       hash ^= input_.GetHashCode();
@@ -1538,11 +1609,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -1574,6 +1647,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       input_.WriteTo(ref output, _repeated_input_codec);
       output_.WriteTo(ref output, _repeated_output_codec);
@@ -1601,6 +1675,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       size += input_.CalculateSize(_repeated_input_codec);
@@ -1625,6 +1700,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(NodeProto other) {
       if (other == null) {
         return;
@@ -1648,6 +1724,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -1693,6 +1770,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -1764,19 +1842,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<TrainingInfoProto> _parser = new pb::MessageParser<TrainingInfoProto>(() => new TrainingInfoProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TrainingInfoProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[3]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TrainingInfoProto() {
       OnConstruction();
     }
@@ -1784,6 +1866,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TrainingInfoProto(TrainingInfoProto other) : this() {
       initialization_ = other.initialization_ != null ? other.initialization_.Clone() : null;
       algorithm_ = other.algorithm_ != null ? other.algorithm_.Clone() : null;
@@ -1793,6 +1876,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TrainingInfoProto Clone() {
       return new TrainingInfoProto(this);
     }
@@ -1816,6 +1900,7 @@ namespace Onnx {
     /// produce any output. Thus, no initializer would be changed by default.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.GraphProto Initialization {
       get { return initialization_; }
       set {
@@ -1858,6 +1943,7 @@ namespace Onnx {
     /// update any initializers.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.GraphProto Algorithm {
       get { return algorithm_; }
       set {
@@ -1880,6 +1966,7 @@ namespace Onnx {
     /// by the execution of "initialization".
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.StringStringEntryProto> InitializationBinding {
       get { return initializationBinding_; }
     }
@@ -1932,16 +2019,19 @@ namespace Onnx {
     /// by the execution of "algorithm".
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.StringStringEntryProto> UpdateBinding {
       get { return updateBinding_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as TrainingInfoProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(TrainingInfoProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -1957,6 +2047,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (initialization_ != null) hash ^= Initialization.GetHashCode();
@@ -1970,11 +2061,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -1997,6 +2090,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (initialization_ != null) {
         output.WriteRawTag(10);
@@ -2015,6 +2109,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (initialization_ != null) {
@@ -2032,6 +2127,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(TrainingInfoProto other) {
       if (other == null) {
         return;
@@ -2054,6 +2150,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -2093,6 +2190,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -2145,19 +2243,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<ModelProto> _parser = new pb::MessageParser<ModelProto>(() => new ModelProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<ModelProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[4]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ModelProto() {
       OnConstruction();
     }
@@ -2165,6 +2267,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ModelProto(ModelProto other) : this() {
       irVersion_ = other.irVersion_;
       opsetImport_ = other.opsetImport_.Clone();
@@ -2181,6 +2284,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ModelProto Clone() {
       return new ModelProto(this);
     }
@@ -2193,6 +2297,7 @@ namespace Onnx {
     /// This field MUST be present.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public long IrVersion {
       get { return irVersion_; }
       set {
@@ -2216,6 +2321,7 @@ namespace Onnx {
     /// in the referenced operator sets.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.OperatorSetIdProto> OpsetImport {
       get { return opsetImport_; }
     }
@@ -2229,6 +2335,7 @@ namespace Onnx {
     /// emitted the model.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string ProducerName {
       get { return producerName_; }
       set {
@@ -2245,6 +2352,7 @@ namespace Onnx {
     /// emitted the model.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string ProducerVersion {
       get { return producerVersion_; }
       set {
@@ -2264,6 +2372,7 @@ namespace Onnx {
     /// the graph.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Domain {
       get { return domain_; }
       set {
@@ -2278,6 +2387,7 @@ namespace Onnx {
     /// The version of the graph encoded. See Version enum below.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public long ModelVersion {
       get { return modelVersion_; }
       set {
@@ -2292,6 +2402,7 @@ namespace Onnx {
     /// A human-readable documentation for this model. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -2306,6 +2417,7 @@ namespace Onnx {
     /// The parameterized graph that is evaluated to execute the model.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.GraphProto Graph {
       get { return graph_; }
       set {
@@ -2322,6 +2434,7 @@ namespace Onnx {
     /// Named metadata values; keys should be distinct.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.StringStringEntryProto> MetadataProps {
       get { return metadataProps_; }
     }
@@ -2343,6 +2456,7 @@ namespace Onnx {
     /// If this field is empty, the training behavior of the model is undefined.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TrainingInfoProto> TrainingInfo {
       get { return trainingInfo_; }
     }
@@ -2357,13 +2471,13 @@ namespace Onnx {
     ///
     /// Name of the function "FunctionProto.name" should be unique within the domain "FunctionProto.domain".
     /// In case of any conflicts the behavior (whether the model local functions are given higher priority,
-    /// or standard opserator sets are given higher priotity or this is treated as error) is defined by 
+    /// or standard opserator sets are given higher priotity or this is treated as error) is defined by
     /// the runtimes.
-    /// 
+    ///
     /// The operator sets imported by FunctionProto should be compatible with the ones
-    /// imported by ModelProto and other model local FunctionProtos. 
-    /// Example, if same operator set say 'A' is imported by a FunctionProto and ModelProto 
-    /// or by 2 FunctionProtos then versions for the operator set may be different but, 
+    /// imported by ModelProto and other model local FunctionProtos.
+    /// Example, if same operator set say 'A' is imported by a FunctionProto and ModelProto
+    /// or by 2 FunctionProtos then versions for the operator set may be different but,
     /// the operator schema returned for op_type, domain, version combination
     /// for both the versions should be same for every node in the function body.
     ///
@@ -2371,16 +2485,19 @@ namespace Onnx {
     /// is not allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.FunctionProto> Functions {
       get { return functions_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as ModelProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(ModelProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -2403,6 +2520,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (IrVersion != 0L) hash ^= IrVersion.GetHashCode();
@@ -2423,11 +2541,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -2472,6 +2592,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (IrVersion != 0L) {
         output.WriteRawTag(8);
@@ -2512,6 +2633,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (IrVersion != 0L) {
@@ -2546,6 +2668,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(ModelProto other) {
       if (other == null) {
         return;
@@ -2582,6 +2705,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -2646,6 +2770,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -2719,19 +2844,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<StringStringEntryProto> _parser = new pb::MessageParser<StringStringEntryProto>(() => new StringStringEntryProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<StringStringEntryProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[5]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public StringStringEntryProto() {
       OnConstruction();
     }
@@ -2739,6 +2868,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public StringStringEntryProto(StringStringEntryProto other) : this() {
       key_ = other.key_;
       value_ = other.value_;
@@ -2746,6 +2876,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public StringStringEntryProto Clone() {
       return new StringStringEntryProto(this);
     }
@@ -2754,6 +2885,7 @@ namespace Onnx {
     public const int KeyFieldNumber = 1;
     private string key_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Key {
       get { return key_; }
       set {
@@ -2765,6 +2897,7 @@ namespace Onnx {
     public const int ValueFieldNumber = 2;
     private string value_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Value {
       get { return value_; }
       set {
@@ -2773,11 +2906,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as StringStringEntryProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(StringStringEntryProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -2791,6 +2926,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (Key.Length != 0) hash ^= Key.GetHashCode();
@@ -2802,11 +2938,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -2827,6 +2965,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (Key.Length != 0) {
         output.WriteRawTag(10);
@@ -2843,6 +2982,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (Key.Length != 0) {
@@ -2858,6 +2998,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(StringStringEntryProto other) {
       if (other == null) {
         return;
@@ -2872,6 +3013,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -2897,6 +3039,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -2927,19 +3070,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<TensorAnnotation> _parser = new pb::MessageParser<TensorAnnotation>(() => new TensorAnnotation());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TensorAnnotation> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[6]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorAnnotation() {
       OnConstruction();
     }
@@ -2947,6 +3094,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorAnnotation(TensorAnnotation other) : this() {
       tensorName_ = other.tensorName_;
       quantParameterTensorNames_ = other.quantParameterTensorNames_.Clone();
@@ -2954,6 +3102,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorAnnotation Clone() {
       return new TensorAnnotation(this);
     }
@@ -2962,6 +3111,7 @@ namespace Onnx {
     public const int TensorNameFieldNumber = 1;
     private string tensorName_ = "";
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string TensorName {
       get { return tensorName_; }
       set {
@@ -2981,16 +3131,19 @@ namespace Onnx {
     /// quantization parameter keys.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.StringStringEntryProto> QuantParameterTensorNames {
       get { return quantParameterTensorNames_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as TensorAnnotation);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(TensorAnnotation other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -3004,6 +3157,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (TensorName.Length != 0) hash ^= TensorName.GetHashCode();
@@ -3015,11 +3169,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -3037,6 +3193,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (TensorName.Length != 0) {
         output.WriteRawTag(10);
@@ -3050,6 +3207,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (TensorName.Length != 0) {
@@ -3063,6 +3221,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(TensorAnnotation other) {
       if (other == null) {
         return;
@@ -3075,6 +3234,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -3100,6 +3260,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -3138,19 +3299,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<GraphProto> _parser = new pb::MessageParser<GraphProto>(() => new GraphProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<GraphProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[7]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public GraphProto() {
       OnConstruction();
     }
@@ -3158,6 +3323,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public GraphProto(GraphProto other) : this() {
       node_ = other.node_.Clone();
       name_ = other.name_;
@@ -3172,6 +3338,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public GraphProto Clone() {
       return new GraphProto(this);
     }
@@ -3185,6 +3352,7 @@ namespace Onnx {
     /// The nodes in the graph, sorted topologically.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.NodeProto> Node {
       get { return node_; }
     }
@@ -3196,6 +3364,7 @@ namespace Onnx {
     /// The name of the graph.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -3215,6 +3384,7 @@ namespace Onnx {
     /// but the name MAY also appear in the input list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TensorProto> Initializer {
       get { return initializer_; }
     }
@@ -3228,6 +3398,7 @@ namespace Onnx {
     /// Initializers (see above) stored in sparse format.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.SparseTensorProto> SparseInitializer {
       get { return sparseInitializer_; }
     }
@@ -3239,6 +3410,7 @@ namespace Onnx {
     /// A human-readable documentation for this graph. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -3255,6 +3427,7 @@ namespace Onnx {
     /// The inputs and outputs of the graph.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.ValueInfoProto> Input {
       get { return input_; }
     }
@@ -3265,6 +3438,7 @@ namespace Onnx {
         = pb::FieldCodec.ForMessage(98, global::Onnx.ValueInfoProto.Parser);
     private readonly pbc::RepeatedField<global::Onnx.ValueInfoProto> output_ = new pbc::RepeatedField<global::Onnx.ValueInfoProto>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.ValueInfoProto> Output {
       get { return output_; }
     }
@@ -3279,6 +3453,7 @@ namespace Onnx {
     /// must be distinct. It is optional for a value to appear in value_info list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.ValueInfoProto> ValueInfo {
       get { return valueInfo_; }
     }
@@ -3295,16 +3470,19 @@ namespace Onnx {
     /// which means, tensor 'a_scale' and tensor 'a_zero_point' are scale and zero point of tensor 'a' in the model.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TensorAnnotation> QuantizationAnnotation {
       get { return quantizationAnnotation_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as GraphProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(GraphProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -3325,6 +3503,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       hash ^= node_.GetHashCode();
@@ -3343,11 +3522,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -3375,6 +3556,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       node_.WriteTo(ref output, _repeated_node_codec);
       if (Name.Length != 0) {
@@ -3398,6 +3580,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       size += node_.CalculateSize(_repeated_node_codec);
@@ -3420,6 +3603,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(GraphProto other) {
       if (other == null) {
         return;
@@ -3441,6 +3625,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -3494,6 +3679,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -3557,19 +3743,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<TensorProto> _parser = new pb::MessageParser<TensorProto>(() => new TensorProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TensorProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[8]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorProto() {
       OnConstruction();
     }
@@ -3577,6 +3767,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorProto(TensorProto other) : this() {
       dims_ = other.dims_.Clone();
       dataType_ = other.dataType_;
@@ -3596,6 +3787,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorProto Clone() {
       return new TensorProto(this);
     }
@@ -3609,6 +3801,7 @@ namespace Onnx {
     /// The shape of the tensor.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<long> Dims {
       get { return dims_; }
     }
@@ -3621,6 +3814,7 @@ namespace Onnx {
     /// This field MUST have a valid TensorProto.DataType value
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int DataType {
       get { return dataType_; }
       set {
@@ -3632,6 +3826,7 @@ namespace Onnx {
     public const int SegmentFieldNumber = 3;
     private global::Onnx.TensorProto.Types.Segment segment_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TensorProto.Types.Segment Segment {
       get { return segment_; }
       set {
@@ -3654,6 +3849,7 @@ namespace Onnx {
     /// When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<float> FloatData {
       get { return floatData_; }
     }
@@ -3671,6 +3867,7 @@ namespace Onnx {
     /// INT32, INT16, INT8, UINT16, UINT8, BOOL, or FLOAT16
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<int> Int32Data {
       get { return int32Data_; }
     }
@@ -3688,6 +3885,7 @@ namespace Onnx {
     /// When this field is present, the data_type field MUST be STRING
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<pb::ByteString> StringData {
       get { return stringData_; }
     }
@@ -3702,6 +3900,7 @@ namespace Onnx {
     /// When this field is present, the data_type field MUST be INT64
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<long> Int64Data {
       get { return int64Data_; }
     }
@@ -3713,6 +3912,7 @@ namespace Onnx {
     /// Optionally, a name for the tensor.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -3727,6 +3927,7 @@ namespace Onnx {
     /// A human-readable documentation for this tensor. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -3755,6 +3956,7 @@ namespace Onnx {
     /// When this field is present, the data_type field MUST NOT be STRING or UNDEFINED
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pb::ByteString RawData {
       get { return rawData_; }
       set {
@@ -3779,6 +3981,7 @@ namespace Onnx {
     /// - "checksum" (optional) - SHA1 digest of file specified in under 'location' key.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.StringStringEntryProto> ExternalData {
       get { return externalData_; }
     }
@@ -3790,6 +3993,7 @@ namespace Onnx {
     /// If value not set, data is stored in raw_data (if set) otherwise in type-specified field.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TensorProto.Types.DataLocation DataLocation {
       get { return dataLocation_; }
       set {
@@ -3812,6 +4016,7 @@ namespace Onnx {
     /// When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<double> DoubleData {
       get { return doubleData_; }
     }
@@ -3827,16 +4032,19 @@ namespace Onnx {
     /// UINT32 or UINT64
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<ulong> Uint64Data {
       get { return uint64Data_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as TensorProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(TensorProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -3862,6 +4070,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       hash ^= dims_.GetHashCode();
@@ -3885,11 +4094,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -3934,6 +4145,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       dims_.WriteTo(ref output, _repeated_dims_codec);
       if (DataType != 0) {
@@ -3974,6 +4186,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       size += dims_.CalculateSize(_repeated_dims_codec);
@@ -4009,6 +4222,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(TensorProto other) {
       if (other == null) {
         return;
@@ -4046,6 +4260,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -4128,6 +4343,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -4208,6 +4424,7 @@ namespace Onnx {
     #region Nested types
     /// <summary>Container for nested types declared in the TensorProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static partial class Types {
       public enum DataType {
         [pbr::OriginalName("UNDEFINED")] Undefined = 0,
@@ -4294,19 +4511,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Segment> _parser = new pb::MessageParser<Segment>(() => new Segment());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Segment> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TensorProto.Descriptor.NestedTypes[0]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Segment() {
           OnConstruction();
         }
@@ -4314,6 +4535,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Segment(Segment other) : this() {
           begin_ = other.begin_;
           end_ = other.end_;
@@ -4321,6 +4543,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Segment Clone() {
           return new Segment(this);
         }
@@ -4329,6 +4552,7 @@ namespace Onnx {
         public const int BeginFieldNumber = 1;
         private long begin_;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public long Begin {
           get { return begin_; }
           set {
@@ -4340,6 +4564,7 @@ namespace Onnx {
         public const int EndFieldNumber = 2;
         private long end_;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public long End {
           get { return end_; }
           set {
@@ -4348,11 +4573,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Segment);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Segment other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -4366,6 +4593,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (Begin != 0L) hash ^= Begin.GetHashCode();
@@ -4377,11 +4605,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -4402,6 +4632,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (Begin != 0L) {
             output.WriteRawTag(8);
@@ -4418,6 +4649,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (Begin != 0L) {
@@ -4433,6 +4665,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Segment other) {
           if (other == null) {
             return;
@@ -4447,6 +4680,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -4472,6 +4706,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -4510,19 +4745,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<SparseTensorProto> _parser = new pb::MessageParser<SparseTensorProto>(() => new SparseTensorProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<SparseTensorProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[9]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public SparseTensorProto() {
       OnConstruction();
     }
@@ -4530,6 +4769,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public SparseTensorProto(SparseTensorProto other) : this() {
       values_ = other.values_ != null ? other.values_.Clone() : null;
       indices_ = other.indices_ != null ? other.indices_.Clone() : null;
@@ -4538,6 +4778,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public SparseTensorProto Clone() {
       return new SparseTensorProto(this);
     }
@@ -4552,6 +4793,7 @@ namespace Onnx {
     /// when used in sparse_initializer list.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TensorProto Values {
       get { return values_; }
       set {
@@ -4575,6 +4817,7 @@ namespace Onnx {
     /// e.g., index-value [1,4] must appear before [2,1]
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TensorProto Indices {
       get { return indices_; }
       set {
@@ -4591,16 +4834,19 @@ namespace Onnx {
     /// The shape of the underlying dense-tensor: [dim_1, dim_2, ... dim_rank]
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<long> Dims {
       get { return dims_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as SparseTensorProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(SparseTensorProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -4615,6 +4861,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (values_ != null) hash ^= Values.GetHashCode();
@@ -4627,11 +4874,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -4653,6 +4902,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (values_ != null) {
         output.WriteRawTag(10);
@@ -4670,6 +4920,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (values_ != null) {
@@ -4686,6 +4937,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(SparseTensorProto other) {
       if (other == null) {
         return;
@@ -4707,6 +4959,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -4743,6 +4996,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -4789,19 +5043,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<TensorShapeProto> _parser = new pb::MessageParser<TensorShapeProto>(() => new TensorShapeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TensorShapeProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[10]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorShapeProto() {
       OnConstruction();
     }
@@ -4809,12 +5067,14 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorShapeProto(TensorShapeProto other) : this() {
       dim_ = other.dim_.Clone();
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TensorShapeProto Clone() {
       return new TensorShapeProto(this);
     }
@@ -4825,16 +5085,19 @@ namespace Onnx {
         = pb::FieldCodec.ForMessage(10, global::Onnx.TensorShapeProto.Types.Dimension.Parser);
     private readonly pbc::RepeatedField<global::Onnx.TensorShapeProto.Types.Dimension> dim_ = new pbc::RepeatedField<global::Onnx.TensorShapeProto.Types.Dimension>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.TensorShapeProto.Types.Dimension> Dim {
       get { return dim_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as TensorShapeProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(TensorShapeProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -4847,6 +5110,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       hash ^= dim_.GetHashCode();
@@ -4857,11 +5121,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -4875,6 +5141,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       dim_.WriteTo(ref output, _repeated_dim_codec);
       if (_unknownFields != null) {
@@ -4884,6 +5151,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       size += dim_.CalculateSize(_repeated_dim_codec);
@@ -4894,6 +5162,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(TensorShapeProto other) {
       if (other == null) {
         return;
@@ -4903,6 +5172,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -4924,6 +5194,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -4943,6 +5214,7 @@ namespace Onnx {
     #region Nested types
     /// <summary>Container for nested types declared in the TensorShapeProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static partial class Types {
       public sealed partial class Dimension : pb::IMessage<Dimension>
       #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
@@ -4952,19 +5224,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Dimension> _parser = new pb::MessageParser<Dimension>(() => new Dimension());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Dimension> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TensorShapeProto.Descriptor.NestedTypes[0]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Dimension() {
           OnConstruction();
         }
@@ -4972,6 +5248,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Dimension(Dimension other) : this() {
           denotation_ = other.denotation_;
           switch (other.ValueCase) {
@@ -4987,6 +5264,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Dimension Clone() {
           return new Dimension(this);
         }
@@ -4994,6 +5272,7 @@ namespace Onnx {
         /// <summary>Field number for the "dim_value" field.</summary>
         public const int DimValueFieldNumber = 1;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public long DimValue {
           get { return valueCase_ == ValueOneofCase.DimValue ? (long) value_ : 0L; }
           set {
@@ -5008,6 +5287,7 @@ namespace Onnx {
         /// namespace Shape
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public string DimParam {
           get { return valueCase_ == ValueOneofCase.DimParam ? (string) value_ : ""; }
           set {
@@ -5023,10 +5303,11 @@ namespace Onnx {
         /// Standard denotation can optionally be used to denote tensor
         /// dimensions with standard semantic descriptions to ensure
         /// that operations are applied to the correct axis of a tensor.
-        /// Refer to https://github.com/onnx/onnx/blob/master/docs/DimensionDenotation.md#denotation-definition
+        /// Refer to https://github.com/onnx/onnx/blob/main/docs/DimensionDenotation.md#denotation-definition
         /// for pre-defined dimension denotations.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public string Denotation {
           get { return denotation_; }
           set {
@@ -5043,22 +5324,26 @@ namespace Onnx {
         }
         private ValueOneofCase valueCase_ = ValueOneofCase.None;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public ValueOneofCase ValueCase {
           get { return valueCase_; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void ClearValue() {
           valueCase_ = ValueOneofCase.None;
           value_ = null;
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Dimension);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Dimension other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -5074,6 +5359,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (valueCase_ == ValueOneofCase.DimValue) hash ^= DimValue.GetHashCode();
@@ -5087,11 +5373,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -5116,6 +5404,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (valueCase_ == ValueOneofCase.DimValue) {
             output.WriteRawTag(8);
@@ -5136,6 +5425,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (valueCase_ == ValueOneofCase.DimValue) {
@@ -5154,6 +5444,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Dimension other) {
           if (other == null) {
             return;
@@ -5174,6 +5465,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -5203,6 +5495,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -5247,19 +5540,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<TypeProto> _parser = new pb::MessageParser<TypeProto>(() => new TypeProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<TypeProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[11]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TypeProto() {
       OnConstruction();
     }
@@ -5267,6 +5564,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TypeProto(TypeProto other) : this() {
       denotation_ = other.denotation_;
       switch (other.ValueCase) {
@@ -5294,6 +5592,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public TypeProto Clone() {
       return new TypeProto(this);
     }
@@ -5304,6 +5603,7 @@ namespace Onnx {
     /// The type of a tensor.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.Tensor TensorType {
       get { return valueCase_ == ValueOneofCase.TensorType ? (global::Onnx.TypeProto.Types.Tensor) value_ : null; }
       set {
@@ -5318,6 +5618,7 @@ namespace Onnx {
     /// The type of a sequence.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.Sequence SequenceType {
       get { return valueCase_ == ValueOneofCase.SequenceType ? (global::Onnx.TypeProto.Types.Sequence) value_ : null; }
       set {
@@ -5332,6 +5633,7 @@ namespace Onnx {
     /// The type of a map.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.Map MapType {
       get { return valueCase_ == ValueOneofCase.MapType ? (global::Onnx.TypeProto.Types.Map) value_ : null; }
       set {
@@ -5346,6 +5648,7 @@ namespace Onnx {
     /// The type of an optional.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.Optional OptionalType {
       get { return valueCase_ == ValueOneofCase.OptionalType ? (global::Onnx.TypeProto.Types.Optional) value_ : null; }
       set {
@@ -5360,6 +5663,7 @@ namespace Onnx {
     /// Type of the sparse tensor
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.SparseTensor SparseTensorType {
       get { return valueCase_ == ValueOneofCase.SparseTensorType ? (global::Onnx.TypeProto.Types.SparseTensor) value_ : null; }
       set {
@@ -5371,6 +5675,7 @@ namespace Onnx {
     /// <summary>Field number for the "opaque_type" field.</summary>
     public const int OpaqueTypeFieldNumber = 7;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public global::Onnx.TypeProto.Types.Opaque OpaqueType {
       get { return valueCase_ == ValueOneofCase.OpaqueType ? (global::Onnx.TypeProto.Types.Opaque) value_ : null; }
       set {
@@ -5385,10 +5690,11 @@ namespace Onnx {
     /// <summary>
     /// An optional denotation can be used to denote the whole
     /// type with a standard semantic description as to what is
-    /// stored inside. Refer to https://github.com/onnx/onnx/blob/master/docs/TypeDenotation.md#type-denotation-definition
+    /// stored inside. Refer to https://github.com/onnx/onnx/blob/main/docs/TypeDenotation.md#type-denotation-definition
     /// for pre-defined type denotations.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Denotation {
       get { return denotation_; }
       set {
@@ -5409,22 +5715,26 @@ namespace Onnx {
     }
     private ValueOneofCase valueCase_ = ValueOneofCase.None;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public ValueOneofCase ValueCase {
       get { return valueCase_; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void ClearValue() {
       valueCase_ = ValueOneofCase.None;
       value_ = null;
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as TypeProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(TypeProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -5444,6 +5754,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (valueCase_ == ValueOneofCase.TensorType) hash ^= TensorType.GetHashCode();
@@ -5461,11 +5772,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -5506,6 +5819,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (valueCase_ == ValueOneofCase.TensorType) {
         output.WriteRawTag(10);
@@ -5542,6 +5856,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (valueCase_ == ValueOneofCase.TensorType) {
@@ -5572,6 +5887,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(TypeProto other) {
       if (other == null) {
         return;
@@ -5622,6 +5938,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -5697,6 +6014,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -5770,6 +6088,7 @@ namespace Onnx {
     #region Nested types
     /// <summary>Container for nested types declared in the TypeProto message type.</summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static partial class Types {
       public sealed partial class Tensor : pb::IMessage<Tensor>
       #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
@@ -5779,19 +6098,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Tensor> _parser = new pb::MessageParser<Tensor>(() => new Tensor());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Tensor> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[0]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Tensor() {
           OnConstruction();
         }
@@ -5799,6 +6122,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Tensor(Tensor other) : this() {
           elemType_ = other.elemType_;
           shape_ = other.shape_ != null ? other.shape_.Clone() : null;
@@ -5806,6 +6130,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Tensor Clone() {
           return new Tensor(this);
         }
@@ -5819,6 +6144,7 @@ namespace Onnx {
         /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int ElemType {
           get { return elemType_; }
           set {
@@ -5830,6 +6156,7 @@ namespace Onnx {
         public const int ShapeFieldNumber = 2;
         private global::Onnx.TensorShapeProto shape_;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public global::Onnx.TensorShapeProto Shape {
           get { return shape_; }
           set {
@@ -5838,11 +6165,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Tensor);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Tensor other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -5856,6 +6185,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (ElemType != 0) hash ^= ElemType.GetHashCode();
@@ -5867,11 +6197,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -5892,6 +6224,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (ElemType != 0) {
             output.WriteRawTag(8);
@@ -5908,6 +6241,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (ElemType != 0) {
@@ -5923,6 +6257,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Tensor other) {
           if (other == null) {
             return;
@@ -5940,6 +6275,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -5968,6 +6304,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -6004,19 +6341,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Sequence> _parser = new pb::MessageParser<Sequence>(() => new Sequence());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Sequence> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[1]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Sequence() {
           OnConstruction();
         }
@@ -6024,12 +6365,14 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Sequence(Sequence other) : this() {
           elemType_ = other.elemType_ != null ? other.elemType_.Clone() : null;
           _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Sequence Clone() {
           return new Sequence(this);
         }
@@ -6042,6 +6385,7 @@ namespace Onnx {
         /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public global::Onnx.TypeProto ElemType {
           get { return elemType_; }
           set {
@@ -6050,11 +6394,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Sequence);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Sequence other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -6067,6 +6413,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (elemType_ != null) hash ^= ElemType.GetHashCode();
@@ -6077,11 +6424,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -6098,6 +6447,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (elemType_ != null) {
             output.WriteRawTag(10);
@@ -6110,6 +6460,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (elemType_ != null) {
@@ -6122,6 +6473,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Sequence other) {
           if (other == null) {
             return;
@@ -6136,6 +6488,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -6160,6 +6513,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -6192,19 +6546,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Map> _parser = new pb::MessageParser<Map>(() => new Map());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Map> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[2]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Map() {
           OnConstruction();
         }
@@ -6212,6 +6570,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Map(Map other) : this() {
           keyType_ = other.keyType_;
           valueType_ = other.valueType_ != null ? other.valueType_.Clone() : null;
@@ -6219,6 +6578,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Map Clone() {
           return new Map(this);
         }
@@ -6232,6 +6592,7 @@ namespace Onnx {
         /// This field MUST refer to an integral type ([U]INT{8|16|32|64}) or STRING
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int KeyType {
           get { return keyType_; }
           set {
@@ -6246,6 +6607,7 @@ namespace Onnx {
         /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public global::Onnx.TypeProto ValueType {
           get { return valueType_; }
           set {
@@ -6254,11 +6616,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Map);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Map other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -6272,6 +6636,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (KeyType != 0) hash ^= KeyType.GetHashCode();
@@ -6283,11 +6648,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -6308,6 +6675,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (KeyType != 0) {
             output.WriteRawTag(8);
@@ -6324,6 +6692,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (KeyType != 0) {
@@ -6339,6 +6708,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Map other) {
           if (other == null) {
             return;
@@ -6356,6 +6726,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -6384,6 +6755,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -6420,19 +6792,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Optional> _parser = new pb::MessageParser<Optional>(() => new Optional());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Optional> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[3]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Optional() {
           OnConstruction();
         }
@@ -6440,12 +6816,14 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Optional(Optional other) : this() {
           elemType_ = other.elemType_ != null ? other.elemType_.Clone() : null;
           _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Optional Clone() {
           return new Optional(this);
         }
@@ -6459,6 +6837,7 @@ namespace Onnx {
         /// Possible values correspond to OptionalProto.DataType enum
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public global::Onnx.TypeProto ElemType {
           get { return elemType_; }
           set {
@@ -6467,11 +6846,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Optional);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Optional other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -6484,6 +6865,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (elemType_ != null) hash ^= ElemType.GetHashCode();
@@ -6494,11 +6876,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -6515,6 +6899,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (elemType_ != null) {
             output.WriteRawTag(10);
@@ -6527,6 +6912,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (elemType_ != null) {
@@ -6539,6 +6925,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Optional other) {
           if (other == null) {
             return;
@@ -6553,6 +6940,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -6577,6 +6965,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -6606,19 +6995,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<SparseTensor> _parser = new pb::MessageParser<SparseTensor>(() => new SparseTensor());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<SparseTensor> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[4]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public SparseTensor() {
           OnConstruction();
         }
@@ -6626,6 +7019,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public SparseTensor(SparseTensor other) : this() {
           elemType_ = other.elemType_;
           shape_ = other.shape_ != null ? other.shape_.Clone() : null;
@@ -6633,6 +7027,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public SparseTensor Clone() {
           return new SparseTensor(this);
         }
@@ -6646,6 +7041,7 @@ namespace Onnx {
         /// This field MUST be present for this version of the IR.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int ElemType {
           get { return elemType_; }
           set {
@@ -6657,6 +7053,7 @@ namespace Onnx {
         public const int ShapeFieldNumber = 2;
         private global::Onnx.TensorShapeProto shape_;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public global::Onnx.TensorShapeProto Shape {
           get { return shape_; }
           set {
@@ -6665,11 +7062,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as SparseTensor);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(SparseTensor other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -6683,6 +7082,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (ElemType != 0) hash ^= ElemType.GetHashCode();
@@ -6694,11 +7094,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -6719,6 +7121,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (ElemType != 0) {
             output.WriteRawTag(8);
@@ -6735,6 +7138,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (ElemType != 0) {
@@ -6750,6 +7154,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(SparseTensor other) {
           if (other == null) {
             return;
@@ -6767,6 +7172,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -6795,6 +7201,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -6828,19 +7235,23 @@ namespace Onnx {
         private static readonly pb::MessageParser<Opaque> _parser = new pb::MessageParser<Opaque>(() => new Opaque());
         private pb::UnknownFieldSet _unknownFields;
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pb::MessageParser<Opaque> Parser { get { return _parser; } }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public static pbr::MessageDescriptor Descriptor {
           get { return global::Onnx.TypeProto.Descriptor.NestedTypes[5]; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         pbr::MessageDescriptor pb::IMessage.Descriptor {
           get { return Descriptor; }
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Opaque() {
           OnConstruction();
         }
@@ -6848,6 +7259,7 @@ namespace Onnx {
         partial void OnConstruction();
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Opaque(Opaque other) : this() {
           domain_ = other.domain_;
           name_ = other.name_;
@@ -6855,6 +7267,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public Opaque Clone() {
           return new Opaque(this);
         }
@@ -6866,6 +7279,7 @@ namespace Onnx {
         /// When missing, the domain is the same as the model's.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public string Domain {
           get { return domain_; }
           set {
@@ -6880,6 +7294,7 @@ namespace Onnx {
         /// The name is optional but significant when provided.
         /// </summary>
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public string Name {
           get { return name_; }
           set {
@@ -6888,11 +7303,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override bool Equals(object other) {
           return Equals(other as Opaque);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public bool Equals(Opaque other) {
           if (ReferenceEquals(other, null)) {
             return false;
@@ -6906,6 +7323,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override int GetHashCode() {
           int hash = 1;
           if (Domain.Length != 0) hash ^= Domain.GetHashCode();
@@ -6917,11 +7335,13 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public override string ToString() {
           return pb::JsonFormatter.ToDiagnosticString(this);
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void WriteTo(pb::CodedOutputStream output) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           output.WriteRawMessage(this);
@@ -6942,6 +7362,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
           if (Domain.Length != 0) {
             output.WriteRawTag(10);
@@ -6958,6 +7379,7 @@ namespace Onnx {
         #endif
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public int CalculateSize() {
           int size = 0;
           if (Domain.Length != 0) {
@@ -6973,6 +7395,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(Opaque other) {
           if (other == null) {
             return;
@@ -6987,6 +7410,7 @@ namespace Onnx {
         }
 
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         public void MergeFrom(pb::CodedInputStream input) {
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
           input.ReadRawMessage(this);
@@ -7012,6 +7436,7 @@ namespace Onnx {
 
         #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
         void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
           uint tag;
           while ((tag = input.ReadTag()) != 0) {
@@ -7052,19 +7477,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<OperatorSetIdProto> _parser = new pb::MessageParser<OperatorSetIdProto>(() => new OperatorSetIdProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<OperatorSetIdProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[12]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public OperatorSetIdProto() {
       OnConstruction();
     }
@@ -7072,6 +7501,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public OperatorSetIdProto(OperatorSetIdProto other) : this() {
       domain_ = other.domain_;
       version_ = other.version_;
@@ -7079,6 +7509,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public OperatorSetIdProto Clone() {
       return new OperatorSetIdProto(this);
     }
@@ -7093,6 +7524,7 @@ namespace Onnx {
     /// This field MUST be present in this version of the IR when referring to any other operator set.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Domain {
       get { return domain_; }
       set {
@@ -7108,6 +7540,7 @@ namespace Onnx {
     /// This field MUST be present in this version of the IR.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public long Version {
       get { return version_; }
       set {
@@ -7116,11 +7549,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as OperatorSetIdProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(OperatorSetIdProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -7134,6 +7569,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (Domain.Length != 0) hash ^= Domain.GetHashCode();
@@ -7145,11 +7581,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -7170,6 +7608,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (Domain.Length != 0) {
         output.WriteRawTag(10);
@@ -7186,6 +7625,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (Domain.Length != 0) {
@@ -7201,6 +7641,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(OperatorSetIdProto other) {
       if (other == null) {
         return;
@@ -7215,6 +7656,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -7240,6 +7682,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {
@@ -7270,19 +7713,23 @@ namespace Onnx {
     private static readonly pb::MessageParser<FunctionProto> _parser = new pb::MessageParser<FunctionProto>(() => new FunctionProto());
     private pb::UnknownFieldSet _unknownFields;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<FunctionProto> Parser { get { return _parser; } }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
       get { return global::Onnx.OnnxMlReflection.Descriptor.MessageTypes[13]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     pbr::MessageDescriptor pb::IMessage.Descriptor {
       get { return Descriptor; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public FunctionProto() {
       OnConstruction();
     }
@@ -7290,6 +7737,7 @@ namespace Onnx {
     partial void OnConstruction();
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public FunctionProto(FunctionProto other) : this() {
       name_ = other.name_;
       input_ = other.input_.Clone();
@@ -7303,6 +7751,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public FunctionProto Clone() {
       return new FunctionProto(this);
     }
@@ -7316,6 +7765,7 @@ namespace Onnx {
     /// the FunctionProto.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Name {
       get { return name_; }
       set {
@@ -7332,6 +7782,7 @@ namespace Onnx {
     /// The inputs and outputs of the function.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Input {
       get { return input_; }
     }
@@ -7342,6 +7793,7 @@ namespace Onnx {
         = pb::FieldCodec.ForString(42);
     private readonly pbc::RepeatedField<string> output_ = new pbc::RepeatedField<string>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Output {
       get { return output_; }
     }
@@ -7355,6 +7807,7 @@ namespace Onnx {
     /// The attributes of the function.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<string> Attribute {
       get { return attribute_; }
     }
@@ -7368,6 +7821,7 @@ namespace Onnx {
     /// The nodes in the function.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.NodeProto> Node {
       get { return node_; }
     }
@@ -7379,6 +7833,7 @@ namespace Onnx {
     /// A human-readable documentation for this function. Markdown is allowed.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string DocString {
       get { return docString_; }
       set {
@@ -7392,6 +7847,7 @@ namespace Onnx {
         = pb::FieldCodec.ForMessage(74, global::Onnx.OperatorSetIdProto.Parser);
     private readonly pbc::RepeatedField<global::Onnx.OperatorSetIdProto> opsetImport_ = new pbc::RepeatedField<global::Onnx.OperatorSetIdProto>();
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public pbc::RepeatedField<global::Onnx.OperatorSetIdProto> OpsetImport {
       get { return opsetImport_; }
     }
@@ -7404,6 +7860,7 @@ namespace Onnx {
     /// the FunctionProto.
     /// </summary>
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public string Domain {
       get { return domain_; }
       set {
@@ -7412,11 +7869,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
       return Equals(other as FunctionProto);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool Equals(FunctionProto other) {
       if (ReferenceEquals(other, null)) {
         return false;
@@ -7436,6 +7895,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
       if (Name.Length != 0) hash ^= Name.GetHashCode();
@@ -7453,11 +7913,13 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override string ToString() {
       return pb::JsonFormatter.ToDiagnosticString(this);
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void WriteTo(pb::CodedOutputStream output) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
@@ -7487,6 +7949,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
       if (Name.Length != 0) {
         output.WriteRawTag(10);
@@ -7512,6 +7975,7 @@ namespace Onnx {
     #endif
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
       if (Name.Length != 0) {
@@ -7535,6 +7999,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(FunctionProto other) {
       if (other == null) {
         return;
@@ -7557,6 +8022,7 @@ namespace Onnx {
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public void MergeFrom(pb::CodedInputStream input) {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       input.ReadRawMessage(this);
@@ -7606,6 +8072,7 @@ namespace Onnx {
 
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
       uint tag;
       while ((tag = input.ReadTag()) != 0) {

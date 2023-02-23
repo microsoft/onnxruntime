@@ -19,14 +19,25 @@ parameters:
 
 - name: OnnxruntimeNodejsBindingArch  
   type: string
+
+- name: PoolName
+  type: string
+  default: 'Linux-CPU'
   
 jobs:
 - job: Linux_C_API_Packaging_CPU_${{parameters.OnnxruntimeArch}}
+  
   workspace:
     clean: all
+  variables:
+  - name: skipComponentGovernanceDetection
+    value: ${{eq('${{parameters.OnnxruntimeNodejsBindingArch}}', 'arm64')}}
   timeoutInMinutes:  210
-  pool: 'Linux-CPU'
+  pool: ${{parameters.PoolName}}
   steps:
+    - checkout: self
+      clean: true
+      submodules: none
     - template: set-version-number-variables-step.yml
     - template: get-docker-image-steps.yml
       parameters:
@@ -34,6 +45,8 @@ jobs:
         Context: tools/ci_build/github/linux/docker/inference/${{parameters.OnnxruntimeArch}}/default/cpu
         DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
         Repository: onnxruntimecpubuildcentos7${{parameters.OnnxruntimeArch}}
+        ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+            UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:
@@ -74,11 +87,10 @@ jobs:
           arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
           os: 'linux'
           artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
+    - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
+      - template: component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()

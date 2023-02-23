@@ -30,6 +30,10 @@ MlasConvDepthwiseKernel(
     size_t KernelSize
     )
 {
+    //
+    // TODO Modify MlasConvDepthwiseGetKernelOutputCnt() function if this kernel
+    // is further optimized.
+    //
 #if defined(MLAS_SSE2_INTRINSICS)
     const __m128i ZeroVector = _mm_setzero_si128();
     const __m128i InputZeroPointVector = _mm_set1_epi16(InputZeroPoint);

@@ -18,6 +18,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
+#include "core/common/inlined_containers.h"
 #else
 #include "onnx/defs/data_type_utils.h"
 #endif
@@ -28,12 +29,13 @@
 #pragma warning(pop)
 #endif
 
-#include "gsl/gsl"
+#include "core/common/gsl.h"
 
 #include "core/common/common.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
+#include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/graph/basic_types.h"
@@ -44,6 +46,7 @@
 #endif
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
+#include "core/graph/ort_format_load_options.h"
 
 namespace flatbuffers {
 class FlatBufferBuilder;
@@ -80,6 +83,22 @@ class Node {
   };
 
   explicit Node() = default;
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  Node(std::string_view name,
+       std::string_view op_type,
+       std::string_view description,
+       gsl::span<NodeArg* const> input_args,
+       gsl::span<NodeArg* const> output_args,
+       const NodeAttributes* attributes,
+       std::string_view domain) {
+    Init(std::string{name}, std::string{op_type}, std::string{description},
+         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
+         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
+         attributes, std::string{domain});
+  }
+#endif
+
   ~Node() = default;
 
   /**
@@ -169,9 +188,8 @@ class Node {
   @remarks The graph containing this node must be resolved, otherwise nullptr will be returned. */
   const ONNX_NAMESPACE::OpSchema* Op() const noexcept { return op_; }
 
-  Status InstantiateFunctionBody();
-
-  Status GetInstantiateFunctionBody(std::unique_ptr<Function>& output) const;
+  /** Create a copy of the called op's FunctionProto if it has one. Returns true if successful. */
+  bool TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& func_proto) const;
 
   bool CanBeInlined() const;
 
@@ -470,9 +488,12 @@ class Node {
 #endif
 
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, Graph& graph,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Node>& node);
 
-  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node, const logging::Logger& logger);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Node& fbs_node,
+                           const OrtFormatLoadOptions& load_options,
+                           const logging::Logger& logger);
   Status LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_edgs, const Graph& graph);
 
   /**
@@ -675,8 +696,8 @@ class Graph {
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS)
   /** This function takes externally provided data for initializers with external data
-  *    and replaces graph initializers with its content.
-  */
+   *    and replaces graph initializers with its content.
+   */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
@@ -916,8 +937,8 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(input_args),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -930,7 +951,7 @@ class Graph {
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
                    input_args,
-                   gsl::make_span(output_args.begin(), output_args.end()),
+                   AsSpan(output_args),
                    attributes, domain);
   }
 
@@ -942,7 +963,7 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain) {
     return AddNode(name, op_type, description,
-                   gsl::make_span(input_args.begin(), input_args.end()),
+                   AsSpan(input_args),
                    output_args,
                    attributes, domain);
   }
@@ -1074,13 +1095,6 @@ class Graph {
   */
   Node& BeginFuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
-  /**
-  If we have BeginFuseSubGraph, but somehow hit errors, such as Compile of an EP failed on thesub_graph.
-  We can call CancelFuseSubGraph to undo the changes of BeginFuseSubGraph
-  @param fused_node The fused node and it's function body to be removed from the graph
-  */
-  void CancelFuseSubGraph(const Node& fused_node);
-
   void FinalizeFuseSubGraph(const IndexedSubGraph& sub_graph, Node& fused_node);
 #endif
 
@@ -1141,7 +1155,7 @@ class Graph {
   void SetInputs(gsl::span<const NodeArg* const> inputs);
 
   void SetInputs(std::initializer_list<const NodeArg*> inputs) {
-    SetInputs(gsl::make_span(inputs));
+    SetInputs(AsSpan(inputs));
   }
 
   const Model& GetModel() const {
@@ -1159,7 +1173,7 @@ class Graph {
   void SetOutputs(gsl::span<const NodeArg* const> outputs);
 
   void SetOutputs(std::initializer_list<const NodeArg*> outputs) {
-    SetOutputs(gsl::make_span(outputs.begin(), outputs.end()));
+    SetOutputs(AsSpan(outputs));
   }
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -1220,7 +1234,7 @@ class Graph {
   }
 
   void UpdateConsumerNodes(const std::string& node_arg_name, std::initializer_list<Node*> nodes) {
-    UpdateConsumerNodes(node_arg_name, gsl::make_span(nodes));
+    UpdateConsumerNodes(node_arg_name, AsSpan(nodes));
   }
 
   /** During constant folding it may become possible to infer the shape for a node.
@@ -1258,7 +1272,7 @@ class Graph {
     return Resolve(default_options);
   }
 
-  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept{
+  const std::unordered_set<std::string>& GetOuterScopeNodeArgNames() const noexcept {
     return outer_scope_node_arg_names_;
   }
 
@@ -1289,27 +1303,28 @@ class Graph {
   */
   Graph(Graph& parent_graph, const Node& parent_node, ONNX_NAMESPACE::GraphProto& subgraph_proto);
 
-  Graph(const Model& owning_model, 
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry, 
-      ONNX_NAMESPACE::GraphProto& subgraph_proto, 
-      const std::unordered_map<std::string, int>& domain_version_map,
-      const logging::Logger& logger,
-      bool strict_shape_type_inference);
+  Graph(const Model& owning_model,
+        IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+        ONNX_NAMESPACE::GraphProto& subgraph_proto,
+        const std::unordered_map<std::string, int>& domain_version_map,
+        const logging::Logger& logger,
+        bool strict_shape_type_inference);
 #endif
 
   virtual ~Graph();
 
-  static common::Status LoadFromOrtFormat(
-      const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
-      const std::unordered_map<std::string, int>& domain_to_version,
+  static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph, const Model& owning_model,
+                                  const std::unordered_map<std::string, int>& domain_to_version,
 #if !defined(ORT_MINIMAL_BUILD)
-      IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                  IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
 #endif
-      const logging::Logger& logger, std::unique_ptr<Graph>& graph);
+                                  const OrtFormatLoadOptions& load_options,
+                                  const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
   // deserialize a subgraph
   static Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
                                   Graph& parent_graph, const Node& parent_node,
+                                  const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1319,20 +1334,6 @@ class Graph {
 
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
-  }
-
-  // Stores information collected during the replay of loaded runtime optimizations
-  struct RuntimeOptimizationReplayContext {
-    std::unordered_map<NodeIndex, HashValue> produced_node_index_to_kernel_def_hash{};
-    size_t num_replayed_optimizations{};
-  };
-
-  const RuntimeOptimizationReplayContext& RuntimeOptimizationReplayCtx() const {
-    return runtime_optimization_replay_context_;
-  }
-
-  RuntimeOptimizationReplayContext& MutableRuntimeOptimizationReplayCtx() {
-    return runtime_optimization_replay_context_;
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1353,7 +1354,8 @@ class Graph {
         bool strict_shape_type_inference);
 
   // Populate Graph instance from ORT format serialized data.
-  common::Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph);
+  Status LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph,
+                           const OrtFormatLoadOptions& load_options);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Constructor: Given a <GraphProto> loaded from model file, construct
@@ -1408,23 +1410,33 @@ class Graph {
   // or a subgraph, so that the various operations that are part of the Resolve can work iteratively or
   // recursively as needed.
   struct ResolveContext {
-    ResolveContext() = default;
+    ResolveContext(const Graph& owning_graph) : graph{owning_graph} {
+    }
 
-    std::unordered_map<std::string, std::pair<Node*, int>> output_args;
-    std::unordered_set<std::string> inputs_and_initializers;
-    std::unordered_set<std::string> outer_scope_node_args;
-    std::unordered_map<std::string, NodeIndex> node_name_to_index;
+    std::unordered_map<std::string_view, std::pair<Node*, int>> output_args;
+    std::unordered_set<std::string_view> inputs_and_initializers;
+    std::unordered_map<std::string_view, NodeIndex> node_name_to_index;
     std::unordered_set<Node*> nodes_with_subgraphs;
+
+    // check if the provided name is an input/initialize/node output of this Graph instance during Graph::Resolve.
+    // Graph::node_args_ can have stale entries so we can't rely on that.
+    bool IsLocalValue(const std::string& name) const;
+
+    // check if an ancestor graph has a valid value with the provided name during Graph::Resolve.
+    // Once Graph::Resolve completes Graph::IsOuterScopeValue can be used and is more efficient.
+    bool IsOuterScopeValue(const std::string& name) const;
 
     void Clear() {
       output_args.clear();
       inputs_and_initializers.clear();
-      outer_scope_node_args.clear();
       node_name_to_index.clear();
       nodes_with_subgraphs.clear();
     }
 
    private:
+    bool IsInputInitializerOrOutput(const std::string& name, bool check_ancestors) const;
+
+    const Graph& graph;
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ResolveContext);
   };
 
@@ -1471,6 +1483,7 @@ class Graph {
 
   // Infer and set type information across <*this> graph if needed, and verify type/attribute
   // information matches between node and op.
+
   common::Status VerifyNodeAndOpMatch(const ResolveOptions& options);
 
   // Set graph inputs/outputs when resolving a graph..
@@ -1563,17 +1576,18 @@ class Graph {
   // Note: runtime_optimizations_ == *runtime_optimizations_ptr_ and must be initialized
   std::unique_ptr<RuntimeOptimizationRecordContainer> runtime_optimizations_ptr_;
   RuntimeOptimizationRecordContainer& runtime_optimizations_;
-
-  RuntimeOptimizationReplayContext runtime_optimization_replay_context_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
   IOnnxRuntimeOpSchemaCollectionPtr schema_registry_;
 
-  //Currently to make the ORT in-memory graph work, we have to create a temporary op schema
-  //for the fused kernel. I really don't like it. but for short-term solution, let's host 
-  //those schemas here.
+  // Currently to make the ORT in-memory graph work, we have to create a temporary op schema
+  // for the fused kernel. I really don't like it. but for short-term solution, let's host
+  // those schemas here.
   InlinedVector<std::unique_ptr<ONNX_NAMESPACE::OpSchema>> fused_schemas_containers_;
+  // in some case, a fused sub-graph will happens multiple times in one model, we use a map
+  // to store reusable-schema in lookup.
+  InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
@@ -1641,7 +1655,7 @@ class Graph {
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};
 
-  ResolveContext resolve_context_;
+  ResolveContext resolve_context_{*this};
 
   // the parent graph if this is a subgraph.
   Graph* parent_graph_;

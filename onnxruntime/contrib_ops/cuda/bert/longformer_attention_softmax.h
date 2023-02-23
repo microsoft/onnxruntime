@@ -13,20 +13,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
+#pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 // Launch the softmax kernels that does not use compact memory.
-bool LaunchLongformerSoftmaxSimpleKernel(
+Status LaunchLongformerSoftmaxSimpleKernel(
     cudaStream_t stream,
     cublasHandle_t cublas,
     void* workspace,              // softmax space
     const void* q,                // transposed Q with shape (B, N, S, H)
     const void* k,                // transposed K with shape (B, N, S, H)
     const void* v,                // transposed V with shape (B, N, S, H)
-    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 masked.
+    const void* attention_mask,   // attention mask with shape (B, S), with value 0.0 not masked, and -10000.0 or torch.finfo(dtype).min masked.
     const void* global_q,         // Q for global tokens with shape (B, N, S, H)
     const void* global_k,         // K for global tokens with shape (B, N, S, H)
     const void* global_v,         // V for global tokens with shape (B, N, S, H)

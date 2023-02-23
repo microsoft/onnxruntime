@@ -265,7 +265,8 @@ bool ValidateGemmInitializer(const Graph& graph, const Node& gemm, int64_t hidde
 
 struct MatchUnidirMaskResult {
   const Node* div_node = nullptr;       // the root node (Div) of the subgraph
-  bool is_unidirectional = false;               // whether the mask is unidirectional.
+  bool is_unidirectional = false;       // whether the mask is unidirectional.
+  float mask_filter_value = -10000.0f;  // the value to filter out the mask.
   std::vector<NodeIndex> node_indices;  // id of all nodes in the subgraph for removing later.
 };
 
@@ -375,7 +376,7 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
       |                (*, -2, -1, 0)   (axes=0)      |                                              Cast(9)
       +----> Shape --> Slice ---------> Squeeze-------+                                                |
       |      :shape2   :slice2         :squeeze2                                                       v condition
-      +----------------------------------------------------------------------------------------->Where( ,*,-10000)--->[Add]
+      +----------------------------------------------------------------------------------------->Where( ,*,-10000 or value of mask_filter_value)--->[Add]
 
  When use_shared_node is true, shape1 and shape2 is one node, and also unsqueeze2 and unsqueeze3 is same.
 */
@@ -394,8 +395,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
   const Node& where_node = edges[0]->GetNode();
   const Node& div_node = edges[1]->GetNode();
 
-  constexpr float expected_value = -10000.0f;
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where_node.InputDefs()[2]), expected_value, true)) {
+  if (!optimizer_utils::GetScalarInitializerValue<float>(graph, *(where_node.InputDefs()[2]), result.mask_filter_value, true)) {
     return false;
   }
 
@@ -550,6 +550,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 struct AttentionMaskNodes {
   const Node* softmax;
   bool has_input_mask;  // When it is false, the following nodes will be NULL.
+  float mask_filter_value = -10000.0f;
 
   const Node* add;
   const Node* mul;
@@ -566,6 +567,7 @@ struct AttentionMaskNodesDistilBert {
   const Node* reshape;
   const Node* equal;
   const Node* shape;
+  float mask_filter_value = -10000.0f;
 };
 
 void SetMaskNodesToRemove(const Graph& graph, AttentionMaskNodes& mask_nodes, std::vector<NodeIndex>& nodes_to_remove) {
@@ -598,10 +600,10 @@ void SetMaskNodesToRemove(const Graph&, AttentionMaskNodesDistilBert& mask_nodes
 }
 
 /**  Match Input Mask subgraph:
-                                                                                                       {UnidirMask Subgraph}
-                                                                                                                   |
-                                                                  (optional)                                       v
-[Attention_mask] --> Unsqueeze (axes=1) --> Unsqueeze (axes=2) --> Cast ---->Sub(1,*) --> Mul(*, -10000.0) --> Add( ,*)--->SoftMax -->[MatMul]
+                                                                                                       {                            UnidirMask Subgraph}
+                                                                                                                                               |
+                                                                  (optional)                                                                   v
+[Attention_mask] --> Unsqueeze (axes=1) --> Unsqueeze (axes=2) --> Cast ---->Sub(1,*) --> Mul(*, -10000.0 or value of mask_filter_value) --> Add( ,*)--->SoftMax -->[MatMul]
 
 When is_input_mask_optional is true, this function also matches the following subgraph:
     {UnidirMask Subgraph [Where]} --> Softmax --> [MatMul]
@@ -710,7 +712,7 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& qkv_matmul, Attentio
     return false;
   }
 
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(mask_mul.InputDefs()[1]), float(-10000), false)) {
+  if (!optimizer_utils::GetScalarInitializerValue(graph, *(mask_mul.InputDefs()[1]), result.mask_filter_value, false)) {
     DEBUG_LOG("mask_mul const input not matched");
     return false;
   }
@@ -1461,7 +1463,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       opt_k_transpose = k_concat;
       InlinedVector<int64_t> perm;
 
-      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm) 
+      if (!(graph_utils::GetRepeatedNodeAttributeValues(*opt_k_transpose, "perm", perm)
           && perm.size() == 4 && perm[0] == 0 && perm[1] == 1 && perm[2] == 3 && perm[3] == 2)) {
         DEBUG_LOG("opt_k_transpose perm attribute not matched");
         return false;
@@ -1541,6 +1543,11 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       kMSDomain);
   attention_node.AddAttribute("num_heads", num_heads);
   attention_node.AddAttribute("unidirectional", static_cast<int64_t>(unidir_mask_result.is_unidirectional));
+  if (mask_nodes.mask_filter_value != -10000.0f || unidir_mask_result.mask_filter_value != -10000.0f) {
+    float mask_filter_value = mask_nodes.mask_filter_value != -10000.0f ?
+                              mask_nodes.mask_filter_value : unidir_mask_result.mask_filter_value;
+    attention_node.AddAttribute("mask_filter_value", mask_filter_value);
+  }
 
   // Assign provider to this new node.
   attention_node.SetExecutionProviderType(layer_norm.GetExecutionProviderType());

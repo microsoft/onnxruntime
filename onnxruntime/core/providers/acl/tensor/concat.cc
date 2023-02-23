@@ -82,7 +82,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
 
   for (int i = 0; i < input_count; i++) {
     auto X = input_tensors[i];
-    const T* x_data = X->template Data<T>();
+    const T* x_data = X->Data<T>();
     arm_compute::Tensor* in = static_cast<arm_compute::Tensor*>(inputs_vector[i]);
 
     if (X->Shape().Size() != 0 && in->info()->has_padding() ){
@@ -93,7 +93,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
 
   if(Y->Shape().Size() != 0 && output.info()->has_padding() ){
     output.allocator()->allocate();

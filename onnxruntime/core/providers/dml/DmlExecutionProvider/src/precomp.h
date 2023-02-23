@@ -24,7 +24,7 @@
 #include <wil/wrl.h>
 #include <wil/result.h>
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #ifdef _GAMING_XBOX_SCARLETT
 #include <d3d12_xs.h>
@@ -52,6 +52,7 @@
 #include "External/DirectMLHelpers/GeneratedSchemaTypes.h"
 #include "External/DirectMLHelpers/SchemaHelpers.h"
 #include "External/DirectMLHelpers/GeneratedSchemaHelpers.h"
+#include "External/DirectMLHelpers/DirectMLX.h"
 
 using Microsoft::WRL::ComPtr;
 

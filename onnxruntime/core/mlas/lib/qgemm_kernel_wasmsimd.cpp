@@ -36,6 +36,7 @@ struct MLAS_GEMM_U8X8_KERNEL_WASMSIMD
 
     static constexpr size_t PackedK = 2;
     static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{0, 0, 0};
 };
 
 constexpr size_t MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedK;
@@ -504,4 +505,5 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd = {
     nullptr,
     MLAS_GEMM_U8X8_KERNEL_WASMSIMD::PackedK,
     0,
+    4 // multiple of kernel stride M
 };

@@ -1,7 +1,16 @@
+#if __XAMARIN__
 #if __IOS__
 [assembly: Foundation.LinkerSafe]
 #elif __ANDROID__
 [assembly: Android.LinkerSafe]
+#endif
+#else
+// .net 6 
+#if __IOS__
+[assembly: System.Reflection.AssemblyMetadata ("IsTrimmable", "True")]
+#elif __ANDROID__
+[assembly: global::System.Reflection.AssemblyMetadata("IsTrimmable", "True")]
+#endif
 #endif
 
 // Making these assembly's internals visible to the internal Test assembly

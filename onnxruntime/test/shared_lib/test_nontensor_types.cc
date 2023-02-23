@@ -9,7 +9,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test_allocator.h"
 
-#include <gsl/gsl>
+#include "core/common/gsl.h"
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
@@ -61,18 +61,16 @@ TEST(CApiTest, CreateGetVectorOfMapsInt64Float) {  // support zipmap output type
   size_t num_values = seq_ort.GetCount();
   ASSERT_EQ(num_values, N);
 
+#if !defined(ORT_NO_EXCEPTIONS)
   // test negative case
   bool failed = false;
-  ORT_TRY {
+  try {
     auto temp = seq_ort.GetValue(999, default_allocator.get());
+  } catch (const Ort::Exception& e) {
+    failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
   }
-  ORT_CATCH(const Ort::Exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      failed = e.GetOrtErrorCode() == ORT_RUNTIME_EXCEPTION;
-    });
-  }
-
   ASSERT_EQ(failed, true);
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
   // Fetch
   for (size_t idx = 0; idx < N; ++idx) {
@@ -354,7 +352,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
     {
       const auto* values = coo_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, values_shape[0]);
-      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
     {
@@ -366,7 +364,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
       const int64_t* indices = coo_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
       ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
 
@@ -413,7 +411,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
     {
       const auto* values = csr_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, expected_values.size());
-      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
     {
@@ -425,7 +423,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_INNER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_inner.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.begin(), ind_span.end()));
     }
 
     {
@@ -437,7 +435,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_OUTER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_outer.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.begin(), ind_span.end()));
     }
   }
 
@@ -481,7 +479,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
     {
       const auto* values = bsp_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, data_blocks.size());
-      ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), val_span.begin(), val_span.end()));
     }
     {
       auto indices_ts = bsp_st.GetSparseTensorIndicesTypeShapeInfo(ORT_SPARSE_BLOCK_SPARSE_INDICES);
@@ -492,7 +490,7 @@ TEST(CApiTest, SparseTensorUsingAPI) {
       const int32_t* indices = bsp_st.GetSparseTensorIndicesData<int32_t>(ORT_SPARSE_BLOCK_SPARSE_INDICES, num_indices);
       ASSERT_EQ(num_indices, blocksparse_indices.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
 }
@@ -540,7 +538,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
     {
       const auto* values = coo_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, values_shape[0]);
-      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
     {
@@ -552,7 +550,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
       const int64_t* indices = coo_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
       ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
   {
@@ -597,7 +595,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
     {
       const auto* values = csr_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, expected_values.size());
-      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(expected_values.cbegin(), expected_values.cend(), val_span.begin(), val_span.end()));
     }
 
     {
@@ -609,7 +607,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_INNER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_inner.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.begin(), ind_span.end()));
     }
 
     {
@@ -621,7 +619,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_OUTER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_outer.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.begin(), ind_span.end()));
     }
   }
   {
@@ -664,7 +662,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
     {
       const auto* values = bsp_st.GetSparseTensorValues<int32_t>();
       auto val_span = gsl::make_span(values, data_blocks.size());
-      ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), val_span.cbegin(), val_span.cend()));
+      ASSERT_TRUE(std::equal(data_blocks.cbegin(), data_blocks.cend(), val_span.begin(), val_span.end()));
     }
     {
       auto indices_ts = bsp_st.GetSparseTensorIndicesTypeShapeInfo(ORT_SPARSE_BLOCK_SPARSE_INDICES);
@@ -675,7 +673,7 @@ TEST(CApiTest, SparseTensorFillSparseTensorFormatAPI) {
       const int32_t* indices = bsp_st.GetSparseTensorIndicesData<int32_t>(ORT_SPARSE_BLOCK_SPARSE_INDICES, num_indices);
       ASSERT_EQ(num_indices, blocksparse_indices.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
 }
@@ -756,7 +754,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
       const int64_t* indices = coo_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_COO_INDICES, num_indices);
       ASSERT_EQ(num_indices, static_cast<size_t>(indices_shape[0]));
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_linear_indices.cbegin(), expected_linear_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
   {
@@ -832,7 +830,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_INNER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_inner.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_inner.cbegin(), expected_inner.cend(), ind_span.begin(), ind_span.end()));
     }
 
     {
@@ -844,7 +842,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
       const int64_t* indices = csr_st.GetSparseTensorIndicesData<int64_t>(ORT_SPARSE_CSR_OUTER_INDICES, num_indices);
       ASSERT_EQ(num_indices, expected_outer.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(expected_outer.cbegin(), expected_outer.cend(), ind_span.begin(), ind_span.end()));
     }
   }
   {
@@ -919,7 +917,7 @@ TEST(CApiTest, SparseTensorFillSparseFormatStringsAPI) {
       const int32_t* indices = bsp_st.GetSparseTensorIndicesData<int32_t>(ORT_SPARSE_BLOCK_SPARSE_INDICES, num_indices);
       ASSERT_EQ(num_indices, blocksparse_indices.size());
       auto ind_span = gsl::make_span(indices, num_indices);
-      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.cbegin(), ind_span.cend()));
+      ASSERT_TRUE(std::equal(blocksparse_indices.cbegin(), blocksparse_indices.cend(), ind_span.begin(), ind_span.end()));
     }
   }
 }

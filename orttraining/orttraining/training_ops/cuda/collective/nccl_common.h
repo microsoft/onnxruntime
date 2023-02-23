@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace cuda {
 
 #if defined(ORT_USE_NCCL)
-#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr) ? common::Status::OK() : common::Status(common::ONNXRUNTIME, common::FAIL))
+#define NCCL_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(NCCL_CALL(expr))
 #endif
 class NcclContext final {
  public:

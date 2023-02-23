@@ -46,7 +46,7 @@ To make image related tests data driven and increase test code coverage.
 ### 4. Models
 > Des: Currently, we are using four models, FNS-candy_Bgr8_freeDimInput, FNS-candy_Bgr8, FNS-candy_Rgb8, and FNS-candy_Tensor. We would try to get more models to cover the following listed cases.
 
-a. [Input Image Metadata](https://github.com/onnx/onnx/blob/master/docs/MetadataProps.md)
+a. [Input Image Metadata](https://github.com/onnx/onnx/blob/main/docs/MetadataProps.md)
 
 1.  No metadata provided (**TODO**)
 2. BitmapPixelFormat

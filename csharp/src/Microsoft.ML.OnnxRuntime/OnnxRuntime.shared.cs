@@ -44,17 +44,22 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv)
+    /// This class initializes the process-global ONNX Runtime environment instance (OrtEnv).
+    /// The singleton class OrtEnv contains the process-global ONNX Runtime environment.
+    /// It sets up logging, creates system wide thread-pools (if Thread Pool options are provided)
+    /// and other necessary things for OnnxRuntime to function. Create or access OrtEnv by calling
+    /// the Instance() method. Call this method before doing anything else in your application.
     /// </summary>
     public sealed class OrtEnv : SafeHandle
     {
         private static readonly Lazy<OrtEnv> _instance = new Lazy<OrtEnv>(()=> new OrtEnv());
+        private static LogLevel envLogLevel = LogLevel.Warning;
 
         #region private methods
         private OrtEnv()  //Problem: it is not possible to pass any option for a Singleton
     : base(IntPtr.Zero, true)
         {
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(LogLevel.Warning, @"CSharpOnnxRuntime", out handle));
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtCreateEnv(envLogLevel, @"CSharpOnnxRuntime", out handle));
             try
             {
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSetLanguageProjection(handle, OrtLanguageProjection.ORT_PROJECTION_CSHARP));
@@ -73,7 +78,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Exception caching: May throw an exception on every call, if the `OrtEnv` constructor threw an exception
         /// during lazy initialization
         /// </summary>
-        internal static IntPtr Handle  
+        internal static IntPtr Handle
         {
             get
             {
@@ -129,26 +134,36 @@ namespace Microsoft.ML.OnnxRuntime
             int numProviders;
 
             NativeApiStatus.VerifySuccess(NativeMethods.OrtGetAvailableProviders(out availableProvidersHandle, out numProviders));
-
-            var availableProviders = new string[numProviders];
-
             try
             {
-                for(int i=0; i<numProviders; ++i)
+                var availableProviders = new string[numProviders];
+                for (int i=0; i<numProviders; ++i)
                 {
                     availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
                 }
+                return availableProviders;
             }
-
             finally
             {
-                // Looks a bit weird that we might throw in finally(...)
-                // But the native method OrtReleaseAvailableProviders actually doesn't return a failure status
+                // This should never throw. The original C API should have never returned status in the first place.
                 // If it does, it is BUG and we would like to propagate that to the user in the form of an exception
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtReleaseAvailableProviders(availableProvidersHandle, numProviders));
             }
+        }
 
-            return availableProviders;
+
+        /// <summary>
+        /// Get/Set log level property of OrtEnv instance
+        /// </summary>
+        /// <returns>env log level</returns>
+        public LogLevel EnvLogLevel
+        {
+            get { return envLogLevel; }
+            set
+            {
+                NativeApiStatus.VerifySuccess(NativeMethods.OrtUpdateEnvWithCustomLogLevel(Handle, value));
+                envLogLevel = value;
+            }
         }
         #endregion
 

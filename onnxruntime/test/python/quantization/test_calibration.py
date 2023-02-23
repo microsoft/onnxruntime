@@ -6,14 +6,16 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
-from onnxruntime.quantization.calibrate import CalibrationDataReader, MinMaxCalibrater
+from onnxruntime.quantization.calibrate import CalibrationDataReader, create_calibrator
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -47,7 +49,15 @@ class TestDataReader(CalibrationDataReader):
         self.preprocess_flag = True
 
 
-class TestCalibrate(unittest.TestCase):
+class TestCalibrateMinMaxCalibrator(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="test_calibration.")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
     def test_augment_graph_config_1(self):
         """TEST_CONFIG_1"""
 
@@ -74,12 +84,12 @@ class TestCalibrate(unittest.TestCase):
         graph = helper.make_graph([conv_node, clip_node, matmul_node], "test_graph_1", [vi_a, vi_b, vi_e], [vi_f])
 
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        test_model_path = "./test_model_1.onnx"
-        onnx.save(model, test_model_path)
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_1.onnx")
+        onnx.save(model, test_model_path.as_posix())
 
         # Augmenting graph
-        augmented_model_path = "./augmented_test_model_1.onnx"
-        calibrater = MinMaxCalibrater(test_model_path, ["Conv", "MatMul"], augmented_model_path)
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_1.onnx")
+        calibrater = create_calibrator(test_model_path, ["Conv", "MatMul"], augmented_model_path.as_posix())
         augmented_model = calibrater.get_augment_model()
 
         # Checking if each added ReduceMin and ReduceMax node and its output exists
@@ -162,11 +172,11 @@ class TestCalibrate(unittest.TestCase):
         )
         graph = helper.make_graph([conv_node_1, conv_node_2], "test_graph_2", [vi_g, vi_h, vi_j], [vi_k])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        test_model_path = "./test_model_2.onnx"
-        onnx.save(model, test_model_path)
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_2.onnx")
+        onnx.save(model, test_model_path.as_posix())
 
-        augmented_model_path = "./augmented_test_model_2.onnx"
-        calibrater = MinMaxCalibrater(test_model_path, ["Conv", "MatMul"], augmented_model_path)
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_2.onnx")
+        calibrater = create_calibrator(test_model_path, ["Conv", "MatMul"], augmented_model_path.as_posix())
         augmented_model = calibrater.get_augment_model()
 
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]
@@ -213,12 +223,12 @@ class TestCalibrate(unittest.TestCase):
         matmul_node = helper.make_node("MatMul", ["P", "M"], ["Q"], name="MatMul")
         graph = helper.make_graph([relu_node, conv_node, clip_node, matmul_node], "test_graph_3", [vi_l, vi_n], [vi_q])
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
-        test_model_path = "./test_model_3.onnx"
-        onnx.save(model, test_model_path)
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_3.onnx")
+        onnx.save(model, test_model_path.as_posix())
 
         # Augmenting graph
-        augmented_model_path = "./augmented_test_model_3.onnx"
-        calibrater = MinMaxCalibrater(test_model_path, ["Conv", "MatMul"], augmented_model_path)
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_3.onnx")
+        calibrater = create_calibrator(test_model_path, ["Conv", "MatMul"], augmented_model_path.as_posix())
         augmented_model = calibrater.get_augment_model()
 
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]
@@ -315,11 +325,11 @@ class TestCalibrate(unittest.TestCase):
         onnx.save(model, test_model_path)
 
     def test_compute_range(self):
-        test_model_path = "./test_model_4.onnx"
-        self.construct_test_compute_range_model(test_model_path)
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_4.onnx")
+        self.construct_test_compute_range_model(test_model_path.as_posix())
 
-        augmented_model_path = "./augmented_test_model_4.onnx"
-        calibrater = MinMaxCalibrater(test_model_path, augmented_model_path=augmented_model_path)
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_4.onnx")
+        calibrater = create_calibrator(test_model_path, augmented_model_path=augmented_model_path.as_posix())
         data_reader = TestDataReader()
         calibrater.collect_data(data_reader)
         tensors_range = calibrater.compute_range()
@@ -327,7 +337,7 @@ class TestCalibrate(unittest.TestCase):
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         infer_session = onnxruntime.InferenceSession(
-            test_model_path,
+            test_model_path.as_posix(),
             sess_options=sess_options,
             providers=["CPUExecutionProvider"],
         )
@@ -392,8 +402,8 @@ class TestCalibrate(unittest.TestCase):
         test_model_path = "./test_model_5.onnx"
         onnx.save(model, test_model_path)
 
-        augmented_model_path = "./augmented_test_model_5.onnx"
-        calibrater = MinMaxCalibrater(test_model_path, [], augmented_model_path)
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_5.onnx")
+        calibrater = create_calibrator(test_model_path, [], augmented_model_path.as_posix())
         augmented_model = calibrater.get_augment_model()
 
         augmented_model_node_names = [node.name for node in augmented_model.graph.node]

@@ -4,14 +4,7 @@
 #pragma once
 
 #include "core/common/common.h"
-
-#if defined(_M_IX86) || (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(__i386__) || defined(__x86_64__)
-#define CPUIDINFO_ARCH_X86
-#endif
-
-#if defined(_M_ARM64) || defined(__aarch64__) || defined(_M_ARM) || defined(__arm__)
-#define CPUIDINFO_ARCH_ARM
-#endif  // ARM or ARM64
+#include "core/common/cpuid_arch_definition.h"
 
 namespace onnxruntime {
 
@@ -22,16 +15,18 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
+  bool HasAMX_BF16() const {return has_amx_bf16_;}
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
   bool HasAVX512f() const { return has_avx512f_; }
+  bool HasAVX512_BF16() const {return has_avx512_bf16_;}
   bool HasAVX512Skylake() const { return has_avx512_skylake_; }
-  bool HasF16C() const { return has_f16c_; }
+  bool HasF16C() const { return has_f16c_; } /*fp16 conversion inst*/
   bool HasSSE3() const { return has_sse3_; }
   bool HasSSE4_1() const { return has_sse4_1_; }
   bool IsHybrid() const { return is_hybrid_; }
 
-  // ARM 
+  // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
 
   uint32_t GetCurrentCoreIdx() const;
@@ -72,7 +67,7 @@ class CPUIDInfo {
     }
     return is_armv8_narrow_ld_[coreId];
   }
-  
+
   /**
   * @brief Some ARMv8 power efficient core has narrower 64b load/store
   *        that needs specialized optimiztion in kernels
@@ -90,6 +85,9 @@ class CPUIDInfo {
     return is_armv8_narrow_ld_[coreIdx];
   }
 
+  bool HasFp16VectorAcceleration() const {
+    return has_fp16_;
+  }
 
  private:
   CPUIDInfo() {
@@ -104,9 +102,11 @@ class CPUIDInfo {
 #endif
 
   }
+  bool has_amx_bf16_{false};
   bool has_avx_{false};
   bool has_avx2_{false};
   bool has_avx512f_{false};
+  bool has_avx512_bf16_{false};
   bool has_avx512_skylake_{false};
   bool has_f16c_{false};
   bool has_sse3_{false};
@@ -121,6 +121,7 @@ class CPUIDInfo {
   std::vector<bool> is_armv8_narrow_ld_;
 
   bool has_arm_neon_dot_{false};
+  bool has_fp16_{false};
 
 #ifdef CPUIDINFO_ARCH_X86
 

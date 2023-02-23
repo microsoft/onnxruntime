@@ -95,7 +95,7 @@ Status MatMulInteger::Compute(OpKernelContext* ctx) const {
     return Status::OK();
 
   const uint8_t* a_data = static_cast<const uint8_t*>(a->DataRaw());
-  auto* y_data = y->template MutableData<int32_t>();
+  auto* y_data = y->MutableData<int32_t>();
 
   MLAS_GEMM_QUANT_SHAPE_PARAMS gemm_shape;
   gemm_shape.M = static_cast<size_t>(helper.M());

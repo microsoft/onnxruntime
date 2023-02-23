@@ -7,10 +7,13 @@
 
 #include "core/providers/providers.h"
 
-#include "core/providers/cuda/cuda_execution_provider_info.h"
+struct OrtCUDAProviderOptions;
+struct OrtCUDAProviderOptionsV2;
 
 namespace onnxruntime {
-
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CUDA(const CUDAExecutionProviderInfo& info);
-
+// defined in provider_bridge_ort.cc
+struct CudaProviderFactoryCreator {
+  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtCUDAProviderOptions* provider_options);
+  static std::shared_ptr<IExecutionProviderFactory> Create(const OrtCUDAProviderOptionsV2* provider_options);
+};
 }  // namespace onnxruntime

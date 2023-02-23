@@ -43,7 +43,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   auto x_dims = x_shape.AsShapeVector();
-  auto x_data = reinterpret_cast<const HipT*>(X->template Data<T>());
+  auto x_data = reinterpret_cast<const HipT*>(X->Data<T>());
 
   auto x_dimensions = X->Shape().NumDimensions();
   if (x_dimensions < 3 || x_dimensions > 5) {
@@ -54,7 +54,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   const Tensor* W = context->Input<Tensor>(1);
   const TensorShape& w_shape = W->Shape();
   auto w_dims = w_shape.AsShapeVector();
-  auto w_data = reinterpret_cast<const HipT*>(W->template Data<T>());
+  auto w_data = reinterpret_cast<const HipT*>(W->Data<T>());
 
   size_t num_inputs = OpKernel::Node().InputDefs().size();
   bool has_bias = dynamic_padding ? num_inputs == 4 : num_inputs == 3;
@@ -68,8 +68,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   {
     std::lock_guard<OrtMutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
-    bool input_dims_changed = (s_.last_x_dims.GetDims() != gsl::make_span(x_dims));
-    bool w_dims_changed = (s_.last_w_dims.GetDims() != gsl::make_span(w_dims));
+    bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
+    bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);
     if (input_dims_changed || w_dims_changed) {
       if (input_dims_changed)
         s_.last_x_dims = gsl::make_span(x_dims);
@@ -126,15 +126,15 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, MiopenTensor::GetDataType<HipT>()));
       }
 
-      y_data = reinterpret_cast<HipT*>(p.Y->template MutableData<T>());
+      y_data = reinterpret_cast<HipT*>(p.Y->MutableData<T>());
 
       if (!s_.cached_benchmark_bwd_results.contains(x_dims)) {
-        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize);
+        IAllocatorUniquePtr<void> algo_search_workspace = GetScratchBuffer<void>(AlgoSearchWorkspaceSize, context->GetComputeStream());
 
         miopenConvAlgoPerf_t perf;
         int algo_count = 1;
         MIOPEN_RETURN_IF_ERROR(miopenFindConvolutionBackwardDataAlgorithm(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             s_.x_tensor,
             x_data,
             s_.w_desc,
@@ -164,7 +164,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
         y_dims.erase(y_dims.begin() + 2);
       }
       Tensor* Y = context->Output(0, TensorShape(y_dims));
-      y_data = reinterpret_cast<HipT*>(Y->template MutableData<T>());
+      y_data = reinterpret_cast<HipT*>(Y->MutableData<T>());
 
       // Bail out early if one of the output dimensions is zero.
       if (Y->Shape().Size() == 0) {
@@ -175,11 +175,11 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
     const auto alpha = Consts<HipT>::One;
     const auto beta = Consts<HipT>::Zero;
 
-    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes);
+    IAllocatorUniquePtr<void> workspace = GetScratchBuffer<void>(s_.workspace_bytes, context->GetComputeStream());
 
     MIOPEN_RETURN_IF_ERROR(
         miopenConvolutionBackwardData(
-            MiopenHandle(),
+            GetMiopenHandle(context),
             &alpha,
 	    s_.x_tensor,
 	    x_data,
@@ -195,8 +195,8 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
 
     if (has_bias) {
       const Tensor* B = dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2);
-      auto b_data = reinterpret_cast<const HipT*>(B->template Data<T>());
-      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(MiopenHandle(), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
+      auto b_data = reinterpret_cast<const HipT*>(B->Data<T>());
+      MIOPEN_RETURN_IF_ERROR((miopenConvolutionForwardBias(GetMiopenHandle(context), &alpha, s_.b_tensor, b_data, &beta, s_.y_tensor, y_data)));
     }
   }
 

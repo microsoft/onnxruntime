@@ -1,7 +1,8 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+# pylint: disable=C0116,W0212,R1720,C0114
 
-# -*- coding: UTF-8 -*-
+import copy
 import gc
 import os
 import platform
@@ -13,7 +14,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
@@ -34,6 +35,12 @@ available_providers = [provider for provider in onnxrt.get_available_providers()
 # * testSequenceLength
 available_providers_without_tvm = [
     provider for provider in onnxrt.get_available_providers() if provider not in {"TvmExecutionProvider"}
+]
+
+available_providers_without_tvm_and_tensorrt = [
+    provider
+    for provider in onnxrt.get_available_providers()
+    if provider not in {"TvmExecutionProvider", "TensorrtExecutionProvider"}
 ]
 
 
@@ -152,7 +159,7 @@ class TestInferenceSession(unittest.TestCase):
 
             """
             int8_use_native_calibration_table = "false"
-            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table 
+            option['trt_int8_use_native_calibration_table'] = int8_use_native_calibration_table
             int8_enable = "true"
             option['trt_int8_enable'] = int8_enable
             calib_table_name = '/home/onnxruntime/table.flatbuffers' # this file is not existed
@@ -229,6 +236,8 @@ class TestInferenceSession(unittest.TestCase):
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
+
+                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
 
                 option["gpu_external_alloc"] = "0"
                 option["gpu_external_free"] = "0"
@@ -341,6 +350,31 @@ class TestInferenceSession(unittest.TestCase):
                 runBaseTest2()
                 # raise OSError("could not load any of: " + ' '.join(libnames))
 
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+
+            def runRocmOptionsTest():
+                sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["ROCMExecutionProvider"])
+                self.assertIn("ROCMExecutionProvider", sess.get_providers())
+                options = sess.get_provider_options()
+
+                def test_get_and_set_option_with_values(option_name, option_values):
+                    provider_options = sess.get_provider_options()
+                    self.assertIn("ROCMExecutionProvider", provider_options)
+                    rocm_options = options["ROCMExecutionProvider"]
+                    self.assertIn(option_name, rocm_options)
+                    for option_value in option_values:
+                        rocm_options[option_name] = option_value
+                        sess.set_providers(["ROCMExecutionProvider"], [rocm_options])
+                        new_provider_options = sess.get_provider_options()
+                        self.assertEqual(
+                            new_provider_options.get("ROCMExecutionProvider", {}).get(option_name),
+                            str(option_value),
+                        )
+
+                test_get_and_set_option_with_values("tunable_op_enabled", ["1", "0"])
+
+            runRocmOptionsTest()
+
     def testInvalidSetProviders(self):
         with self.assertRaises(RuntimeError) as context:
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
@@ -352,6 +386,89 @@ class TestInferenceSession(unittest.TestCase):
             # create session from scratch, but constrain it to only use the CPU.
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
             self.assertEqual(["CPUExecutionProvider"], sess.get_providers())
+
+    def testGetAndSetTuningResults(self):
+        def getTuningResultsForEp(sess, ep):  # without the outer list
+            tuning_results = sess.get_tuning_results()
+            self.assertGreaterEqual(len(tuning_results), 1)
+            tuning_results_for_this_ep = [t for t in tuning_results if t.get("ep") == ep]
+            self.assertEqual(len(tuning_results_for_this_ep), 1)
+            return tuning_results_for_this_ep[0]
+
+        probe_op_sig = "probe_but_not_an_op_signature"
+        probe_params_sig = "probe_but_not_an_params_signature"
+        probe_value = 10000000
+
+        def copyTuningResultsWithProbe(tr):
+            tr = copy.deepcopy(tr)
+            tr["results"][probe_op_sig] = {probe_params_sig: probe_value}
+            return tr
+
+        def assertTuningResultsLoaded(sess, ep):
+            tr = getTuningResultsForEp(sess, ep)
+            self.assertIn(probe_op_sig, tr["results"])
+            self.assertEqual(tr["results"][probe_op_sig], {probe_params_sig: probe_value})
+
+        def assertTuningResultsNotLoaded(sess, ep):
+            tr = getTuningResultsForEp(sess, ep)
+            self.assertNotIn(probe_op_sig, tr["results"])
+
+        def doTestGetAndSetTuningResults(ep):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=[ep])
+            tuning_results = getTuningResultsForEp(sess, ep)
+
+            self.assertIn("ep", tuning_results)
+            self.assertIn("results", tuning_results)
+            self.assertIn("validators", tuning_results)
+            self.assertIn("ORT_VERSION", tuning_results["validators"])
+            self.assertNotIn("NOT_A_VALIDATOR_KEY", tuning_results["validators"])
+
+            # invalid EP will be rejected
+            invalid_unknown_ep = copyTuningResultsWithProbe(tuning_results)
+            invalid_unknown_ep["ep"] = "UnknownEP"
+            sess.set_tuning_results([invalid_unknown_ep])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([invalid_unknown_ep], error_on_invalid=True)
+            self.assertIn("Cannot find execution provider UnknownEP", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            # missing validator key will be rejected
+            mismatched_validator_key_missing = copyTuningResultsWithProbe(tuning_results)
+            mismatched_validator_key_missing["validators"].pop("ORT_VERSION")
+            sess.set_tuning_results([mismatched_validator_key_missing])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_missing], error_on_invalid=True)
+            self.assertIn("ORT_VERSION", str(context.exception))
+            self.assertIn("is not provided for validation", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            mismatched_validator_key_extra = copyTuningResultsWithProbe(tuning_results)
+            mismatched_validator_key_extra["validators"]["NOT_A_VALIDATOR_KEY"] = "NOT_USED"
+            sess.set_tuning_results([mismatched_validator_key_extra])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([mismatched_validator_key_extra], error_on_invalid=True)
+            self.assertIn("NOT_A_VALIDATOR_KEY", str(context.exception))
+            self.assertIn("is unable to consume it", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            validation_failure = copyTuningResultsWithProbe(tuning_results)
+            validation_failure["validators"]["ORT_VERSION"] = "This is not a proper ORT_VERSION value!"
+            sess.set_tuning_results([validation_failure])
+            with self.assertRaises(RuntimeError) as context:
+                sess.set_tuning_results([validation_failure], error_on_invalid=True)
+            self.assertIn("Failed to load TuningResults", str(context.exception))
+            self.assertIn("version mismatch", str(context.exception))
+            assertTuningResultsNotLoaded(sess, ep)
+
+            loadable = copyTuningResultsWithProbe(tuning_results)
+            sess.set_tuning_results([loadable], error_on_invalid=True)
+            assertTuningResultsLoaded(sess, ep)
+
+        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+            doTestGetAndSetTuningResults("CUDAExecutionProvider")
+
+        if "ROCMExecutionProvider" in onnxrt.get_available_providers():
+            doTestGetAndSetTuningResults("ROCMExecutionProvider")
 
     def testRunModel(self):
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=available_providers)
@@ -932,7 +1049,9 @@ class TestInferenceSession(unittest.TestCase):
         so1.register_custom_ops_library(shared_library)
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess1 = onnxrt.InferenceSession(custom_op_model, sess_options=so1, providers=available_providers_without_tvm)
+        sess1 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so1, providers=available_providers_without_tvm_and_tensorrt
+        )
         # Run with input data
         input_name_0 = sess1.get_inputs()[0].name
         input_name_1 = sess1.get_inputs()[1].name
@@ -948,12 +1067,16 @@ class TestInferenceSession(unittest.TestCase):
         so2 = so1
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess2 = onnxrt.InferenceSession(custom_op_model, sess_options=so2, providers=available_providers_without_tvm)
+        sess2 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so2, providers=available_providers_without_tvm_and_tensorrt
+        )
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
         so3.register_custom_ops_library(shared_library)
-        sess3 = onnxrt.InferenceSession(custom_op_model, sess_options=so3, providers=available_providers_without_tvm)
+        sess3 = onnxrt.InferenceSession(
+            custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
+        )
 
     def testOrtValue(self):
 
@@ -964,6 +1087,8 @@ class TestInferenceSession(unittest.TestCase):
             sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
             res = sess.run(["Y"], {"X": ortvalue})
             self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+            vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
+            self.assertIsInstance(vect, OrtValueVector)
 
         ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
         self.assertEqual(ortvalue1.device_name(), "cpu")
@@ -1139,7 +1264,9 @@ class TestInferenceSession(unittest.TestCase):
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
 
-        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) (create an OrtArenaCfg like this template if you want to use non-default parameters)
+        # To create an OrtArenaCfg using non-default parameters, use one of below templates:
+        # ort_arena_cfg = onnxrt.OrtArenaCfg(0, -1, -1, -1) - Note: doesn't expose initial_growth_chunk_size_bytes option
+        # ort_arena_cfg = onnxrt.OrtArenaCfg({"max_mem": -1, ""arena_extend_strategy": 1, etc..})
         ort_memory_info = onnxrt.OrtMemoryInfo(
             "Cpu",
             onnxrt.OrtAllocatorType.ORT_ARENA_ALLOCATOR,
@@ -1292,6 +1419,43 @@ class TestInferenceSession(unittest.TestCase):
             set(),
         )
         print("Create session with customize execution provider successfully!")
+
+    def testCreateAllocator(self):
+        def verify_allocator(allocator, expected_config):
+            for key, val in expected_config.items():
+                if key == "max_mem":
+                    self.assertEqual(allocator.max_mem, val)
+                elif key == "arena_extend_strategy":
+                    self.assertEqual(allocator.arena_extend_strategy, val)
+                elif key == "initial_chunk_size_bytes":
+                    self.assertEqual(allocator.initial_chunk_size_bytes, val)
+                elif key == "max_dead_bytes_per_chunk":
+                    self.assertEqual(allocator.max_dead_bytes_per_chunk, val)
+                elif key == "initial_growth_chunk_size_bytes":
+                    self.assertEqual(allocator.initial_growth_chunk_size_bytes, val)
+                else:
+                    raise ValueError("Invalid OrtArenaCfg option: " + key)
+
+        # Verify ordered parameter initialization
+        ort_arena_cfg = onnxrt.OrtArenaCfg(8, 0, 4, 2)
+        expected_allocator = {
+            "max_mem": 8,
+            "arena_extend_strategy": 0,
+            "initial_chunk_size_bytes": 4,
+            "max_dead_bytes_per_chunk": 2,
+        }
+        verify_allocator(ort_arena_cfg, expected_allocator)
+
+        # Verify key-value pair initialization
+        expected_kvp_allocator = {
+            "max_mem": 16,
+            "arena_extend_strategy": 1,
+            "initial_chunk_size_bytes": 8,
+            "max_dead_bytes_per_chunk": 4,
+            "initial_growth_chunk_size_bytes": 2,
+        }
+        ort_arena_cfg_kvp = onnxrt.OrtArenaCfg(expected_kvp_allocator)
+        verify_allocator(ort_arena_cfg_kvp, expected_kvp_allocator)
 
 
 if __name__ == "__main__":

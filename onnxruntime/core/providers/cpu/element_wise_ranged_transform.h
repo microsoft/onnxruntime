@@ -96,8 +96,8 @@ class ElementWiseKernel final : public OpKernel {
       return Status::OK();
     ORT_ENFORCE(input_size < std::numeric_limits<std::ptrdiff_t>::max());
     F f = f_;
-    f.input = X->template Data<T>();
-    f.output = Y->template MutableData<T>();
+    f.input = X->Data<T>();
+    f.output = Y->MutableData<T>();
     concurrency::ThreadPool::TryParallelFor(tp, static_cast<std::ptrdiff_t>(input_size),
                                             {static_cast<float>(sizeof(T)), static_cast<float>(sizeof(T)), f.Cost()},
                                             f);

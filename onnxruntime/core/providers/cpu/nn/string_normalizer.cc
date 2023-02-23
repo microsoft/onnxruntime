@@ -8,7 +8,7 @@
 #ifdef _MSC_VER
 #include <codecvt>
 #include <locale.h>
-#elif defined(__APPLE__) or defined(__ANDROID__)
+#elif defined(__APPLE__) || defined(__ANDROID__)
 #include <codecvt>
 #else
 #include <limits>
@@ -110,7 +110,7 @@ class Locale {
   std::locale loc_;
 };
 
-#if defined(__APPLE__) or defined(__ANDROID__)
+#if defined(__APPLE__) || defined(__ANDROID__)
 using Utf8Converter = std::wstring_convert<std::codecvt_utf8<wchar_t>>;
 #else
 
@@ -216,7 +216,7 @@ Status CopyCaseAction(ForwardIter first, ForwardIter end, OpKernelContext* ctx,
 
   TensorShape output_shape(output_dims);
   auto output_tensor = ctx->Output(0, output_shape);
-  auto const output_data = output_tensor->template MutableData<std::string>();
+  auto const output_data = output_tensor->MutableData<std::string>();
 
   size_t output_idx = 0;
   while (first != end) {
@@ -307,14 +307,14 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Single dimension value must be greater than 0");
     }
-    C = input_dims[0];
+    C = onnxruntime::narrow<size_t>(input_dims[0]);
   } else if (input_dims.size() == 2) {
     if (input_dims[0] != 1 || input_dims[1] < 1) {
       return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                     "Input dimensions are either[C > 0] or [1][C > 0] allowed");
     }
     N = 1;
-    C = input_dims[1];
+    C = onnxruntime::narrow<size_t>(input_dims[1]);
   } else {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
                   "Input dimensions are either[C > 0] or [1][C > 0] allowed");
@@ -323,7 +323,7 @@ Status StringNormalizer::Compute(OpKernelContext* ctx) const {
   Status status;
   Locale locale(locale_name_);
   Utf8Converter converter(conv_error, wconv_error);
-  auto* const input_data = X->template Data<std::string>();
+  auto* const input_data = X->Data<std::string>();
   using StrRef = std::reference_wrapper<const std::string>;
   if (is_case_sensitive_) {
     if (!stopwords_.empty()) {

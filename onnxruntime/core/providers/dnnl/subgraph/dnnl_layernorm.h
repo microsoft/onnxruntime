@@ -40,6 +40,7 @@ class DnnlLayerNorm {
   dnnl::memory BuildSLN(DnnlSubgraphPrimitive& sp, DnnlNode& node, dnnl::engine dnnl_engine);
   void ValidateDims(DnnlSubgraphPrimitive& sp, DnnlNode& node);
   float GetEpsilon(DnnlNode& node);
+  dnnl::memory CastAndTransformMemory(DnnlSubgraphPrimitive& sp, dnnl::memory& src_mem, dnnl::memory::data_type dst_datatype, dnnl::memory::dims dst_strides);
 };
 
 }  // namespace ort_dnnl

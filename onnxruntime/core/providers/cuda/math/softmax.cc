@@ -26,17 +26,15 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const CudaT*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D),  gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  } else {
-    dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
+    return dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   }
-
-  return Status::OK();
+  return dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(N));
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                                                 \
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                           \
   template Status SoftMaxComputeHelper<T, false>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis); \
   template Status SoftMaxComputeHelper<T, true>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis);
 
@@ -116,8 +114,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   std::vector<size_t> permutation(rank);
 
   // The "semantic" meaning of axis has changed in opset-13.
-  // Please compare: https://github.com/onnx/onnx/blob/master/docs/Operators.md#Softmax
-  // with https://github.com/onnx/onnx/blob/master/docs/Changelog.md#Softmax-11 for detailed explanations
+  // Please compare: https://github.com/onnx/onnx/blob/main/docs/Operators.md#Softmax
+  // with https://github.com/onnx/onnx/blob/main/docs/Changelog.md#Softmax-11 for detailed explanations
   // To account for the opset-13 behavior, our plan will be to transpose the "axis" dim to the innermost dim
   // and perform softmax and then reverse the transpose. We can skip the transposing aspect if the axis is already
   // the innermost dim
@@ -147,8 +145,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *X, *temp_input));
     transposed_input = std::move(temp_input);
 
@@ -161,22 +159,22 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   const TensorShape* compute_input_shape = nullptr;
 
   if (is_transpose_required) {  // use intermediate buffers to compute the softmax values
-    X_data = transposed_input->template Data<T>();
-    Y_data = intermediate_output->template MutableData<T>();
+    X_data = transposed_input->Data<T>();
+    Y_data = intermediate_output->MutableData<T>();
     compute_input_shape = &transposed_input->Shape();
   } else {  // use the node input/output directly
-    X_data = X->template Data<T>();
-    Y_data = Y->template MutableData<T>();
+    X_data = X->Data<T>();
+    Y_data = Y->MutableData<T>();
     compute_input_shape = &input_shape;
   }
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                  : static_cast<int64_t>(axis));
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                             is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                   : static_cast<int64_t>(axis));
   }
@@ -187,8 +185,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *intermediate_output, *Y));
   }
 

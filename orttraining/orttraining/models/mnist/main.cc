@@ -7,15 +7,12 @@
 #include "core/framework/bfc_arena.h"
 #include "core/platform/env.h"
 #include "core/providers/providers.h"
-#ifdef USE_CUDA
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* provider_options);
-}  // namespace onnxruntime
-#endif
+#include "core/providers/provider_factory_creators.h"
 #include "core/session/environment.h"
+#include "core/session/onnxruntime_c_api.h"
+
 #include "orttraining/core/session/training_session.h"
 #include "orttraining/core/framework/tensorboard/event_writer.h"
-
 #include "orttraining/models/mnist/mnist_data_provider.h"
 #include "orttraining/models/runner/training_runner.h"
 #include "orttraining/models/runner/training_util.h"
@@ -24,9 +21,9 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(c
 #include <mutex>
 #include <tuple>
 
-namespace onnxruntime {
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
-}
+#ifdef USE_DNNL
+#include "core/providers/dnnl/dnnl_provider_options.h"
+#endif
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -171,14 +168,17 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
     if (use_cuda) {
       OrtCUDAProviderOptions info;
       info.do_copy_in_default_stream = true;
-      params.providers.emplace(kCudaExecutionProvider, CreateExecutionProviderFactory_Cuda(&info));
+      params.providers.emplace(kCudaExecutionProvider, CudaProviderFactoryCreator::Create(&info));
     }
 #endif
 
+#ifdef USE_DNNL
     bool use_dnnl = flags.count("use_dnnl") > 0;
     if (use_dnnl) {
-      params.providers.emplace(kDnnlExecutionProvider, CreateExecutionProviderFactory_Dnnl(1));
+      OrtDnnlProviderOptions dnnl_options;
+      params.providers.emplace(kDnnlExecutionProvider, DnnlProviderFactoryCreator::Create(&dnnl_options));
     }
+#endif
 
     std::string model_type = flags["model_type"].as<std::string>();
     if (model_type == "gemm" || model_type == "conv") {

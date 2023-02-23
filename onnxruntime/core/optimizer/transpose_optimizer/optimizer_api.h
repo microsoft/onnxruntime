@@ -3,13 +3,14 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 #include <unordered_set>
+#include <vector>
 
 namespace onnx_layout_transformation {
 namespace api {
@@ -155,6 +156,12 @@ class NodeRef {
 
   /// <param name="name">Name of the attribute to return</param>
   /// <returns>
+  /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type string.
+  /// </returns>
+  virtual std::optional<std::string> GetAttributeString(std::string_view name) const = 0;
+
+  /// <param name="name">Name of the attribute to return</param>
+  /// <returns>
   /// The attribute value, or nullopt if the attribute is not present on the node, or is not of type int[].
   /// </returns>
   virtual std::optional<std::vector<int64_t>> GetAttributeInts(std::string_view name) const = 0;
@@ -223,7 +230,7 @@ class NodeRef {
   /// not assigned to any EP.
   /// </summary>
   /// <returns>EP type or empty string</returns>
-  virtual const std::string& GetExecutionProviderType() const = 0;
+  virtual std::string_view GetExecutionProviderType() const = 0;
 
   /// <summary>
   /// Returns the schema since version for the op_type of this node. Value of -1 means it is not set.
@@ -353,8 +360,11 @@ class GraphRef {
   /// </summary>
   /// <param name="op_type">The new node's op type</param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
+  /// <param name="since_version">The new node's since_version. If unspecified, use that of the old node.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type, std::string_view domain = "") = 0;
+  virtual std::unique_ptr<NodeRef> CopyNode(const api::NodeRef& source_node, std::string_view op_type,
+                                            std::string_view domain = "",
+                                            std::optional<int> since_version = std::nullopt) = 0;
 
   /// <summary>
   /// Deletes a node from the graph. Behavior is undefined if node has any consumers.
@@ -428,7 +438,31 @@ class GraphRef {
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 16;
+constexpr int64_t kMaxSupportedOpset = 18;
+
+// enum of results that a CostCheckFn can return.
+enum class CostCheckResult {
+  kStop,           // pushing Transpose is expected to negatively impact performance
+  kPushTranspose,  // pushing Transpose is expected to improve performance
+  kFallThrough     // fall through to default cost check
+};
+
+/// <summary>
+/// Function to allow overriding the default cost check to determine whether it is worth pushing a Transpose through
+/// a node.
+/// </summary>
+/// <param name="graph">The graph being optimized</param>
+/// <param name="node">The node we're considering pushing a Transpose through</param>
+/// <param name="perm">The perm value of the Transpose</param>
+/// <param name="outputs_leading_to_transpose">The set of outputs that lead to another Transpose in the graph.
+///   If we can successfully push the Transpose until it meets another Transpose they can either cancel each other out,
+///   or be merged into a single Transpose.
+/// </param>
+using CostCheckFn =
+    std::function<CostCheckResult(const api::GraphRef& graph,
+                                  const api::NodeRef& node,
+                                  const std::vector<int64_t>& perm,
+                                  const std::unordered_set<std::string>& outputs_leading_to_transpose)>;
 
 enum class OptimizerMode {
   OPTIMIZE_TRANSPOSE,        // simple transpose optimization
@@ -460,6 +494,8 @@ struct OptimizeResult {
 /// <param name="provider_type">Execution provider if applicable.</param>
 /// <param name="mode">Current mode. Optimizer can be called in the context of transpose optimizations or during
 /// layout transformations.</param>
+/// <param name="cost_check_fn">Optional cost checking function to determine whether it is worth pushing a Transpose
+/// through a node.</param>
 /// <param name="layout_sensitive_ops">List of ops which are treated as layout sensitive by the ONNX standard
 /// as well as any runtime specific ops. These ops should be provided when mode is set to OPTIMIZE_LAYOUT_TRANSFORM.
 /// If these ops are not provided, transpose optimizer may convert the layout for these ops </param>
@@ -468,6 +504,7 @@ struct OptimizeResult {
 OptimizeResult Optimize(api::GraphRef& graph, bool allow_extended_ops,
                         const std::string& provider_type = "",
                         OptimizerMode mode = OptimizerMode::OPTIMIZE_TRANSPOSE,
+                        CostCheckFn cost_check_fn = nullptr,
                         const std::unordered_set<std::string_view>& layout_sensitive_ops = {});
 
 /* Layout Transformation Tools
@@ -526,9 +563,10 @@ std::vector<int64_t> ChannelFirstToLastPerm(size_t rank);
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 
 /// <summary>
-/// Swaps out a node for a new copy of that node with the specified op type and domain. Current API does not all nodes
-/// to have their op types or domains changed, so a new node is needed. All attributes, inputs, and outputs are moved
-/// to the new node. The old node is removed from the graph and should no longer be accessed.
+/// Swaps out a node for a new copy of that node with the specified op type and domain.
+/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
+/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
+/// longer be accessed.
 /// </summary>
 /// <param name="graph">Graph containing the node</param>
 /// <param name="node">Node to copy and remove</param>
@@ -537,5 +575,21 @@ std::vector<int64_t> ChannelLastToFirstPerm(size_t rank);
 /// <returns>The newly created node.</returns>
 std::unique_ptr<api::NodeRef> SwapNodeOpTypeAndDomain(api::GraphRef& graph, api::NodeRef& node,
                                                       std::string_view op_type, std::string_view domain);
+
+/// <summary>
+/// Swaps out a node for a new copy of that node with the specified op type, domain, and since version.
+/// Current API does not allow nodes to have their op types or domains changed, so a new node is needed. All
+/// attributes, inputs, and outputs are moved to the new node. The old node is removed from the graph and should no
+/// longer be accessed.
+/// </summary>
+/// <param name="graph">Graph containing the node</param>
+/// <param name="node">Node to copy and remove</param>
+/// <param name="op_type">New node op_type</param>
+/// <param name="domain">New node domain. "" for the default domain.</param>
+/// <param name="op_type">New node since version.</param>
+/// <returns>The newly created node.</returns>
+std::unique_ptr<api::NodeRef> SwapNodeOpTypeDomainAndSinceVersion(api::GraphRef& graph, api::NodeRef& node,
+                                                                  std::string_view op_type, std::string_view domain,
+                                                                  int since_version);
 
 }  // namespace onnx_layout_transformation

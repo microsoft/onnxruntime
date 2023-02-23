@@ -73,7 +73,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t M = W->Shape()[0];
 
-  LOGS_DEFAULT(VERBOSE) << "Conv ACL:";  
+  LOGS_DEFAULT(VERBOSE) << "Conv ACL:";
   LOGS_DEFAULT(VERBOSE) << "X " << X->Shape().ToString().c_str();
   LOGS_DEFAULT(VERBOSE) << "W " << W->Shape().ToString().c_str();
   if (B != nullptr) LOGS_DEFAULT(VERBOSE) << "B " << B->Shape().ToString().c_str();
@@ -294,7 +294,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     pConv = &it->second;
   }
 
-  const T* x_data = X->template Data<T>();
+  const T* x_data = X->Data<T>();
   if(X->Shape().Size() != 0 && pConv->in->info()->has_padding() ){
     pConv->in->allocator()->allocate();
     importDataToTensor<T>(pConv->in.get(), x_data);
@@ -302,15 +302,15 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
     ACLImportMemory(pConv->in->allocator(), (void*)x_data, X->Shape().Size() * 4);
   }
 
-  const T* k_data = W->template Data<T>();
+  const T* k_data = W->Data<T>();
   ACLImportMemory(pConv->k->allocator(), (void*)k_data, W->Shape().Size() * 4);
 
   if (B != nullptr) {
-    const T* b_data = B->template Data<T>();
+    const T* b_data = B->Data<T>();
     ACLImportMemory(pConv->b->allocator(), (void*)b_data, B->Shape().Size() * 4);
   }
 
-  T* y_data = Y->template MutableData<T>();
+  T* y_data = Y->MutableData<T>();
   if(Y->Shape().Size() != 0 && pConv->out->info()->has_padding() ){
     pConv->out->allocator()->allocate();
   } else {

@@ -12,6 +12,7 @@
 #include "onnx/onnx-operators_pb.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/common/span_utils.h"
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
@@ -282,7 +283,7 @@ inline void FinalizeNodeFusion(Graph& graph,
                                std::initializer_list<std::reference_wrapper<Node>> nodes,
                                Node& replacement_node_start,
                                Node& replacement_node_end) {
-  FinalizeNodeFusion(graph, gsl::make_span(nodes), replacement_node_start, replacement_node_end);
+  FinalizeNodeFusion(graph, AsSpan(nodes), replacement_node_start, replacement_node_end);
 }
 
 /** Finalize the fusion of two or more nodes which are being replaced with a single node.
@@ -300,7 +301,7 @@ inline void FinalizeNodeFusion(Graph& graph, gsl::span<const std::reference_wrap
 }
 
 inline void FinalizeNodeFusion(Graph& graph, std::initializer_list<std::reference_wrapper<Node>> nodes, Node& replacement_node) {
-  FinalizeNodeFusion(graph, gsl::make_span(nodes.begin(), nodes.end()), replacement_node, replacement_node);
+  FinalizeNodeFusion(graph, AsSpan(nodes), replacement_node, replacement_node);
 }
 
 /** Find the source node of an input edge for a specified input index.
@@ -353,7 +354,7 @@ struct EdgeEndToMatch {
 bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger);
 
 inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<const Node::EdgeEnd*>& result, const logging::Logger& logger) {
-  return FindPath(node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
+  return FindPath(node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 
 /** Same as FindPath above, but return the references of matched Node
@@ -361,7 +362,7 @@ inline bool FindPath(const Node& node, bool is_input_edge, std::initializer_list
 bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger);
 
 inline bool FindPath(Graph& graph, const Node& node, bool is_input_edge, std::initializer_list<EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
-  return FindPath(graph, node, is_input_edge, gsl::make_span(edges_to_match), result, logger);
+  return FindPath(graph, node, is_input_edge, AsSpan(edges_to_match), result, logger);
 }
 
 /**

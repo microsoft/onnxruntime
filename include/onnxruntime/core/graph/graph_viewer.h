@@ -170,7 +170,7 @@ class GraphViewer {
   /** Get the Node containing this Graph if IsSubgraph is true. Returns nullptr otherwise. */
   const Node* ParentNode() const noexcept { return graph_->ParentNode(); }
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Get the consumer nodes of a node arg */
   std::vector<const Node*> GetConsumerNodes(const std::string& node_arg_name) const {
     return graph_->GetConsumerNodes(node_arg_name);
@@ -186,6 +186,10 @@ class GraphViewer {
   @returns Filter info or nullptr
   */
   const IndexedSubGraph* GetFilterInfo() const { return filter_info_; }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return graph_->GetSchemaRegistry(); }
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphViewer);
@@ -208,7 +212,8 @@ class GraphViewer {
   // if we're limiting the view to an IndexedSubGraph we need to create a few pieces of infrastructure that would
   // usually come from the full graph
   const IndexedSubGraph* filter_info_{nullptr};
-  std::unordered_set<NodeIndex> filtered_node_indices_;
+  using FilteredNodeSet = InlinedHashSet<NodeIndex>;
+  FilteredNodeSet filtered_node_indices_;
   std::vector<const NodeArg*> filtered_node_inputs_;
   std::vector<const NodeArg*> filtered_node_inputs_including_initializers_;
   std::vector<const NodeArg*> filtered_node_outputs_;

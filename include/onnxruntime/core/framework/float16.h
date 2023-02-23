@@ -8,7 +8,7 @@
 #endif
 
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
-#include <gsl/gsl>
+#include "core/common/narrow.h"
 #endif
 
 #include "core/common/common.h"
@@ -41,7 +41,7 @@ inline bool operator<(const MLFloat16& left, const MLFloat16& right) { return le
 // BFloat16
 struct BFloat16 {
   uint16_t val{0};
-#if defined(USE_ROCM)
+#if defined(__HIP__)
   ORT_HOST_DEVICE BFloat16() = default;
 #else
   BFloat16() = default;
@@ -54,7 +54,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE BFloat16(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     val = __bfloat16_as_ushort(__float2bfloat16(v));
-#elif defined(USE_ROCM)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     if (v != v) {  // isnan
       val = UINT16_C(0x7FC0);
@@ -69,7 +69,7 @@ struct BFloat16 {
       val = static_cast<uint16_t>((U32 + rounding_bias) >> 16);
     }
 #else
-    ORT_IF_CONSTEXPR(endian::native == endian::little) {
+    if constexpr(endian::native == endian::little) {
       std::memcpy(&val, reinterpret_cast<char*>(&v) + sizeof(uint16_t), sizeof(uint16_t));
     }
     else {
@@ -81,7 +81,7 @@ struct BFloat16 {
   inline ORT_HOST_DEVICE float ToFloat() const {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
     return __bfloat162float(*reinterpret_cast<const __nv_bfloat16*>(&val));
-#elif defined(USE_ROCM)
+#elif defined(__HIP__)
     // We should be using memcpy in order to respect the strict aliasing rule but it fails in the HIP environment.
     float result = 0;
     uint32_t tmp = val;
@@ -93,7 +93,7 @@ struct BFloat16 {
     float result;
     char* const first = reinterpret_cast<char*>(&result);
     char* const second = first + sizeof(uint16_t);
-    ORT_IF_CONSTEXPR(endian::native == endian::little) {
+    if constexpr(endian::native == endian::little) {
       std::memset(first, 0, sizeof(uint16_t));
       std::memcpy(second, &val, sizeof(uint16_t));
     }
@@ -123,7 +123,7 @@ inline ORT_HOST_DEVICE bool operator<(const BFloat16& left, const BFloat16& righ
 // E.g 10_f16 or 10_b16
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 inline MLFloat16 operator"" _f16(unsigned long long int v) {
-  return MLFloat16(gsl::narrow<uint16_t>(v));
+  return MLFloat16(narrow<uint16_t>(v));
 }
 
 inline MLFloat16 operator"" _fp16(long double v) {
@@ -131,7 +131,7 @@ inline MLFloat16 operator"" _fp16(long double v) {
 }
 
 inline BFloat16 operator"" _b16(unsigned long long int v) {
-  return BFloat16(gsl::narrow<uint16_t>(v), BFloat16::FromBits());
+  return BFloat16(narrow<uint16_t>(v), BFloat16::FromBits());
 }
 
 inline BFloat16 operator"" _bfp16(long double v) {
