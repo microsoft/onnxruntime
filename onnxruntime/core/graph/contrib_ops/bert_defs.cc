@@ -343,10 +343,30 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                " or (1, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
+        .Input(6,
+               "past_key",
+               "past state for cross key with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(7,
+               "past_value",
+               "past state for cross value with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
+        .Output(1,
+                "present_key",
+                "present state for cross key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "present state for cross value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {

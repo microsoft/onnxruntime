@@ -333,6 +333,19 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv,
                              true, v_head_size, qkv_add_bias, 3);
     }
+  } else if (data.past_key != nullptr || data.present_key != nullptr) { // T5 cross attention
+    printf("T5 decoder cross attention");
+    assert(data.bias == nullptr); // no bias for T5 cross attention
+    if (data.past_key != nullptr) {
+      assert(data.past_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key == nullptr);
+      assert(data.value == nullptr);
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                                         max_threads_per_block, false, data.query, q));
+      k = const_cast<T*>(data.past_key);
+      v = const_cast<T*>(data.past_value);
+    }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
     assert(qk_head_size == v_head_size);
