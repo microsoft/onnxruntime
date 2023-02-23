@@ -238,21 +238,17 @@ class PosixThread : public EnvThread {
           } else {
             // Logical processor id starts from 0 internally, but in ort API, it starts from 1,
             // that's why id need to increase by 1 when logging.
-            LOGS_DEFAULT(ERROR) << "cpu " << id + 1 << " does not exist, skipping it for affinity setting";
+	    std::cerr << "cpu " << id + 1 << " does not exist, skipping it for affinity setting";
           }
         }
         auto ret = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-        if (0 == ret) {
-          LOGS_DEFAULT(VERBOSE) << "pthread_setaffinity_np succeed for thread: " << syscall(SYS_gettid)
-                                << ", index: " << p->index
-                                << ", mask: " << *p->affinity;
-        } else {
+        if (ret) {
           auto [err_no, err_msg] = GetSystemError(ret);
-          LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
-                              << ", index: " << p->index
-                              << ", mask: " << *p->affinity
-                              << ", error code: " << err_no << " error msg: " << err_msg
-                              << ". Specify the number of threads explicitly so the affinity is not set.";
+	  std::cerr << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
+                    << ", index: " << p->index
+                    << ", mask: " << *p->affinity
+                    << ", error code: " << err_no << " error msg: " << err_msg
+                    << ". Specify the number of threads explicitly so the affinity is not set.";
         }
       }
 #endif
