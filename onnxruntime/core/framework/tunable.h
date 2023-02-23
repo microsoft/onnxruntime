@@ -25,6 +25,7 @@
 #endif
 #include "core/framework/execution_provider.h"
 #include "core/framework/tuning_context.h"
+#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -128,8 +129,6 @@ class Op {
 template <typename ParamsT, typename TimerT>
 class TunableOp {
  public:
-  using ThisT = TunableOp<ParamsT, TimerT>;
-
   TunableOp() = default;
   TunableOp(TunableOp&&) = default;
   virtual ~TunableOp() = default;
@@ -172,7 +171,12 @@ class TunableOp {
   }
 
   std::string Signature() {
-    // NOTE: this is not thread-safe, but it seems to be harmless
+    // According to C++17 standard https://wg21.link/n4659 section 15.7.4
+    // > if the operand of typeid refers to the
+    // > object under construction or destruction, typeid yields the std::type_info object representing the constructor
+    // > or destructor’s class.
+    // So delay the op signature generation. See https://github.com/microsoft/onnxruntime/pull/14709
+    std::lock_guard<OrtMutex> g(signature_mutex_);
     if (signature_.empty()) {
       signature_ = CreateSignature();
     }
@@ -190,7 +194,7 @@ class TunableOp {
     this->ops_.emplace_back(std::move(op));
   }
 
-  void RegisterNestedTunableOp(ThisT* op_ptr) {
+  void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
     nested_tunable_ops_.insert(op_ptr);
 
     // Add an op for this tunable op as well.
@@ -277,6 +281,7 @@ class TunableOp {
 #endif
   }
 
+  mutable OrtMutex signature_mutex_;
   std::string signature_;
 
   // the default impl to use when tuning is disabled
