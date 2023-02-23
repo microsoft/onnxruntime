@@ -1381,10 +1381,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
 // Uncomment the below to dump the allocation plan to std::cout
 // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
-  auto mem_profiler = std::make_unique<MemoryProfiler>();
-  mem_profiler->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
-  SetMemoryProfiler(mem_profiler.release());
+  GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
 #endif
 
   // Note: For Training Prepacking should be always disabled.

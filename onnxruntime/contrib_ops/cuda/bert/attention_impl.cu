@@ -330,8 +330,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
-                             data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size, qkv_add_bias, 3);
+                             data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
+                             3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
@@ -620,12 +620,14 @@ Status QkvToContext(
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+      DUMP_TENSOR_D("mask", reinterpret_cast<const int*>(data.mask_index), batch_size, sequence_length);
       LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     } else {
       sequence_offset = GetCumulatedSequenceLength(data.cumulated_sequence_length_q_cache,
                                                    data.mask_index, batch_size, sequence_length, stream,
                                                    sequence_offset);
     }
+    DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, (data.mask_index != nullptr ? 2 : 1) * batch_size + 1);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
