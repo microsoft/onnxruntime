@@ -22,6 +22,18 @@ class RelPosAttnBias final : public CudaKernel {
   bool is_bidirectional_;
 };
 
+template <typename T>
+class GatedRelativePositionBias final : public CudaKernel {
+ public:
+  GatedRelativePositionBias(const OpKernelInfo& op_kernel_info);
+
+  Status ComputeInternal(OpKernelContext* ctx) const override;
+
+ private:
+  int num_heads_;
+};
+
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

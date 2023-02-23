@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <cassert>
 #include <cuda_fp16.h>
+#include <cub/cub.cuh>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
@@ -555,10 +556,12 @@ Status QkvToContext(
   if (use_fused_kernel || use_fused_causal) {
     int* sequence_offset = reinterpret_cast<int*>(scratch1);
     if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+      DUMP_TENSOR_D("mask", reinterpret_cast<const int*>(data.mask_index), batch_size, sequence_length);
       LaunchTrtSequenceOffset2d(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     } else {
       LaunchTrtSequenceOffset(sequence_offset, data.mask_index, batch_size, sequence_length, stream);
     }
+    DUMP_TENSOR_D("sequence_offset", sequence_offset, 1, (data.mask_index != nullptr ? 2 : 1) * batch_size + 1);
     CUDA_RETURN_IF_ERROR(cudaGetLastError());
 
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
@@ -665,7 +668,7 @@ Status QkvToContext(
     T* persistent_softmax_workspace = scratch1;  // replace Q*K' in place with masked score for persistent softmax.
     ORT_RETURN_IF_ERROR(
         ComputeSoftmaxWithRawMask<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads,
-                                     mask_index, nullptr, data.extra_add_qk, scratch1, scratch2,
+                                     mask_index, nullptr, data.relative_position_bias, scratch1, scratch2,
                                      parameters.is_unidirectional, scale, mask_dimension,
                                      parameters.max_sequence_length, use_persistent_softmax,
                                      persistent_softmax_workspace, mask_filter_value));
@@ -675,10 +678,10 @@ Status QkvToContext(
     const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithMask1D<T>(
         stream, total_sequence_length, sequence_length, batch_size, num_heads,
-        mask_index, mask_start, data.extra_add_qk, scratch1, scratch2, parameters.is_unidirectional));
+        mask_index, mask_start, data.relative_position_bias, scratch1, scratch2, parameters.is_unidirectional));
   } else {  // no mask
     ORT_RETURN_IF_ERROR(
-        ComputeSoftmax<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads, data.extra_add_qk,
+        ComputeSoftmax<T>(stream, total_sequence_length, sequence_length, batch_size, num_heads, data.relative_position_bias,
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
