@@ -63,48 +63,64 @@ class FusionEmbedLayerNoMask(Fusion):
         self.attention = self.model.find_first_child_by_type(
             layernorm, "Attention", input_name_to_nodes, recursive=False
         )
-        if self.attention is None:
-            # In case user disables attention fusion, check whether subgraph looks like Attention.
-            if layernorm.output[0] not in input_name_to_nodes:
+
+        if self.attention is not None:
+            return True
+
+        if layernorm.output[0] not in input_name_to_nodes:
+            return False
+        children = input_name_to_nodes[layernorm.output[0]]
+        children_types = sorted([child.op_type for child in children])
+
+        # Try find MultiHeadAttention
+        if children_types == ["MatMul", "MatMul", "MatMul", "SkipLayerNormalization"]:
+            for node in children:
+                if node.op_type == "SkipLayerNormalization":
+                    path1 = self.model.match_parent_path(
+                        node,
+                        ["Add", "MatMul", "MultiHeadAttention", "MatMul"],
+                        [None, None, 0, 0],
+                    )
+                    if path1 is not None and path1[-1].input[0] == layernorm.output[0]:
+                        self.cross_attention = path1[2]
+                        return True
+
+        # In case user disables attention fusion, check whether subgraph looks like Attention.
+        # For Albert, there is MatMul+Add after embedding layer before attention.
+        if len(children) == 1 and children[0].op_type == "MatMul" and children[0].output[0] in input_name_to_nodes:
+            grandchildren = input_name_to_nodes[children[0].output[0]]
+            if (
+                len(grandchildren) == 1
+                and grandchildren[0].op_type == "Add"
+                and grandchildren[0].output[0] in input_name_to_nodes
+            ):
+                nodes = input_name_to_nodes[grandchildren[0].output[0]]
+                for node in nodes:
+                    if node.op_type == "Attention":
+                        self.attention = node
+                        return True
+                children_types = sorted([child.op_type for child in nodes])
+
+        # Two Shape nodes might be merged by ORT
+        if is_distil_bert:
+            # SkipLayerNormailization might exist when model has been optimized by ORT first.
+            if (
+                children_types != ["MatMul", "MatMul", "MatMul", "Shape", "SkipLayerNormalization"]
+                and children_types != ["Add", "MatMul", "MatMul", "MatMul", "Shape", "Shape"]
+                and children_types != ["Add", "MatMul", "MatMul", "MatMul", "Shape"]
+            ):
+                logger.debug("No Attention like subgraph in children of LayerNormalization")
                 return False
-            children = input_name_to_nodes[layernorm.output[0]]
+        else:
+            if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
+                "MatMul",
+                "MatMul",
+                "MatMul",
+                "SkipLayerNormalization",
+            ]:
+                logger.debug("No Attention like subgraph in children of LayerNormalization")
+                return False
 
-            # For Albert, there is MatMul+Add after embedding layer before attention.
-            if len(children) == 1 and children[0].op_type == "MatMul" and children[0].output[0] in input_name_to_nodes:
-                grandchildren = input_name_to_nodes[children[0].output[0]]
-                if (
-                    len(grandchildren) == 1
-                    and grandchildren[0].op_type == "Add"
-                    and grandchildren[0].output[0] in input_name_to_nodes
-                ):
-                    nodes = input_name_to_nodes[grandchildren[0].output[0]]
-                    for node in nodes:
-                        if node.op_type == "Attention":
-                            self.attention = node
-                            return True
-                    children_types = sorted([child.op_type for child in nodes])
-            else:
-                children_types = sorted([child.op_type for child in children])
-
-            # Two Shape nodes might be merged by ORT
-            if is_distil_bert:
-                # SkipLayerNormailization might exist when model has been optimized by ORT first.
-                if (
-                    children_types != ["MatMul", "MatMul", "MatMul", "Shape", "SkipLayerNormalization"]
-                    and children_types != ["Add", "MatMul", "MatMul", "MatMul", "Shape", "Shape"]
-                    and children_types != ["Add", "MatMul", "MatMul", "MatMul", "Shape"]
-                ):
-                    logger.debug("No Attention like subgraph in children of LayerNormalization")
-                    return False
-            else:
-                if children_types != ["Add", "MatMul", "MatMul", "MatMul",] and children_types != [
-                    "MatMul",
-                    "MatMul",
-                    "MatMul",
-                    "SkipLayerNormalization",
-                ]:
-                    logger.debug("No Attention like subgraph in children of LayerNormalization")
-                    return False
         return True
 
     def match_position_embedding_distilbert(self, position_embedding_gather, input_ids, output_name_to_node):
@@ -515,29 +531,29 @@ class FusionEmbedLayerNoMask(Fusion):
 
         return len(nodes) > 1
 
-    def fuse_gpt2(self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+    def fuse_gpt2(
+        self, layernorm, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather=None
+    ):
         # graph checks
-        # gpt2 has no segment embedding, subgraph pattern is like
-        #     input_ids  position_ids
-        #        |        |
-        #     Gather    Gather
-        #          \   /
-        #           Add _ _ _ _ _
-        #            |           |
-        #    LayerNormalization  |
-        #            |           |
-        #         Attention      |
-        #            |           |
-        #          Matmul        |
-        #            |          /
-        #           Add        /
-        #             \       /
-        #                Add
+        # gpt2 has optional segment embedding, subgraph pattern is like
+        #                      input_ids  position_ids
+        #                         |        |
+        #  token_ids           Gather    Gather
+        #       |                   \   /
+        #   Gather (optional)        Add _ _ _ _ _
+        #                   \         |           |
+        #                     LayerNormalization  |
+        #                             |           |
+        #                          Attention      |
+        #                             |           |
+        #                           Matmul        |
+        #                             |          /
+        #                            Add        /
+        #                              \       /
+        #                                 Add
         two_gather = self.match_two_gather(add_before_layernorm)
         if two_gather is None:
             return False
-
-        add_output = add_before_layernorm.output[0]
 
         word_embedding_gather, position_embedding_gather = two_gather
         input_ids = word_embedding_gather.input[1]
@@ -549,9 +565,22 @@ class FusionEmbedLayerNoMask(Fusion):
         if not self.check_embedding(word_embedding_gather, None, position_embedding_gather):
             return False
 
+        # If the add_before_layernorm node is an Add node, then the add_output output is the first index
+        # output of this node.
+
+        # If the add_before_layernorm node is SkipLayerNormalization node, then the add_output output
+        # is the (optional) fourth index output of this node.
+        add_output = None
         optional_embedding_sum_output = False
-        if self.is_embedding_sum_needed(add_before_layernorm):
+        if (add_before_layernorm.op_type == "Add" and self.is_embedding_sum_needed(add_before_layernorm)) or (
+            add_before_layernorm.op_type == "SkipLayerNormalization" and len(add_before_layernorm.output) >= 4
+        ):
             optional_embedding_sum_output = True
+            add_output = (
+                add_before_layernorm.output[0]
+                if add_before_layernorm.op_type == "Add"
+                else add_before_layernorm.output[3]
+            )
 
         # make the fused node
         embed_node = self.create_fused_node(
@@ -559,7 +588,7 @@ class FusionEmbedLayerNoMask(Fusion):
             layernorm,
             word_embedding_gather,
             position_embedding_gather,
-            None,
+            optional_segment_gather,
             position_ids,
             optional_embedding_sum_output,
         )
@@ -663,15 +692,28 @@ class FusionEmbedLayerNoMask(Fusion):
         return True
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        first_add_path = self.model.match_parent_path(node, ["Add"], [0])
         if node.op_type == "LayerNormalization":
-            first_add_path = self.model.match_parent_path(node, ["Add"], [0])
             if first_add_path is None:
                 return
             add_before_layernorm = first_add_path[0]
+            optional_segment_gather = None
         else:  # SkipLayerNormalization
-            add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+            gather_0_path = self.model.match_parent_path(node, ["Gather"], [0])
+            gather_1_path = self.model.match_parent_path(node, ["Gather"], [1])
+            if gather_0_path is None and gather_1_path is not None:
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_1_path[0]
+            elif gather_0_path is not None and gather_1_path is None:
+                add_before_layernorm = first_add_path[0]
+                optional_segment_gather = gather_0_path[0]
+            else:
+                add_before_layernorm = node  # Add is fused into SkipLayerNormalization
+                optional_segment_gather = None
 
-        if self.fuse_gpt2(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
+        if self.fuse_gpt2(
+            node, add_before_layernorm, input_name_to_nodes, output_name_to_node, optional_segment_gather
+        ):
             return
 
         if self.fuse_distilbert(node, add_before_layernorm, input_name_to_nodes, output_name_to_node):
@@ -702,11 +744,15 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
 
         for attention_node in attention_nodes:
             logger.debug("update mask_index in %s", attention_node.name)
-            attention_node.input[3] = embed_node.output[1]
+            if attention_node.op_type == "Attention":
+                attention_node.input[3] = embed_node.output[1]
+            elif attention_node.op_type == "MultiHeadAttention":
+                attention_node.input[4] = embed_node.output[1]
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # Reset attention and embed_node so that we know fusion is successful when they are not None.
         self.attention = None
+        self.cross_attention = None
         self.embed_node = None
         super().fuse(node, input_name_to_nodes, output_name_to_node)
 
@@ -718,13 +764,23 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
             self.increase_counter("EmbedLayerNormalization(no mask)")
             return
 
-        if self.attention is None:
+        if self.attention is None and self.cross_attention is None:
             logger.debug("EmbedLayerNormalization will not have mask since attention node is not found")
             self.increase_counter("EmbedLayerNormalization(no mask)")
             return
 
-        mask_int32 = self.attention.input[3]
+        if self.attention:
+            mask_int32 = self.attention.input[3]
+        else:
+            mask_int32 = self.cross_attention.input[4]
+
         children_nodes = input_name_to_nodes[mask_int32]
+        if self.model.find_graph_input(mask_int32):
+            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "MultiHeadAttention"]]
+            self.replace_mask(mask_int32, attention_nodes)
+            self.increase_counter("EmbedLayerNormalization(with mask)")
+            return
+
         if mask_int32 not in output_name_to_node:
             logger.debug("EmbedLayerNormalization will not have mask since %s is not a node output", mask_int32)
             self.increase_counter("EmbedLayerNormalization(no mask)")
@@ -732,7 +788,7 @@ class FusionEmbedLayerNormalization(FusionEmbedLayerNoMask):
 
         node = output_name_to_node[mask_int32]
         if node.op_type in ["ReduceSum", "Cast"]:
-            attention_nodes = [node for node in children_nodes if node.op_type == "Attention"]
+            attention_nodes = [node for node in children_nodes if node.op_type in ["Attention", "MultiHeadAttention"]]
             if node.op_type == "ReduceSum":
                 mask_int32 = node.input[0]
                 if len(children_nodes) == len(attention_nodes):

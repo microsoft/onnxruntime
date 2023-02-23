@@ -72,6 +72,7 @@ namespace Dml
             ) const noexcept final;
 
         STDMETHOD(CopyTensor)(IMLOperatorTensor* dst, IMLOperatorTensor* src) const noexcept final;
+        STDMETHOD(CopyTensors)(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept final;
 
         STDMETHOD(FillTensorWithPattern)(
             IMLOperatorTensor* dst,
@@ -206,12 +207,6 @@ namespace Dml
 
         onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst) const final
         {
-            return CopyTensor(src, dst, 0);
-        }
-
-        onnxruntime::common::Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, int exec_queue_id) const final
-        {
-            assert(exec_queue_id == 0);
             return m_impl->CopyTensor(src, dst);
         }
 

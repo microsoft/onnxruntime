@@ -15,8 +15,8 @@ public:
     {
         // FusedMatMul has two inputs, but DML GEMM requires 3 input bindings (a null binding for the C Tensor).
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2);
-        
-        // Need these shapes to apply transpose and 
+
+        // Need these shapes to apply transpose and
         // numpy MatMul's behavior https://docs.scipy.org/doc/numpy-1.13.0/reference/generated/numpy.matmul.html
         std::vector<DimensionType> inputShape0 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(0);
         std::vector<DimensionType> inputShape1 = kernelInfo.GetTensorShapeDescription().GetInputTensorShape(1);
@@ -27,7 +27,7 @@ public:
         const int32_t transBatchB = kernelInfo.GetOptionalAttribute<int32_t>(AttrName::TransBatchB, 0);
         const int32_t transB = kernelInfo.GetOptionalAttribute<int32_t>(AttrName::TransB, 0);
 
-        // As of now, CPU FusedMatMul has this extra validation 
+        // As of now, CPU FusedMatMul has this extra validation
         // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/cpu/math/matmul_helper.h#L72
         // Although, DML kernel can work without this validation, but adding this just to be in sync.
         if (transBatchA || transBatchB)
@@ -42,7 +42,7 @@ public:
 
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
 
-        // At this point, we have manipulated input/output shapes and strides and 
+        // At this point, we have manipulated input/output shapes and strides and
         // we do not care about actual input shapes present in the model (.onnx file).
         // Create the TensorDesc with the manipulated input shapes becuase we don't want incorrect
         // broadcasting to be happen inside TensorDesc constructor.
@@ -50,7 +50,7 @@ public:
         gsl::span<const uint32_t> inputShapes[2] = {sizesA, sizesB};
         gsl::span<const uint32_t> outputShapes[1] = {outputShape};
         DmlOperator::InitializeWithShapes(kernelInfo, inputIndices, std::nullopt, inputShapes, outputShapes, 1);
-        
+
         m_inputTensorDescs[0].SetStrides(stridesA);
         m_inputTensorDescs[1].SetStrides(stridesB);
 

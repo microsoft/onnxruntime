@@ -8,7 +8,7 @@ CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-st
 BUILD_DEVICE="CPU"
 BUILD_CONFIG="Release"
 PYTHON_EXES=("/opt/python/cp37-cp37m/bin/python3.7" "/opt/python/cp38-cp38/bin/python3.8" "/opt/python/cp39-cp39/bin/python3.9" "/opt/python/cp310-cp310/bin/python3.10")
-while getopts "d:" parameter_Option
+while getopts "d:p:" parameter_Option
 do case "${parameter_Option}"
 in
 #GPU or CPU.
@@ -44,7 +44,17 @@ if [ "$BUILD_DEVICE" == "GPU" ]; then
     #Enable CUDA and TRT EPs.
     ONNXRUNTIME_CUDA_VERSION="11.6"
     BUILD_ARGS+=("--use_cuda" "--use_tensorrt" "--cuda_version=$ONNXRUNTIME_CUDA_VERSION" "--tensorrt_home=/usr" "--cuda_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cudnn_home=/usr/local/cuda-$ONNXRUNTIME_CUDA_VERSION" "--cmake_extra_defines" "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80")
+elif [ "$BUILD_DEVICE" == "AZURE" ]; then
+    BUILD_ARGS+=("--use_azure")
+    if [ -f /etc/lsb-release ]; then
+        # for ubuntu
+        apt-get install -y libipc-system-simple-perl python3 libssl-dev
+    else
+        # for redhat
+        yum install -y perl-IPC-Cmd python3 openssl-devel
+    fi
 fi
+
 export CFLAGS
 export CXXFLAGS
 for PYTHON_EXE in "${PYTHON_EXES[@]}"

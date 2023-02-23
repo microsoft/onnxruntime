@@ -66,10 +66,6 @@ struct OrtThreadPoolOptions {
   int dynamic_block_base_ = 0;
 
   unsigned int stack_size = 0;
-  //Index is thread id, value is processor ID
-  //If the vector is empty, no explict affinity binding
-  size_t* affinity_vec = nullptr;
-  size_t affinity_vec_len = 0;
   const ORTCHAR_T* name = nullptr;
 
   // Set or unset denormal as zero

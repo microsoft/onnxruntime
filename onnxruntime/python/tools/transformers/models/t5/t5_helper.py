@@ -228,15 +228,25 @@ class T5Helper:
         hidden_size: int,
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
+        use_gpu: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
+
+        from fusion_options import FusionOptions
+
+        optimization_options = None
+        if not use_gpu:
+            # Currently there is no SkipSimplifiedLayerNorm cpu kernel
+            optimization_options = FusionOptions("t5")
+            optimization_options.enable_skip_layer_norm = False
+
         m = optimize_model(
             onnx_model_path,
-            model_type="bert",  # TODO: support optimization for t5
+            model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=0,
-            optimization_options=None,
+            opt_level=2 if not is_float16 and not use_external_data_format else 0,
+            optimization_options=optimization_options,
             use_gpu=False,
         )
         if is_float16:

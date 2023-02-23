@@ -74,14 +74,20 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "XNNPACK") == 0) {
 #if defined(USE_XNNPACK)
-    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options));
+    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "AZURE") == 0) {
+#if defined(USE_AZURE)
+    options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
 #else
     status = create_not_supported_status();
 #endif
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'SNPE' and 'XNNPACK'");
+                                   "Unknown provider name. Currently supported values are 'SNPE', 'XNNPACK', and 'AZURE'");
   }
 
   return status;
@@ -300,6 +306,43 @@ ORT_API_STATUS_IMPL(OrtApis::GetCANNProviderOptionsAsString,
 }
 
 ORT_API(void, OrtApis::ReleaseCANNProviderOptions, _Frees_ptr_opt_ OrtCANNProviderOptions* ptr) {
+  ORT_UNUSED_PARAMETER(ptr);
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
+                    _In_ OrtSessionOptions* options, _In_ const OrtDnnlProviderOptions* dnnl_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  return CreateNotEnabledStatus("Dnnl");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateDnnlProviderOptions, _Outptr_ OrtDnnlProviderOptions** out) {
+  ORT_UNUSED_PARAMETER(out);
+  return CreateNotEnabledStatus("Dnnl");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UpdateDnnlProviderOptions,
+                    _Inout_ OrtDnnlProviderOptions* dnnl_options,
+                    _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values,
+                    size_t num_keys) {
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("Dnnl");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetDnnlProviderOptionsAsString,
+                    _In_ const OrtDnnlProviderOptions* dnnl_options, _Inout_ OrtAllocator* allocator,
+                    _Outptr_ char** ptr) {
+  ORT_UNUSED_PARAMETER(dnnl_options);
+  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ptr);
+  return CreateStatus(ORT_FAIL, "Dnnl execution provider is not enabled in this build.");
+}
+
+ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
 #endif

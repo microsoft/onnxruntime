@@ -50,10 +50,10 @@ Support for storing `graph_doc_string` field in Model (ORT FlatBuffers format).
 Update kernel def hashing to not depend on ordering of type constraint types (NOT BACKWARDS COMPATIBLE).
 
 ## Version 5
-Deprecate kernel def hashes and add KernelTypeStrResolver info to replace them (NOT BACKWARDS COMPATIBLE).
-The change to the ORT format itself is not backwards compatibility-breaking, but ORT does not provide backwards
+Remove kernel def hashes and add KernelTypeStrResolver info to replace them (LIMITED BACKWARDS COMPATIBILITY).
+The change to the ORT format itself is not backwards compatibility-breaking, but ORT provides limited backwards
 compatibility for processing older models with missing KernelTypeStrResolver info.
 
 The motivation for this update is to support additional execution providers with statically registered kernels.
-The original approach of using kernel def hashes is not so extensible as it requires the execution provider providing
+The original approach of using kernel def hashes was not so extensible as it required the execution provider providing
 hashes to be enabled at model conversion time.

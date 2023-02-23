@@ -108,6 +108,22 @@ public:
     }
 };
 
+void CALLBACK QueryScatter(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported)
+{
+    *isSupported = false;
+
+    MLOperatorAttributes attributes(context);
+
+    // DML does not support reduction.
+    std::string reduction = attributes.GetOptionalAttribute<std::string>(AttrName::Reduction, "none");
+    if (reduction != "none")
+    {
+        return;
+    }
+
+    *isSupported = true;
+}
+
 DML_OP_DEFINE_CREATION_FUNCTION(Scatter9, DmlOperatorScatter);
 DML_OP_DEFINE_CREATION_FUNCTION(Scatter11, DmlOperatorScatter);
 DML_OP_DEFINE_CREATION_FUNCTION(Scatter13, DmlOperatorScatter);

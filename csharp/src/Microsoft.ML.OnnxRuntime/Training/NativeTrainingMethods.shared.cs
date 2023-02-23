@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
 {
-#if __ENABLE_TRAINING_ON_DEVICE__
+#if __ENABLE_TRAINING_APIS__
         // NOTE: The order of the APIs in this struct should match exactly that in
         // OrtTrainingApi  (onnxruntime_training_c_api.cc)
         [StructLayout(LayoutKind.Sequential)]
@@ -19,7 +19,7 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr TrainingSessionGetEvalModelOutputCount;
             public IntPtr TrainingSessionGetTrainingModelOutputName;
             public IntPtr TrainingSessionGetEvalModelOutputName;
-            public IntPtr ResetGrad;
+            public IntPtr LazyResetGrad;
             public IntPtr TrainStep;
             public IntPtr EvalStep;
             public IntPtr SetLearningRate;
@@ -53,10 +53,10 @@ namespace Microsoft.ML.OnnxRuntime
                 DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(NativeMethods.OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 
                 // TODO: Make this save the pointer, and not copy the whole structure across
-                api_ = (OrtApi)OrtGetApi(4 /*ORT_API_VERSION*/);
+                api_ = (OrtApi)OrtGetApi(13 /*ORT_API_VERSION*/);
 
                 OrtGetTrainingApi = (DOrtGetTrainingApi)Marshal.GetDelegateForFunctionPointer(api_.GetTrainingApi, typeof(DOrtGetTrainingApi));
-                trainingApiPtr = OrtGetTrainingApi(4 /*ORT_API_VERSION*/);
+                trainingApiPtr = OrtGetTrainingApi(13 /*ORT_API_VERSION*/);
                 if (trainingApiPtr != IntPtr.Zero)
                 {
                     trainingApi_ = (OrtTrainingApi)Marshal.PtrToStructure(trainingApiPtr, typeof(OrtTrainingApi));
@@ -67,7 +67,7 @@ namespace Microsoft.ML.OnnxRuntime
                     OrtGetEvalModelOutputCount = (DOrtGetEvalModelOutputCount)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelOutputCount, typeof(DOrtGetEvalModelOutputCount));
                     OrtGetTrainingModelOutputName = (DOrtGetTrainingModelOutputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetTrainingModelOutputName, typeof(DOrtGetTrainingModelOutputName));
                     OrtGetEvalModelOutputName = (DOrtGetEvalModelOutputName)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainingSessionGetEvalModelOutputName, typeof(DOrtGetEvalModelOutputName));
-                    OrtResetGrad = (DOrtResetGrad)Marshal.GetDelegateForFunctionPointer(trainingApi_.ResetGrad, typeof(DOrtResetGrad));
+                    OrtLazyResetGrad = (DOrtLazyResetGrad)Marshal.GetDelegateForFunctionPointer(trainingApi_.LazyResetGrad, typeof(DOrtLazyResetGrad));
                     OrtTrainStep = (DOrtTrainStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.TrainStep, typeof(DOrtTrainStep));
                     OrtEvalStep = (DOrtEvalStep)Marshal.GetDelegateForFunctionPointer(trainingApi_.EvalStep, typeof(DOrtEvalStep));
                     OrtSetLearningRate = (DOrtSetLearningRate)Marshal.GetDelegateForFunctionPointer(trainingApi_.SetLearningRate, typeof(DOrtSetLearningRate));
@@ -81,7 +81,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             }
 
-#region TrainingSession API
+    #region TrainingSession API
 
             /// <summary>
             /// Creates an instance of OrtSession with provided parameters
@@ -133,21 +133,21 @@ namespace Microsoft.ML.OnnxRuntime
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputCount(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     out UIntPtr count);
 
             public static DOrtGetTrainingModelOutputCount OrtGetTrainingModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputCount(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     out UIntPtr count);
 
             public static DOrtGetEvalModelOutputCount OrtGetEvalModelOutputCount;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTrainingModelOutputName(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     UIntPtr index,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
                                                     out IntPtr /*(char**)*/name);
@@ -156,7 +156,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(OrtStatus*)*/ DOrtGetEvalModelOutputName(
-                                                    IntPtr /*(OrtSession*)*/ session,
+                                                    IntPtr /*(OrtTrainingSession*)*/ session,
                                                     UIntPtr index,
                                                     IntPtr /*(OrtAllocator*)*/ allocator,
                                                     out IntPtr /*(char**)*/name);
@@ -164,10 +164,10 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtGetEvalModelOutputName OrtGetEvalModelOutputName;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate IntPtr /*(OrtStatus*)*/ DOrtResetGrad(
-                                                    IntPtr /*(OrtSession*)*/ session);
+            public delegate IntPtr /*(OrtStatus*)*/ DOrtLazyResetGrad(
+                                                    IntPtr /*(OrtTrainingSession*)*/ session);
 
-            public static DOrtResetGrad OrtResetGrad;
+            public static DOrtLazyResetGrad OrtLazyResetGrad;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
             public delegate IntPtr /*(ONNStatus*)*/ DOrtTrainStep(
@@ -233,14 +233,14 @@ namespace Microsoft.ML.OnnxRuntime
             public static DOrtSchedulerStep OrtSchedulerStep;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtSession*)*/session);
+            public delegate void DOrtReleaseTrainingSession(IntPtr /*(OrtTrainingSession*)*/session);
             public static DOrtReleaseTrainingSession OrtReleaseTrainingSession;
 
             [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-            public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtSession*)*/session);
+            public delegate void DOrtReleaseCheckpointState(IntPtr /*(OrtCheckpointState*)*/checkpointState);
             public static DOrtReleaseCheckpointState OrtReleaseCheckpointState;
 
-#endregion TrainingSession API
+    #endregion TrainingSession API
 
             public static bool TrainingEnabled()
             {

@@ -17,6 +17,15 @@ std::vector<T> InputData(size_t size) {
 }
 
 template <>
+std::vector<std::string> InputData<std::string>(size_t size) {
+  std::vector<std::string> result(size);
+  for (size_t i = 0; i < size; i++) {
+    result[i] = std::to_string(i);
+  }
+  return result;
+}
+
+template <>
 std::vector<MLFloat16> InputData<MLFloat16>(size_t size) {
   std::vector<MLFloat16> result(size);
   for (size_t i = 0; i < size; i++) {
@@ -220,7 +229,10 @@ TEST(TensorOpTest, TileInt64Type) { RunTestWrapper<int64_t>(); }
 
 TEST(TensorOpTest, TileUint64Type) { RunTestWrapper<uint64_t>(); }
 
+TEST(TensorOpTest, TileStringType) { RunTestWrapper<std::string>(); }
+
 TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
+
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }

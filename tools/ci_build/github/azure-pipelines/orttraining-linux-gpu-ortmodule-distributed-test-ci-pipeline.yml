@@ -1,56 +1,109 @@
 trigger: none
 
-jobs:
-- job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
+stages:
+- stage: ORTModuleDistributedTest
+  dependsOn: []
+  jobs:
+  - job: Onnxruntime_Linux_GPU_ORTModule_Distributed_Test
 
-  timeoutInMinutes: 120
-  pool: 'Onnxruntime-Linux-GPU-NC24sv3'
+    timeoutInMinutes: 120
+    pool: 'Onnxruntime-Linux-GPU-NC24sv3'
 
-  steps:
-  - checkout: self
-    clean: true
-    submodules: recursive
+    steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
 
-  - template: templates/run-docker-build-steps.yml
-    parameters:
-      RunDockerBuildArgs: |
-        -o ubuntu20.04 -d gpu \
-        -t onnxruntime_ortmodule_distributed_tests_image \
-        -x " \
-          --config RelWithDebInfo \
-          --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
-          --enable_training \
-          --enable_training_torch_interop \
-          --update --build \
-          --build_wheel \
-          " \
-        -m \
-        -u \
-        -e
-      DisplayName: 'Build'
+    - template: templates/run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: |
+          -o ubuntu20.04 -d gpu \
+          -t onnxruntime_ortmodule_distributed_tests_image \
+          -x " \
+            --config RelWithDebInfo \
+            --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+            --enable_training \
+            --update --build \
+            --build_wheel \
+            " \
+          -m \
+          -u \
+          -e
+        DisplayName: 'Build'
 
-  - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
-    displayName: 'Mount MNIST'
-    condition: succeededOrFailed()
+    - bash: tools/ci_build/github/linux/docker/scripts/training/azure_scale_set_vm_mount_test_data.sh -p $(orttrainingtestdatascus-storage-key) -s "//orttrainingtestdatascus.file.core.windows.net/mnist" -d "/mnist"
+      displayName: 'Mount MNIST'
+      condition: succeededOrFailed()
 
-    # Entry point for all ORTModule distributed tests
-    # Refer to orttraining/orttraining/test/python/how_to_add_ortmodule_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
-  - script: |
-      docker run \
-        --gpus all \
-        --shm-size=1024m \
-        --rm \
-        --volume $(Build.SourcesDirectory):/onnxruntime_src \
-        --volume $(Build.BinariesDirectory):/build \
-        --volume /mnist:/mnist \
-        onnxruntime_ortmodule_distributed_tests_image \
-          bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install && /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_distributed_tests.py --mnist /mnist' --cwd /build/RelWithDebInfo" \
-    displayName: 'Run orttraining_ortmodule_distributed_tests.py'
-    condition: succeededOrFailed()
-    timeoutInMinutes: 30
+      # Entry point for all ORTModule distributed tests
+      # Refer to orttraining/orttraining/test/python/how_to_add_ortmodule_distributed_ci_pipeline_tests.md for guidelines on how to add new tests to this pipeline.
+    - script: |
+        docker run \
+          --gpus all \
+          --shm-size=1024m \
+          --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /mnist:/mnist \
+          onnxruntime_ortmodule_distributed_tests_image \
+            bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && python3 -m onnxruntime.training.ortmodule.torch_cpp_extensions.install && /build/RelWithDebInfo/launch_test.py --cmd_line_with_args 'python orttraining_ortmodule_distributed_tests.py --mnist /mnist' --cwd /build/RelWithDebInfo" \
+      displayName: 'Run orttraining_ortmodule_distributed_tests.py'
+      condition: succeededOrFailed()
+      timeoutInMinutes: 30
 
-  - template: templates/component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
 
-  - template: templates/clean-agent-build-directory-step.yml
+    - template: templates/clean-agent-build-directory-step.yml
+
+- stage: DistributedInferenceTest
+  dependsOn: []
+  jobs:
+  - job: Onnxruntime_Linux_GPU_Inference_Distributed_Test
+
+    timeoutInMinutes: 120
+    pool: 'Onnxruntime-Linux-GPU-NC24sv3'
+
+    steps:
+    - checkout: self
+      clean: true
+      submodules: recursive
+
+    - template: templates/run-docker-build-steps.yml
+      parameters:
+        RunDockerBuildArgs: |
+          -o ubuntu20.04 -d gpu \
+          -t onnxruntime_ortmodule_distributed_tests_image \
+          -x " \
+            --config RelWithDebInfo \
+            --use_cuda --cuda_version=11.6 --cuda_home=/usr/local/cuda-11.6 --cudnn_home=/usr/local/cuda-11.6 \
+            --update --build \
+            --build_wheel \
+            --use_mpi \
+            --enable_nccl \
+            " \
+          -m \
+          -u \
+          -e
+        DisplayName: 'Build'
+
+    - script: |
+        docker run \
+          --gpus all \
+          --shm-size=1024m \
+          --rm \
+          --volume $(Build.SourcesDirectory):/onnxruntime_src \
+          --volume $(Build.BinariesDirectory):/build \
+          --volume /mnist:/mnist \
+          onnxruntime_ortmodule_distributed_tests_image \
+            bash -c "rm -rf /build/RelWithDebInfo/onnxruntime/ && python3 -m pip install mpi4py && python3 -m pip install /build/RelWithDebInfo/dist/onnxruntime*.whl && mpirun -n 4 -x NCCL_DEBUG=INFO python /onnxruntime_src/onnxruntime/test/python/onnxruntime_test_collective.py" \
+      displayName: 'Run onnxruntime_test_collective.py'
+      condition: succeededOrFailed()
+      timeoutInMinutes: 30
+
+    - template: templates/component-governance-component-detection-steps.yml
+      parameters:
+        condition: 'succeeded'
+
+    - template: templates/clean-agent-build-directory-step.yml

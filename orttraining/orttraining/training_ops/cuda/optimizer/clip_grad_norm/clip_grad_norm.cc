@@ -88,17 +88,17 @@ Status InplaceClipGradNorm::ComputeInternal(OpKernelContext* ctx) const {
 
   // Get frobenius norm for the grouped inputs
   float* total_norm = reinterpret_cast<float*>(alloc->Alloc(sizeof(float)));
-  ORT_RETURN_IF_ERROR(GetL2Norm(Stream(), tensor_sizes, grouped_tensor_pointers, &total_norm));
+  ORT_RETURN_IF_ERROR(GetL2Norm(Stream(ctx), tensor_sizes, grouped_tensor_pointers, &total_norm));
 
   // Perform gradient clipping
   ClipGradNormFunctor<float> clip_grad_functor;
   launch_multi_tensor_functor<ClipGradNormGroupSize, decltype(clip_grad_functor)>(
-      Stream(), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, total_norm,
+      Stream(ctx), ChunkSize, tensor_sizes, grouped_tensor_pointers, clip_grad_functor, total_norm,
       Epsilon, max_norm_);
 
   // Populate the output sequence tensors.
   TensorSeq* clipped_gradients = ctx->Output<TensorSeq>(0);
-  ORT_RETURN_IF_ERROR(PopulateOutput(Stream(), alloc, gradients, &clipped_gradients));
+  ORT_RETURN_IF_ERROR(PopulateOutput(Stream(ctx), alloc, gradients, &clipped_gradients));
 
   return Status::OK();
 }

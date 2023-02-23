@@ -8,14 +8,14 @@ jobs:
   pool: 'AMD-GPU'
   timeoutInMinutes: 180
 
-  # gid of video and render group on gcr-openpai-35 and -36
+  # gid of video and render group on gcramdrr1-mi100-085 and -86
   variables:
     - name: video
       value: 44
     - name: render
       value: 109
     - name: RocmVersion
-      value: 5.2.3
+      value: 5.4
 
   steps:
   - checkout: self
@@ -60,7 +60,7 @@ jobs:
               --parallel 32 \
               --build_wheel \
               --skip_submodule_sync \
-              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest 
+              --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Build onnxruntime'
 

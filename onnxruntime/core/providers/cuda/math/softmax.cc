@@ -26,15 +26,12 @@ Status SoftMaxComputeHelper(
   auto X_data = reinterpret_cast<const CudaT*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+    return dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
-  } else {
-    dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
-        stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
-        gsl::narrow_cast<int>(N));
   }
-
-  return Status::OK();
+  return dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+      stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
+      gsl::narrow_cast<int>(N));
 }
 
 #define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                           \
@@ -148,8 +145,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
     // Perform the transpose
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *X, *temp_input));
     transposed_input = std::move(temp_input);
 
@@ -173,11 +170,11 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                  : static_cast<int64_t>(axis));
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(), X_data, *compute_input_shape, Y_data,
+    status = SoftMaxComputeHelper<T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
                                             is_transpose_required ? static_cast<int64_t>(rank) - 1
                                                                   : static_cast<int64_t>(axis));
   }
@@ -188,8 +185,8 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
   if (is_transpose_required) {
     // Perform the transpose to get the axes back to the original ordering
     ORT_RETURN_IF_ERROR(Transpose::DoTranspose(cuda_ep_->GetDeviceProp(),
-                                               Stream(),
-                                               CublasHandle(),
+                                               Stream(ctx),
+                                               GetCublasHandle(ctx),
                                                permutation, *intermediate_output, *Y));
   }
 

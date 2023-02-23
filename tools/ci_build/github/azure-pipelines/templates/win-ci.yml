@@ -52,12 +52,20 @@ parameters:
   type: string
   default: 'onnxruntime'
 
+- name: UseIncreasedTimeoutForTests 
+  displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
+
 jobs:
 - job: Windows_Packaging_${{ parameters.job_name_suffix }}
   workspace:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
-  timeoutInMinutes:  300  
+  ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+    timeoutInMinutes: 1200 
+  ${{ else }}:
+    timeoutInMinutes: 300 
 
   steps:
     - checkout: self
@@ -106,7 +114,10 @@ jobs:
       displayName: 'Generate cmake config'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }}'
+        ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
+        ${{ else }}:
+          arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
         workingDirectory: '$(Build.BinariesDirectory)'
  
     - task: VSBuild@1

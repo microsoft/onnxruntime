@@ -17,6 +17,8 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/fallback_cpu_capability.h"
+#include "DmlCommittedResourceAllocator.h"
+#include "DmlCommittedResourceWrapper.h"
 
 #ifdef ERROR
 #undef ERROR
@@ -58,6 +60,8 @@ namespace Dml
         auto customRegistry = *abiRegistry->GetRegistries().begin();
         *registry = customRegistry->GetKernelRegistry();
         *internalRegInfoMap = abiRegistry->GetInternalRegInfoMap();
+
+        Dml::RegisterCpuOperatorsAsDml(registry->get());
     }
 
     ExecutionProvider::ExecutionProvider(
@@ -184,7 +188,8 @@ namespace Dml
             CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
 
         m_context->SetAllocator(m_allocator);
 
@@ -474,6 +479,57 @@ namespace Dml
         ORT_CATCH_RETURN
     }
 
+    HRESULT __stdcall ExecutionProviderImpl::CopyTensors(gsl::span<IMLOperatorTensor*> dst, gsl::span<IMLOperatorTensor*> src) const noexcept
+    {
+        ORT_TRY
+        {
+        ORT_THROW_HR_IF(E_INVALIDARG, dst.size() != src.size());
+
+        // Source and destination for batched GPU -> CPU copies
+        std::vector<ID3D12Resource*> srcDatas;
+        std::vector<void*> dstDatas;
+        std::vector<uint32_t> dataSizesInBytes;
+
+        assert(!m_closed);
+        auto provider = const_cast<ExecutionProviderImpl*>(this);
+
+        for (uint32_t i = 0; i < dst.size(); ++i)
+        {
+            // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
+            // and are batched across multiple calls to CopyTensor.
+            if (src[i]->IsCpuData() || !dst[i]->IsCpuData())
+            {
+                ORT_THROW_IF_FAILED(CopyTensor(dst[i], src[i]));
+                continue;
+            }
+
+            const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst[i]);
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            if (dataSizeInBytes == 0)
+            {
+                continue;
+            }
+
+            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+
+            dstDatas.push_back(dst[i]->GetData());
+            const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
+
+            srcDatas.push_back(srcAllocInfo->GetResource());
+        }
+
+        const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
+
+        // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
+        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+
+        return S_OK;
+        }
+        ORT_CATCH_RETURN
+    }
+
     HRESULT STDMETHODCALLTYPE ExecutionProviderImpl::FillTensorWithPattern(
         IMLOperatorTensor* dst,
         gsl::span<const std::byte> rawValue // Data type agnostic rawValue, treated as raw bits
@@ -521,22 +577,60 @@ namespace Dml
 
     bool TryGetTensorDataType(
         const onnxruntime::NodeArg& nodeArg,
+        _Out_ MLOperatorEdgeType* edgeType,
         _Out_ MLOperatorTensorDataType* onnxElementType
     )
     {
         *onnxElementType = MLOperatorTensorDataType::Undefined;
+        *edgeType = MLOperatorEdgeType::Undefined;
 
         const ::onnx::TypeProto* typeProto = nodeArg.TypeAsProto();
-        if (typeProto != nullptr && typeProto->has_tensor_type())
+        if (typeProto != nullptr)
         {
-            const ::onnx::TypeProto_Tensor& tensorTypeProto = typeProto->tensor_type();
-            if (tensorTypeProto.has_elem_type())
+            const ::onnx::TypeProto_Tensor* tensorTypeProto;
+            if (typeProto->has_tensor_type())
             {
-                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto.elem_type());
+                *edgeType = MLOperatorEdgeType::Tensor;
+                tensorTypeProto = &typeProto->tensor_type();
+            }
+            else if (typeProto->has_sequence_type())
+            {
+                *edgeType = MLOperatorEdgeType::SequenceTensor;
+                tensorTypeProto = &typeProto->sequence_type().elem_type().tensor_type();
+            }
+            else
+            {
+                return false;
+            }
+
+            if (tensorTypeProto->has_elem_type())
+            {
+                *onnxElementType = static_cast<MLOperatorTensorDataType>(tensorTypeProto->elem_type());
                 return true;
             }
         }
 
+        return false;
+    }
+
+    bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
+    {
+        auto sequence_ops = std::array<char*, 6>{
+            "SequenceAt",
+            "SequenceConstruct",
+            "SequenceEmpty",
+            "SequenceLength",
+            "SequenceErase",
+            "SequenceInsert",
+        };
+
+        for (auto& sequence_op : sequence_ops)
+        {
+            if (strcmp(sequence_op, node.OpType().c_str()) == 0)
+            {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -573,8 +667,9 @@ namespace Dml
             // Use the enumeration from the proto instead of nodeArg.Type() which returns a string.
 
             // Reject node if undefined data type or non-tensor, as DML cannot handle it.
+            MLOperatorEdgeType edgeType;
             MLOperatorTensorDataType onnxElementType;
-            if (!TryGetTensorDataType(nodeArg, &onnxElementType))
+            if (!TryGetTensorDataType(nodeArg, &edgeType, &onnxElementType))
             {
                 // We shouldn't have arrived here because (1) no DML operators should have been
                 // registered which use non-tensor types (2) ONNX validation should have already
@@ -584,6 +679,13 @@ namespace Dml
                 // besides tensors, then remove the assert.
                 assert(false);
                 nodeContainsSupportedDataTypes = false;
+                return;
+            }
+
+            // Allow nodeArgs that are SequenceTensor when they are actually implemented by CPU Kernels.
+            if (edgeType == MLOperatorEdgeType::SequenceTensor && IsCpuOnDmlOperator(node))
+            {
+                // Leave nodeContainsSupportedDataTypes alone.
                 return;
             }
 
@@ -1007,7 +1109,11 @@ namespace Dml
     void* CreateGPUAllocationFromD3DResource(ID3D12Resource* pResource)
     {
         uint64_t pooledResourceId = 0; // Not a pooled resource
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, pResource, (size_t)pResource->GetDesc().Width);
+
+        ComPtr<DmlResourceWrapper> resourceWrapper;
+        wil::MakeOrThrow<DmlCommittedResourceWrapper>(pResource).As(&resourceWrapper);
+
+        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(nullptr, 0, pooledResourceId, resourceWrapper.Get(), (size_t)pResource->GetDesc().Width);
         return allocInfo.Detach();
     }
     void FreeGPUAllocation(void* ptr)
