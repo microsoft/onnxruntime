@@ -79,12 +79,13 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
   const int grid_size = params->element_count / params->ld;
   const int block_size = 256;
 
-#define LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(ELEMENTS, TPB, ILP)                                                                        \
-  if (params->ld <= ELEMENTS) {                                                                                                       \
-    SkipLayerNormKernelSmall<T, TPB, ILP><<<grid_size, TPB, 0, params->stream>>>(                                                       \
-        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,                                           \
-        maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput); \
-    return HIP_CALL(hipPeekAtLastError());                                                                                            \
+#define LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(ELEMENTS, TPB, ILP)                              \
+  if (params->ld <= ELEMENTS) {                                                             \
+    SkipLayerNormKernelSmall<T, TPB, ILP><<<grid_size, TPB, 0, params->stream>>>(           \
+        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, \
+        maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, \
+        hasBias, hasSkipInputBiasAdditionOutput);                                           \
+    return HIP_CALL(hipPeekAtLastError());                                                  \
   }
   if (0 == (params->ld % 4)) {
     LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(32, 32, 1)
