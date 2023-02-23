@@ -254,16 +254,17 @@ jobs:
       #   displayName: Run React Native Android e2e Tests
       - script: |
           NUM_ITERATIONS=10
-          EXIT_CODE=0
+          NUM_FAILURES=0
           for i in {1 .. $NUM_ITERATIONS}
           do
             echo "*** test iteration $i"
             if ! ./gradlew :app:connectedDebugAndroidTest ; then
               echo "*** failure at test iteration $i"
-              EXIT_CODE=1
+              ((NUM_FAILURES++))
             fi
           done
-          exit $EXIT_CODE
+          echo "failed iterations: ${NUM_FAILURES} / ${NUM_ITERATIONS}"
+          exit $NUM_FAILURES
         displayName: Run React Native Android e2e Tests
 
   # - script: |
