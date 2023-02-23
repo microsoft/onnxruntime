@@ -163,7 +163,7 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
     auto id = this->FindFastestImpl(params, candidates);
     // memoize the result
     this->RegisterOp(std::move(candidates[id]));
-    return this->ops_.size() - 1;
+    return this->NumberOfOps() - 1;
   }
 
  private:
