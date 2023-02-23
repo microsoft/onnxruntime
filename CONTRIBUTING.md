@@ -3,8 +3,12 @@
 We're always looking for your help to improve the product (bug fixes, new features, documentation, etc).
 
 ## Contribute a code change
+<<<<<<< HEAD
 
 * Start by reading the [Engineering Design](https://onnxruntime.ai/docs/reference/high-level-design.html). More documentation can be found in the [docs folder](./docs/) and [on the docs website](https://onnxruntime.ai/docs).
+=======
+* Start by reading the [Engineering Design](https://onnxruntime.ai/docs/reference/high-level-design).
+>>>>>>> 892f5dc8aa044526d6ab14f3a15441cdaeedabe3
 * If your change is non-trivial or introduces new public facing APIs (discussed in more detail below) please use the [feature request issue template](https://github.com/microsoft/onnxruntime/issues/new?template=feature_request.md) to discuss it with the team and get consensus on the basic design and direction first. For all other changes, you can directly create a pull request (PR) and we'll be happy to take a look.
 * Make sure your PR adheres to the [PR Guidelines](./docs/PR_Guidelines.md) and [Coding Conventions and Standards](./docs/Coding_Conventions_and_Standards.md) established by the team.
 * If you're unsure about any of the above and want to contribute, you're welcome to [start a discussion](https://github.com/microsoft/onnxruntime/discussions) with the team.
