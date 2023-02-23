@@ -47,10 +47,10 @@ namespace onnxruntime {
 namespace contrib {
 namespace GenerationCudaDeviceHelper {
 
-Status GenerateReorderedPastState(
+Status ReorderPastState(
     const void* cuda_device_prop,
     Tensor& past_state,
-    void* temp_staging_buffer,
+    Tensor& past_state_staging,
     Stream* stream) {
   ORT_ENFORCE(stream);
   cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
@@ -59,26 +59,33 @@ Status GenerateReorderedPastState(
   const auto& past_state_shape = past_state.Shape();
 
   // Copy the 'K' values into the temp staging buffer
-  cudaMemcpyAsync(temp_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2, cudaMemcpyDeviceToDevice, cuda_stream);
+  void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
+  cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2,
+                  cudaMemcpyDeviceToDevice, cuda_stream);
 
-  // Now consider the original 'K' values to be of shape [B, N, M_s, head_size / x, x] and transpose it into
-  // [B, N, head_size / x, M_s, x], where x is given below:
-  // x = 16 / element_size
-  // TODO: Make generic enough to be used with fp16
+  // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
+  // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
+  int chunk_size = 16 / past_state.DataType()->Size();
 
-  constexpr int chunk_size = 16 / 4;
+  std::vector<size_t> permutation_vector = {0, 1, 3, 2, 4};
+  gsl::span<size_t> permutation(permutation_vector.data(), 5);
 
-  auto transpose_input = Tensor::Create(past_state.DataType(), {past_state_shape[1], past_state_shape[2], past_state_shape[3], past_state_shape[4] / chunk_size, chunk_size},
-                                        temp_staging_buffer, past_state.Location());
-  auto transpose_output = Tensor::Create(past_state.DataType(), {past_state_shape[1], past_state_shape[2], past_state_shape[4] / chunk_size, past_state_shape[3], chunk_size},
-                                         past_state.MutableDataRaw(), past_state.Location());
+  // "Fake" the shapes of the input and output tensors of the Transpose operation to suit our need
 
-  std::vector<size_t> perm_vector = {0, 1, 3, 2, 4};
-  gsl::span<size_t> permutations(perm_vector.data(), 5);
+  TensorShape transpose_input_shape_override = {past_state_shape[1],
+                                                past_state_shape[2],
+                                                past_state_shape[3],
+                                                past_state_shape[4] / chunk_size,
+                                                chunk_size};
 
-  auto status =  onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
-                                                   cublas_handle, permutations,
-                                                   *transpose_input, *transpose_output);
+  TensorShape transpose_output_shape_override = {past_state_shape[1], past_state_shape[2], past_state_shape[4] / chunk_size, past_state_shape[3], chunk_size};
+
+  // TODO(hasesh): Explore perf tuning for this Transpose operation
+  auto status = onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
+                                                          cublas_handle, permutation,
+                                                          past_state_staging, past_state,
+                                                          &transpose_input_shape_override,
+                                                          &transpose_output_shape_override);
   return status;
 }
 

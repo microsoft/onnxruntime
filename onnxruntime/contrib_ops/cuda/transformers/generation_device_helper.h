@@ -22,10 +22,10 @@ namespace contrib {
 // These are CUDA specific device helper implementations
 namespace GenerationCudaDeviceHelper {
 
-Status GenerateReorderedPastState(
+Status ReorderPastState(
     const void* cuda_device_prop,
     Tensor& past_state,
-    void* temp_staging_buffer,
+    Tensor& past_state_staging,
     Stream* stream);
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,

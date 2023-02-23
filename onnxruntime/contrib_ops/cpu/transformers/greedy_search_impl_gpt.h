@@ -170,8 +170,6 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
 template <typename T, typename ParametersT>
 Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
                                                 const FeedsFetchesManager& feeds_fetches_manager) {
-  bool use_decoder_masked_mutihead_attention = true && gpt_subgraph_.past_present_share_buffer_ && std::is_same<T, float>::value;
-
   auto status = Status::OK();
   const ParametersT* parameters = this->parameters_;
 
@@ -192,7 +190,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                     static_cast<int>(parameters->max_length),
                     static_cast<int>(parameters->num_heads),
                     static_cast<int>(parameters->head_size),
-                    use_decoder_masked_mutihead_attention,
+                    gpt_subgraph_.has_decoder_masked_multihead_attention_,
                     this->IsCuda());
 
   SamplingState<T> sampling_state;
@@ -318,13 +316,20 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Increase sequence length after a new token is generated.
     ++current_length;
 
-    // Reorder past state after first run
-    if (iteration_counter == 1 && use_decoder_masked_mutihead_attention) {
+    // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
+    // contains DecoderMaskedMultiheadAttention nodes
+    if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
       int offset = gpt_subgraph_.GetFirstPresentOutputIndex();
+      // We will use the same staging buffer while transposing all the layers' past state
+      // and this is okay because we use the same stream to do the staging copy and the transpose
+      // operations.
+      // If we ever do them in different streams, we must use different staging buffers to avoid data
+      // races.
       for (int i = 0; i < gpt_subgraph_.num_layers; ++i) {
-        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_, *fetches[offset + i].GetMutable<Tensor>(),
-                                               greedy_state.temp_reordered_past_state_staging.data(),
-                                               this->ort_stream_));
+        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
+                                                     *fetches[offset + i].GetMutable<Tensor>(),
+                                                     greedy_state.staging_for_past_state_reorder,
+                                                     this->ort_stream_));
       }
     }
 
