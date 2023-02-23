@@ -8,7 +8,7 @@ steps:
 - task: CmdLine@2
   inputs:
     script: |
-      python3 tools/python/run_adb.py logcat --clear
+      python3 tools/python/run_adb.py logcat --clear || exit 0
   displayName: "Clear Android logs"
   condition: succeededOrFailed()
 
@@ -17,6 +17,6 @@ steps:
 - task: CmdLine@2
   inputs:
     script: |
-      python3 tools/python/run_adb.py logcat -d
+      python3 tools/python/run_adb.py logcat -d || exit 0
   displayName: "Dump Android logs"
   condition: succeededOrFailed()
