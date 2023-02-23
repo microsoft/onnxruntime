@@ -58,7 +58,8 @@ module.exports = function(config) {
         args: process.argv.filter(arg => arg.startsWith('--gtest_'))
       },
       browserDisconnectTimeout: 600000,
-      browserNoActivityTimeout: 300000,
+      // allow running tests for 30 minutes
+      browserNoActivityTimeout: 30 * 60 * 1000,
       customLaunchers: {
         ChromeTest: {
           base: 'ChromeCanary',
