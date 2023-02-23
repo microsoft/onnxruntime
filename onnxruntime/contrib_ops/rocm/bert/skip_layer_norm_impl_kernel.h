@@ -84,7 +84,7 @@ __global__ void SkipLayerNormKernelVec(
         input_v[k] += hasBias ? skip_v[k] + bias_v[k] : skip_v[k];
 
         if (hasSkipInputBiasAdditionOutput) {
-          skip_input_bias_add_output_v[i] = input_v[i];
+          skip_input_bias_add_output_v[k] = input_v[k];
         }
 
         const T rldval = reverse_ld * input_v[k];

@@ -43,7 +43,7 @@ def skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon):
     output = val - x_u[..., None]
     output = output / np.sqrt(x_s + epsilon)[..., None]
     output = output * gamma + beta
-    return output
+    return output, val
 
 
 def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: str, func):
@@ -56,9 +56,7 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     # Becuase of rocm FMAs calculation issue with float16, epsilon should be larger when hidden_size is small
     epsilon = 0.05 if hidden_size < 8 else 0.0005
     output_y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    # output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    # enforce nullptr in the backend
-    output_optional = np.empty((0), dtype=dtype)
+    output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
@@ -69,9 +67,6 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     optional_d = ke.DeviceArray(output_optional)
     f = getattr(ke, func)
 
-    # output_optional is newly added optional output tensor for SkipLayerNorm
-    # Right now we are not testing the tensor like we do for output_y
-    # the test for output_optional could be considered in future as needed
     my_op = f(
         y_d,
         optional_d,
@@ -88,9 +83,11 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
         my_op.Run()
 
         y_d.UpdateHostNumpyArray()
+        optional_d.UpdateHostNumpyArray()
 
-        y_ref = skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon)
+        y_ref, y_optional = skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon)
         np.testing.assert_almost_equal(y_ref, output_y, decimal=1e-05)
+        np.testing.assert_almost_equal(y_optional, output_optional, decimal=1e-05)
 
 
 dtypes = ["float32", "float16"]
@@ -125,9 +122,7 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     bias = np.random.rand(hidden_size).astype(dtype)
     epsilon = 0.0005
     output_y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    # output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    # enforce nullptr in the backend - optional when profiling
-    output_optional = np.empty((0), dtype=dtype)
+    output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
@@ -138,9 +133,6 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     optional_d = ke.DeviceArray(output_optional)
     f = getattr(ke, func)
 
-    # output_optional is newly added optional output tensor for SkipLayerNorm
-    # Right now we are not testing the tensor like we do for output_y
-    # the profile for output_optional could be considered in future as needed
     my_op = f(
         y_d,
         optional_d,
