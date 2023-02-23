@@ -126,10 +126,22 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 }
 
 void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, kv_sequence_length, num_heads, 2, head_size)
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or nullptr
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+
+  // Q, K and V without packing:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
+  //   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+
+  // Packed KV:
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
+  //   Input 2  nullptr
+
+  // Packed QKV:
+  //   Input 0 (batch_size, sequence_length, num_heads, 3, head_size)
+  //   Input 1  nullptr
+  //   Input 2  nullptr
 
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
@@ -138,8 +150,18 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   if (hasInputShape(ctx, 0)) {
     auto& query_shape = getInputShape(ctx, 0);
     auto& query_dims = query_shape.dim();
-    if (query_dims.size() != 3) {
-      fail_shape_inference("Inputs 0 (query) shall be 3 dimensions");
+
+    if (query_dims.size() != 3 && query_dims.size() != 5) {
+      fail_shape_inference("Inputs 0 (query) shall be 3 or 5 dimensions");
+    }
+
+    if (query_dims.size() == 5) {  // packed QKV
+      ONNX_NAMESPACE::TensorShapeProto output_shape;
+      *output_shape.add_dim() = query_dims[0];
+      *output_shape.add_dim() = query_dims[1];
+      *output_shape.add_dim() = query_dims[2] * query_dims[4];
+      updateOutputShape(ctx, 0, output_shape);
+      return;
     }
 
     if (hasInputShape(ctx, 2)) {
@@ -154,11 +176,12 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       *output_shape.add_dim() = query_dims[1];
       *output_shape.add_dim() = value_dims[2];
       updateOutputShape(ctx, 0, output_shape);
+      return;
     }
 
     if (hasInputShape(ctx, 1)) {
       auto& key_shape = getInputShape(ctx, 1);
-      if (key_shape.dim().size() == 5) {
+      if (key_shape.dim().size() == 5) {  // packed KV
         ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput(ctx);
       }
     }
@@ -292,12 +315,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::FLOAT, OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
                "T")
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "value",
                "Value with shape (batch_size, kv_sequence_length, v_hidden_size)",
