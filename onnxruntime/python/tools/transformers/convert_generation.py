@@ -1675,6 +1675,14 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
         if past_present_share_buffer:
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
+
+        print("Reached here")
+        
+        for node in decoder_model.graph.node:
+            if node.op_type == "Attention":
+                print("Here 2")
+                node.op_type = "DecoderMaskedSelfAttention"
+        
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
@@ -1906,6 +1914,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
     input_ids = inputs["input_ids"]
     attention_mask = inputs["attention_mask"]
+    print(attention_mask)
 
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
@@ -2191,8 +2200,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if args.vocab_mask:
         inputs["vocab_mask"] = vocab_mask
 
-    if args.custom_attention_mask:
-        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
+    #if args.custom_attention_mask:
+    #    inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
@@ -2306,7 +2315,8 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             if args.top_p > 0.01 or args.custom or args.seed:
                 return
         else:
-            convert_generation_model(args, GenerationType.GREEDYSEARCH)
+            print ("Skipping conversion")
+            #convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)
 

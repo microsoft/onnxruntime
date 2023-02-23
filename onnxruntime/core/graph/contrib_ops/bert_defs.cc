@@ -276,10 +276,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
-    DecoderMaskedSelfAttention, 1,
+    DecoderMaskedMultiheadAttention, 1,
     OpSchema()
     .SetDoc(Attention_ver1_doc)
     .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("unidirectional",
+              "Whether every token can only attend to previous tokens. Default value is 0.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
     .Attr("qkv_hidden_sizes",
         "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
         AttributeProto::INTS,

@@ -38,11 +38,13 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
                   ParametersT& params,
                   const GenerationDeviceHelper::CreateGptInputsFunc& create_inputs_func,
                   const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
+                  const GenerationDeviceHelper::ReorderPastStateFunc& reorder_past_state_func,
                   const GenerationDeviceHelper::TopkFunc& topk_func,
                   const GenerationDeviceHelper::GreedySearchProcessLogitsFunc<T>& process_logits_func,
                   const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
                   const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
-                  const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func)
+                  const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
+                  const void* cuda_device_prop)
       : GreedySearchBase<T, ParametersT>(context,
                                          decoder_session_state,
                                          thread_pool,
@@ -58,7 +60,9 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         create_inputs_func_(create_inputs_func),
         add_to_feeds_func_(add_to_feeds_func),
         init_greedy_state_func_(init_greedy_state_func),
-        update_feeds_func_(update_feeds_func) {
+        reorder_past_state_func_(reorder_past_state_func),
+        update_feeds_func_(update_feeds_func),
+        cuda_device_prop_(cuda_device_prop) {
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -91,14 +95,17 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
   GenerationDeviceHelper::CreateGptInputsFunc create_inputs_func_;
   GenerationDeviceHelper::AddToFeedsFunc add_to_feeds_func_;
   GenerationDeviceHelper::InitGreedyStateFunc<T> init_greedy_state_func_;
+  GenerationDeviceHelper::ReorderPastStateFunc reorder_past_state_func_;
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
+
+  const void* cuda_device_prop_ = nullptr;
 };
 
 template <typename T, typename ParametersT>
 Status GreedySearchGpt<T, ParametersT>::CreateInitialFeeds(gsl::span<int32_t>& sequence_lengths,
-                                              OrtValue& expanded_input_ids,
-                                              std::vector<OrtValue>& feeds,
-                                              IAllocatorUniquePtr<char>& buffer) {
+                                                           OrtValue& expanded_input_ids,
+                                                           std::vector<OrtValue>& feeds,
+                                                           IAllocatorUniquePtr<char>& buffer) {
   const OrtValue* input_ids_value = this->context_.GetInputOrtValue(0);
   const Tensor& input_ids = input_ids_value->Get<Tensor>();
   const OrtValue* attn_mask_value = this->context_.GetInputOrtValue(6);
@@ -157,13 +164,14 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             gpt_subgraph_.past_present_share_buffer_,
-                            past_sequence_length
-                            );
+                            past_sequence_length);
 }
 
 template <typename T, typename ParametersT>
 Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_run_feeds_fetches_manager,
                                                 const FeedsFetchesManager& feeds_fetches_manager) {
+  bool use_decoder_masked_mutihead_attention = true && gpt_subgraph_.past_present_share_buffer_ && std::is_same<T, float>::value;
+
   auto status = Status::OK();
   const ParametersT* parameters = this->parameters_;
 
@@ -181,7 +189,10 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
                     static_cast<int>(parameters->BatchBeamSize()),
                     static_cast<int>(parameters->vocab_size),
                     static_cast<int>(parameters->sequence_length),
-                    parameters->max_length,
+                    static_cast<int>(parameters->max_length),
+                    static_cast<int>(parameters->num_heads),
+                    static_cast<int>(parameters->head_size),
+                    use_decoder_masked_mutihead_attention,
                     this->IsCuda());
 
   SamplingState<T> sampling_state;
@@ -199,7 +210,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   OrtValue expanded_input_ids_in_cpu;
   ORT_RETURN_IF_ERROR(CreateInitialFeeds(greedy_state.sequence_lengths, expanded_input_ids_in_cpu, feeds, buffer));
 
-  if (gpt_subgraph_.past_present_share_buffer_) { // Reuse past and present
+  if (gpt_subgraph_.past_present_share_buffer_) {  // Reuse past and present
     fetches.reserve((int64_t)gpt_subgraph_.GetFirstPresentOutputIndex() + gpt_subgraph_.num_layers);
     fetches.resize(gpt_subgraph_.GetFirstPresentOutputIndex(), OrtValue());
     for (int layer = 0; layer < gpt_subgraph_.num_layers; layer++) {
@@ -307,6 +318,16 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Increase sequence length after a new token is generated.
     ++current_length;
 
+    // Reorder past state after first run
+    if (iteration_counter == 1 && use_decoder_masked_mutihead_attention) {
+      int offset = gpt_subgraph_.GetFirstPresentOutputIndex();
+      for (int i = 0; i < gpt_subgraph_.num_layers; ++i) {
+        ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_, *fetches[offset + i].GetMutable<Tensor>(),
+                                               greedy_state.temp_reordered_past_state_staging.data(),
+                                               this->ort_stream_));
+      }
+    }
+
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
       bool increase_position = (iteration_counter > 1);
@@ -340,16 +361,16 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
   // Debug the one step filtered logits for sampling
   int64_t filtered_logits_dims[] = {parameters->batch_size, parameters->vocab_size};
   TensorShape filtered_logits_shape(&filtered_logits_dims[0],
-                                 sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
+                                    sizeof(filtered_logits_dims) / sizeof(filtered_logits_dims[0]));
   Tensor* filtered_logits = this->context_.Output(1, filtered_logits_shape);
   if (filtered_logits != nullptr) {
     gsl::span<float> filtered_logits_span = filtered_logits->MutableDataAsSpan<float>();
     for (int batch_id = 0; batch_id < parameters->batch_size; ++batch_id) {
       auto batch_output = filtered_logits_span.subspan(
-        static_cast<size_t>(batch_id) * parameters->vocab_size,
-        parameters->vocab_size);
+          static_cast<size_t>(batch_id) * parameters->vocab_size,
+          parameters->vocab_size);
       gsl::span<const float> batch_filtered_logits = gsl::make_span(sampling_state.h_softmaxed_score.data() +
-                                                                    batch_id * parameters->vocab_size,
+                                                                        batch_id * parameters->vocab_size,
                                                                     parameters->vocab_size);
 
       gsl::copy(batch_filtered_logits, batch_output);

@@ -360,7 +360,7 @@ class PlannerImpl {
           if (p_input_arg->Exists()) {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
-            if (node.OpType() == "DecoderMaskedSelfAttention") {
+            if (node.OpType() == "DecoderMaskedMultiheadAttention") {
                 *reusable_input = input_arg_index;  // or original; both should be okay
                 return true;
             }
@@ -1419,7 +1419,7 @@ class PlannerImpl {
             }
           }
 
-          if (pnode->OpType() == "DecoderMaskedSelfAttention" && FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
+          if (pnode->OpType() == "DecoderMaskedMultiheadAttention" && FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
               Reuse(reused, current, AllocKind::kReuse);
               ort_value_info_[current].is_inplace_reuse = true;
           }

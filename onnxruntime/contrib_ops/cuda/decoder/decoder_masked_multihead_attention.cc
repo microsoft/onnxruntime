@@ -21,7 +21,7 @@ constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T)                                               \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      DecoderMaskedSelfAttention,                                              \
+      DecoderMaskedMultiheadAttention,                                         \
       kMSDomain,                                                               \
       1,                                                                       \
       T,                                                                       \
@@ -30,13 +30,13 @@ constexpr int kPresentOutputIndex = 1;
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
-      DecoderMaskedSelfAttention<T>);
+      DecoderMaskedMultiheadAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 //REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) const {
+Status DecoderMaskedMultiheadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -56,18 +56,34 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  assert(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 
-  // TODO: Send graceful error Status back
-  ORT_ENFORCE(sequence_length == 1);
-  ORT_ENFORCE(past_present_share_buffer_);
-  ORT_ENFORCE(parameters.head_size == parameters.v_head_size);
+  if (sequence_length != 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiheadAttention");
+  }
 
-  // TODO: SUpport mask
-  (parameters.mask_type == AttentionMaskType::MASK_NONE);
+  if (!past_present_share_buffer_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Past Present share buffer must be turned on 1 to use DecoderMaskedMultiheadAttention");
+  }
+
+  // TODO(hasesh): Is there any value supporting this case ?
+  if (parameters.head_size != parameters.v_head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiheadAttention");
+  }
+
+  // TODO(hasesh): In future, we may support CrossAttention. Currently, this kernel only supports SelfAttention.
+  if (parameters.sequence_length != parameters.kv_sequence_length) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiheadAttention only supports self attention currently");
+  }
+
+  if (parameters.mask_type != AttentionMaskType::MASK_2D_KEY_PADDING &&
+      parameters.mask_type != AttentionMaskType::MASK_NONE) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "DecoderMaskedMultiheadAttention only supports no mask or 2D key "
+                           "padding mask of shape [batch, total_seq_length] currently");
+  }
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(batch_size);
@@ -75,12 +91,11 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
-  std::vector<int64_t> present_dims{
-      2, parameters.batch_size, parameters.num_heads, parameters.max_sequence_length, parameters.head_size};
-  TensorShape present_shape(present_dims);
-  Tensor* present = context->Output(kPresentOutputIndex, present_shape);
+  // Present input will have the same shape as the past input
+  Tensor* present = context->Output(kPresentOutputIndex, past->Shape());
 
-  // Past/Present buffers should be shared
+  // Sanity check: Past/Present buffers should be the same to use this optimized kernel
+  // The user of this kernel/ORT framework should ensure this.
   ORT_ENFORCE(present->MutableData<T>() == past->Data<T>());
 
   cublasHandle_t cublas = GetCublasHandle(context);
@@ -96,38 +111,43 @@ Status DecoderMaskedSelfAttention<T>::ComputeInternal(OpKernelContext* context) 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
-  // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
-  // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.
+  // QKV Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
+  // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
       reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
       reinterpret_cast<const CudaT*>(input->Data<T>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
-  // Update the q,k, and v buffers
+  // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();
   parameters.k = reinterpret_cast<CudaT*>(gemm_buffer.get()) + parameters.hidden_size;
   parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * parameters.hidden_size;
 
+  // Update the q, k, and v bias
   const T* bias_data = bias->Data<T>();
   parameters.q_bias = const_cast<T*>(bias_data);
   parameters.k_bias = const_cast<T*>(bias_data + parameters.hidden_size);
   parameters.v_bias = const_cast<T*>(bias_data + 2 * parameters.hidden_size);
 
-  // Half of the past/present buffer correspond to K
-  // The other half is V.
+  // Half of the past/present buffer correspond to K - the other half is V.
   auto k_size = present->Shape().Size() / 2;
   parameters.k_cache = present->MutableDataRaw();
   parameters.v_cache = present->MutableData<T>() + k_size;
   parameters.out = output->MutableDataRaw();
 
+  // Mask
+  if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
+    parameters.mask = mask_index->Data<int32_t>();
+  }
+
   switch (parameters.head_size) {
-  case 64:
+    case 64:
       mmha_launch_kernel<T, 64>(parameters, Stream(context));
       break;
 
-  default:
-      ORT_THROW("Unsupported head size");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported head size in DecoderMaskedMultiheadAttention");
   }
 
   return Status::OK();

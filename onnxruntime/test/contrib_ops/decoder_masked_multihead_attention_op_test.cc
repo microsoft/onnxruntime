@@ -465,8 +465,10 @@ std::vector<T> Softmax_QK_Transpose_V(float* softmax_qk_transpose_matrix,
 
   return output;
 }
-TEST(DecoderMaskedSelfAttentionTest, MediumSequences_fp32) {
+TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
+  // Vary batch size
   for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
+    // Vary kv_lengths
     for (int past_sequence_length = 1; past_sequence_length <= 3000; past_sequence_length += 150) {
       int sequence_length = 1;
       int hidden_size = 768;
@@ -475,7 +477,7 @@ TEST(DecoderMaskedSelfAttentionTest, MediumSequences_fp32) {
       int total_sequence_length = sequence_length + past_sequence_length;
       int max_sequence_length = past_sequence_length + 1;  // Always keep >  past_sequence_length
 
-      OpTester tester("DecoderMaskedSelfAttention", 1, onnxruntime::kMSDomain);
+      OpTester tester("DecoderMaskedMultiheadAttention", 1, onnxruntime::kMSDomain);
       tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
       tester.AddAttribute<int64_t>("past_present_share_buffer", static_cast<int64_t>(1));
 

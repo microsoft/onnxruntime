@@ -112,6 +112,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   int qkv_base_offset = bi * (3 * params.hidden_size) + hi * head_size;
 
+  const size_t bi_total_seq_length = bi * params.total_sequence_length;
+
   const size_t bi_seq_len_offset = bi * params.max_sequence_length;
 
   int tlength = params.past_sequence_length;
@@ -266,7 +268,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   const int* beam_indices = has_beams ? &params.cache_indir[bi_seq_len_offset] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_seq_len_offset + ti] == 0);
+    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
@@ -332,7 +334,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Compute the logits and start the sum.
   float sum = 0.f;
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_seq_len_offset + ti] == 0);
+    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
     float logit = is_masked ? 0.f : __expf(qk_smem[ti] - qk_max);
     sum += logit;
     qk_smem[ti] = logit;

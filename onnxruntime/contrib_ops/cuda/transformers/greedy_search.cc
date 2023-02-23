@@ -31,7 +31,7 @@ transformers::CudaTensorConsoleDumper g_cuda_dumper_greedysearch;
 
 GreedySearch::GreedySearch(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::GreedySearch(info) {
-  SetDeviceHelpers(nullptr,
+  SetDeviceHelpers(GenerationCudaDeviceHelper::GenerateReorderedPastState,
                    GenerationCudaDeviceHelper::AddToFeeds,
                    GenerationCudaDeviceHelper::TopK,
                    GenerationCudaDeviceHelper::DeviceCopy<float>,
@@ -44,6 +44,8 @@ GreedySearch::GreedySearch(const OpKernelInfo& info)
                        GenerationCudaDeviceHelper::UpdateGptFeeds<MLFloat16>);
 
   SetConsoleDumper(&g_cuda_dumper_greedysearch);
+
+  cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
 }
 
 Status GreedySearch::ComputeInternal(OpKernelContext* context) const {

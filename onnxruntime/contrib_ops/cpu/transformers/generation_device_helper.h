@@ -33,12 +33,11 @@ enum DeviceCopyDirection {
 
 namespace GenerationDeviceHelper {
 
-using TransposeFunc = std::function<Status(
-    const Tensor& input,
-    Tensor& output,
-    const gsl::span<const size_t>& permutations,
-    Stream* stream,         // cudaStream_t
-    void* cublas_handle)>;  // cublasHandle_t
+using ReorderPastStateFunc = std::function<Status(
+    const void* cuda_device_prop,  // cudaDeviceProp
+    Tensor& past_state,
+    void* temp_staging_buffer,
+    Stream* stream)>;  // cublasHandle_t
 
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
