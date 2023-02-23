@@ -1,17 +1,14 @@
 ---
 title: Build a web app with ONNX Runtime
 description: Considerations and options for building a web application with ONNX Runtime
+parent: ORT Web
 has_children: false
-nav_order: 10
+nav_order: 1
 redirect_from: /docs/reference/build-web-app
 
 ---
 
 # Build a web application with ONNX Runtime
-ORT Web can be used in your web applications for model inferencing.
-
-## Get Started
-* [Build ORT Web](./build/web.md)
 
 ## Contents
 {: .no_toc}

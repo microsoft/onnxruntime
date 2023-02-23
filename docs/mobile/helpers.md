@@ -2,7 +2,6 @@
 title: Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
 parent: Mobile
-grand_parent: Reference
 nav_order: 1
 ---
 
