@@ -515,7 +515,7 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtCreateEnv OrtCreateEnv;
         
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithGlobalThreadPools(LogLevel default_warning_level, string logId, IntPtr /*(const OrtThreadingOptions *) */ tpOptions, out IntPtr /*(OrtEnv*)*/ env);
+        public delegate IntPtr /* OrtStatus* */DOrtCreateEnvWithGlobalThreadPools(LogLevel defaultWarningLevel, string logId, IntPtr /*(const OrtThreadingOptions *) */ tpOptions, out IntPtr /*(OrtEnv*)*/ env);
         public static DOrtCreateEnvWithGlobalThreadPools OrtCreateEnvWithGlobalThreadPools;
 
         // OrtReleaseEnv should not be used
