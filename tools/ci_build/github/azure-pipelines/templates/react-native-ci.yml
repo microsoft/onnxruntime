@@ -238,19 +238,32 @@ jobs:
   - template: android-dump-logs-from-steps.yml
     parameters:
       steps:
-      - task: Gradle@3
-        inputs:
-          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-          options: '--stacktrace'
-          tasks: ':app:connectedDebugAndroidTest'
-          publishJUnitResults: true
-          testResultsFiles: '**/TEST-*.xml'
-          testRunTitle: 'React Native Android e2e Test results'
-          javaHomeOption: 'path'
-          jdkDirectory: '$(JAVA_HOME_11_X64)'
-          sonarQubeRunAnalysis: false
-          spotBugsAnalysis: false
+      # - task: Gradle@3
+      #   inputs:
+      #     gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+      #     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+      #     options: '--stacktrace'
+      #     tasks: ':app:connectedDebugAndroidTest'
+      #     publishJUnitResults: true
+      #     testResultsFiles: '**/TEST-*.xml'
+      #     testRunTitle: 'React Native Android e2e Test results'
+      #     javaHomeOption: 'path'
+      #     jdkDirectory: '$(JAVA_HOME_11_X64)'
+      #     sonarQubeRunAnalysis: false
+      #     spotBugsAnalysis: false
+      #   displayName: Run React Native Android e2e Tests
+      - script: |
+          NUM_ITERATIONS=10
+          EXIT_CODE=0
+          for i in {1 .. $NUM_ITERATIONS}
+          do
+            echo "*** test iteration $i"
+            if ! ./gradlew :app:connectedDebugAndroidTest ; then
+              echo "*** failure at test iteration $i"
+              EXIT_CODE=1
+            fi
+          done
+          exit $EXIT_CODE
         displayName: Run React Native Android e2e Tests
 
   # - script: |
