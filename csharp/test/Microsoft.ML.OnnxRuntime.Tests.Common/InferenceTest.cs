@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
 using Xunit.Abstractions;
@@ -253,35 +254,133 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public void TestUpdatingEnvWithCustomLogLevel()
         {
             var ortEnvInstance = OrtEnv.Instance();
-            ortEnvInstance.EnvLogLevel = LogLevel.Verbose;
-            Assert.Equal(LogLevel.Verbose, ortEnvInstance.EnvLogLevel);
+            Assert.True(OrtEnv.IsCreated);
+            ortEnvInstance.Dispose();
+            Assert.False(OrtEnv.IsCreated);
+
+            // Must be default level of warning
+            ortEnvInstance = OrtEnv.Instance();
+            Assert.Equal(LogLevel.Warning, ortEnvInstance.EnvLogLevel);
+            ortEnvInstance.Dispose();
+            Assert.False(OrtEnv.IsCreated);
+
+            // Re-create with empty options
+            var envOptions = new EnvironmentCreateOptions
+            {
+                // Everything else is unpopulated
+                logLevel = LogLevel.Fatal
+            };
+
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            Assert.True(OrtEnv.IsCreated);
+            Assert.Equal(LogLevel.Fatal, ortEnvInstance.EnvLogLevel);
+
+            ortEnvInstance.Dispose();
+            Assert.False(OrtEnv.IsCreated);
+            envOptions = new EnvironmentCreateOptions
+            {
+                // Everything else is unpopulated
+                logId = "CSharpOnnxRuntimeTestLogid"
+            };
+
+            ortEnvInstance = OrtEnv.CreateInstanceWithOptions(envOptions);
+            Assert.Equal(LogLevel.Warning, ortEnvInstance.EnvLogLevel);
+
+            // Change and see if this takes effect
+            ortEnvInstance.EnvLogLevel = LogLevel.Info;
+            Assert.Equal(LogLevel.Info, ortEnvInstance.EnvLogLevel);
         }
-        
+
         [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptions")]
         public void TestUpdatingEnvWithThreadingOptions()
         {
-            using (var opt = new OrtThreadingOptions()) {
-                // Make sure we start anew
-                OrtEnv.Instance().Dispose();
-                var env = OrtEnv.Instance(opt);
-                Assert.NotNull(env);
-            }
-        }
-        
-        [Fact(DisplayName = "TestUpdatingEnvWithThreadingOptionsMultipleTimesExpectException")]
-        public void TestUpdateEnvMultipleTimesExpectException()
-        {
+            OrtEnv.Instance().Dispose();
+            Assert.False(OrtEnv.IsCreated);
+
             using (var opt = new OrtThreadingOptions())
             {
+                var envOptions = new EnvironmentCreateOptions
+                {
+                    threadOptions = opt
+                };
+
                 // Make sure we start anew
-                OrtEnv.Instance().Dispose();
-                var env = OrtEnv.Instance(opt);
-                Assert.NotNull(env);
-                Assert.Throws<OnnxRuntimeException>(() => OrtEnv.Instance(opt));
-                var envDefault = OrtEnv.Instance();
-                Assert.True(env == envDefault);
+                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                Assert.True(OrtEnv.IsCreated);
             }
-        }       
+        }
+
+        // Custom logging constants
+        private static readonly string TestLogId = "CSharpTestLogId";
+        private static readonly IntPtr TestLogParam = (IntPtr)5;
+        private static int LoggingInvokes = 0;
+
+        private static void CustomLoggingFunction(IntPtr param,
+                                                  LogLevel severity,
+                                                  string category,
+                                                  string logId,
+                                                  string codeLocation,
+                                                  string message)
+        {
+            Assert.Equal(TestLogParam, param); // Passing test param
+            Assert.False(string.IsNullOrEmpty(codeLocation));
+            Assert.False(string.IsNullOrEmpty(message));
+            LoggingInvokes++;
+        }
+
+        [Fact(DisplayName = "TestUpdatingEnvWithCustomLogger")]
+        public void TestUpdatingEnvWithCustomLogger()
+        {
+            // Make sure we start anew
+            OrtEnv.Instance().Dispose();
+            Assert.False(OrtEnv.IsCreated);
+            var envOptions = new EnvironmentCreateOptions
+            {
+                logId = TestLogId,
+                logLevel = LogLevel.Verbose,
+                loggingFunction = CustomLoggingFunction,
+                loggingParam = TestLogParam
+            };
+
+            LoggingInvokes = 0;
+
+            var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+            Assert.True(OrtEnv.IsCreated);
+
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            // Trigger some logging
+            using (var session = new InferenceSession(model));
+            Assert.True(LoggingInvokes > 0);
+        }
+
+        [Fact(DisplayName = "TestUpdatingEnvWithCustomLoggerAndThredingOptions")]
+        public void TestUpdatingEnvWithCustomLoggerAndThredingOptions()
+        {
+            OrtEnv.Instance().Dispose();
+            Assert.False(OrtEnv.IsCreated);
+
+            using (var opt = new OrtThreadingOptions())
+            {
+                var envOptions = new EnvironmentCreateOptions
+                {
+                    logId = TestLogId,
+                    logLevel = LogLevel.Verbose,
+                    threadOptions = opt,
+                    loggingFunction = CustomLoggingFunction,
+                    loggingParam = TestLogParam
+                };
+
+                LoggingInvokes = 0;
+
+                var env = OrtEnv.CreateInstanceWithOptions(envOptions);
+                Assert.True(OrtEnv.IsCreated);
+
+                var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+                // Trigger some logging
+                using (var session = new InferenceSession(model));
+                Assert.True(LoggingInvokes > 0);
+            }
+        }
 
         [Fact(DisplayName = "CanCreateAndDisposeSessionWithModel")]
         public void CanCreateAndDisposeSessionWithModel()
@@ -694,7 +793,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
             // var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
-            var bad_names = new string[] {"bad_output_name"};
+            var bad_names = new string[] { "bad_output_name" };
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
             Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
             session.Dispose();
@@ -2162,7 +2261,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         public DisposableListTest() { }
         public DisposableListTest(int count) : base(count) { }
 
-#region IDisposable Support
+        #region IDisposable Support
         private bool disposedValue = false; // To detect redundant calls
 
         protected virtual void Dispose(bool disposing)
@@ -2195,6 +2294,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             Dispose(true);
             GC.SuppressFinalize(this);
         }
-#endregion
+        #endregion
     }
 }
