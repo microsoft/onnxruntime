@@ -25,7 +25,6 @@
 #endif
 #include "core/framework/execution_provider.h"
 #include "core/framework/tuning_context.h"
-#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 
@@ -176,10 +175,7 @@ class TunableOp {
     // > object under construction or destruction, typeid yields the std::type_info object representing the constructor
     // > or destructor’s class.
     // So delay the op signature generation. See https://github.com/microsoft/onnxruntime/pull/14709
-    std::lock_guard<OrtMutex> g(signature_mutex_);
-    if (signature_.empty()) {
-      signature_ = CreateSignature();
-    }
+    std::call_once(signature_init_once_, [this]() { signature_ = CreateSignature(); });
     return signature_;
   }
 
@@ -281,7 +277,7 @@ class TunableOp {
 #endif
   }
 
-  mutable OrtMutex signature_mutex_;
+  mutable std::once_flag signature_init_once_;
   std::string signature_;
 
   // the default impl to use when tuning is disabled
