@@ -444,7 +444,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         qnn_options[key] = value;
       } else {
         ORT_THROW(R"(Wrong key type entered. Choose from options: 
-['runtime', 'backend_path', 'profiling_level', 'rpc_control_latency'])");
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
       }
     }
     session_options.AppendExecutionProvider("QNN", qnn_options);

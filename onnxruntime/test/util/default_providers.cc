@@ -210,14 +210,13 @@ std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider() {
 }
 
 std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
-#if defined(USE_QNN)
+#ifdef USE_QNN
   ProviderOptions provider_options_map;
   // Limit to CPU backend for now. TODO: Enable HTP emulator
   std::string backend_path = "./libQnnCpu.so";
-#if defined(_WIN32) or defined(_WIN64)
+#if defined(_WIN32) || defined(_WIN64)
   backend_path = "./QnnCpu.dll";
 #endif
-  provider_options_map["runtime"] = "CPU";
   provider_options_map["backend_path"] = backend_path;
   return QNNProviderFactoryCreator::Create(provider_options_map)->CreateProvider();
 #else
