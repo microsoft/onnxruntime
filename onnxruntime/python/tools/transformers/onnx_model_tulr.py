@@ -456,7 +456,7 @@ class FusionRelativePositionBiasBlock(Fusion):
 # Output(0, "output", "output tensor with shape (batch_size, num_heads, seq_len, seq_len)", "T")
 class FusionGRUGate(Fusion):
     def __init__(self, model: OnnxModel, num_heads: int):
-        super().__init__(model, "GatedRelativePositionBias", "MultiHeadAttention")
+        super().__init__(model, "GatedRelativePositionBias", ["MultiHeadAttention", "Attention"])
         self.num_heads = num_heads
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
