@@ -148,7 +148,7 @@ class FusionTulrAttention(FusionAttention):
 
         attention_node_name = self.model.create_node_name("Attention")
 
-        use_multi_head_attention = True
+        use_multi_head_attention = False
         if not use_multi_head_attention:
             weight = helper.make_tensor(
                 name=attention_node_name + "_qkv_weight",
