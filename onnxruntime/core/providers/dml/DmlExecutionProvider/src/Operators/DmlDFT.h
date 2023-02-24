@@ -292,7 +292,7 @@ public:
             // Get optional dft_length input
             uint32_t dftLength = inputDims[m_axis];
             ComPtr<IMLOperatorTensor> dftLengthTensor;
-            if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)))
+            if (SUCCEEDED(context->GetInputTensor(1, &dftLengthTensor)) && dftLengthTensor != nullptr)
             {
                 MLOperatorTensor tensor(dftLengthTensor.Get());
                 dftLength = onnxruntime::narrow<uint32_t>(OperatorHelper::ReadScalarTensorCastToInt64(tensor));
