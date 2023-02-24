@@ -65,7 +65,7 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtTrainingSession_createTrainingSes
       goto cleanupTrain;
     }
   }
-  wchar_t* optimizerStr;
+  wchar_t* optimizerStr = NULL;
   if (optimizerPath == NULL) {
     optimizerStr = copyAndPad(jniEnv, optimizerPath);
     if (optimizerStr == NULL) {
@@ -729,16 +729,10 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtTrainingSession_exportModelForInfe
 
 #ifdef _WIN32
   // The output of GetStringChars is not null-terminated, so we copy it and add a terminator
-  const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, outputPath, NULL);
-  size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, outputPath);
-  wchar_t* outputStr = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
+  wchar_t* outputStr = copyAndPad(jniEnv, outputPath);
   if (outputStr == NULL) {
-    (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
-    throwOrtException(jniEnv, 1, "Not enough memory");
     goto cleanup_array;
   }
-  wcsncpy_s(outputStr, stringLength + 1, (const wchar_t*)cPath, stringLength);
-  (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
   checkOrtStatus(jniEnv, api, trainApi->ExportModelForInferencing(trainSession, outputStr, numOutputs, outputNames));
   free(outputStr);
 #else
