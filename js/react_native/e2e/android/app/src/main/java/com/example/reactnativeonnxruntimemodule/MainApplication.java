@@ -48,8 +48,8 @@ public class MainApplication extends Application implements ReactApplication {
     super.onCreate();
     appContext = getApplicationContext();
     SoLoader.init(this, /* native exopackage */ false);
-    initializeFlipper(
-        this, getReactNativeHost().getReactInstanceManager()); // Remove this line if you don't want Flipper enabled
+    /*initializeFlipper(
+        this, getReactNativeHost().getReactInstanceManager());*/ // Remove this line if you don't want Flipper enabled
   }
 
   public static Context getAppContext() { return appContext; }
