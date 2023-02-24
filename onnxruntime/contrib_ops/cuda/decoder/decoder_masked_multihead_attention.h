@@ -12,7 +12,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+template <typename T1, typename T2>
 class DecoderMaskedMultiheadAttention final : public CudaKernel, public AttentionBase {
  public:
   DecoderMaskedMultiheadAttention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, true) {}
