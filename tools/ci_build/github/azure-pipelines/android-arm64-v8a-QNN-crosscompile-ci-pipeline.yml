@@ -14,8 +14,7 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(pwd)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+  - template: templates/set-up-gradle-wrapper-step.yml
 
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
