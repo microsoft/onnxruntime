@@ -214,6 +214,14 @@ class FusionTulrAttention(FusionAttention):
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
 
+        if is_qkv_diff_dims and not use_multi_head_attention:
+            attention_node.attribute.extend(
+                [helper.make_attribute("qkv_hidden_sizes", [qw_out_size, kw_out_size, vw_out_size])]
+            )
+
+        attention_node.attribute.extend([helper.make_attribute("scale", 1.0 / np.sqrt(self.hidden_size / num_heads))])
+
+        self.mask_filter_value = -10000.0
         if self.mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
@@ -499,6 +507,7 @@ class TulrOnnxModel(BertOnnxModel):
 
     def fuse_attention(self):
         self.attention_fusion.apply()
+        print("fused attention")
 
     def postprocess(self):
         self.rpb_fusion.apply()
