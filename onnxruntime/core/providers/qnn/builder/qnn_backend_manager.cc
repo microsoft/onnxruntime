@@ -406,6 +406,7 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
 
   return static_cast<void*>(mod);
 #else
+  ORT_UNUSED_PARAMETER(error_msg);
   int real_flags = 0;
 
   if (flags & DL_NOW) {
@@ -502,6 +503,7 @@ void* QnnBackendManager::LibFunction(void* handle, const char* symbol, std::stri
 
   return *(void**)(&sym_addr);
 #else
+  ORT_UNUSED_PARAMETER(error_msg);
   if (handle == DL_DEFAULT) {
     return ::dlsym(RTLD_DEFAULT, symbol);
   }

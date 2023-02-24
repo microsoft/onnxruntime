@@ -33,7 +33,6 @@ jobs:
             --qnn_home $QNN_SDK_ROOT \
             --cmake_generator=Ninja \
             --skip_tests \
-            --cmake_extra_defines "CMAKE_CXX_FLAGS=-Wno-unused-variable -Wno-unused-parameter -Wno-type-limits -Wno-ignored-qualifiers -fpermissive"
           mkdir -p build/Release/testdata/QNN/node_tests
         displayName: QNN EP, Build
 
