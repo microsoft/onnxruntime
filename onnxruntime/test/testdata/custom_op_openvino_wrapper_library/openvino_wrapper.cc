@@ -139,7 +139,8 @@ KernelOpenVINO::KernelOpenVINO(const OrtApi& /* api*/, const OrtKernelInfo* info
 
   this->logger_ = kinfo.GetLogger();
 
-  ORT_CXX_LOG_NOEXCEPT(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO, "Creating KernelOpenVINO");
+  ORT_CXX_LOGF_NOEXCEPT(this->logger_, OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+                        "Creating KernelOpenVINO for node %s", kinfo.GetNodeName().c_str());
 
   // Extract OpenVINO .bin and .xml contents from node attributes.
   this->weights_ = kinfo.GetTensorAttribute("BIN", allocator);  // Must keep the weights memory alive for inference.

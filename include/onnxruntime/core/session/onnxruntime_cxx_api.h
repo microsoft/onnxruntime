@@ -1708,6 +1708,7 @@ struct KernelInfoImpl : Base<T> {
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
 
+  std::string GetNodeName() const;
   Logger GetLogger() const;
 };
 

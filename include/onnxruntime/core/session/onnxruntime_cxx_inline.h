@@ -1617,6 +1617,21 @@ inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocato
 }
 
 template <typename T>
+inline std::string KernelInfoImpl<T>::GetNodeName() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetNodeName(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetNodeName(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
 inline Logger KernelInfoImpl<T>::GetLogger() const {
   const OrtLogger* out = nullptr;
   ThrowOnError(GetApi().KernelInfo_GetLogger(this->p_, &out));
