@@ -1,7 +1,7 @@
 parameters:
 - name: GradleWrapperVersion
   type: string
-  default: "6.8.3"
+  default: "8.0.1"
 
 steps:
 - script: |
