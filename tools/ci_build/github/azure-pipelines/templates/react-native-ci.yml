@@ -235,6 +235,13 @@ jobs:
   #     targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
   #   displayName: Copy Android package to Android e2e test directory
 
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
   - template: android-dump-logs-from-steps.yml
     parameters:
       steps:
@@ -252,8 +259,8 @@ jobs:
       #     sonarQubeRunAnalysis: false
       #     spotBugsAnalysis: false
       #   displayName: Run React Native Android e2e Tests
+
       - script: |
-          set -x
           NUM_ITERATIONS=10
           NUM_FAILURES=0
           for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
