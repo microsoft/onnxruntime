@@ -19,24 +19,24 @@ constexpr int kPastSequenceLengthInputIndex = 6;
 constexpr int kPastInputIndex = 4;
 constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T)                                               \
+#define REGISTER_KERNEL_TYPED(T1, T2)                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
       DecoderMaskedMultiheadAttention,                                         \
       kMSDomain,                                                               \
       1,                                                                       \
-      T,                                                                       \
+      T1,                                                                      \
       kCudaExecutionProvider,                                                  \
       (*KernelDefBuilder::Create())                                            \
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())              \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
-      DecoderMaskedMultiheadAttention<T>);
+      DecoderMaskedMultiheadAttention<T1, T2>);
 
-REGISTER_KERNEL_TYPED(float)
-//REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, float)
+REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
 
-template <typename T>
-Status DecoderMaskedMultiheadAttention<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T1, typename T2>
+Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -96,27 +96,27 @@ Status DecoderMaskedMultiheadAttention<T>::ComputeInternal(OpKernelContext* cont
 
   // Sanity check: Past/Present buffers should be the same to use this optimized kernel
   // The user of this kernel/ORT framework should ensure this.
-  ORT_ENFORCE(present->MutableData<T>() == past->Data<T>());
+  ORT_ENFORCE(present->MutableData<T1>() == past->Data<T1>());
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<T1>::MappedType CudaT;
 
-  IAllocatorUniquePtr<T> gemm_buffer;
+  IAllocatorUniquePtr<T1> gemm_buffer;
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  CudaT one = ToCudaType<T1>::FromFloat(1.0f);
+  CudaT zero = ToCudaType<T1>::FromFloat(0.0f);
 
   // QKV Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrices into one cuda kernel.
   CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
-      reinterpret_cast<const CudaT*>(weights->Data<T>()), n,
-      reinterpret_cast<const CudaT*>(input->Data<T>()), k,
+      reinterpret_cast<const CudaT*>(weights->Data<T1>()), n,
+      reinterpret_cast<const CudaT*>(input->Data<T1>()), k,
       &zero, reinterpret_cast<CudaT*>(gemm_buffer.get()), n, device_prop));
 
   // Update the q, k, and v buffers
@@ -125,15 +125,15 @@ Status DecoderMaskedMultiheadAttention<T>::ComputeInternal(OpKernelContext* cont
   parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * parameters.hidden_size;
 
   // Update the q, k, and v bias
-  const T* bias_data = bias->Data<T>();
-  parameters.q_bias = const_cast<T*>(bias_data);
-  parameters.k_bias = const_cast<T*>(bias_data + parameters.hidden_size);
-  parameters.v_bias = const_cast<T*>(bias_data + 2 * parameters.hidden_size);
+  const T1* bias_data = bias->Data<T1>();
+  parameters.q_bias = const_cast<T1*>(bias_data);
+  parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
+  parameters.v_bias = const_cast<T1*>(bias_data + 2 * parameters.hidden_size);
 
   // Half of the past/present buffer correspond to K - the other half is V.
   auto k_size = present->Shape().Size() / 2;
   parameters.k_cache = present->MutableDataRaw();
-  parameters.v_cache = present->MutableData<T>() + k_size;
+  parameters.v_cache = present->MutableData<T1>() + k_size;
   parameters.out = output->MutableDataRaw();
 
   // Mask
@@ -143,7 +143,7 @@ Status DecoderMaskedMultiheadAttention<T>::ComputeInternal(OpKernelContext* cont
 
   switch (parameters.head_size) {
     case 64:
-      mmha_launch_kernel<T, 64>(parameters, Stream(context));
+      mmha_launch_kernel<T2, 64>(parameters, Stream(context));
       break;
 
     default:

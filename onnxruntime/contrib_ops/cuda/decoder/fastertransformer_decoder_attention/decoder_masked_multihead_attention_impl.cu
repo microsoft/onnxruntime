@@ -8,6 +8,8 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+using namespace decoder_masked_multihead_attention_details;
+
 template <
     // The type of the inputs. Supported types: float and half.
     typename T,
@@ -40,15 +42,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // The shared memory for the logits. For FP32, that's the same buffer as qk_smem.
   char* logits_smem_ = smem_;
 
-  // TODO: Understand this
-  /*
   if (sizeof(T) != 4) {
-      // TODO - change to tlength
-      const int max_timesteps = min(params.timestep, params.memory_max_len);
-      logits_smem_ +=
-          (DO_CROSS_ATTENTION) ? div_up(params.memory_max_len + 1, 4) * 16 : div_up(max_timesteps + 1, 4) * 16;
+    // For fp16, we have allocated separate memory for logits - use it
+    logits_smem_ += (((params.total_sequence_length + 3) / 4) * 16);
   }
-  */
 
   T* logits_smem = reinterpret_cast<T*>(logits_smem_);
 
@@ -347,7 +344,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   float inv_sum = __fdividef(1.f, sum + 1.e-6f);
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
     float logit = qk_smem[ti] * inv_sum;
-    convert_from_float(logits_smem[ti], logit);
+    ConvertFromFloat(logits_smem[ti], logit);
     //reinterpret_cast<T*>(params.out)[temp_offset + ti] = logit;
   }
 
@@ -438,7 +435,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
     // The upper part of active threads store to shared memory.
     if (vo >= midpoint && vo < active_groups) {
-      convert_from_float(*reinterpret_cast<V_vec_k*>(&out_smem[(vo - midpoint) * head_size + vi]), out);
+      ConvertFromFloat(*reinterpret_cast<V_vec_k*>(&out_smem[(vo - midpoint) * head_size + vi]), out);
     }
     __syncthreads();
 
@@ -452,16 +449,26 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Output the final values.
   T* params_out = reinterpret_cast<T*>(params.out);
   if (vo == 0) {
-    convert_from_float(*reinterpret_cast<V_vec_m*>(&params_out[bhi * head_size + vi]), out);
+    ConvertFromFloat(*reinterpret_cast<V_vec_m*>(&params_out[bhi * head_size + vi]), out);
   }
 }
 
-// Template instantiation
+// Template instantiation(s)
+
+// fp32 + head size = 64
 template void __global__ masked_multihead_attention_kernel<float, 64, 4, 16, 64>(DecoderMaskedMultiheadAttentionParams params);
 
 template void __global__ masked_multihead_attention_kernel<float, 64, 2, 16, 128>(DecoderMaskedMultiheadAttentionParams params);
 
 template void __global__ masked_multihead_attention_kernel<float, 64, 1, 16, 256>(DecoderMaskedMultiheadAttentionParams params);
+
+// fp16 + head size = 64
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 4, 8, 64>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 128>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiheadAttentionParams params);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
