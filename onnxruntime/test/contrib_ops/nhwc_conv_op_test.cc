@@ -31,7 +31,9 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
                     bool weight_is_initializer = false) {
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  if (enable_cuda) {
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+
+  if (enable_cuda || enable_rocm) {
     OpTester test("NhwcConv", 1, onnxruntime::kMSDomain);
     test.AddAttribute("group", attributes.group);
     test.AddAttribute("kernel_shape", attributes.kernel_shape);
@@ -71,7 +73,15 @@ void TestNhwcConvOp(const NhwcConvOpAndTestAttributes& attributes,
     }
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+
+    if (enable_cuda) {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
+
+    if (enable_rocm) {
+      execution_providers.push_back(DefaultRocmExecutionProvider());
+    }
+
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }
