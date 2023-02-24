@@ -524,6 +524,12 @@ inline __device__ float fma(uint16_t a, uint16_t b, float fc) {
   return fa * fb + fc;
 }
 
+inline __device__ float2 fma(uint32_t a, uint32_t b, float2 fc) {
+  float2 fa = Half2ToFloat2(a);
+  float2 fb = Half2ToFloat2(b);
+  return fma(fa, fb, fc);
+}
+
 inline __device__ float2 fma(uint16_t a, uint32_t b, float2 fc) {
   return fma(h0_h0(a), b, fc);
 }

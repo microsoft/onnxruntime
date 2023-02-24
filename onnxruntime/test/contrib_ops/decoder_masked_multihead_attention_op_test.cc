@@ -741,12 +741,10 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
 
 
 TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
-  std::cout << "Hi";
-
   // Vary batch size
-  for (int batch_size = 1; batch_size <= 1; batch_size += 2) {
+  for (int batch_size = 1; batch_size <= 5; batch_size += 2) {
     // Vary kv_lengths
-    for (int past_sequence_length = 1; past_sequence_length <= 1; past_sequence_length += 150) {
+    for (int past_sequence_length = 1; past_sequence_length <= 3000; past_sequence_length += 150) {
       int sequence_length = 1;
       int hidden_size = 768;
       int number_of_heads = 12;
@@ -840,8 +838,6 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
       tester.AddOutput<MLFloat16>("present", past_dims, present);
 
       // Run
-      std::cout << "Running";
-
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
