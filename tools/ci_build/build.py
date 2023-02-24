@@ -1220,6 +1220,9 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
+        # set -s STACK_SIZE=1048576
+        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
+
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
 
