@@ -21,27 +21,27 @@ parameters:
   default: 'NPM_packages'
 
 jobs:
-# - template: android-java-api-aar.yml
-#   parameters:
-#     buildConfig: '${{parameters.BuildConfig}}'
-#     # Mobile build:
-#     #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
-#     #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
-#     #  artifactName: 'onnxruntime-android-mobile-aar'
-#     #  packageName: 'onnxruntime-mobile'
-#     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-#     artifactName: 'onnxruntime-android-full-aar'
-#     job_name_suffix: 'For_React_Native'
-#     pool_name: '${{parameters.PoolName}}'
-#     packageName: 'onnxruntime-android'
+- template: android-java-api-aar.yml
+  parameters:
+    buildConfig: '${{parameters.BuildConfig}}'
+    # Mobile build:
+    #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
+    #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+    #  artifactName: 'onnxruntime-android-mobile-aar'
+    #  packageName: 'onnxruntime-mobile'
+    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+    artifactName: 'onnxruntime-android-full-aar'
+    job_name_suffix: 'For_React_Native'
+    pool_name: '${{parameters.PoolName}}'
+    packageName: 'onnxruntime-android'
 
 - job: ReactNative_CI
   pool:
     vmImage: 'macOS-11'
   variables:
     runCodesignValidationInjection: false
-  # dependsOn:
-  # - Android_Java_API_AAR_Packaging_For_React_Native
+  dependsOn:
+  - Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -84,25 +84,25 @@ jobs:
 
   #   displayName: Build iOS package
 
-  # - task: DownloadPipelineArtifact@2
-  #   inputs:
-  #     buildType: 'current'
-  #     # Mobile build:
-  #     #  artifactName: 'onnxruntime-android-mobile-aar'
-  #     #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
-  #     artifactName: 'onnxruntime-android-full-aar'
-  #     targetPath: '$(Build.BinariesDirectory)/android-full-aar'
-  #   displayName: Download Android AAR artifacts
+  - task: DownloadPipelineArtifact@2
+    inputs:
+      buildType: 'current'
+      # Mobile build:
+      #  artifactName: 'onnxruntime-android-mobile-aar'
+      #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
+      artifactName: 'onnxruntime-android-full-aar'
+      targetPath: '$(Build.BinariesDirectory)/android-full-aar'
+    displayName: Download Android AAR artifacts
 
-  # - task: CopyFiles@2
-  #   inputs:
-  #     # Mobile build:
-  #     #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-  #     #  contents: onnxruntime-mobile-*.aar
-  #     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-  #     contents: onnxruntime-android-*.aar
-  #     targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
-  #   displayName: Copy Android package to React Native directory
+  - task: CopyFiles@2
+    inputs:
+      # Mobile build:
+      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+      #  contents: onnxruntime-mobile-*.aar
+      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+      contents: onnxruntime-android-*.aar
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/android/libs
+    displayName: Copy Android package to React Native directory
 
   # - task: CopyFiles@2
   #   inputs:
@@ -188,31 +188,24 @@ jobs:
   #   condition: succeededOrFailed()
   #   displayName: Publish React Native iOS Instrumented Test Results
 
-  # - task: PowerShell@2
-  #   inputs:
-  #     filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-  #     arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
-  #     workingDirectory: '$(Build.SourcesDirectory)'
-  #     errorActionPreference: stop
-  #   env:
-  #     ORT_JS_PACK_MODE: e2e
-  #   displayName: Pack NPM packages
+  - task: PowerShell@2
+    inputs:
+      filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
+      arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
+      workingDirectory: '$(Build.SourcesDirectory)'
+      errorActionPreference: stop
+    env:
+      ORT_JS_PACK_MODE: e2e
+    displayName: Pack NPM packages
 
-  # - script: |
-  #     mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-  #     yarn add --no-lockfile file:./onnxruntime-common.tgz
-  #     mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-  #     yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-  #     yarn
-  #   workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-  #   displayName: Bootstrap Android and iOS e2e tests
-
-  # TODO - TESTING ONLY - use released ORT RN package in E2E test
   - script: |
-      yarn add --no-lockfile onnxruntime-react-native
+      mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
+      yarn add --no-lockfile file:./onnxruntime-common.tgz
+      mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
+      yarn add --no-lockfile file:./onnxruntime-react-native.tgz
       yarn
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Install onnxruntime-react-native in e2e test
+    displayName: Bootstrap Android and iOS e2e tests
 
   # - script: |
   #     pod install
@@ -225,15 +218,15 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
-  # - task: CopyFiles@2
-  #   inputs:
-  #     # Mobile build:
-  #     #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-  #     #  contents: onnxruntime-mobile-*.aar
-  #     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-  #     contents: onnxruntime-*.aar
-  #     targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
-  #   displayName: Copy Android package to Android e2e test directory
+  - task: CopyFiles@2
+    inputs:
+      # Mobile build:
+      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+      #  contents: onnxruntime-mobile-*.aar
+      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+      contents: onnxruntime-*.aar
+      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+    displayName: Copy Android package to Android e2e test directory
 
   - task: JavaToolInstaller@0
     displayName: Use jdk 11
