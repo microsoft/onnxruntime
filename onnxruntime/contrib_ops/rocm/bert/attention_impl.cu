@@ -571,51 +571,51 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters parameters;
+  AttentionParameters attn;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   relative_position_bias,
-                                  &parameters,
+                                  &attn,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
+  ORT_ENFORCE(attn.sequence_length == attn.kv_sequence_length);  // self attention
 
   TensorShapeVector output_shape(3);
-  output_shape[0] = static_cast<int64_t>(parameters.batch_size);
-  output_shape[1] = static_cast<int64_t>(parameters.sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[0] = static_cast<int64_t>(attn.batch_size);
+  output_shape[1] = static_cast<int64_t>(attn.sequence_length);
+  output_shape[2] = static_cast<int64_t>(attn.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      2, parameters.batch_size, parameters.num_heads,
-      past_present_share_buffer_ ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+      2, attn.batch_size, attn.num_heads,
+      past_present_share_buffer_ ? attn.max_sequence_length : attn.total_sequence_length,
+      attn.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
   rocblas_handle rocblas = GetRocblasHandle(context);
   constexpr size_t element_size = sizeof(T);
 
-  int m = parameters.batch_size * parameters.sequence_length;
-  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
-  int k = parameters.input_hidden_size;
+  int m = attn.batch_size * attn.sequence_length;
+  int n = (attn.hidden_size + attn.hidden_size + attn.v_hidden_size);
+  int k = attn.input_hidden_size;
   auto gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
   typedef typename ToHipType<T>::MappedType HipT;
   size_t workspace_size = GetAttentionWorkspaceSize(element_size,
-                                                    parameters.batch_size,
-                                                    parameters.num_heads,
-                                                    parameters.head_size,
-                                                    parameters.sequence_length,
-                                                    parameters.past_sequence_length);
+                                                    attn.batch_size,
+                                                    attn.num_heads,
+                                                    attn.head_size,
+                                                    attn.sequence_length,
+                                                    attn.past_sequence_length);
 
   auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
 
-  const size_t bytes = GetAttentionScratchSize(element_size, parameters.batch_size, parameters.num_heads,
-                                               parameters.sequence_length, parameters.total_sequence_length);
+  const size_t bytes = GetAttentionScratchSize(element_size, attn.batch_size, attn.num_heads,
+                                               attn.sequence_length, attn.total_sequence_length);
   HipT* scratch1 = reinterpret_cast<HipT*>(workspace.get());
   HipT* scratch2 = scratch1 + (bytes / element_size);
   HipT* scratch3 = scratch2 + (bytes / element_size);
@@ -646,12 +646,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       scratch3, n));
 
   // input should be BxSx3xNxH => gemm_buffer: 3xBxNxSxH
-  ORT_RETURN_IF_ERROR(LaunchTransQkv(Stream(context), 3, parameters.sequence_length, parameters.batch_size, parameters.head_size, parameters.num_heads,
+  ORT_RETURN_IF_ERROR(LaunchTransQkv(Stream(context), 3, attn.sequence_length, attn.batch_size, attn.head_size, attn.num_heads,
                       device_prop.maxThreadsPerBlock, false, scratch3, reinterpret_cast<HipT*>(gemm_buffer.get())));
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
-  const int batches = parameters.batch_size * parameters.num_heads;
-  const int size_per_batch = parameters.sequence_length * parameters.head_size;
+  const int batches = attn.batch_size * attn.num_heads;
+  const int size_per_batch = attn.sequence_length * attn.head_size;
   const int total_size = batches * size_per_batch;
 
   const HipT* q_buffer = reinterpret_cast<HipT*>(gemm_buffer.get());
@@ -663,15 +663,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Concat past (2xBxNxS'xH) to present (2xBxNxS*xH):
   // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxS*xH)
   // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxS*xH)
-  const int present_size_per_batch = parameters.total_sequence_length * parameters.head_size;
+  const int present_size_per_batch = attn.total_sequence_length * attn.head_size;
   if (nullptr != present) {
     ORT_RETURN_IF_ERROR(
       LaunchConcatPastToPresent(Stream(context),
-                                parameters.total_sequence_length,
-                                parameters.sequence_length,
-                                parameters.batch_size,
-                                parameters.head_size,
-                                parameters.num_heads,
+                                attn.total_sequence_length,
+                                attn.sequence_length,
+                                attn.batch_size,
+                                attn.head_size,
+                                attn.num_heads,
                                 device_prop.maxThreadsPerBlock,
                                 nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
                                 k_buffer,
@@ -692,10 +692,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.tuning_ctx = GetTuningContext();
     params.stream = Stream(context);
     params.handle = rocblas;
-    params.attention = &parameters;
+    params.attention = &attn;
     params.device_prop = &device_prop;
     // FIXME: the params.scale seems to be different from AttentionParameters::scale;
-    params.scale = 1.0f / sqrt(static_cast<float>(parameters.head_size));
+    params.scale = 1.0f / sqrt(static_cast<float>(attn.head_size));
     params.q_buffer = q_buffer;
     params.k_buffer = k_buffer;
     params.v_buffer = v_buffer;
