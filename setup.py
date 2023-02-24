@@ -632,6 +632,7 @@ requirements_path = path.join(getcwd(), requirements_file)
 if not path.exists(requirements_path):
     this = path.dirname(__file__)
     requirements_path = path.join(this, requirements_file)
+print(requirements_path)
 if not path.exists(requirements_path):
     raise FileNotFoundError("Unable to find " + requirements_file)
 with open(requirements_path) as f:
