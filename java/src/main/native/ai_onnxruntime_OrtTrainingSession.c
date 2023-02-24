@@ -17,7 +17,7 @@ wchar_t* copyAndPad(JNIEnv * jniEnv, jstring javaStr) {
   size_t strLength = (*jniEnv)->GetStringLength(jniEnv, javaStr);
   wchar_t* outputStr = (wchar_t*)calloc(strLength + 1, sizeof(wchar_t));
   if (outputStr != NULL) {
-    wcsncpy_s(outputStr, outputStrLength + 1, (const wchar_t*)charArr, strLength);
+    wcsncpy_s(outputStr, strLength + 1, (const wchar_t*)charArr, strLength);
   } else {
     throwOrtException(jniEnv, 1, "Not enough memory");
   }
