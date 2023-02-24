@@ -32,7 +32,7 @@ jobs:
             --use_qnn \
             --qnn_home $QNN_SDK_ROOT \
             --cmake_generator=Ninja \
-            --skip_tests \
+            --skip_tests
           mkdir -p build/Release/testdata/QNN/node_tests
         displayName: QNN EP, Build
 
