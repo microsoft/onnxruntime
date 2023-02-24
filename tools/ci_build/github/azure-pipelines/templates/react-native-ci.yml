@@ -21,27 +21,27 @@ parameters:
   default: 'NPM_packages'
 
 jobs:
-- template: android-java-api-aar.yml
-  parameters:
-    buildConfig: '${{parameters.BuildConfig}}'
-    # Mobile build:
-    #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
-    #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
-    #  artifactName: 'onnxruntime-android-mobile-aar'
-    #  packageName: 'onnxruntime-mobile'
-    buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
-    artifactName: 'onnxruntime-android-full-aar'
-    job_name_suffix: 'For_React_Native'
-    pool_name: '${{parameters.PoolName}}'
-    packageName: 'onnxruntime-android'
+# - template: android-java-api-aar.yml
+#   parameters:
+#     buildConfig: '${{parameters.BuildConfig}}'
+#     # Mobile build:
+#     #  buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_mobile_aar_build_settings.json'
+#     #  includedOpsConfig: '$(Build.SourcesDirectory)/tools/ci_build/github/android/mobile_package.required_operators.config'
+#     #  artifactName: 'onnxruntime-android-mobile-aar'
+#     #  packageName: 'onnxruntime-mobile'
+#     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
+#     artifactName: 'onnxruntime-android-full-aar'
+#     job_name_suffix: 'For_React_Native'
+#     pool_name: '${{parameters.PoolName}}'
+#     packageName: 'onnxruntime-android'
 
 - job: ReactNative_CI
   pool:
     vmImage: 'macOS-11'
   variables:
     runCodesignValidationInjection: false
-  dependsOn:
-  - Android_Java_API_AAR_Packaging_For_React_Native
+  # dependsOn:
+  # - Android_Java_API_AAR_Packaging_For_React_Native
   timeoutInMinutes: 150
   steps:
   # Onnx has no 3.9 python package available yet, need to use python 3.8 to avoid build onnx package
@@ -86,7 +86,12 @@ jobs:
 
   - task: DownloadPipelineArtifact@2
     inputs:
-      buildType: 'current'
+      #buildType: 'current'
+      buildType: 'specific'
+      project: 'onnxruntime'
+      definition: 188
+      buildVersionToDownload: 'specific'
+      pipelineId: 899533
       # Mobile build:
       #  artifactName: 'onnxruntime-android-mobile-aar'
       #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
