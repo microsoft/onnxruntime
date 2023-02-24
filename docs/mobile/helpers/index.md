@@ -1,7 +1,7 @@
 ---
 title: ORT Mobile Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
-parent: ORT Mobile
+parent: ONNX Runtime Mobile
 nav_order: 1
 ---
 
