@@ -313,6 +313,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",

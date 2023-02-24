@@ -23,6 +23,7 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
+                   float scale,
                    int max_threads_per_block) {
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
@@ -252,7 +253,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_present_share_buffer = false;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
-    output_parameters->scale = 0.0f;
+    output_parameters->scale = scale;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {

@@ -42,6 +42,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
   disable_fused_self_attention_ = sizeof(T) != 2 ||
                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
@@ -89,6 +91,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
+                                                                      scale_,
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;

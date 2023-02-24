@@ -29,25 +29,166 @@ class FusionT5Attention(FusionAttention):
         num_heads: int,
         attention_mask: AttentionMask,
     ):
-        super().__init__(model, hidden_size, num_heads, attention_mask)
+        use_multi_head_attention = True
+        super().__init__(model, hidden_size, num_heads, attention_mask, use_multi_head_attention, ["SkipSimplifiedLayerNormalization"])
 
     def create_attention_node(
         self,
+        query: str,
+        key: str,
+        value: str,
         mask_index: str,
-        matmul: NodeProto,
-        add: NodeProto,
+        past_key: str,
+        past_value: str,
         num_heads: int,
         hidden_size: int,
-        input: str,
         output: str,
-        add_qk_str: str,
     ) -> Union[NodeProto, None]:
-        # Not implemented yet
-        return None
+
+        assert num_heads > 0
+
+        if hidden_size > 0 and (hidden_size % num_heads) != 0:
+            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            return None
+
+        attention_node_name = self.model.create_node_name("MultiHeadAttention")
+        attention_inputs = [
+            query,
+            "" if key is None else key , # key
+            "" if value is None else value, # value
+            "", # bias
+        ]
+        if mask_index is not None:
+            attention_inputs.append(mask_index)
+        else:
+            attention_inputs.append("")
+        if past_key is not None:
+            assert(past_value is not None)
+            attention_inputs.append(past_key)
+            attention_inputs.append(past_value)
+
+        attention_node = helper.make_node(
+            "MultiHeadAttention",
+            inputs=attention_inputs,
+            outputs=[output],
+            name=attention_node_name,
+        )
+
+        attention_node.domain = "com.microsoft"
+        attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+        attention_node.attribute.extend([helper.make_attribute("scale", 1.0)])
+        if self.mask_filter_value is not None:
+            attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
+
+        return attention_node
+
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        # Not implemented yet
-        return
+        if normalize_node.op_type != "SkipSimplifiedLayerNormalization":
+            return
+
+        qkv_nodes = self.model.match_parent_path(
+            normalize_node,
+            ["MatMul", "Reshape", "Transpose", "MatMul"],
+            [1, 0, 0, 0],
+        )
+        if qkv_nodes is None:
+            return
+
+        _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
+
+        qkv_shape_nodes = self.model.match_parent_path(
+            reshape_qkv,
+            ["Concat", "Unsqueeze", "Gather", "Shape"],
+            [1, 0, 0, 0],
+        )
+        input_shape_node = qkv_shape_nodes[-1]
+
+        past_value = matmul_qkv.input[1]
+        if past_value in output_name_to_node:
+            return
+
+        qk_nodes = self.model.match_parent_path(
+            matmul_qkv,
+            ["Softmax", "Add", "MatMul"],
+            [0, 0, 0],
+        )
+        if qk_nodes is None:
+            return
+        _, add_qk, matmul_qk = qk_nodes
+
+        mask_nodes = self.model.match_parent_path(
+            add_qk,
+            ["Add", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+            [1, 1, 0, 1, 0, 0],
+        )
+        if mask_nodes is None:
+            return
+
+        mul_node = mask_nodes[1]
+        if mask_nodes[1].op_type != "Mul":
+            return
+
+        _, mul_val = self.model.get_constant_input(mul_node)
+        if mul_val != -10000:
+            self.mask_filter_value = mul_val
+
+        mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+
+        v_nodes = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose"],
+            [1],
+        )
+        if v_nodes is None:
+            return
+
+        transpose_v = v_nodes[0]
+
+        past_key = transpose_v.input[0]
+        if past_key in output_name_to_node:
+            return
+
+        q_nodes = self.model.match_parent_path(
+            matmul_qk,
+            ["Transpose", "Reshape", "MatMul"],
+            [0, 0, 0],
+        )
+        if q_nodes is None:
+            return
+
+        transpose_q, reshape_q, matmul_q = q_nodes
+
+        if matmul_q.input[0] == input_shape_node.input[0]:
+            return
+
+        q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+
+        new_node = self.create_attention_node(
+            matmul_q.output[0],
+            None,
+            None,
+            mask_index,
+            past_key,
+            past_value,
+            q_num_heads,
+            q_hidden_size,
+            reshape_qkv.output[0],
+        )
+        if new_node is None:
+            return
+
+        self.nodes_to_add.append(new_node)
+        self.node_name_to_graph_name[new_node.name] = self.this_graph_name
+
+        # self.nodes_to_remove.extend(qk_nodes)
+
+        self.prune_graph = True
+
+
+
+
+
 
 
 class FusionRelativePositionBiasBlock(Fusion):

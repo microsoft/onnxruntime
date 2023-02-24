@@ -6,7 +6,7 @@ from enum import Enum
 from logging import getLogger
 from os import name
 from sys import path
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 from fusion_base import Fusion
@@ -94,9 +94,10 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
+        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"]
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
-        super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
+        super().__init__(model, attention_op_name, search_op_types)
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
