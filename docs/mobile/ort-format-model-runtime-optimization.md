@@ -1,6 +1,6 @@
 ---
 title: ORT Format Model Runtime Optimization
-parent: Mobile
+parent: ONNX Runtime Mobile
 nav_order: 2
 ---
 {::options toc_levels="2" /}

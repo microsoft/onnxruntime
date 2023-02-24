@@ -1,7 +1,7 @@
 ---
-title: Model Export Helpers
+title: ORT Mobile Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
-parent: Mobile
+parent: ORT Mobile
 nav_order: 1
 ---
 
@@ -29,7 +29,7 @@ See [here](./model-usability-checker.md) for more details.
 
 The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer ONNX opset using this tool. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
 
-The ONNX opsets supported by the pre-built package are documented [here](../operators/mobile_package_op_type_support_1.10.md).
+The ONNX opsets supported by the pre-built package are documented [here](../../../reference/operators/mobile_package_op_type_support_1.10.md).
 
 Usage:
 
@@ -61,7 +61,7 @@ python -m onnxruntime.tools.update_onnx_opset --opset 15 model.onnx model.opset1
 
 If the model can potentially be used with NNAPI or CoreML it may require the input shapes to be made 'fixed' by setting any dynamic dimension sizes to specific values. 
 
-See [here](./make-dynamic-shape-fixed.md) for more details.
+See the documentation on [onnxruntime.tools.make_dynamic_shape_fixed](./make-dynamic-shape-fixed.md) for information on how to do this.
 
 
 ## QDQ format model helpers
