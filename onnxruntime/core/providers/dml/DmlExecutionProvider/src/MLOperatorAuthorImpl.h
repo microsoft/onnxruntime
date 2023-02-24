@@ -390,6 +390,13 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         return E_NOTIMPL;
     }
 
+    HRESULT STDMETHODCALLTYPE GetExecutionProvider(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept override
+    {
+        return m_winmlProvider.CopyTo(executionProvider);
+    }
+
 private:
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;
