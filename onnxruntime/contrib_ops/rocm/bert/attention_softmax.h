@@ -175,13 +175,13 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
 }
 
 // Note about the attention_mask_strides and attention_mask/key_padding_mask
-// attention_mask accepts 2D, 3D or 4D tensor, but it will be viewed as 4D tensor uniformally and it will be indexed
-// as [batch_index, 0, sequence_index, token_index].
+// attention_mask accepts 2D, 3D or 4D tensor, but it will be viewed as 3D tensor uniformally and it will be indexed
+// as [batch_index, sequence_index, token_index].
 template <typename T, unsigned TPB>
 __global__ void SoftmaxWithRawMaskSmallKernel(
     const int all_sequence_length,
     const int sequence_length,
-    const int4 attention_mask_strides,
+    const int3 attention_mask_strides,
     const int* attention_mask,  // 2D, 3D or 4D attention mask
     const bool* key_padding_mask,
     const T* add_before_softmax,
@@ -221,9 +221,8 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
 
     const int batch_index = blockIdx.y;
     int mask_offset = attention_mask_strides.x * batch_index +
-                      attention_mask_strides.y * 0 +
-                      attention_mask_strides.z * sequence_index +
-                      attention_mask_strides.w * threadIdx.x;
+                      attention_mask_strides.y * sequence_index +
+                      attention_mask_strides.z * threadIdx.x;
 
     if (nullptr == key_padding_mask) {
       const int& mask = attention_mask[mask_offset];
@@ -418,7 +417,7 @@ Status ComputeSoftmaxWithRawMask(hipStream_t stream,
                                  const int sequence_length,
                                  const int batch_size,
                                  const int num_heads,
-                                 const int4 attention_mask_strides,
+                                 const int3 attention_mask_strides,
                                  const int* attention_mask,
                                  const bool* key_padding_mask,
                                  const T* add_before_softmax,

@@ -75,6 +75,41 @@ size_t GetAttentionWorkspaceSize(
                                                 sequence_length, past_sequence_length + sequence_length);
 }
 
+inline int3 Get2DMaskStrides(int total_sequence_length) {
+  // stride == 0 indicate broadcasting
+  return {total_sequence_length, 0, 1};
+}
+
+std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
+    const int* buffer, const AttentionParameters* attn) {
+  const int* offseted_buffer{buffer};  // how to view the mask buffer
+  int3 sizes{-1, -1, -1};              // the logical shape of the view
+  int3 strides{-1, -1, -1};            // the physical memory layout
+  switch (attn->mask_type) {
+    case MASK_NONE:
+    case MASK_2D_DUMMY:
+      break;  // No mask
+    case MASK_2D_KEY_PADDING:
+      sizes = {attn->batch_size, 1, attn->total_sequence_length};
+      strides = Get2DMaskStrides(attn->total_sequence_length);
+      break;
+    case MASK_3D_ATTENTION:
+      sizes = {attn->batch_size, attn->sequence_length, attn->total_sequence_length};
+      strides = {attn->sequence_length * attn->total_sequence_length, attn->total_sequence_length, 1};
+      ;
+      break;
+    case MASK_4D_MEGATRON:
+      // offset to skip past sequence part, so that we can index it with [batch_index, sequence_index, token_index]
+      offseted_buffer = buffer + attn->past_sequence_length * attn->max_sequence_length;
+      sizes = {attn->batch_size, attn->sequence_length, attn->total_sequence_length};
+      strides = {attn->max_sequence_length * attn->max_sequence_length, attn->max_sequence_length, 1};
+      break;
+    default:
+      throw std::runtime_error("unsupported mask type");
+  }
+  return {offseted_buffer, sizes, strides};
+}
+
 template <typename T>
 struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   // - GEMM1 [m,k] * [n,k]' -> [m,n]
@@ -84,27 +119,24 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   // - Permute 0213
 
   std::string Signature() const override {
+    auto [m, n, k, o, batch] = GetGemmsMNKOBatch();
     return MakeString("M", m, "_N", n, "_K", k, "_O", o, "_B", batch);
   }
 
-  void FillGemmShape() {
+  std::tuple<int, int, int, int, int>  GetGemmsMNKOBatch() const {
     ORT_ENFORCE(attention != nullptr);
-    batch = attention->batch_size * attention->num_heads;
-    m = attention->sequence_length;
-    n = attention->total_sequence_length;
-    k = attention->head_size;
-    o = attention->head_size;
+    auto m = attention->sequence_length;
+    auto n = attention->total_sequence_length;
+    auto k = attention->head_size;
+    auto o = attention->head_size;
+    auto batch = attention->batch_size * attention->num_heads;
+    return {m, n, k, o, batch};
   }
 
   rocblas_handle handle;
   const AttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
-  int batch;
-  int m;
-  int n;
-  int k;
-  int o;
   float scale;
   const T* q_buffer;
   const T* k_buffer;
@@ -128,40 +160,19 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   }
 
   static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     // GEMM1 [m,k] * [n,k]' -> [m,n]
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
         blas::BlasOp::NonTrans, blas::BlasOp::Trans,
-        params->m, params->n, params->k,
+        m, n, k,
         // For raw attention mask, the scalar is moved to softmax computation.
         /*alpha=*/UseRawAttentionMask(params) ? 1.0f : params->scale,
-        params->q_buffer, params->k, params->m * params->k,
-        params->k_buffer, params->k, params->n * params->k,
+        params->q_buffer, k, m * k,
+        params->k_buffer, k, n * k,
         /*beta=*/0.0f,
-        params->gemm1_out, params->n, params->m * params->n,
-        params->batch);
-  }
-
-  static std::tuple<const int*, int4> GetRawMaskBufferAndStrides(const GemmSoftmaxGemmPermuteParams<T>* params) {
-    ORT_ENFORCE(params->mask_index_buffer != nullptr);
-    auto dim = params->mask_index_dims.size();
-    ORT_ENFORCE(dim >= 2);
-
-    auto attn = params->attention;
-    auto buffer = params->mask_index_buffer;
-    int4 strides;
-    if (dim == 2) {
-      strides = {attn->total_sequence_length, 0, 0, 1};
-    } else if (dim == 3) {
-      strides = {attn->sequence_length * attn->total_sequence_length, 0, attn->total_sequence_length, 1};
-    } else if (dim == 4) {
-      int max_sequence_length = attn->max_sequence_length;
-      strides = {max_sequence_length * max_sequence_length, max_sequence_length, max_sequence_length, 1};
-      // offset to skip past sequence part, so that we can index it with [batch_index, 0, sequence_index, token_index]
-      buffer = buffer + attn->past_sequence_length * max_sequence_length;
-    }
-
-    return {buffer, strides};
+        params->gemm1_out, n, m * n,
+        batch);
   }
 
   static Status SoftmaxRawMask(
@@ -171,7 +182,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     // Softmax on [m,n] along the n dimension.
     // Raw attention mask could be 2D (BxS) or 3D (BxSxS*) or 4D(Bx1xMxM), where M is the max sequence length.
     auto attn = params->attention;
-    auto [buffer, strides] = GetRawMaskBufferAndStrides(params);
+    auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(params->mask_index_buffer, params->attention);
     T* persistent_softmax_workspace = params->gemm1_out;  // replace Q*K' in place if persistent softmax is selected.
     return ComputeSoftmaxWithRawMask<T>(
         params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
@@ -217,18 +228,19 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   }
 
   static Status Gemm2(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
     // GEMM2 [m,n] * [n,o] -> [m,o]
     // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus BxNxSxH.
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-        params->m, params->o, params->n,
+        m, o, n,
         /*alpha=*/1.0f,
-        params->softmax_out, params->n, params->m * params->n,
-        params->v_buffer, params->o, params->n * params->o,
+        params->softmax_out, n, m * n,
+        params->v_buffer, o, n * o,
         /*beta=*/0.0f,
-        params->gemm2_out, params->o, params->m * params->o,
-        params->batch);
+        params->gemm2_out, o, m * o,
+        batch);
   }
 
   static Status Permute0213(const GemmSoftmaxGemmPermuteParams<T>* params) {
@@ -394,7 +406,7 @@ Status DecoderQkvToContext(
   }
 
   if (has_key_padding_mask) {
-    int4 strides = {sequence_length, 0, 0, 1};
+    int3 strides = Get2DMaskStrides(kv_sequence_length);
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
         stream, kv_sequence_length, sequence_length, batch_size, num_heads,
         strides, nullptr, key_padding_mask, nullptr, scratch1, scratch2,
@@ -681,7 +693,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.stream = Stream(context);
     params.handle = rocblas;
     params.attention = &parameters;
-    params.FillGemmShape();
     params.device_prop = &device_prop;
     // FIXME: the params.scale seems to be different from AttentionParameters::scale;
     params.scale = 1.0f / sqrt(static_cast<float>(parameters.head_size));
