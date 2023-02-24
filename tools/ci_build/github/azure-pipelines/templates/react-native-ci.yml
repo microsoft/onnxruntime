@@ -253,18 +253,23 @@ jobs:
       #     spotBugsAnalysis: false
       #   displayName: Run React Native Android e2e Tests
       - script: |
+          set -x
           NUM_ITERATIONS=10
           NUM_FAILURES=0
-          for i in {1 .. $NUM_ITERATIONS}
+          for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
           do
             echo "*** test iteration $i"
-            if ! ./gradlew :app:connectedDebugAndroidTest ; then
+            ./gradlew :app:connectedDebugAndroidTest
+            TEST_RESULT=$?
+
+            if [[ "$TEST_RESULT" -ne 0 ]]; then
               echo "*** failure at test iteration $i"
               ((NUM_FAILURES++))
             fi
           done
-          echo "failed iterations: ${NUM_FAILURES} / ${NUM_ITERATIONS}"
+          echo "*** failed iterations: ${NUM_FAILURES} / ${NUM_ITERATIONS}"
           exit $NUM_FAILURES
+        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
         displayName: Run React Native Android e2e Tests
 
   # - script: |
