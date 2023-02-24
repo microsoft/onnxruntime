@@ -159,11 +159,9 @@ class FusionT5Attention(FusionAttention):
 
         transpose_q, reshape_q, matmul_q = q_nodes
 
-        if matmul_q.input[0] == input_shape_node.input[0]:
+        if matmul_q.input[0] != input_shape_node.input[0]:
             return
-
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-
         new_node = self.create_attention_node(
             matmul_q.output[0],
             None,
@@ -181,7 +179,10 @@ class FusionT5Attention(FusionAttention):
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-        # self.nodes_to_remove.extend(qk_nodes)
+        self.nodes_to_remove.extend(qkv_nodes[1:])
+        self.nodes_to_remove.extend(qk_nodes)
+        self.nodes_to_remove.extend(v_nodes)
+        self.nodes_to_remove.extend(q_nodes[:-1])
 
         self.prune_graph = True
 
