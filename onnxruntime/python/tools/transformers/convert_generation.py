@@ -697,13 +697,12 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
-    layer_count = (input_count - 3) // 4
+    layer_count = (input_count - 2) // 4
     assert layer_count >= 1
 
     # Expect inputs:
     #   input_ids: int32 (B, 1)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
-    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
     #   past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
     #   past_value_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -714,7 +713,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     #   ... (for each cross attention layer)
 
     # TODO: encoder_hidden_states is optional
-    expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
+    expected_inputs = ["input_ids", "encoder_attention_mask"]
     for i in range(layer_count):
         expected_inputs.append(f"past_key_self_{i}")
         expected_inputs.append(f"past_value_self_{i}")
