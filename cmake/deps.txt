@@ -11,7 +11,8 @@ abseil_cpp;https://github.com/abseil/abseil-cpp/archive/refs/tags/20220623.1.zip
 cxxopts;https://github.com/jarro2783/cxxopts/archive/3c73d91c0b04e2b59462f0a741be8c07024c1bc0.zip;6c6ca7f8480b26c8d00476e0e24b7184717fe4f0
 date;https://github.com/HowardHinnant/date/archive/refs/tags/v2.4.1.zip;ea99f021262b1d804a872735c658860a6a13cc98
 dlpack;https://github.com/dmlc/dlpack/archive/refs/tags/v0.6.zip;4d565dd2e5b31321e5549591d78aa7f377173445
-flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v1.12.0.zip;ba0a75fd12dbef8f6557a74e611b7a3d0c5fe7bf
+#flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v1.12.0.zip;ba0a75fd12dbef8f6557a74e611b7a3d0c5fe7bf
+flatbuffers;https://github.com/google/flatbuffers/archive/refs/tags/v22.12.6.zip;d01b5232ee52ed5ed05e84f4de01118d5ff8730d
 fp16;https://github.com/Maratyszcza/FP16/archive/0a92994d729ff76a58f692d3028ca1b64b145d91.zip;b985f6985a05a1c03ff1bb71190f66d8f98a1494
 fxdiv;https://github.com/Maratyszcza/FXdiv/archive/63058eff77e11aa15bf531df5dd34395ec3017c8.zip;a5658f4036402dbca7cebee32be57fb8149811e1
 google_benchmark;https://github.com/google/benchmark/archive/refs/tags/v1.7.0.zip;e97c368b176e8614e3f1bf13dd9abcf6a7ad9908
@@ -26,7 +27,8 @@ mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.79.0.zip;c8f04e3
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.13.0.zip;8dda5079cdb5a134b08b0c73f4592a6404fc2dc6
 #use the commit where it's several commits after 8.5-GA branch (https://github.com/onnx/onnx-tensorrt/commit/369d6676423c2a6dbf4a5665c4b5010240d99d3c)
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/369d6676423c2a6dbf4a5665c4b5010240d99d3c.zip;62119892edfb78689061790140c439b111491275
-protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.20.2.zip;9f71dad95fb83438e88822a9969fc93773fd8c48
+#protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.20.2.zip;9f71dad95fb83438e88822a9969fc93773fd8c48
+protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v3.21.12.zip;5f0ea65887f2a0547087a01c0d23f43dba17a523
 psimd;https://github.com/Maratyszcza/psimd/archive/072586a71b55b7f8c584153d223e95687148a900.zip;1f5454b01f06f9656b77e4a5e2e31d7422487013
 pthreadpool;https://github.com/Maratyszcza/pthreadpool/archive/1787867f6183f056420e532eec640cba25efafea.zip;e43e80781560c5ab404a4da20f34d846f5f5d101
 pybind11;https://github.com/pybind/pybind11/archive/refs/tags/v2.10.1.zip;769b6aa67a77f17a770960f604b727645b6f6a13
