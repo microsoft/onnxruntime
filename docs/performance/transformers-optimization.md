@@ -147,7 +147,7 @@ python -m onnxruntime.transformers.compare_bert_results --baseline_model origina
 
 For GPU, please append --use_gpu to the command.
 
-## Profiling, and Benchmarking
+## Benchmarking and Profiling
 
 ### Benchmark
 There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
@@ -165,6 +165,7 @@ python -m onnxruntime.transformers.bert_perf_test --model optimized_model_cpu.on
 For GPU, please append --use_gpu to the command.
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
+
 ### Profiling
 
 profiler.py can be used to run profiling on a transformer model. It can help figure out the bottleneck of a model, and CPU time spent on a node or subgraph.

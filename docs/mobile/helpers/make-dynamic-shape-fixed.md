@@ -3,7 +3,7 @@ title: Make dynamic input shape fixed
 descriptions: 
 parent: ORT Mobile Model Export Helpers
 grand_parent: ORT Mobile
-nav_order: 2
+nav_order: 1
 ---
 
 # Making dynamic input shapes fixed

@@ -13,7 +13,7 @@ You can also integrate machine learning into the server side of your web applica
 
 To see an example of the web development flow in practice, you can follow the steps in the following tutorial to [build a web application to classify images using Next.js](classify-images-nextjs-github-template.md).
 
-For more detail on the steps below, see the [build a web application](../../reference/build-web-app.md) with ONNX Runtime reference guide.
+For more detail on the steps below, see the [build a web application](../../web/build-web-app.md) with ONNX Runtime reference guide.
 
 ## ONNX Runtime web application development flow
 
@@ -66,11 +66,11 @@ For more detail on the steps below, see the [build a web application](../../refe
 
    Bootstrap your web application according in your web framework of choice e.g. vuejs, reactjs, angularjs.
 
-   1. [Add the ONNX Runtime dependency](../../reference/build-web-app.md#add-onnx-runtime-web-as-dependency)
+   1. [Add the ONNX Runtime dependency](../../web/build-web-app.md#add-onnx-runtime-web-as-dependency)
 
-   1. [Consume the onnxruntime-web API in your application](../../reference/build-web-app.md#consume-onnxruntime-web-in-your-code)
+   1. [Consume the onnxruntime-web API in your application](../../web/build-web-app.md#consume-onnxruntime-web-in-your-code)
 
-   1. [Add pre and post processing](../../reference/build-web-app.md#pre-and-post-processing) appropriate to your application and model
+   1. [Add pre and post processing](../../web/build-web-app.md#pre-and-post-processing) appropriate to your application and model
 
 4. How do I optimize my application?
 
