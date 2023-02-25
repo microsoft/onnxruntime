@@ -406,7 +406,6 @@ def _run_onnx_session_with_ortvaluevector(
     inputs = tuple(a.contiguous() for a in inputs)
     _nvtx_range_pop()
 
-
     _nvtx_range_push("push_back_batch")
 
     ort_inputs = _get_ortvalues_from_torch_tensors(inputs, input_devices)
@@ -487,7 +486,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", preallocate_output:bool=False):
+    def __init__(self, ep: str = "", preallocate_output: bool = False):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -505,7 +504,6 @@ class OrtBackend:
         # It can be avoided by allowing for preallocation for output buffers allocated by a custom aten allocator,
         # and use the preallocated output buffers for InferenceSession not holding any ownership for them.
         self.preallocate_output = preallocate_output
-
 
     def _ort_acclerated_call(self, graph_module: torch.fx.GraphModule, *args, **kwargs):
         if graph_module in self._ort_execution_info.sessions:
@@ -590,7 +588,7 @@ class OrtBackend:
                 output_names,
                 prim_outputs,
                 output_devices,
-                self.preallocate_output
+                self.preallocate_output,
             )
             _nvtx_range_pop()
             if self._ort_execution_info.assert_allclose_to_baseline:
@@ -613,7 +611,7 @@ class OrtBackend:
                 output_names,
                 (prim_outputs,),
                 output_devices,
-                self.preallocate_output
+                self.preallocate_output,
             )
             assert len(onnx_outputs) == 1
             if self._ort_execution_info.assert_allclose_to_baseline:
