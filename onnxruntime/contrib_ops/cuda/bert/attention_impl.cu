@@ -334,7 +334,6 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
   } else if (data.past_key != nullptr || data.present_key != nullptr) { // T5 cross attention
-    printf("T5 decoder cross attention");
     assert(data.bias == nullptr); // no bias for T5 cross attention
     if (data.past_key != nullptr) {
       assert(data.past_value != nullptr);
@@ -345,6 +344,13 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                                          max_threads_per_block, false, data.query, q));
       k = const_cast<T*>(data.past_key);
       v = const_cast<T*>(data.past_value);
+      DUMP_TENSOR_D("data.query[BSNH]", data.query, batch_size, sequence_length, num_heads*qk_head_size);
+      DUMP_TENSOR_D("data.past_key[BNSH]", data.past_key, batch_size, num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("data.past_value[BNSH]", data.past_value, batch_size, num_heads, kv_sequence_length, v_head_size);
+      DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
+      DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, kv_sequence_length, qk_head_size);
+      DUMP_TENSOR_D("v[BNSH]", v, batch_size, num_heads, kv_sequence_length, v_head_size);
+      qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
@@ -732,6 +738,9 @@ Status QkvToContext(
 
   cublasSetStream(cublas, stream);
 
+  printf("scale: %f\n", scale);
+  DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, total_sequence_length, qk_head_size);
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(
       cublas, CUBLAS_OP_T, CUBLAS_OP_N,
       total_sequence_length, sequence_length, qk_head_size,
