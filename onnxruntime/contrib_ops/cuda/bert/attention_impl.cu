@@ -342,14 +342,11 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       assert(data.value == nullptr);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.query, q));
-      k = const_cast<T*>(data.past_key);
-      v = const_cast<T*>(data.past_value);
+
       DUMP_TENSOR_D("data.query[BSNH]", data.query, batch_size, sequence_length, num_heads*qk_head_size);
       DUMP_TENSOR_D("data.past_key[BNSH]", data.past_key, batch_size, num_heads, kv_sequence_length, qk_head_size);
       DUMP_TENSOR_D("data.past_value[BNSH]", data.past_value, batch_size, num_heads, kv_sequence_length, v_head_size);
       DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
-      DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("v[BNSH]", v, batch_size, num_heads, kv_sequence_length, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
     }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
@@ -554,6 +551,11 @@ Status QkvToContext(
       // Update pointers to present_k and present_v.
       k = data.present;
       v = data.present + batches * present_size_per_batch_k;
+    }
+    if (nullptr != data.past_key && nullptr != data.past_value) {
+      assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+      k = const_cast<T*>(data.past_key);
+      v = const_cast<T*>(data.past_value);
     }
   } else {
     assert(qk_head_size == v_head_size);
