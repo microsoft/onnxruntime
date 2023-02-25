@@ -60,14 +60,14 @@ def _nvtx_range_pop():
         torch.cuda.nvtx.range_pop()
 
 
-def _get_ort_device_type(device_type: str, device_kind: int):
+def _get_ort_device_type(device_type: str):
     if device_type == "cuda":
         return ORTC.OrtDevice.cuda()  # type: ignore
     if device_type == "cpu":
         return ORTC.OrtDevice.cpu()  # type: ignore
-    # fall back to OrtBackend configuration
+    # ort pytorch device is mapped to NPU OrtDevice type
     if device_type == "ort":
-        return device_kind
+        return ORTC.OrtDevice.npu()
     raise ValueError("Unsupported device type: " + device_type)
 
 
@@ -351,7 +351,7 @@ def _infer_ep_from_device(device):
     return "CPUExecutionProvider"
 
 
-def _get_onnx_devices(values: Tuple[torch.Tensor, ...], device_kind: int) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
+def _get_onnx_devices(values: Tuple[torch.Tensor, ...]) -> Tuple[ORTC.OrtDevice, ...]:  # type: ignore
     assert all(value.device == values[0].device for value in values), "All values must be on the same device."
 
     def _device_id_or_zero(device_id: int) -> int:
@@ -359,7 +359,7 @@ def _get_onnx_devices(values: Tuple[torch.Tensor, ...], device_kind: int) -> Tup
 
     devices: Tuple[ORTC.OrtDevice, ...] = tuple(  # type: ignore
         ORTC.OrtDevice(  # type: ignore
-            _get_ort_device_type(value.device.type, device_kind),
+            _get_ort_device_type(value.device.type),
             ORTC.OrtDevice.default_memory(),  # type: ignore
             _device_id_or_zero(value.device.index),
         )
@@ -487,7 +487,7 @@ class OrtBackend:
         3. Inside _ort_accelerated_call, it creates onnxruntime.InferenceSession and calls it to execute the sub-graph.
     """
 
-    def __init__(self, ep: str = "", device:int=0, preallocate_output:bool=False):
+    def __init__(self, ep: str = "", preallocate_output:bool=False):
         self._supported_ops = OrtOperatorSupport()
         # TODO: this is a naive implementation of cache without proper guard
         self._partitioner_cache: Dict[torch.fx.GraphModule, torch.fx.GraphModule] = {}
@@ -495,8 +495,6 @@ class OrtBackend:
         self._ort_execution_info = OrtExecutionInfo()
 
         self.ep = ep
-
-        self.device = device
 
         # preallocate_output allows for allocating output torch Tensor buffers and feeding them to InferenceSession
         # in order to avoid internal allocation of output buffers in InferenceSession.
@@ -566,14 +564,14 @@ class OrtBackend:
             # input and output names from the underlying model.
             input_names = tuple(input.name for input in onnx_model.graph.input)
             output_names = tuple(output.name for output in onnx_model.graph.output)
-            input_devices = _get_onnx_devices(args, device_kind=self.device)
+            input_devices = _get_onnx_devices(args)
             # Cache devices for inputs and outputs. They are used to invoke
             # ORT session. Output devices indicate where (e.g., GPU or CPU)
             # to store outputs
             if isinstance(prim_outputs, tuple):
-                output_devices = _get_onnx_devices(prim_outputs, device_kind=self.device)
+                output_devices = _get_onnx_devices(prim_outputs)
             else:
-                output_devices = _get_onnx_devices((prim_outputs,), device_kind=self.device)
+                output_devices = _get_onnx_devices((prim_outputs,))
             self._ort_execution_info.input_names[graph_module] = input_names
             self._ort_execution_info.output_names[graph_module] = output_names
             self._ort_execution_info.input_devices[graph_module] = input_devices
