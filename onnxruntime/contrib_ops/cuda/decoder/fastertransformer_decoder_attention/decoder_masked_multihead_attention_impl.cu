@@ -210,7 +210,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     qk *= inv_sqrt_dh;
     qk_max = qk;
     qk_smem[tlength] = qk;
-    //reinterpret_cast<T*>(params.out)[temp_offset + tlength] = qk;
+    //reinterpret_cast<T*>(params.out)[temp_offset + tlength] = FloatToHalf(qk);
   }
 
   // Make sure the data is in shared memory.
@@ -293,7 +293,8 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
-      //reinterpret_cast<T*>(params.out)[temp_offset + ti] = qk;
+      //reinterpret_cast<T*>(params.out)[temp_offset + ti] = FloatToHalf(qk);
+      ;
     }
   }
 
@@ -345,7 +346,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
     float logit = qk_smem[ti] * inv_sum;
     ConvertFromFloat(logits_smem[ti], logit);
-    //reinterpret_cast<T*>(params.out)[temp_offset + ti] = logit;
+    //reinterpret_cast<T*>(params.out)[temp_offset + ti] = logits_smem[ti];
   }
 
   // Put Values part below so we leverage __syncthreads

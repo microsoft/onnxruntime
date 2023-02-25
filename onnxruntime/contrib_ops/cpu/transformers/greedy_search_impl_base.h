@@ -115,7 +115,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
       if (allocate_staging_buffer_for_past_state_reorder) {
         TensorShape staging_for_past_state_reorder_buffer_shape = {batch_size, num_heads, max_length, head_size};
 
-        Tensor temp(DataTypeImpl::GetType<float>(), staging_for_past_state_reorder_buffer_shape, allocator);
+        Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
         this->staging_for_past_state_reorder = std::move(temp);
       }

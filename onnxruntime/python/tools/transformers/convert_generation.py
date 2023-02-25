@@ -250,6 +250,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(past_present_share_buffer=False)
 
     model_group.add_argument(
+        "--use_decoder_masked_multihead_attention",
+        required=False,
+        action="store_true",
+        help="Uses `DecoderMaskedMultiheadAttention` to optimize the unidirectional decoding Attention computation. "
+        "Must be used with `past_present_share_buffer`",
+    )
+    model_group.set_defaults(use_decoder_masked_multihead_attention=False)
+
+    model_group.add_argument(
         "--prefix_vocab_mask",
         required=False,
         action="store_true",
@@ -1066,6 +1075,29 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     return subg
 
 
+def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
+    """Update the Attention nodes to DecoderMaskedMultiheadAttention.
+
+    Args:
+        subg (GraphProto): GraphProto of the decoder subgraph
+    """
+    decoder_masked_attention_supported_attr = ["past_present_share_buffer", "num_heads", "qkv_hidden_sizes", "scale", "domain"]
+    new_nodes = []
+    for node in subg.node:
+        if node.op_type == "Attention":
+            kwargs = kwargs_of(node)
+            for k in kwargs.copy():
+                if k not in decoder_masked_attention_supported_attr:
+                    del kwargs[k]
+            nis = []
+            nis.extend(node.input)
+            node = onnx.helper.make_node("DecoderMaskedMultiheadAttention", nis, node.output, name=node.name, **kwargs)
+        new_nodes.extend([node])
+    subg.ClearField("node")
+    subg.node.extend(new_nodes)
+    return subg
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1663,6 +1695,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
+            # Update for init decoder subgraph
             if past_present_share_buffer:
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
                 update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
@@ -1672,17 +1705,24 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
+        # Update for non-init decoder subgraph
         if past_present_share_buffer:
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
 
-        print("Reached here")
-        
-        for node in decoder_model.graph.node:
-            if node.op_type == "Attention":
-                print("Here 2")
-                node.op_type = "DecoderMaskedSelfAttention"
-        
+        # If at all, the user requests the use of `use_decoder_masked_multihead_attention`,
+        # we can only use it in the decoder subgraph - it cannot be used in the init_decoder subgraph
+        # as the kernel only supports the decoding use-case (i.e.) when input sequence length is 1.
+        if args.use_decoder_masked_multihead_attention:
+            logger.info("Update decoder subgraph to use DecoderMaskedMultiheadAttention")
+
+            if not past_present_share_buffer:
+                raise ValueError(
+                    "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
+                )
+
+            update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph)
+
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs
@@ -1914,7 +1954,6 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     inputs = tokenizer(sentences, return_tensors="pt", padding=True)
     input_ids = inputs["input_ids"]
     attention_mask = inputs["attention_mask"]
-    print(attention_mask)
 
     bad_words = "walk in park"
     bad_words_ids = tokenizer.encode(bad_words, add_prefix_space=True)
@@ -2200,8 +2239,8 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     if args.vocab_mask:
         inputs["vocab_mask"] = vocab_mask
 
-    #if args.custom_attention_mask:
-    #    inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
+    if args.custom_attention_mask:
+        inputs["attention_mask"] = create_attention_mask(input_ids, pad_token_id)
 
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
@@ -2315,8 +2354,8 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             if args.top_p > 0.01 or args.custom or args.seed:
                 return
         else:
-            print ("Skipping conversion")
             #convert_generation_model(args, GenerationType.GREEDYSEARCH)
+            print("Skipping conversion")
     else:
         convert_generation_model(args)
 

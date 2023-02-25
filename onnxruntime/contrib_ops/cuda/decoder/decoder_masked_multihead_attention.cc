@@ -57,20 +57,14 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
 
+  ORT_ENFORCE(past_present_share_buffer_);
+
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 
+  // This kernel is for decoding only (i.e.) sequence length has to be 1
   if (sequence_length != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input sequence length should be 1 to use DecoderMaskedMultiheadAttention");
-  }
-
-  if (!past_present_share_buffer_) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Past Present share buffer must be turned on 1 to use DecoderMaskedMultiheadAttention");
-  }
-
-  // TODO(hasesh): Is there any value supporting this case ?
-  if (parameters.head_size != parameters.v_head_size) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiheadAttention");
   }
 
   // TODO(hasesh): In future, we may support CrossAttention. Currently, this kernel only supports SelfAttention.
@@ -78,6 +72,17 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiheadAttention only supports self attention currently");
   }
 
+  // TODO(hasesh): If there is a need, we will support this later
+  if (parameters.head_size != parameters.v_head_size) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "QK head size should be same as V head size to use DecoderMaskedMultiheadAttention");
+  }
+
+  // TODO(hasesh): If there is a need, we will support this later
+  if (relative_position_bias != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "DecoderMaskedMultiheadAttention does not support relative position bias currently");
+  }
+
+  // TODO(hasesh): Support more mask types. Currently, it only supports the HuggingFace GreedySearch/BeamSearch pattern.
   if (parameters.mask_type != AttentionMaskType::MASK_2D_KEY_PADDING &&
       parameters.mask_type != AttentionMaskType::MASK_NONE) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
