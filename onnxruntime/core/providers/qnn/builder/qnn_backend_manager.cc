@@ -21,7 +21,9 @@ typedef Qnn_ErrorHandle_t (*QnnInterfaceGetProvidersFn_t)(const QnnInterface_t**
 
 Status QnnBackendManager::LoadBackend() {
   std::string error_msg = "";
-  backend_lib_handle_ = LoadLib(backend_path_.c_str(), DL_NOW | DL_LOCAL, error_msg);
+  backend_lib_handle_ = LoadLib(backend_path_.c_str(), 
+                                static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
+                                error_msg);
   ORT_RETURN_IF(nullptr == backend_lib_handle_, "Unable to load backend, error:", error_msg);
 
   // Get QNN Interface
@@ -94,7 +96,6 @@ Status QnnBackendManager::InitializeProfiling() {
     return Status::OK();
   }
 
-  LOGS_DEFAULT(INFO) << "Profiling turned on; level = " << profiling_level_;
   QnnProfile_Level_t qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
   if (ProfilingLevel::BASIC == profiling_level_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_BASIC;
@@ -358,7 +359,7 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
 
   // POSIX asks one of symbol resolving approaches:
   // NOW or LAZY must be specified
-  if (!(flags & DL_NOW)) {
+  if (!(flags & static_cast<int>(DlOpenFlag::DL_NOW))) {
     error_msg = "flags must include DL_NOW";
     return nullptr;
   }
@@ -394,13 +395,13 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   // 2 cases here for how it was loaded before:
   // a. with DL_LOCAL, just ignore since it was already in local set
   // b. with DL_GLOBAL, POSIX asks it in global, ignore it, too
-  if ((!loaded_before) && (flags & DL_LOCAL)) {
+  if ((!loaded_before) && (flags & static_cast<int>(DlOpenFlag::DL_LOCAL))) {
     mod_handles_.insert(mod);
   }
 
   // once callers ask for global, needs to be in global thereafter
   // so the lib should be removed from local set
-  if (flags & DL_GLOBAL) {
+  if (flags & static_cast<int>(DlOpenFlag::DL_GLOBAL)) {
     mod_handles_.erase(mod);
   }
 
@@ -409,15 +410,15 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   ORT_UNUSED_PARAMETER(error_msg);
   int real_flags = 0;
 
-  if (flags & DL_NOW) {
+  if (flags & static_cast<int>(DlOpenFlag::DL_NOW)) {
     real_flags |= RTLD_NOW;
   }
 
-  if (flags & DL_LOCAL) {
+  if (flags & static_cast<int>(DlOpenFlag::DL_LOCAL)) {
     real_flags |= RTLD_LOCAL;
   }
 
-  if (flags & DL_GLOBAL) {
+  if (flags & static_cast<int>(DlOpenFlag::DL_GLOBAL)) {
     real_flags |= RTLD_GLOBAL;
   }
 

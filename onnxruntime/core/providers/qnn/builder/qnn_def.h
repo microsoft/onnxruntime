@@ -19,7 +19,7 @@ namespace qnn {
 // when we really need them
 // DL_NOW is MUST
 // DL_LOCAL is enabled if not specified
-enum {
+enum class DlOpenFlag : int {
   DL_NOW = 0x0001,
   DL_LOCAL = 0x0002,
   DL_GLOBAL = 0x0004,
@@ -28,10 +28,12 @@ enum {
 // specify this address to distinguish from NULL pointer
 #define DL_DEFAULT (void*)(0x4)
 
-enum ProfilingLevel { OFF,
-                      BASIC,
-                      DETAILED,
-                      INVALID };
+enum class ProfilingLevel : uint8_t {
+  OFF = 0,
+  BASIC,
+  DETAILED,
+  INVALID
+};
 
 struct OnnxTensorInfo {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxTensorInfo);

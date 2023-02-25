@@ -38,7 +38,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto profiling_level_pos = runtime_options_.find(PROFILING_LEVEL);
   if (profiling_level_pos != runtime_options_.end()) {
     ParseProfilingLevel(profiling_level_pos->second);
-    LOGS_DEFAULT(INFO) << "profiling_level: " << profiling_level_;
+    LOGS_DEFAULT(INFO) << "profiling_level: " << static_cast<uint8_t>(profiling_level_);
   }
 
   rpc_control_latency_ = 10;
