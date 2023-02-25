@@ -62,6 +62,9 @@ class FusionT5Attention(FusionAttention):
             attention_inputs.append(mask_index)
         else:
             attention_inputs.append("")
+
+        attention_inputs.append("") # relative position bias
+
         if past_key is not None:
             assert(past_value is not None)
             attention_inputs.append(past_key)
