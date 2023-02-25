@@ -330,8 +330,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
       LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
                              batch_size, sequence_length, num_heads, qk_head_size,
-                             data.gemm_buffer, data.bias, qkv,
-                             true, v_head_size, qkv_add_bias, 3);
+                             data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
+                             3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
   } else if (data.past_key != nullptr || data.present_key != nullptr) { // T5 cross attention
     printf("T5 decoder cross attention");
