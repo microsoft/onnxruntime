@@ -475,11 +475,12 @@ class FusionGRUGate(Fusion):
 
         self.nodes_to_remove.extend(stem_nodes)
 
-        inputs = [query_bias_add.input[1],
-                  query_bias_add.input[0],
+        #bugbug
+        inputs = [query_bias_add.input[0] if self.model.get_initializer(query_bias_add.input[0]) is None else query_bias_add.input[1],
+                  query_bias_add.input[1] if self.model.get_initializer(query_bias_add.input[1]) is not None else query_bias_add.input[0],
                   rpb_mul.input[1],
                   weight_matmul.input[1],
-                  bias_add.input[0],
+                  bias_add.input[1] if self.model.get_initializer(bias_add.input[1]) is not None else bias_add.input[0],
                   eco_mul.input[1],
                   ]
         outputs = [rpb_mul.output[0]]
