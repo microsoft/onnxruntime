@@ -299,6 +299,8 @@ struct IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const = 0;
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept = 0;
     virtual MLOperatorAttributes const& GetAttributes() const noexcept = 0;
+    virtual MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const = 0;
+
     virtual ~IKernelInformationAdapter() {}
 };
 
@@ -328,6 +330,7 @@ struct KernelInformationAdapter : IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const { return m_informationSource.GetConstantInputTensor(inputIndex); }
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept { return m_informationSource.HasAttribute(name, type); }
     virtual MLOperatorAttributes const& GetAttributes() const noexcept { return m_informationSource; }
+    virtual MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const { return m_informationSource.GetInputEdgeDescription(inputIndex); }
     virtual ~KernelInformationAdapter() {}
 
     InformationSourceType& m_informationSource;

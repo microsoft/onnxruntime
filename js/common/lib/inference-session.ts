@@ -95,6 +95,14 @@ export declare namespace InferenceSession {
     executionMode?: 'sequential'|'parallel';
 
     /**
+     * Optimized model file path.
+     *
+     * If this setting is specified, the optimized model will be dumped. In browser, a blob will be created
+     * with a pop-up window.
+     */
+    optimizedModelFilePath?: string;
+
+    /**
      * Wether enable profiling.
      *
      * This setting is a placeholder for a future use.
