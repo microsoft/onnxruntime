@@ -13,6 +13,8 @@
 using namespace onnxruntime;
 using namespace fastertransformer;
 
+fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
+
 FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* compute_stream) {
 
     const int batch_size    = 1;
@@ -85,7 +87,6 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* co
     attention_type_ = getAttentionType<float>(head_dim, getSMVersion(), true, seq_len);
     printf("attention_type: %d\n", int(attention_type_));
 
-    fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
     int max_batch = batch_size;
     printf("before ViTTransformerINT8\n");
     vit_ = new ViTTransformerINT8<float>(max_batch,
