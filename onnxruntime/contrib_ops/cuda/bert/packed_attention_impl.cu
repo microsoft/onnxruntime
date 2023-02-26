@@ -296,6 +296,102 @@ void LaunchAddBiasTranspose(
   }
 }
 
+constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
+
+// Input:  BxNxSxH
+// Output: TxNxH
+// Grid: T
+// Block: 256
+template <typename T>
+__global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
+    TransposeRemovePadding(T* target, const T* source, const int* token_offset,
+                           const int B, const int S, const int N, const int H) {
+  int token_idx = blockIdx.x;
+  int source_idx = token_offset[token_idx];
+  int b = source_idx / S;
+  int s = source_idx - b * S;
+
+  target += token_idx * N * H;
+  source += b * N * S * H + s * H;
+  for (int i = threadIdx.x; i < N * H; i += blockDim.x) {
+    int n = i / H;
+    int h = i - n * H;
+    target[i] = source[n * S * H + h];
+  }
+}
+
+template <typename T>
+Status LaunchTransposeRemovePadding(
+    T* output, const T* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream);
+
+template <>
+Status LaunchTransposeRemovePadding(
+    half* output, const half* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream) {
+  // input: [batch_size, number_heads, seq_len, head_size]
+  // output: [token_count, number_heads * head_size]
+
+  // Make sure memory is aligned to 128 bit
+  ORT_ENFORCE(!(reinterpret_cast<size_t>(input) & 0xF) && !(reinterpret_cast<size_t>(output) & 0xF), "alignment");
+
+  if (head_size % 8 == 0) {
+    const int4* input2 = reinterpret_cast<const int4*>(input);
+    int4* output2 = reinterpret_cast<int4*>(output);
+    TransposeRemovePadding<int4><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 8);
+  } else if (hidden_size % 4 == 0) {
+    const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
+    int64_t* output2 = reinterpret_cast<int64_t*>(output);
+    TransposeRemovePadding<int64_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 4);
+  } else if (hidden_size % 2 == 0) {
+    const int32_t* input2 = reinterpret_cast<const int32_t*>(input);
+    int32_t* output2 = reinterpret_cast<int32_t*>(output);
+    TransposeRemovePadding<int32_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 2);
+  } else {
+    const int16_t* input2 = reinterpret_cast<const int16_t*>(input);
+    int16_t* output2 = reinterpret_cast<int16_t*>(output);
+    TransposeRemovePadding<int16_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size);
+  }
+}
+
+// input: [batch_size, number_heads, seq_len, head_size]
+// output: [token_count, number_heads * head_size]
+template <>
+Status LaunchTransposeRemovePadding(
+    float* output, const float* input,
+    const int* token_offset, const int token_count,
+    const int batch_size, const int seq_len, const int number_heads, const int head_size,
+    cudaStream_t stream) {
+  ORT_ENFORCE(!(reinterpret_cast<size_t>(input) & 0xF) && !(reinterpret_cast<size_t>(output) & 0xF), "alignment");
+
+  if (hidden_size % 4 == 0) {
+    const int4* input2 = reinterpret_cast<const int4*>(input);
+    int4* output2 = reinterpret_cast<int4*>(output);
+    TransposeRemovePadding<int4><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 4);
+  } else if (hidden_size % 2 == 0) {
+    const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
+    int64_t* output2 = reinterpret_cast<int64_t*>(output);
+    TransposeRemovePadding<int64_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 2);
+  } else {
+    const int32_t* input2 = reinterpret_cast<const int32_t*>(input);
+    int32_t* output2 = reinterpret_cast<int32_t*>(output);
+    TransposeRemovePadding<int32_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
+        output2, input2, token_offset, batch_size, seq_len, number_heads, head_size);
+  }
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
     size_t batch_size,
@@ -517,9 +613,13 @@ Status QkvToContext(
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
 
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
-  Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
-                                 max_threads_per_block, false, temp_output, data.output);
-  DUMP_TENSOR("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+  Status result = LaunchTransposeRemovePadding(
+      data.output, temp_output,
+      data.token_offset, parameters.token_count,
+      batch_size, sequence_length, num_heads, v_head_size,
+      stream);
+
+  DUMP_TENSOR("unfused output", data.output, parameters.token_count, num_heads, v_head_size);
   return result;
 }
 
