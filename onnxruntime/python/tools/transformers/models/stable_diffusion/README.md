@@ -129,9 +129,9 @@ Compared to 1.14.0, nightly package has better performance with less memory usag
 
 ### Future Works
 
-We have plan on other optimizations:
-(1) Use IO Binding in the pipeline. Currently the input and output of each module is in CPU, and there is extra data copy between GPU and CPU, which slows down the pipeline.
-(2) Export the whole pipeline into one ONNX model. Currently, there are mutliple ONNX models for CLIP, VAE and U-Net etc. Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator, and be more efficient.
-(3) Use CUDA graph to speed up.
-(4) Attention fusion in CLIP
-(5) Leverage FP8 in latest GPU
+There are other optimizations might improve the performance:
+* Use IO Binding in the pipeline. Currently the input and output of each module is in CPU, and there is extra data copy between GPU and CPU, which slows down the pipeline.
+* Use CUDA graph to speed up inference.
+* Export the whole pipeline into one ONNX model. Currently, there are multiple ONNX models for CLIP, VAE and U-Net etc. Each model uses separated thread pool and memory allocator. Combine them into one model could share thread pool and memory allocator, and be more efficient.
+* Attention fusion in CLIP
+* Leverage FP8 in latest GPU
