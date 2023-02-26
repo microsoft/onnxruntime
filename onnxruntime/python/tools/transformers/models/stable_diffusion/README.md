@@ -30,7 +30,7 @@ Below is an example to optimize Stable Diffusion 1.5 models in Linux. For Window
 
 ### Setup Environment
 
-First, Let's create an python environment using [AnaConda](https://www.anaconda.com/products/distribution#Downloads), then install packages in [requirements.txt](https://raw.githubusercontent.com/microsoft/onnxruntime/main/onnxruntime/python/tools/transformers/models/stable_diffusion/requirements.txt):
+First, Let's create a python environment using [AnaConda](https://www.anaconda.com/products/distribution#Downloads), then install packages in [requirements.txt](https://raw.githubusercontent.com/microsoft/onnxruntime/main/onnxruntime/python/tools/transformers/models/stable_diffusion/requirements.txt):
 
 ```
 conda create -n py310 python=3.10
@@ -61,7 +61,7 @@ pip install ort-nightly-gpu -i https://aiinfra.pkgs.visualstudio.com/PublicPacka
 
 ### Export ONNX pipeline
 
-This step will export stable diffusion ONNX models in float32.
+This step will export stable diffusion 1.5 to ONNX model in float32.
 
 The following script downloads the model weights, you need to be logged in via `huggingface-cli login`. After login, run the following commands to export ONNX models:
 ```
@@ -76,7 +76,7 @@ Example to optimize the exported float32 ONNX models, and save to float16 models
 python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 ```
 
-Note that this will detect the installed ONNX Runtime version. If you installed ONNX Runtime v1.14, packed QKV and BiasAdd will be disabled since those kernels are added after v1.14.
+If you installed ONNX Runtime v1.14, packed QKV and BiasAdd will be disabled automatically since those kernels are added after v1.14.
 
 For Stable Diffusion 2.1 model, you will need force Attention to run in float32 to avoid black image by appending `--force_fp32_ops unet:Attention` to the command line. If you are using nightly package, append `--force_fp32_ops unet:MultiHeadAttention` instead.
 
