@@ -41,7 +41,6 @@ struct FTViTINT8CustomKernel {
   cublasAlgoMap* cublas_algo_map_;
   void* compute_stream_;
 
-  // set with default values
   int batch_size_;
   int img_size_;
   int patch_size_;
