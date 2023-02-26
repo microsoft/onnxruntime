@@ -3,7 +3,6 @@
 
 #pragma once
 #define ORT_API_MANUAL_INIT
-#include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "src/fastertransformer/models/vit_int8/ViTINT8.h"
@@ -11,8 +10,19 @@
 
 using namespace fastertransformer;
 
+template<typename T>
 struct FTViTINT8CustomKernel {
-  FTViTINT8CustomKernel(const OrtKernelInfo*, void* compute_stream);
+  FTViTINT8CustomKernel(const OrtKernelInfo* info,
+                        void* compute_stream,
+                        int batch_size,
+                        int img_size,
+                        int patch_size,
+                        int embed_dim,
+                        int head_num,
+                        int layer_num,
+                        int has_cls_token,
+                        int is_fp16,
+                        int int8_mode);
 
   void Compute(OrtKernelContext* context);
 
@@ -26,17 +36,16 @@ struct FTViTINT8CustomKernel {
   cublasINT8MMWrapper* cublas_wrapper_;
   std::mutex* cublas_wrapper_mutex_;
   AttentionType attention_type_;
-  ViTINT8Weight<float> params_;
-  ViTTransformerINT8<float>* vit_;
+  ViTINT8Weight<T> params_;
+  ViTTransformerINT8<T>* vit_;
   cublasAlgoMap* cublas_algo_map_;
-
   void* compute_stream_;
 };
 
-struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel> {
-  explicit FTViTINT8CustomOp(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel<float>> {
+  explicit FTViTINT8CustomOp(const char* provider, void* compute_stream);
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new FTViTINT8CustomKernel(info, compute_stream_); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const;
 
   const char* GetName() const { return name_; };
 
@@ -48,7 +57,7 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
 
   void SetInputTypeCount(size_t num) { num_inputs_ = num; };
 
-  ONNXTensorElementDataType GetInputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+  ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
   OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };   
 
@@ -56,7 +65,7 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
 
   void SetOutputTypeCount(size_t num) { num_outputs_ = num; };
 
-  ONNXTensorElementDataType GetOutputType(size_t /*index*/) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+  ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
   OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
 

@@ -1,33 +1,29 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-
 #include "ft_vit_int8_custom_op.h"
-#include "core/framework/provider_options.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include <cuda_profiler_api.h>
 #include <iostream>
 #include <sys/time.h>
 
-using namespace onnxruntime;
 using namespace fastertransformer;
 
-fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
+static fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
 
-FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* compute_stream) {
-
-    const int batch_size    = 1;
-    const int img_size      = 224;
-    const int patch_size    = 16;
-    const int embed_dim     = 768;
-    const int head_num      = 12;
-    const int layer_num     = 12;
-    const int has_cls_token = 1;
-    const int is_fp16       = 0;
-    const int int8_mode     = 2;
-
-
+template<typename T>
+FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
+                                                void* compute_stream,
+                                                int batch_size,
+                                                int img_size,
+                                                int patch_size,
+                                                int embed_dim,
+                                                int head_num,
+                                                int layer_num,
+                                                int has_cls_token,
+                                                int is_fp16,
+                                                int int8_mode) {
     checkCUDNN(cudnnCreate(&cudnn_handle_));
     checkCUDNN(cudnnSetStream(cudnn_handle_, stream_));
     check_cuda_error(cublasCreate(&cublas_handle_));
@@ -50,13 +46,12 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* co
     cublas_wrapper_ = new cublasINT8MMWrapper(
         cublas_handle_, cublaslt_handle_, stream_, cublas_algo_map_, cublas_wrapper_mutex_, use_ORDER_COL32_2R_4R4);
 
-    //if (std::is_same<T, half>::value) {
-        //cublas_wrapper->setFP16GemmConfig();
-    //}
-    //else if (std::is_same<T, float>::value) {
-        //cublas_wrapper->setFP32GemmConfig();
-    //}
-    cublas_wrapper_->setFP32GemmConfig();
+    if (std::is_same<T, half>::value) {
+        cublas_wrapper_->setFP16GemmConfig();
+    }
+    else if (std::is_same<T, float>::value) {
+        cublas_wrapper_->setFP32GemmConfig();
+    }
 
     const int  in_chans       = 3;
     const int  inter_size     = embed_dim * 4;
@@ -64,9 +59,7 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* co
     const bool with_cls_token = has_cls_token > 0;
     const int  seq_len        = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
 
-    //ViTINT8Weight<T> params =
-        //ViTINT8Weight<T>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
-    params_ = ViTINT8Weight<float>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
+    params_ = ViTINT8Weight<T>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
 
     FT_LOG_INFO("batch_size: %d, img_size : %d,\n"
                 "patch_size: %d, embed_dim: %d,\n"
@@ -83,13 +76,11 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* co
                 seq_len,
                 inter_size);
 
-    //AttentionType attention_type = getAttentionType<T>(head_dim, getSMVersion(), true, seq_len);
-    attention_type_ = getAttentionType<float>(head_dim, getSMVersion(), true, seq_len);
+    attention_type_ = getAttentionType<T>(head_dim, getSMVersion(), true, seq_len);
     printf("attention_type: %d\n", int(attention_type_));
 
     int max_batch = batch_size;
-    printf("before ViTTransformerINT8\n");
-    vit_ = new ViTTransformerINT8<float>(max_batch,
+    vit_ = new ViTTransformerINT8<T>(max_batch,
                                          img_size,
                                          in_chans,
                                          patch_size,
@@ -107,10 +98,10 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info, void* co
                                          &allocator,
                                          false,
                                          attention_type_);
-    printf("after ViTTransformerINT8\n");
 }
 
-void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
+template<typename T>
+void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
 
     const int batch_size    = 1;
     const int img_size      = 224;
@@ -121,26 +112,10 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
     const bool with_cls_token = has_cls_token > 0;
     const int seq_len       = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
 
-    FT_LOG_INFO("batch_size: %d, img_size : %d,\n"
-                "patch_size: %d, embed_dim: %d,\n"
-                "seq_len  : %d,\n",
-                batch_size,
-                img_size,
-                patch_size,
-                embed_dim,
-                seq_len);
-
-    //float *input_d, *output_d;
-    //deviceMalloc(&input_d, batch_size * img_size * img_size * in_chans, false);
-    //deviceMalloc(&output_d, batch_size * seq_len * embed_dim, false);
-
     Ort::KernelContext kcontext(context);
 
-    const size_t num_inputs = kcontext.GetInputCount();
-    printf("number of input %ld\n", num_inputs);
     Ort::ConstValue ort_val = kcontext.GetInput(0);
     const void* p_input_data = ort_val.GetTensorData<void>();
-    //const size_t num_outputs = kcontext.GetOutputCount();
 
     std::vector<int64_t> output_shape{(int64_t)batch_size, (int64_t)seq_len, (int64_t)embed_dim};
     Ort::UnownedValue ort_val_output = kcontext.GetOutput(0, output_shape);
@@ -148,24 +123,21 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
 
     std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
         fastertransformer::Tensor{MEMORY_GPU,
-               getTensorType<float>(),
+               getTensorType<T>(),
                std::vector<size_t>{(size_t)batch_size, (size_t)in_chans, (size_t)img_size, (size_t)img_size},
                p_input_data}};
-               //input_d}};
 
     std::vector<fastertransformer::Tensor> output_tensors =
         std::vector<fastertransformer::Tensor>{fastertransformer::Tensor{MEMORY_GPU,
-                                   getTensorType<float>(),
+                                   getTensorType<T>(),
                                    std::vector<size_t>{(size_t)batch_size, (size_t)seq_len, (size_t)embed_dim},
                                    p_output_data}};
-                                   //output_d}};
 
-    printf("before forward\n");
     vit_->forward(&output_tensors, &input_tensors, &params_);
-    printf("after forward\n");
 }
 
-void FTViTINT8CustomKernel::Release() {
+template<typename T>
+void FTViTINT8CustomKernel<T>::Release() {
     delete vit_;
     delete cublas_algo_map_;
     delete cublas_wrapper_mutex_;
@@ -180,3 +152,72 @@ void FTViTINT8CustomKernel::Release() {
     cudaDeviceSynchronize();
     check_cuda_error(cudaGetLastError());
 }
+
+//
+// FTViTINT8CustomOp 
+//
+FTViTINT8CustomOp::FTViTINT8CustomOp(const char* provider, void* compute_stream) {
+    provider_ = provider; 
+    compute_stream_ = compute_stream;
+}
+
+void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { 
+    // default values
+    int batch_size    = 1;
+    int img_size      = 224;
+    int patch_size    = 16;
+    int embed_dim     = 768;
+    int num_heads      = 12;
+    int layer_num     = 12;
+    int with_cls_token = 1;
+    int is_fp16       = 0;
+    int int8_mode     = 2;
+
+    Ort::ConstKernelInfo kinfo(info);
+
+    // extract batch size and image size from input
+    Ort::TypeInfo type_info = kinfo.GetInputTypeInfo(0); // first input has the dims of (batch, channel num, img size, img size)
+    Ort::ConstTypeInfo const_type_info = type_info.GetConst(); 
+    Ort::ConstTensorTypeAndShapeInfo type_shape_info = const_type_info.GetTensorTypeAndShapeInfo();
+    const std::vector<int64_t> input_shape = type_shape_info.GetShape();
+
+    batch_size = static_cast<int>(input_shape[0]);
+    img_size = static_cast<int>(input_shape[2]);
+
+    // extract patch size, embed dim, layer num ...
+    patch_size = static_cast<int>(kinfo.GetAttribute<int64_t>("patch_size"));
+    embed_dim = static_cast<int>(kinfo.GetAttribute<int64_t>("embed_dim"));
+    num_heads = static_cast<int>(kinfo.GetAttribute<int64_t>("num_heads"));
+    layer_num = static_cast<int>(kinfo.GetAttribute<int64_t>("layer_num"));
+    with_cls_token = static_cast<int>(kinfo.GetAttribute<int64_t>("with_cls_token"));
+    //is_fp16 = static_cast<int>(kinfo.GetAttribute<int64_t>("is_fp16"));
+    //int8_mode = static_cast<int>(kinfo.GetAttribute<int64_t>("int8_mode"));
+
+    if (is_fp16) {
+        return new FTViTINT8CustomKernel<half>(info,
+                                                compute_stream_,
+                                                batch_size,
+                                                img_size,
+                                                patch_size,
+                                                embed_dim,
+                                                num_heads,
+                                                layer_num,
+                                                with_cls_token,
+                                                is_fp16,
+                                                int8_mode); 
+    } else {
+        return new FTViTINT8CustomKernel<float>(info,
+                                                compute_stream_,
+                                                batch_size,
+                                                img_size,
+                                                patch_size,
+                                                embed_dim,
+                                                num_heads,
+                                                layer_num,
+                                                with_cls_token,
+                                                is_fp16,
+                                                int8_mode); 
+
+    }
+}
+

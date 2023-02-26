@@ -1,23 +1,5 @@
 #include "ft_custom_op_lib.h"
 #include "ft_vit_int8_custom_op.h"
-#include "core/framework/provider_options.h"
-
-//namespace onnxruntime {
-
-//common::Status CreateFTCustomOpDomainList(CUDAExecutionProviderInfo& info) {
-  //std::unique_ptr<OrtProviderCustomOpDomain> custom_op_domain = std::make_unique<OrtProviderCustomOpDomain>();
-  ////custom_op_domain->domain_ = "fastertransformer";
-  //custom_op_domain->domain_ = "trt.plugins";
-
-  //std::unique_ptr<FTViTCustomOp> vit_custom_op = std::make_unique<FTViTCustomOp>(onnxruntime::kCudaExecutionProvider, nullptr);
-  //custom_op_domain->custom_ops_.push_back(vit_custom_op.release());
-  //info.custom_op_domain_list.push_back(custom_op_domain.release());
-
-
-  //return common::Status::OK();
-//}
-
-//}
 
 static const char* c_OpDomain = "fastertransformer";
 constexpr const char* c_ORTCudaExecutionProvider = "CUDAExecutionProvider";
@@ -52,5 +34,4 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   }
 
   return result;
-
 }
