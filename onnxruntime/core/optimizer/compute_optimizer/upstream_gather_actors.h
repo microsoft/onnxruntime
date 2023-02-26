@@ -4,17 +4,7 @@
 #ifdef ENABLE_TRAINING_CORE
 #pragma once
 
-// Uncomment for debugging
-// #define NEED_LOG_DEBUG_INFO 1
-
-#ifdef NEED_LOG_DEBUG_INFO
-#define LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
-#else
-#define LOG_DEBUG_INFO(logger, message) \
-  ORT_UNUSED_PARAMETER(logger);         \
-  do {                                  \
-  } while (0)
-#endif
+#include "core/optimizer/compute_optimizer/common.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
@@ -24,7 +14,7 @@ namespace onnxruntime::optimizer::compute_optimizer {
  * Initially, an instance of this class for entry node is created, as the slice op propagates to entry node's inputs,
  * more instances of this class are created. The propagation stops when the all inputs are not supported to be sliced.
  */
-struct SliceInfo {
+struct SliceInfo : public UpstreamOperatorInfoBase {
   static constexpr int kSliceDataInputIndex = 0;
   static constexpr int kSliceOutputIndex = 0;
 
@@ -33,7 +23,7 @@ struct SliceInfo {
             const std::string& slice_axis_attr_name,
             int slice_axis,
             bool is_entry_node_ptr = false)
-      : node_ptr(slice_node), is_scalar_slice(is_slice_scalar) {
+      : UpstreamOperatorInfoBase(slice_node), is_scalar_slice(is_slice_scalar) {
     axis_attr_name = slice_axis_attr_name;
 
     const NodeArg* input = node_ptr->InputDefs()[kSliceDataInputIndex];
@@ -58,7 +48,6 @@ struct SliceInfo {
     return kSliceOutputIndex;
   }
 
-  Node* node_ptr;        // The Gather/GatherND node that triggers the optimization search.
   bool is_scalar_slice;  // whether the slice is a scalar, if it is, after Gather, rank will be reduced by 1.
   std::string axis_attr_name;
   int non_negative_axis;  // The axis to slice on
@@ -75,15 +64,15 @@ struct SliceInfo {
 /**
  * @brief Base class for all pass through actors.
  *
- * Each actors defines rules to determine whether a node can be passed through, and how to do the pass through.
+ * Each actors defines rules to determine whether a node can be passed through, and post process after pass through.
  * PreCheck is the interface to check whether a node can be passed through.
- * The pass through is done transparently, without any interface required to implemented.
+ *   The pass through is done transparently, without any interface required to implemented.
  * PostProcess is the interface to do some adaptor work after the pass through.
  */
-class OperatorPassThroughActorBase {
+class UpStreamGatherOperatorActorBase : public UpStreamOperatorActorBase {
  public:
-  OperatorPassThroughActorBase() = default;
-  virtual ~OperatorPassThroughActorBase() = default;
+  UpStreamGatherOperatorActorBase() = default;
+  virtual ~UpStreamGatherOperatorActorBase() = default;
 
   /**
    * @brief Check whether a node can be passed through.
@@ -138,10 +127,10 @@ class OperatorPassThroughActorBase {
                            const logging::Logger& logger) = 0;
 };
 
-class DefaultOperatorPassThroughActorBase : public OperatorPassThroughActorBase {
+class DefaultUpStreamGatherOperatorActorBase : public UpStreamGatherOperatorActorBase {
  public:
-  DefaultOperatorPassThroughActorBase() = default;
-  ~DefaultOperatorPassThroughActorBase() = default;
+  DefaultUpStreamGatherOperatorActorBase() = default;
+  ~DefaultUpStreamGatherOperatorActorBase() = default;
 
   bool PreCheck(const Graph&, const Node&, const SliceInfo&, const std::vector<int>&, const logging::Logger&,
                 std::unordered_map<int, int>&, bool&) override {
@@ -156,7 +145,7 @@ class DefaultOperatorPassThroughActorBase : public OperatorPassThroughActorBase 
                    const logging::Logger& logger) override;
 };
 
-class SimplePassThroughActor : public DefaultOperatorPassThroughActorBase {
+class SimplePassThroughActor : public DefaultUpStreamGatherOperatorActorBase {
  public:
   SimplePassThroughActor() = default;
   ~SimplePassThroughActor() = default;
@@ -180,7 +169,7 @@ class ReductionOpPassThroughActor : public SimplePassThroughActor {
                 bool& input_has_dim_1_for_axis) override;
 };
 
-class ReshapePassThroughActor : public DefaultOperatorPassThroughActorBase {
+class ReshapePassThroughActor : public DefaultUpStreamGatherOperatorActorBase {
  public:
   ReshapePassThroughActor() = default;
   ~ReshapePassThroughActor() = default;
@@ -200,7 +189,7 @@ class ReshapePassThroughActor : public DefaultOperatorPassThroughActorBase {
                    const logging::Logger& logger) override;
 };
 
-class TransposePassThroughActor : public DefaultOperatorPassThroughActorBase {
+class TransposePassThroughActor : public DefaultUpStreamGatherOperatorActorBase {
  public:
   TransposePassThroughActor() = default;
   ~TransposePassThroughActor() = default;
@@ -220,7 +209,7 @@ class TransposePassThroughActor : public DefaultOperatorPassThroughActorBase {
                    const logging::Logger& logger) override;
 };
 
-class MatMulPassThroughActor : public DefaultOperatorPassThroughActorBase {
+class MatMulPassThroughActor : public DefaultUpStreamGatherOperatorActorBase {
  public:
   MatMulPassThroughActor() = default;
   ~MatMulPassThroughActor() = default;
@@ -252,62 +241,6 @@ class MatMulPassThroughActor : public DefaultOperatorPassThroughActorBase {
  */
 bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis,
                             const ONNX_NAMESPACE::TensorShapeProto_Dimension& new_dim_value);
-
-/**
- * @brief Insert a new node to the graph,
- *  1. taking dest_node.input[dest_input_index] as the input of the new node.
- *  2. remove connection of dest_node and it's dest_input_index-th input producer node.
- *  3. connect the new node and dest_node.
- *
- * Original graph:
- *         Node A
- *       /        \
- *  A-output-0    A-output-1
- *                  \         B-input-1
- *                   \       /
- *                     Node B
- *                       |
- *
- * dest_node = Node B
- * dest_input_index = 0
- * op_type = C
- *
- * After inserting the new node:
- *         Node A
- *       /        \
- *  A-output-0    A-output-1
- *                  \
- *                 Node C
- *                  /  \
- *         c-output-0  C-output-1     B-input-1
- *                         \       /
- *                          Node B
- *                             |
- * @param graph  Graph to insert the new node.
- * @param dest_node The node to insert the new node before.
- * @param dest_in_index The input index of the dest_node to insert the new node before.
- * @param new_node_output_index The output index of the new node to connect to the dest_node.
- * @param name The name of the new node.
- * @param op_type The op_type of the new node.
- * @param description The description of the new node.
- * @param input_args The input args of the new node. At least one of the input args should be the
- *   dest_node's dest_in_index-th input arg.
- * @param attributes The attributes of the new node.
- * @param domain The domain of the new node.
- * @param logger The logger.
- * @return
- */
-Node* InsertIntermediateNodeOnDestInput(Graph& graph,
-                                        Node& dest_node, int dest_in_index,
-                                        int new_node_input_index,
-                                        int new_node_output_index,
-                                        const std::string& name, const std::string& op_type,
-                                        const std::string& description,
-                                        const InlinedVector<NodeArg*>& input_args,
-                                        const InlinedVector<NodeArg*>& output_args,
-                                        const onnxruntime::NodeAttributes& attributes,
-                                        const std::string& domain,
-                                        const logging::Logger& logger);
 
 /**
  * @brief Insert adaptor nodes for the inputs and output, to make sure they remain the same rank, when scalar slicing

@@ -130,7 +130,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
-        transformers.emplace_back(std::make_unique<ComputeOptimizer>(compatible_eps));
+        transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
       }
       if (config.gelu_recompute) {
         transformers.emplace_back(std::make_unique<GeluRecompute>());
