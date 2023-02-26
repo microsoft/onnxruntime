@@ -130,7 +130,13 @@ void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
                                    std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len, (size_t)embed_dim_},
                                    p_output_data}};
 
+    CudaTimer cuda_timer(stream_);
+    cuda_timer.start();
+
     vit_->forward(&output_tensors, &input_tensors, &params_);
+
+    float total_time = cuda_timer.stop();
+    printf("vit forward time:%.2f ms\n", total_time);
 }
 
 template<typename T>
@@ -160,35 +166,37 @@ FTViTINT8CustomOp::FTViTINT8CustomOp(const char* provider, void* compute_stream)
 
 void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { 
     // default values
-    int batch_size    = 1;
-    int img_size      = 224;
-    int patch_size    = 16;
-    int embed_dim     = 768;
+    int batch_size     = 1;
+    int img_size       = 224;
+    int patch_size     = 16;
+    int embed_dim      = 768;
     int num_heads      = 12;
-    int layer_num     = 12;
+    int layer_num      = 12;
     int with_cls_token = 1;
-    int is_fp16       = 0;
-    int int8_mode     = 2;
+    int is_fp16        = 0;
+    int int8_mode      = 2;
 
     Ort::ConstKernelInfo kinfo(info);
 
-    // extract batch size and image size from input
+    // extract batch size and image size from kernel info 
     Ort::TypeInfo type_info = kinfo.GetInputTypeInfo(0); // first input has the dims of (batch, channel num, img size, img size)
     Ort::ConstTypeInfo const_type_info = type_info.GetConst(); 
     Ort::ConstTensorTypeAndShapeInfo type_shape_info = const_type_info.GetTensorTypeAndShapeInfo();
     const std::vector<int64_t> input_shape = type_shape_info.GetShape();
-
     batch_size = static_cast<int>(input_shape[0]);
     img_size = static_cast<int>(input_shape[2]);
 
-    // extract patch size, embed dim, layer num ...
+    // extract is fp16 from kernel info
+    ONNXTensorElementDataType onnx_type = type_shape_info.GetElementType();
+    is_fp16 = (onnx_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16)? 1 : 0;
+
+    // extract others from kernel info
     patch_size = static_cast<int>(kinfo.GetAttribute<int64_t>("patch_size"));
     embed_dim = static_cast<int>(kinfo.GetAttribute<int64_t>("embed_dim"));
     num_heads = static_cast<int>(kinfo.GetAttribute<int64_t>("num_heads"));
     layer_num = static_cast<int>(kinfo.GetAttribute<int64_t>("layer_num"));
     with_cls_token = static_cast<int>(kinfo.GetAttribute<int64_t>("with_cls_token"));
-    //is_fp16 = static_cast<int>(kinfo.GetAttribute<int64_t>("is_fp16"));
-    //int8_mode = static_cast<int>(kinfo.GetAttribute<int64_t>("int8_mode"));
+    int8_mode = static_cast<int>(kinfo.GetAttribute<int64_t>("int8_mode"));
 
     if (is_fp16) {
         return new FTViTINT8CustomKernel<half>(info,
