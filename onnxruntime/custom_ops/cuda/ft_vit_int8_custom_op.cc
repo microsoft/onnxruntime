@@ -134,7 +134,7 @@ void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
 }
 
 template<typename T>
-void FTViTINT8CustomKernel<T>::Release() {
+FTViTINT8CustomKernel<T>::~FTViTINT8CustomKernel() {
     delete vit_;
     delete cublas_algo_map_;
     delete cublas_wrapper_mutex_;

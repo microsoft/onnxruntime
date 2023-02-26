@@ -26,7 +26,7 @@ struct FTViTINT8CustomKernel {
 
   void Compute(OrtKernelContext* context);
 
-  void Release();
+  ~FTViTINT8CustomKernel();
 
  private:
   cudnnHandle_t    cudnn_handle_;
