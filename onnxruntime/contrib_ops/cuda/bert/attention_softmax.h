@@ -558,7 +558,6 @@ __device__ inline void SoftmaxSmallPacked(const int sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  const bool no_add = (add_before_softmax == nullptr);
   float input_data = add_before_softmax != nullptr ? float(input[index] + add_before_softmax[index]) : float(input[index]);
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
@@ -583,7 +582,7 @@ __device__ inline void SoftmaxSmallPacked(const int sequence_length,
   __syncthreads();
 
   // threadIdx.x might be larger than all_sequence_length due to alignment to 32x.
-  if (threadIdx.x < all_sequence_length) {
+  if (threadIdx.x < sequence_length) {
     output[index] = T(thread_data_exp * sum_reverse_block);
   }
 }
@@ -703,13 +702,16 @@ Status ComputeSoftmaxWithCumSeqLength(
 
 template <typename T>
 Status ComputeSoftmaxWithMask1D(cudaStream_t stream,
+                                const int all_sequence_length,
                                 const int sequence_length,
                                 const int batch_size,
                                 const int num_heads,
-                                const int* cum_seq_len,
+                                const int* mask_index,
+                                const int* mask_start,
                                 const T* add_before_softmax,
                                 const T* input,
-                                T* output) {
+                                T* output,
+                                const bool is_unidirectional) {
   const dim3 grid(sequence_length * num_heads, batch_size, 1);
 
   if (all_sequence_length <= 32) {

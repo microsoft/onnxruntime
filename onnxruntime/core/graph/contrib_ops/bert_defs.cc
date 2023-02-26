@@ -388,12 +388,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
                "T")
         .Input(3,
-               "packing_token_offset",
+               "token_offset",
                "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
                "M")
         .Input(4,
                "cumulative_sequence_length",
-               "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
+               "In packing mode, it specify the offset of each token(batch_size + 1). cumulative_sequence_length.",
                "M")
         .Input(5,
                "relative_position_bias",

@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "contrib_ops/cuda/bert/packed_attention.h"
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
-#include "contrib_ops/cuda/bert/packed_attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 
@@ -17,22 +18,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kPastSequenceLengthInputIndex = 6;
-constexpr int kPastInputIndex = 4;
-constexpr int kPresentOutputIndex = 1;
-
-#define REGISTER_KERNEL_TYPED(T)                                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      Attention,                                                               \
-      kMSDomain,                                                               \
-      1,                                                                       \
-      T,                                                                       \
-      kCudaExecutionProvider,                                                  \
-      (*KernelDefBuilder::Create())                                            \
-          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
-          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
-      Attention<T>);
+#define REGISTER_KERNEL_TYPED(T)                                  \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
+      PackedAttention,                                            \
+      kMSDomain,                                                  \
+      1,                                                          \
+      T,                                                          \
+      kCudaExecutionProvider,                                     \
+      (*KernelDefBuilder::Create())                               \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+      PackedAttention<T>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -51,7 +46,7 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info)
   }
 
   disable_fused_runner_ = sizeof(T) != 2 ||
-                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
+                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
@@ -63,6 +58,7 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info)
 #endif
 }
 
+template <typename T>
 Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                                        const TensorShape& weights_shape,
                                        const TensorShape& bias_shape,
@@ -105,8 +101,8 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                            token_offset_dims.size());
   }
 
-  int64_t batch_size = dims_token_offset[0];
-  int64_t sequence_length = dims_token_offset[1];
+  int64_t batch_size = token_offset_dims[0];
+  int64_t sequence_length = token_offset_dims[1];
 
   const auto& bias_dims = bias_shape.GetDims();
   if (bias_dims.size() != 1) {
@@ -234,7 +230,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   packing_token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
                                   relative_position_bias,
-                                  &parameters));
+                                  parameters));
 
   int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
@@ -305,28 +301,20 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.head_size,
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
-                                                   parameters.kv_sequence_length,
-                                                   parameters.total_sequence_length,
                                                    fused_runner,
                                                    use_memory_efficient_attention);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
-  AttentionData<CudaT> data;
+  PackedAttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
-  data.query = nullptr;
-  data.key = nullptr;
-  data.value = nullptr;
-  data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
-  data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
-  data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
+  data.token_offset = packing_token_offset->Data<int32_t>();
+  data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
-  data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
-  data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);

@@ -35,48 +35,63 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/packed_attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/transformer_common.h"
-#include "contrib_ops/cuda/bert/add_bias_transpose.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/mha_runner.h"
 #include "contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/cross_attention/fmha_cross_attention.h"
-#include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/rotary_embedding_util.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
 
 #define CHECK_CUDA(expr) CUDA_RETURN_IF_ERROR(expr)
-#define CUDA_MEMORY_ALIGNMENT 256
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-static size_t AlignTo(size_t a, size_t b) {
-  return CeilDiv(a, b) * b;
-}
-
-size_t AlignSize(size_t bytes) {
-  const size_t bytesAligned = AlignTo(bytes, CUDA_MEMORY_ALIGNMENT);
-  return bytesAligned;
-}
+#define CUDA_MEMORY_ALIGNMENT 256
 
 size_t GetAttentionScratchSize(
     size_t element_size,
     size_t batch_size,
     size_t num_heads,
-    size_t sequence_length,
-    size_t total_sequence_length) {
-  const size_t bytes = element_size * batch_size * num_heads * sequence_length * total_sequence_length;
-  return AlignSize(bytes);
+    size_t sequence_length) {
+  const size_t bytes = element_size * batch_size * num_heads * sequence_length * sequence_length;
+  return ((bytes + CUDA_MEMORY_ALIGNMENT - 1) / CUDA_MEMORY_ALIGNMENT) * CUDA_MEMORY_ALIGNMENT;
 }
 
-size_t GetSequenceOffsetSize(int batch_size, bool has_padding) {
-  // There are batch_size + 1 offsets Without padding (or padding removed), and 2 * batch_size + 1 with padding.
-  size_t bytes = sizeof(int) * ((has_padding ? 2 * batch_size : batch_size) + 1);
-  return AlignSize(bytes);
-  ;
+size_t GetAttentionWorkspaceSize(
+    size_t element_size,
+    size_t batch_size,
+    size_t num_heads,
+    size_t qk_head_size,
+    size_t v_head_size,
+    size_t sequence_length,
+    void* fused_runner,
+    bool use_memory_efficient_attention) {
+  // Note that q, k and v might need alignment for fused attention kernels.
+  const size_t qkv_bytes = element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size);
+
+#if USE_FLASH_ATTENTION
+  if (use_memory_efficient_attention) {
+    size_t fmha_buffer_bytes = 0;
+    if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
+      fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
+    }
+
+    return qkv_bytes + fmha_buffer_bytes;
+  }
+#else
+  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
+#endif
+
+  if (fused_runner != nullptr) {
+    return qkv_bytes;
+  }
+
+  return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length);
 }
 
 // Grid: (B, S)
@@ -104,8 +119,7 @@ __global__ void AddBiasTransposeQKV(const T* input,
   int b = blockIdx.x;
   int s = blockIdx.y;
 
-  int B = gridDim.x;
-  int S = gridDim.y;
+  int S = gridDim.x;
 
   const int packing_token_idx = b * S + s;
   const int padding_token_idx = token_offset[packing_token_idx];
@@ -175,19 +189,19 @@ void InvokeAddBiasTranspose(
     const int num_heads, const int qk_head_size, const int v_head_size,
     const int format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
-  const dim3 grid(batch_size, sequence_length);
+  const dim3 grid(sequence_length, batch_size);
   ORT_ENFORCE(format == 1);
 
-  AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input,
-                                                     biases,
-                                                     num_heads,
-                                                     qk_head_size,
-                                                     v_head_size,
-                                                     output,
-                                                     output + batch_size * sequence_length * num_heads * qk_head_size,
-                                                     output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
-                                                     token_offset,
-                                                     token_count)
+  AddBiasTransposeQKV<T><<<grid, 256, 0, stream>>>(input,
+                                                   biases,
+                                                   num_heads,
+                                                   qk_head_size,
+                                                   v_head_size,
+                                                   output,
+                                                   output + batch_size * sequence_length * num_heads * qk_head_size,
+                                                   output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
+                                                   token_offset,
+                                                   token_count);
 
   // if (format == 2) {
   //   AddBiasTransposeTrt<T><<<grid, 256, 0, stream>>>(input, biases, output);
@@ -241,7 +255,7 @@ struct T4<float> {
 };
 
 template <>
-struct T4<float> {
+struct T4<half> {
   using Type = Half4;
 };
 
@@ -254,7 +268,7 @@ struct T2<float> {
 };
 
 template <>
-struct T2<float> {
+struct T2<half> {
   using Type = half2;
 };
 
@@ -266,26 +280,28 @@ void LaunchAddBiasTranspose(
     const int format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   if (0 == (qk_head_size & 3) && 0 == (v_head_size & 3)) {
-    using T4Type = T4<T>::Type;
+    using T4Type = typename T4<T>::Type;
     const int H = qk_head_size / 4;
+    const int H_v = v_head_size / 4;
     const T4Type* input2 = reinterpret_cast<const T4Type*>(input);
     const T4Type* biases2 = reinterpret_cast<const T4Type*>(biases);
     T4Type* output2 = reinterpret_cast<T4Type*>(output);
     InvokeAddBiasTranspose<T4Type>(
         input2, biases2, output2,
         batch_size, sequence_length,
-        num_heads, qk_head_size, v_head_size,
+        num_heads, H, H_v,
         format, token_offset, token_count, stream);
   } else if (0 == (qk_head_size & 1) && 0 == (v_head_size & 1)) {
-    using T2Type = T2<T>::Type;
+    using T2Type = typename T2<T>::Type;
     const int H = qk_head_size / 2;
+    const int H_v = v_head_size / 2;
     const T2Type* input2 = reinterpret_cast<const T2Type*>(input);
     const T2Type* biases2 = reinterpret_cast<const T2Type*>(biases);
     T2Type* output2 = reinterpret_cast<T2Type*>(output);
     InvokeAddBiasTranspose<T2Type>(
         input2, biases2, output2,
         batch_size, sequence_length,
-        num_heads, qk_head_size, v_head_size,
+        num_heads, H, H_v,
         format, token_offset, token_count, stream);
   } else {
     InvokeAddBiasTranspose<T>(
@@ -344,12 +360,12 @@ Status LaunchTransposeRemovePadding(
     int4* output2 = reinterpret_cast<int4*>(output);
     TransposeRemovePadding<int4><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 8);
-  } else if (hidden_size % 4 == 0) {
+  } else if (head_size % 4 == 0) {
     const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
     int64_t* output2 = reinterpret_cast<int64_t*>(output);
     TransposeRemovePadding<int64_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 4);
-  } else if (hidden_size % 2 == 0) {
+  } else if (head_size % 2 == 0) {
     const int32_t* input2 = reinterpret_cast<const int32_t*>(input);
     int32_t* output2 = reinterpret_cast<int32_t*>(output);
     TransposeRemovePadding<int32_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
@@ -360,6 +376,8 @@ Status LaunchTransposeRemovePadding(
     TransposeRemovePadding<int16_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         output2, input2, token_offset, batch_size, seq_len, number_heads, head_size);
   }
+
+  return CUDA_CALL(cudaGetLastError());
 }
 
 // input: [batch_size, number_heads, seq_len, head_size]
@@ -372,12 +390,12 @@ Status LaunchTransposeRemovePadding(
     cudaStream_t stream) {
   ORT_ENFORCE(!(reinterpret_cast<size_t>(input) & 0xF) && !(reinterpret_cast<size_t>(output) & 0xF), "alignment");
 
-  if (hidden_size % 4 == 0) {
+  if (head_size % 4 == 0) {
     const int4* input2 = reinterpret_cast<const int4*>(input);
     int4* output2 = reinterpret_cast<int4*>(output);
     TransposeRemovePadding<int4><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         output2, input2, token_offset, batch_size, seq_len, number_heads, head_size / 4);
-  } else if (hidden_size % 2 == 0) {
+  } else if (head_size % 2 == 0) {
     const int64_t* input2 = reinterpret_cast<const int64_t*>(input);
     int64_t* output2 = reinterpret_cast<int64_t*>(output);
     TransposeRemovePadding<int64_t><<<token_count, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
@@ -392,46 +410,9 @@ Status LaunchTransposeRemovePadding(
   return CUDA_CALL(cudaGetLastError());
 }
 
-size_t GetAttentionWorkspaceSize(
-    size_t element_size,
-    size_t batch_size,
-    size_t num_heads,
-    size_t qk_head_size,
-    size_t v_head_size,
-    size_t sequence_length,
-    size_t kv_sequence_length,
-    size_t total_sequence_length,
-    void* fused_runner,
-    bool use_memory_efficient_attention) {
-  // Note that q, k and v might need alignment for fused attention kernels.
-  const size_t qkv_bytes = element_size * batch_size * num_heads *
-                           ((sequence_length + kv_sequence_length) * qk_head_size + kv_sequence_length * v_head_size);
-
-#if USE_FLASH_ATTENTION
-  if (use_memory_efficient_attention) {
-    size_t fmha_buffer_bytes = 0;
-    if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
-      fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
-    }
-
-    return qkv_bytes + fmha_buffer_bytes;
-  }
-#else
-  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
-#endif
-
-  if (fused_runner != nullptr) {
-    size_t sequence_offset_bytes = GetSequenceOffsetSize(static_cast<int>(batch_size), true);
-    return qkv_bytes + sequence_offset_bytes;
-  }
-
-  return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length,
-                                                 total_sequence_length);
-}
-
 template <typename T>
-Status PrepareQkv(contrib::PackedAttentionParameters& parameters,
-                  contrib::PackedAttentionData<T>& data,
+Status PrepareQkv(PackedAttentionParameters& parameters,
+                  PackedAttentionData<T>& data,
                   AttentionQkvFormat& qkv_format,
                   cudaStream_t stream) {
   const int batch_size = parameters.batch_size;
@@ -466,17 +447,17 @@ Status PrepareQkv(contrib::PackedAttentionParameters& parameters,
 
 template <typename T>
 Status QkvToContext(
+    const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
-    contrib::PackedAttentionParameters& parameters,
-    contrib::PackedAttentionData<T>& data) {
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<T>& data) {
   constexpr size_t element_size = sizeof(T);
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  const float mask_filter_value = parameters.mask_filter_value;
   void* fused_runner = data.fused_runner;
 
   // At most one fused kernel is enabled.
@@ -519,44 +500,45 @@ Status QkvToContext(
     return Status::OK();
   }
 
-#if USE_FLASH_ATTENTION
-  if (data.use_memory_efficient_attention) {
-    // We only enable fused cross attention when there is no key padding mask.
-    // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-    assert(data.mask_index == nullptr);
-    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+  /*
+  #if USE_FLASH_ATTENTION
+    if (data.use_memory_efficient_attention) {
+      // We only enable fused cross attention when there is no key padding mask.
+      // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
+      assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-    const void* query = q;
-    const void* key = k;
-    const void* value = v;
-    if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
-      query = data.query;
+      const void* query = q;
+      const void* key = k;
+      const void* value = v;
+      if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
+        query = data.query;
+      }
+
+      MemoryEfficientAttentionParams p;
+      p.sm = device_prop.major * 10 + device_prop.minor;
+      p.is_half = sizeof(T) == 2;
+      p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
+      p.num_heads = parameters.num_heads;
+      p.sequence_length = parameters.sequence_length;
+      p.kv_sequence_length = parameters.total_sequence_length;
+      p.qk_head_size = parameters.head_size;
+      p.v_head_size = parameters.v_head_size;
+      p.causal = parameters.is_unidirectional;
+      p.cu_seqlens_q = nullptr;
+      p.cu_seqlens_k = nullptr;
+      p.query = query;
+      p.key = key;
+      p.value = value;
+      p.output = data.output;
+      p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
+      p.stream = stream;
+      run_memory_efficient_attention(p);
+
+      DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      return Status::OK();
     }
-
-    MemoryEfficientAttentionParams p;
-    p.sm = device_prop.major * 10 + device_prop.minor;
-    p.is_half = sizeof(T) == 2;
-    p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
-    p.num_heads = parameters.num_heads;
-    p.sequence_length = parameters.sequence_length;
-    p.kv_sequence_length = parameters.total_sequence_length;
-    p.qk_head_size = parameters.head_size;
-    p.v_head_size = parameters.v_head_size;
-    p.causal = parameters.is_unidirectional;
-    p.cu_seqlens_q = nullptr;
-    p.cu_seqlens_k = nullptr;
-    p.query = query;
-    p.key = key;
-    p.value = value;
-    p.output = data.output;
-    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
-    p.stream = stream;
-    run_memory_efficient_attention(p);
-
-    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
-    return Status::OK();
-  }
-#endif
+  #endif
+  */
 
   // The following are unfused attention.
   assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -582,16 +564,14 @@ Status QkvToContext(
       scratch1, sequence_length, sequence_length * sequence_length,
       batches, device_prop));
 
-  DUMP_TENSOR_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
+  DUMP_TENSOR_D("QK", scratch1, batch_size * num_heads, sequence_length, sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
-                                               sequence_length, total_sequence_length);
+                                               sequence_length);
   T* scratch2 = scratch1 + (bytes / element_size);
 
   // Apply softmax and store result R to scratch2: BxNxSxT
-  assert(mask_index_dims.size() == 1);
   // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
-  const int* mask_start = (mask_index_dims[0] > batch_size) ? mask_index + batch_size : nullptr;
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scratch1,
       data.relative_position_bias,
@@ -623,24 +603,19 @@ Status QkvToContext(
   return result;
 }
 
-// Template Instantiation
-template struct AttentionData<float>;
-
-template struct AttentionData<half>;
-
 template Status QkvToContext<float>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<float>& data);
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<float>& data);
 
 template Status QkvToContext<half>(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
-    contrib::AttentionParameters& parameters,
-    AttentionData<half>& data);
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<half>& data);
 
 }  // namespace cuda
 }  // namespace contrib
