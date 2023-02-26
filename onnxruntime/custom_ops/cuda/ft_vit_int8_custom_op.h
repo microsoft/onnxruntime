@@ -40,6 +40,13 @@ struct FTViTINT8CustomKernel {
   ViTTransformerINT8<T>* vit_;
   cublasAlgoMap* cublas_algo_map_;
   void* compute_stream_;
+
+  // set with default values
+  int batch_size_;
+  int img_size_;
+  int patch_size_;
+  int embed_dim_;
+  int has_cls_token_;
 };
 
 struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel<float>> {

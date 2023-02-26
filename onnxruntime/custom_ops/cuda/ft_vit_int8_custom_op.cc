@@ -23,7 +23,9 @@ FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                                 int layer_num,
                                                 int has_cls_token,
                                                 int is_fp16,
-                                                int int8_mode) {
+                                                int int8_mode):
+batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim_(embed_dim), has_cls_token_(has_cls_token) 
+{
     checkCUDNN(cudnnCreate(&cudnn_handle_));
     checkCUDNN(cudnnSetStream(cudnn_handle_, stream_));
     check_cuda_error(cublasCreate(&cublas_handle_));
@@ -103,34 +105,29 @@ FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
 template<typename T>
 void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
 
-    const int batch_size    = 1;
-    const int img_size      = 224;
-    const int patch_size    = 16;
-    const int embed_dim     = 768;
-    const int has_cls_token = 1;
     const int  in_chans       = 3;
-    const bool with_cls_token = has_cls_token > 0;
-    const int seq_len       = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
+    const bool with_cls_token = has_cls_token_ > 0;
+    const int seq_len       = (img_size_ / patch_size_) * (img_size_ / patch_size_) + (with_cls_token ? 1 : 0);
 
     Ort::KernelContext kcontext(context);
 
     Ort::ConstValue ort_val = kcontext.GetInput(0);
     const void* p_input_data = ort_val.GetTensorData<void>();
 
-    std::vector<int64_t> output_shape{(int64_t)batch_size, (int64_t)seq_len, (int64_t)embed_dim};
+    std::vector<int64_t> output_shape{(int64_t)batch_size_, (int64_t)seq_len, (int64_t)embed_dim_};
     Ort::UnownedValue ort_val_output = kcontext.GetOutput(0, output_shape);
     const void* p_output_data = ort_val_output.GetTensorData<void>();
 
     std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
         fastertransformer::Tensor{MEMORY_GPU,
                getTensorType<T>(),
-               std::vector<size_t>{(size_t)batch_size, (size_t)in_chans, (size_t)img_size, (size_t)img_size},
+               std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans, (size_t)img_size_, (size_t)img_size_},
                p_input_data}};
 
     std::vector<fastertransformer::Tensor> output_tensors =
         std::vector<fastertransformer::Tensor>{fastertransformer::Tensor{MEMORY_GPU,
                                    getTensorType<T>(),
-                                   std::vector<size_t>{(size_t)batch_size, (size_t)seq_len, (size_t)embed_dim},
+                                   std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len, (size_t)embed_dim_},
                                    p_output_data}};
 
     vit_->forward(&output_tensors, &input_tensors, &params_);
