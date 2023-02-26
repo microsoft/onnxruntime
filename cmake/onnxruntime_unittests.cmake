@@ -153,23 +153,60 @@ function(AddTest)
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (onnxruntime_BUILD_WEBASSEMBLY)
-      find_program(NODE_EXECUTABLE node required)
-      if (NOT NODE_EXECUTABLE)
-        message(FATAL_ERROR "Node is required for unit tests")
+      # the following code are copied from onnxruntime_nodejs.cmake
+      if (CMAKE_HOST_WIN32)
+          set(NPM_CLI npm.cmd)
+      else()
+          set(NPM_CLI npm)
       endif()
 
-      set(TEST_NODE_FLAGS)
-      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
+      # verify Node.js and NPM
+      execute_process(COMMAND node --version
+          OUTPUT_VARIABLE node_version
+          RESULT_VARIABLE had_error
+          OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if(had_error)
+          message(FATAL_ERROR "Failed to find Node.js: " ${had_error})
       endif()
-      if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
+      execute_process(COMMAND ${NPM_CLI} --version
+          OUTPUT_VARIABLE npm_version
+          RESULT_VARIABLE had_error
+          OUTPUT_STRIP_TRAILING_WHITESPACE)
+      if(had_error)
+          message(FATAL_ERROR "Failed to find NPM: " ${had_error})
       endif()
 
-      add_test(NAME ${_UT_TARGET}
-        COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
-      )
+      if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
+        add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/package.json $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/package-lock.json $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/karma.conf.js $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${NPM_CLI} ci
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+
+        set(TEST_NPM_FLAGS)
+        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+          list(APPEND TEST_NPM_FLAGS "--wasm-threads")
+        endif()
+        add_test(NAME ${_UT_TARGET}
+          COMMAND ${NPM_CLI} test -- ${TEST_NPM_FLAGS} --entry=${_UT_TARGET} ${TEST_ARGS}
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+      else()
+        set(TEST_NODE_FLAGS)
+        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
+        endif()
+        if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
+        endif()
+
+        add_test(NAME ${_UT_TARGET}
+          COMMAND node ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+      endif()
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
@@ -797,8 +834,8 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()

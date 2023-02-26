@@ -38,7 +38,7 @@ Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
   if (ctx.GetDeviceStream(stream_idx)) {
     ctx.GetDeviceStream(stream_idx)->UpdateStreamClock(ctx.GetNotification(notification_idx_)->GetStreamSyncTable());
   }
-  LOGS(ctx.GetLogger(), INFO) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx_;
+  LOGS(ctx.GetLogger(), VERBOSE) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx_;
   continue_flag = true;
   return Status::OK();
 }
@@ -85,8 +85,8 @@ Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
   if (ctx.GetNotification(notification_idx_)) {
     ctx.GetNotification(notification_idx_)->ActivateAndUpdate();
   }
-  LOGS(ctx.GetLogger(), INFO) << "stream " << stream_idx
-                              << " activate notification with index " << notification_idx_;
+  LOGS(ctx.GetLogger(), VERBOSE) << "stream " << stream_idx
+                                 << " activate notification with index " << notification_idx_;
   continue_flag = true;
   return Status::OK();
 }

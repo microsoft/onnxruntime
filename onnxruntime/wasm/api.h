@@ -46,6 +46,7 @@ int EMSCRIPTEN_KEEPALIVE OrtInit(int num_threads, int logging_level);
  * @param log_id logger id for session output
  * @param log_severity_level verbose, info, warning, error or fatal
  * @param log_verbosity_level vlog level
+ * @param optimized_model_filepath filepath of the optimized model to dump.
  * @returns a pointer to a session option handle and must be freed by calling OrtReleaseSessionOptions().
  */
 ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t graph_optimization_level,
@@ -56,7 +57,8 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
                                                                           const char* profile_file_prefix,
                                                                           const char* log_id,
                                                                           size_t log_severity_level,
-                                                                          size_t log_verbosity_level);
+                                                                          size_t log_verbosity_level,
+                                                                          const char* optimized_model_filepath);
 
 /**
  * append an execution provider for a session.
