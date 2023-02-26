@@ -5,25 +5,19 @@
 #
 # This script converts stable diffusion onnx models from float to half (mixed) precision for GPU inference.
 #
-# Before running this script, you need convert checkpoint to float32 onnx models like the following
-#    export ONNX_ROOT=./sd_onnx
-#    pip install -r requirements.txt
-#    huggingface-cli login
-#    wget https://raw.githubusercontent.com/huggingface/diffusers/v0.12.1/scripts/convert_stable_diffusion_checkpoint_to_onnx.py
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path runwayml/stable-diffusion-v1-5  --output_path $ONNX_ROOT/sd-v1-5
-#    python convert_stable_diffusion_checkpoint_to_onnx.py --model_path stabilityai/stable-diffusion-2-1 --output_path $ONNX_ROOT/sd-v2-1
-# Note that this script might not be compatible with older or newer version of diffusers.
-
-# Then you can use this script to convert them to float16 like the following:
-#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
+# Before running this script, you need convert checkpoint to float32 onnx models. See README.md for for more information.
+# Assume that you float32 ONNX pipeline is saved to ./sd-v1-6 directory, we can optimize it and convert to float16 like the following:
+#    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 # Or
-#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i $ONNX_ROOT/sd-v1-5 -o $ONNX_ROOT/sd-v1-5-fp16 --float16
+#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
-# Note that output model is for CUDA Execution Provider. It might not run in CPU Execution Provider.
+# Note that the optimized models are for CUDA Execution Provider. It might not run in other execution provider.
 #
-# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force it in float32:
-#    python optimize_pipeline.py -i $ONNX_ROOT/sd-v2-1 -o $ONNX_ROOT/sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
-
+# Stable diffusion 2.1 model will get black images using float16 Attention. 
+# A walkaround is to force MultiHeadAttention to run in float32 if you are using nightly package (1.15.*):
+#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
+# If you uses ONNX Runtime 1.14.*, you can force Attention to run in float32 like the following:
+#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
 
 import argparse
 import logging
@@ -132,8 +126,8 @@ def optimize_sd_pipeline(
 
         fusion_options = FusionOptions(model_type)
         if model_type in ["unet"]:
-            # There are some optimizations that are not available in v1.14 or older version
-            has_all_optimizations = version.parse(onnxruntime.__version__) > version.parse("1.14.0")
+            # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
+            has_all_optimizations = version.parse(onnxruntime.__version__) >= version.parse("1.15.0")
             fusion_options.enable_packed_kv = float16
             fusion_options.enable_packed_qkv = float16 and has_all_optimizations
             fusion_options.enable_bias_add = has_all_optimizations

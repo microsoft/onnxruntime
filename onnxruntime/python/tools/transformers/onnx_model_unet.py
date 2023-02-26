@@ -139,7 +139,7 @@ class UnetOnnxModel(BertOnnxModel):
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self.fuse_attention()
+            self.fuse_attention(options)
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
