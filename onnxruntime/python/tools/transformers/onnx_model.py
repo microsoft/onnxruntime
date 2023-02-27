@@ -347,7 +347,7 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            #if current_node.name in {'Add_2968', 'Expand_2901', 'Unsqueeze_2888', 'Unsqueeze_2887', 'Where_2885'}:
+            # if current_node.name in {'MatMul_123', 'Transpose_122', 'Reshape_118'}:
             #    print("Current node:", current_node.name, op_type, parent_input_index[i])
             matched_parent = self.match_parent(
                 current_node,
@@ -742,7 +742,7 @@ class OnnxModel:
     def prune_graph(self, outputs=None):
         """
         Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
-        Nodes are not linked (directly or indirectly) to any required output will be removed.
+        Nodes that are not linked (directly or indirectly) to any required output will be removed.
 
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
@@ -797,6 +797,8 @@ class OnnxModel:
             )
 
         self.update_graph()
+
+        # OnnxModel.save(self.model, "temp_before_sort.onnx", save_as_external_data=True)
 
     def update_graph(self, verbose=False):
         graph = self.model.graph
@@ -920,7 +922,6 @@ class OnnxModel:
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        #OnnxModel.save(self.model, "temp_before_sort.onnx", save_as_external_data=True)
         OnnxModel.graph_topological_sort(self.model.graph)
 
     @staticmethod

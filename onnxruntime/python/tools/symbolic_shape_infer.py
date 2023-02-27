@@ -1996,16 +1996,25 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_MultiHeadAttention(self, node):
-        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, sequence_length, head_size)
+        # Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, num_heads, kv_sequence_length, head_size)
+        # Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or (batch_size, num_heads, kv_sequence_length, v_head_size)
         # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
         query_shape = self._get_shape(node, 0)
         value_shape = self._get_shape(node, 2)
 
-        assert len(query_shape) == 3 and len(value_shape) == 3
+        # print("before mha assert")
+        assert len(query_shape) >= 3 and len(value_shape) >= 3
+        # print("after mha assert")
         output_shape = query_shape
-        output_shape[2] = value_shape[2]
+        if len(output_shape) > 3:
+            # print("shape before:", output_shape)
+            output_shape[1], output_shape[2] = output_shape[2], output_shape[1] # swap num_heads and sequence_length
+            output_shape[2] *= output_shape[3] # num_heads *= head_size
+            output_shape.pop() # drop head_size
+            # print("shape after:", output_shape)
+        else:
+            output_shape[2] = value_shape[2]
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
@@ -2187,6 +2196,7 @@ class SymbolicShapeInference:
                     raise Exception("Invalid model with cyclic graph")
 
         for node in sorted_nodes:
+            # print(node.name)
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             known_aten_op = False

@@ -395,6 +395,8 @@ class BertOnnxModel(OnnxModel):
         if (options is None) or options.enable_attention:
             self.fuse_attention()
 
+        # OnnxModel.save_model_to_file(self.model, 'temp_post_attn_fusion.onnx', use_external_data_format=True)
+
         # Perform the MatMul fusion after the Attention fusion as we do not
         # want to fuse the MatMuls inside the Attention subgraphs
         if (options is None) or options.enable_qordered_matmul:
