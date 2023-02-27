@@ -98,6 +98,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
+
+    const char* lib_name   = "/mnt/test_build_cuda/Release/libcustom_op_ft_wrapper_library.so";
+    session_options.RegisterCustomOpsLibrary(lib_name);
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
