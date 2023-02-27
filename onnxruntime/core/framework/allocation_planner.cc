@@ -1793,10 +1793,10 @@ class PlannerImpl {
     InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
     const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
     node_index_2_toposort_index.reserve(topo_sort.size());
-    plan_.node_execution_order_in_training.reserve(topo_sort.size());
+    plan_.node_topo_order.reserve(topo_sort.size());
     size_t yieldOp_index_in_toposort = topo_sort.size();
     for (size_t i = 0; i < topo_sort.size(); i++) {
-      plan_.node_execution_order_in_training.push_back(topo_sort[i]);
+      plan_.node_topo_order.push_back(topo_sort[i]);
       node_index_2_toposort_index[topo_sort[i]] = i;
       const Node* node = graph_viewer_.GetNode(topo_sort[i]);
       if (node->OpType() == "YieldOp") yieldOp_index_in_toposort = i;
@@ -1972,90 +1972,90 @@ class PlannerImpl {
     //  the training memory optimization rely on a stable order how kernel get launched to calculate memory pattern
     //  so we limit training scenario to run with single stream and single thread mode
     //  the code below will simulate the execution and get the stable execution order
-//    InlinedVector<int> execution_offsets(num_logic_streams_, -1);
-//    InlinedHashSet<OrtValueIndex> produced_values;
-//
-//    for (auto graph_input : graph_viewer_.GetInputs()) {
-//      OrtValueIndex index = Index(graph_input->Name());
-//      produced_values.insert(index);
-//    }
-//
-//    for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
-//      OrtValueIndex index = Index(out_scope_arg);
-//      produced_values.insert(index);
-//    }
-//
-//    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
-//      const auto& initializer_name = pair.first;
-//      OrtValueIndex index = Index(initializer_name);
-//      produced_values.insert(index);
-//    }
-//
-//    InlinedHashSet<OrtValueIndex> producable_values;
-//    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-//      auto* node = graph_viewer_.GetNode(node_index);
-//      // add the output to produce nodes list
-//      for (auto* output_def : node->OutputDefs()) {
-//        if (!output_def->Exists())
-//          continue;
-//        OrtValueIndex index = Index(output_def->Name());
-//        producable_values.insert(index);
-//      }
-//    }
-//
-//    std::function<void(size_t, int)> process_stream;
-//    process_stream = [&](size_t i, int node_offset) {
-//      if (node_offset > execution_offsets[i])
-//        return;
-//      while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
-//        if (execution_offsets[i] == -1) {
-//          execution_offsets[i]++;
-//          continue;
-//        }
-//        NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
-//        auto* node = graph_viewer_.GetNode(node_index);
-//        // check whether the node is ready:
-//        bool input_ready = true;
-//        for (auto* input_def : node->InputDefs()) {
-//          if (!input_def->Exists())
-//            continue;
-//          OrtValueIndex index = Index(input_def->Name());
-//          if (produced_values.find(index) == produced_values.end() &&
-//              producable_values.find(index) != producable_values.end()) {
-//            input_ready = false;
-//            break;
-//          }
-//        }
-//        if (!input_ready)
-//          break;
-//        // trace the execution of this node
-//        plan_.node_execution_order_in_training.push_back(node_index);
-//        // add the output to produce nodes list
-//        for (auto* output_def : node->OutputDefs()) {
-//          if (!output_def->Exists())
-//            continue;
-//          OrtValueIndex index = Index(output_def->Name());
-//          produced_values.insert(index);
-//        }
-//        // trigger downstream
-//        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
-//          auto stream_idx = node_stream_map_[it->Index()];
-//          if (stream_idx != i) {
-//            auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
-//            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
-//            process_stream(stream_idx, offset);
-//          }
-//        }
-//        // move_to_next
-//        execution_offsets[i]++;
-//      }
-//    };
-//
-//    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
-//    plan_.node_execution_order_in_training.reserve(num_of_nodes);
-//    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
-//      process_stream(i, -1);
-//    }
+    InlinedVector<int> execution_offsets(num_logic_streams_, -1);
+    InlinedHashSet<OrtValueIndex> produced_values;
+
+    for (auto graph_input : graph_viewer_.GetInputs()) {
+      OrtValueIndex index = Index(graph_input->Name());
+      produced_values.insert(index);
+    }
+
+    for (auto out_scope_arg : graph_viewer_.GetOuterScopeNodeArgNames()) {
+      OrtValueIndex index = Index(out_scope_arg);
+      produced_values.insert(index);
+    }
+
+    for (const auto& pair : graph_viewer_.GetAllInitializedTensors()) {
+      const auto& initializer_name = pair.first;
+      OrtValueIndex index = Index(initializer_name);
+      produced_values.insert(index);
+    }
+
+    InlinedHashSet<OrtValueIndex> producable_values;
+    for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
+      auto* node = graph_viewer_.GetNode(node_index);
+      // add the output to produce nodes list
+      for (auto* output_def : node->OutputDefs()) {
+        if (!output_def->Exists())
+          continue;
+        OrtValueIndex index = Index(output_def->Name());
+        producable_values.insert(index);
+      }
+    }
+
+    std::function<void(size_t, int)> process_stream;
+    process_stream = [&](size_t i, int node_offset) {
+      if (node_offset > execution_offsets[i])
+        return;
+      while (execution_offsets[i] < static_cast<int>(stream_nodes_[i].size())) {
+        if (execution_offsets[i] == -1) {
+          execution_offsets[i]++;
+          continue;
+        }
+        NodeIndex node_index = stream_nodes_[i][execution_offsets[i]];
+        auto* node = graph_viewer_.GetNode(node_index);
+        // check whether the node is ready:
+        bool input_ready = true;
+        for (auto* input_def : node->InputDefs()) {
+          if (!input_def->Exists())
+            continue;
+          OrtValueIndex index = Index(input_def->Name());
+          if (produced_values.find(index) == produced_values.end() &&
+              producable_values.find(index) != producable_values.end()) {
+            input_ready = false;
+            break;
+          }
+        }
+        if (!input_ready)
+          break;
+        // trace the execution of this node
+        plan_.node_execution_order_in_training.push_back(node_index);
+        // add the output to produce nodes list
+        for (auto* output_def : node->OutputDefs()) {
+          if (!output_def->Exists())
+            continue;
+          OrtValueIndex index = Index(output_def->Name());
+          produced_values.insert(index);
+        }
+        // trigger downstream
+        for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
+          auto stream_idx = node_stream_map_[it->Index()];
+          if (stream_idx != i) {
+            auto node_it = std::find(stream_nodes_[stream_idx].begin(), stream_nodes_[stream_idx].end(), it->Index());
+            int offset = static_cast<int>(std::distance(stream_nodes_[stream_idx].begin(), node_it));
+            process_stream(stream_idx, offset);
+          }
+        }
+        // move_to_next
+        execution_offsets[i]++;
+      }
+    };
+
+    auto num_of_nodes = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder()).size();
+    plan_.node_execution_order_in_training.reserve(num_of_nodes);
+    for (size_t i = 0; i < stream_nodes_.size(); ++i) {
+      process_stream(i, -1);
+    }
 //    ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
 //    // 6. turn the step_node_index to step_pc
 //    for (auto& stream : plan_.execution_plan) {

@@ -26,7 +26,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
 
   size_t break_point = 0;
   auto* plan = session_state.GetExecutionPlan();
-  auto& training_node_execution_order = plan->node_execution_order_in_training;
+  auto& training_node_execution_order = plan->node_topo_order;
   for (auto node_index : training_node_execution_order) {
     if (session_state.GetKernel(node_index)->KernelDef().OpName() == "YieldOp") {
       auto& node = *(session_state.GetGraphViewer().GetGraph().GetNode(node_index));

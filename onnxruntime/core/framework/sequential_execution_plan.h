@@ -168,6 +168,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
 #ifdef ENABLE_TRAINING
   InlinedVector<NodeIndex> node_execution_order_in_training;
+  InlinedVector<NodeIndex> node_topo_order;
 #endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
