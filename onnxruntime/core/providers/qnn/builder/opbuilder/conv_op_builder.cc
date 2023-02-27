@@ -351,7 +351,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     // Conv attribute group
     Qnn_Scalar_t group_qnn_scalar = QNN_SCALAR_INIT;
     group_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
-    group_qnn_scalar.uint32Value = SafeInt<uint32_t>(group);
+    group_qnn_scalar.uint32Value = group;
     QnnParamWrapper group_paramwrapper(node_unit.Index(), node_unit.Name(), qnn_def::group, group_qnn_scalar);
     param_tensor_names.push_back(group_paramwrapper.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(group_paramwrapper));
