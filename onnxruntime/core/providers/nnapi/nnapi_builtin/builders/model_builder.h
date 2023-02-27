@@ -68,7 +68,7 @@ class ModelBuilder {
   // The initializer will be processed separately, skip it as an initializer
   void AddInitializerToSkip(const std::string& tensor_name);
 
-  // Register informations for a particular operand
+  // Register the name and index for a particular operand
   void RegisterOperand(const std::string& name, uint32_t index,
                        const android::nn::wrapper::OperandType& operand_type);
 

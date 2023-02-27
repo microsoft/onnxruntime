@@ -202,7 +202,7 @@ Status Optimizer::Step() {
 Status Optimizer::GetStateDict(OptimizerCheckpointState& optimizer_checkpoint_state) {
   auto& grouped_optimizer_states = optimizer_checkpoint_state.group_named_optimizer_states;
 
-  // To support multiple groups, Optimizer constructor need accept informations for groupping.
+  // To support multiple groups, the Optimizer constructor needs to accept information for grouping.
   grouped_optimizer_states.insert({GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>(optimizer_state_)});
 
   // Pass the optimizer session data transfer manager for data copying when saving.
