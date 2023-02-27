@@ -242,7 +242,7 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
 // Block: 256
 // Format 1 for unfused attention
 //     Input: TxMxNxH
-//     Output: MxBxNxSxH
+//     Output: TxNxMxH
 // C is token_count
 // B is batch_size
 // S is sequence_length
@@ -254,53 +254,24 @@ __global__ void AddBiasTransposeQKVPackedTRT(
     const T* input,
     const T* biases,
     int32_t N,
-    int32_t H_QK,
-    int32_t H_V,
-    T* output,
-    const int32_t* token_offset,
-    int32_t token_count) {
-  int s = blockIdx.x;
-  int b = blockIdx.y;
+    int32_t H,
+    T* output) {
+  int token_idx = blockIdx.x;
 
-  int S = gridDim.x;
+  int Hx3 = H * 3;
+  int NxH = N * H;
+  int NxHx2 = N * H + N * H;
 
-  const int packing_token_idx = b * S + s;
-  const int padding_token_idx = token_offset[packing_token_idx];
-  b = padding_token_idx / S;
-  s = padding_token_idx - b % S;
+  int offset = token_idx * N * Hx3;
+  input += offset;
+  output += offset;
 
-  int total_head_size = H_QK + H_QK + H_V;
-  input += packing_token_idx * N * total_head_size;
-  output += padding_token_idx * N * total_head_size;
-  int k_offset = N * H_QK;
-  int v_offset = N * H_QK + N * H_QK;
-
-  if (packing_token_idx < token_count) {
-    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
-      int h = i % H_QK;
-      int n = i / H_QK;
-      output[n * total_head_size + h] = input[i] + biases[i];
-      output[n * total_head_size + H_QK + h] = input[i + k_offset] + biases[i + k_offset];
-    }
-
-    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
-      int h = i % H_V;
-      int n = i / H_V;
-      output[n * total_head_size + H_QK + H_QK + h] = input[i + v_offset] + biases[i + v_offset];
-    }
-  } else {
-    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
-      int h = i % H_QK;
-      int n = i / H_QK;
-      output[n * total_head_size + h] = biases[i];
-      output[n * total_head_size + H_QK + h] = biases[i + k_offset];
-    }
-
-    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
-      int h = i % H_V;
-      int n = i / H_V;
-      output[n * total_head_size + H_QK + H_QK + h] = biases[i + v_offset];
-    }
+  for (int i = threadIdx.x; i < N * H; i += blockDim.x) {
+    int n = i / H;
+    int h = i % H;
+    output[n * Hx3 + h] = input[i] + biases[i];
+    output[n * Hx3 + H + h] = input[i + NxH] + biases[i + NxH];
+    output[n * Hx3 + H + H + h] = input[i + NxHx2] + biases[i + NxHx2];
   }
 }
 
@@ -311,8 +282,8 @@ void InvokeAddBiasTranspose(
     const int num_heads, const int qk_head_size, const int v_head_size,
     AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
-  const dim3 grid(sequence_length, batch_size);
   if (format == AttentionQkvFormat::Q_K_V_BNSH) {
+    const dim3 grid(sequence_length, batch_size);
     AddBiasTransposeQKVPacked<T><<<grid, 256, 0, stream>>>(
         input,
         biases,
@@ -325,6 +296,7 @@ void InvokeAddBiasTranspose(
         token_offset,
         token_count);
   } else if (format == AttentionQkvFormat::Q_K_V_BSNH) {
+    const dim3 grid(sequence_length, batch_size);
     AddBiasTransposeQKVPackedCutlass<T><<<grid, 256, 0, stream>>>(
         input,
         biases,
@@ -338,15 +310,13 @@ void InvokeAddBiasTranspose(
         token_count);
   } else {
     ORT_ENFORCE(format == AttentionQkvFormat::QKV_BSN3H);
+    const dim3 grid(token_count);
     AddBiasTransposeQKVPackedTRT<T><<<grid, 256, 0, stream>>>(
         input,
         biases,
         num_heads,
         qk_head_size,
-        v_head_size,
-        output,
-        token_offset,
-        token_count);
+        output);
   }
 }
 
