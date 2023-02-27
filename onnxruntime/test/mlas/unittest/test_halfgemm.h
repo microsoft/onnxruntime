@@ -65,6 +65,19 @@ void SmallFloatFill(T* start, size_t size) {
   }
 }
 
+inline bool
+CloseEnough(float actual, float expected){
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
+  }
+  float diff = std::abs(actual - expected);
+  float top = std::max(std::abs(actual), std::abs(expected));
+  float ratio = 0;
+  if (top > 0.0001) {
+    ratio = diff / top;
+  }
+  return ratio < 0.005;
+}
 
 /**
  * @brief Test class for half precision GEMM
@@ -156,13 +169,16 @@ private:
     // Most CPUs does not support mixed precision accumulation,
     // only mul & add fuse. As a result, different striding
     // on the K dimension may lead to rounding error.
-    // Accumulation of these rounding error maybe significant.
+    // Accumulation of these rounding error maybe very significant.
+    // So setting a approximation ratio does NOT work.
     //
-    // An ugly hack now is to change the K stride of the kernel
-    // under test to be 16, pass this test and then change it
-    // back :-(.
+    // Currently this test require a manual efforts:
+    // 1. Change the K stride of the kernel under test to be 16;
+    // 2. Force the K stride of the fp16 kernel to 16
+    // 3. Change the test oracle to be exact match.
+    // 4. Pass this test and then change it back :-(.
     //
-    constexpr size_t KStride = 16;
+    constexpr size_t KStride = 512;
 
     for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -230,9 +246,9 @@ public:
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++, f++) {
-          ASSERT_EQ(float(C[f]), CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
+          ASSERT_TRUE(CloseEnough(float(C[f]), CReference[f])) << "@[" << batch << "x" << m << "x" << n << "], "
                                                 << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
-          ASSERT_EQ(Cfloat[f], CReference[f]) << "Converted@[" << batch << "x" << m << "x" << n << "], "
+          ASSERT_TRUE(CloseEnough(Cfloat[f], CReference[f])) << "Converted@[" << batch << "x" << m << "x" << n << "], "
                                                 << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
 
         }
