@@ -337,7 +337,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                                    output_quantize_param.scaleOffsetEncoding.offset),
                     "Cannot get quantization parameter");
 
-  const auto group = node_helper.Get("group", (int32_t)1);
+  const uint32_t group = SafeInt<uint32_t>(node_helper.Get("group", static_cast<int64_t>(1)));
   uint32_t num_output = output_shape[3];
   uint32_t num_input_channel = 0;
   ORT_RETURN_IF_ERROR(GetInputChannelNumber(qnn_model_wrapper, node_unit, num_input_channel));
