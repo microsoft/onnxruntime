@@ -352,7 +352,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // unnecessary and fails as ORT support for Exp started at opset 6 (as ORT didn't exist until opset 7).
                 { "test_softplus_example_expanded", "Not applicable"},
                 { "test_softplus_expanded", "Not applicable"},
-                { "test_bitwise_or_i16_4d", "8bit test data is not support by C#"},
                 { "test_col2im_pads", "due to a typo in test data"},
                 { "test_optional_has_element_empty_optional_input", "C# API doesn't support optional input"},
                 { "test_optional_get_element_optional_tensor", "C# API doesn't support optional input"},
@@ -576,6 +575,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                     else if (outputMeta.ElementType == typeof(byte))
                                     {
                                         Assert.Equal(result.AsTensor<byte>(), outputValue.AsTensor<byte>(), new ExactComparer<byte>());
+                                    }
+                                    else if (outputMeta.ElementType == typeof(sbyte))
+                                    {
+                                        Assert.Equal(result.AsTensor<sbyte>(), outputValue.AsTensor<sbyte>(), new ExactComparer<sbyte>());
                                     }
                                     else if (outputMeta.ElementType == typeof(bool))
                                     {

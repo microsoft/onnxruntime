@@ -398,6 +398,13 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     uint32_t STDMETHODCALLTYPE GetWideNameBufferSizeInBytes() const noexcept override;
     HRESULT STDMETHODCALLTYPE GetWideName(uint32_t bufferSizeInBytes, wchar_t* name) const noexcept override;
 
+    HRESULT STDMETHODCALLTYPE GetExecutionProvider(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept override
+    {
+        return m_winmlProvider.CopyTo(executionProvider);
+    }
+
 private:
     // For shape info, in addition to the info
     const EdgeShapes* m_inferredOutputShapes = nullptr;

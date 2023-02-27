@@ -101,6 +101,10 @@ IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCre
         uint32_t bufferSizeInBytes,
         _Out_writes_bytes_(bufferSizeInBytes) wchar_t* name
         ) const noexcept PURE;
+
+    STDMETHOD(GetExecutionProvider)(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept PURE;
 };
 
 //! \interface IMLOperatorAttributes1

@@ -1673,6 +1673,36 @@ class SymbolicShapeInference:
         )
 
     def _infer_Slice(self, node):
+        # SymPy fails to prove that `x_0 + ... + x_n >= 0` if one of `x_i` is a `sympy.Min(a, b)`,
+        # even when the relation holds for both `a` and `b`.
+        #
+        # When given `expr` of form `min(a, b) + ...`, this function returns `[a + ..., b + ...]`,
+        # so that we can prove inequalities for both expressions separately.
+        #
+        # If the number of `min(...)` subexpressions is not exactly one, this function just returns `[expr]`.
+        def flatten_min(expr):
+            assert isinstance(expr, sympy.Add), f"Expected a sum of two arguments, got {expr}"
+            min_positions = [idx for idx in range(len(expr.args)) if isinstance(expr.args[idx], sympy.Min)]
+            if len(min_positions) == 1:
+                min_pos = min_positions[0]
+
+                def replace_min_with_arg(arg_idx):
+                    replaced = list(expr.args)
+                    assert isinstance(
+                        replaced[min_pos], sympy.Min
+                    ), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
+                    assert (
+                        len(replaced[min_pos].args) == 2
+                    ), f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
+                    replaced[min_pos] = replaced[min_pos].args[arg_idx]
+                    return sympy.Add(*replaced)
+
+                return [
+                    replace_min_with_arg(0),
+                    replace_min_with_arg(1),
+                ]
+            return [expr]
+
         def less_equal(x, y):
             try:
                 return bool(x <= y)
@@ -1689,8 +1719,12 @@ class SymbolicShapeInference:
             try:
                 return bool(-y <= -x)
             except TypeError:
-                # the last attempt; this may raise TypeError
+                pass
+            try:
                 return bool(y - x >= 0)
+            except TypeError:
+                # the last attempt; this may raise TypeError
+                return all(bool(d >= 0) for d in flatten_min(y - x))
 
         def handle_negative_index(index, bound):
             """normalizes a negative index to be in [0, bound)"""
