@@ -740,7 +740,6 @@ Status QkvToContext(
 
   cublasSetStream(cublas, stream);
 
-  printf("scale: %f\n", scale);
   DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
   DUMP_TENSOR_D("k[BNSH]", k, batch_size, num_heads, total_sequence_length, qk_head_size);
   CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(

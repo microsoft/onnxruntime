@@ -244,7 +244,7 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
   initStateRange.Begin();
 #endif
 
-  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;             
+  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream));
 
@@ -695,10 +695,10 @@ Status GreedySearchProcessLogits(
       greedy_state->topk_tokens_buffer.data(),
       cuda_stream);
 
-#ifdef DEBUG_GENERATION
-  dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
-  dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
-#endif
+// #ifdef DEBUG_GENERATION
+//   dumper->Print("topk_scores", greedy_state->topk_scores_buffer.data(), batch_size);
+//   dumper->Print("topk_indices", greedy_state->topk_tokens_buffer.data(), batch_size);
+// #endif
 
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(greedy_state->next_tokens.data(),
                                        greedy_state->topk_tokens_buffer.data(),
