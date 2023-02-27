@@ -262,7 +262,8 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-#if USE_FLASH_ATTENTION
+ 
+#if 0 // USE_FLASH_ATTENTION TODO: enable cutlass FlashAttention
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         nullptr == relative_position_bias &&
@@ -272,6 +273,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
+
 
   cublasHandle_t cublas = GetCublasHandle(context);
 

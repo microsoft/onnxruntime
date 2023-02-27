@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#define DEBUG_GENERATION 1
+
 #include <cuda_runtime_api.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "core/framework/print_tensor_utils.h"

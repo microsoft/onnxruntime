@@ -26,6 +26,8 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#define DEBUG_GENERATION 1
+
 #include <cassert>
 #include <cuda_fp16.h>
 #include <cub/cub.cuh>
@@ -94,6 +96,18 @@ size_t GetAttentionWorkspaceSize(
   return qkv_bytes + 2 * GetAttentionScratchSize(element_size, batch_size, num_heads, sequence_length);
 }
 
+template <typename T, AttentionQkvFormat format>
+__global__ void AddBiasTransposeQKVPacked(const T* input,
+                                          const T* biases,
+                                          int32_t N,
+                                          int32_t H_QK,
+                                          int32_t H_V,
+                                          T* q,
+                                          T* k,
+                                          T* v,
+                                          const int32_t* token_offset,
+                                          int32_t token_count);
+
 // Grid: (B, S)
 // Block: 256
 // Format 1 for unfused attention
@@ -106,18 +120,88 @@ size_t GetAttentionWorkspaceSize(
 // N is num_heads
 // H is head_size
 template <typename T>
-__global__ void AddBiasTransposeQKV(const T* input,
-                                    const T* biases,
-                                    int32_t N,
-                                    int32_t H_QK,
-                                    int32_t H_V,
-                                    T* q,
-                                    T* k,
-                                    T* v,
-                                    const int32_t* token_offset,
-                                    int32_t token_count) {
-  int b = blockIdx.x;
-  int s = blockIdx.y;
+__global__ void AddBiasTransposeQKVPacked(
+    const T* input,
+    const T* biases,
+    int32_t N,
+    int32_t H_QK,
+    int32_t H_V,
+    T* q,
+    T* k,
+    T* v,
+    const int32_t* token_offset,
+    int32_t token_count) {
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+
+  int S = gridDim.x;
+
+  const int packing_token_idx = b * S + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  b = padding_token_idx / S;
+  s = padding_token_idx - b * S;
+
+  input += packing_token_idx * N * (H_QK + H_QK + H_V);
+  int k_offset = N * H_QK;
+  int v_offset = N * H_QK + N * H_QK;
+  q += (b * N * S + s) * H_QK;
+  k += (b * N * S + s) * H_QK;
+  v += (b * N * S + s) * H_V;
+
+  if (packing_token_idx < token_count) {
+    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
+      int h = i % H_QK;
+      int n = i / H_QK;
+      q[n * S * H_QK + h] = input[i] + biases[i];
+      k[n * S * H_QK + h] = input[i + k_offset] + biases[i + k_offset];
+    }
+
+    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
+      int h = i % H_V;
+      int n = i / H_V;
+      v[n * S * H_V + h] = input[i + v_offset] + biases[i + v_offset];
+    }
+  } else {
+    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
+      int h = i % H_QK;
+      int n = i / H_QK;
+      q[n * S * H_QK + h] = biases[i];
+      k[n * S * H_QK + h] = biases[i + k_offset];
+    }
+
+    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
+      int h = i % H_V;
+      int n = i / H_V;
+      v[n * S * H_V + h] = biases[i + v_offset];
+    }
+  }
+}
+
+// Grid: (B, S)
+// Block: 256
+// Format 1 for unfused attention
+//     Input: TxMxNxH
+//     Output: MxBxNxSxH
+// C is token_count
+// B is batch_size
+// S is sequence_length
+// M is number of matrices
+// N is num_heads
+// H is head_size
+template <typename T>
+__global__ void AddBiasTransposeQKVPackedCutlass(
+    const T* input,
+    const T* biases,
+    int32_t N,
+    int32_t H_QK,
+    int32_t H_V,
+    T* q,
+    T* k,
+    T* v,
+    const int32_t* token_offset,
+    int32_t token_count) {
+  int s = blockIdx.x;
+  int b = blockIdx.y;
 
   int S = gridDim.x;
 
@@ -127,57 +211,95 @@ __global__ void AddBiasTransposeQKV(const T* input,
   s = padding_token_idx - b % S;
 
   input += packing_token_idx * N * (H_QK + H_QK + H_V);
-  q += (b * N * S + s) * H_QK;
-  k += (b * N * S + s) * H_QK;
-  v += (b * N * S + s) * H_V;
+  int k_offset = N * H_QK;
+  int v_offset = N * H_QK + N * H_QK;
+  q += (b * S * N + s * N) * H_QK;
+  k += (b * S * N + s * N) * H_QK;
+  v += (b * S * N + s * N) * H_V;
+
+  if (packing_token_idx < token_count) {
+    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
+      q[i] = input[i] + biases[i];
+      k[i] = input[i + k_offset] + biases[i + k_offset];
+    }
+
+    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
+      v[i] = input[i + v_offset] + biases[i + v_offset];
+    }
+  } else {
+    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
+      q[i] = biases[i];
+      k[i] = biases[i + k_offset];
+    }
+
+    for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
+      v[i] = biases[i + v_offset];
+    }
+  }
+}
+
+// Grid: (B, S)
+// Block: 256
+// Format 1 for unfused attention
+//     Input: TxMxNxH
+//     Output: MxBxNxSxH
+// C is token_count
+// B is batch_size
+// S is sequence_length
+// M is number of matrices
+// N is num_heads
+// H is head_size
+template <typename T>
+__global__ void AddBiasTransposeQKVPackedTRT(
+    const T* input,
+    const T* biases,
+    int32_t N,
+    int32_t H_QK,
+    int32_t H_V,
+    T* output,
+    const int32_t* token_offset,
+    int32_t token_count) {
+  int s = blockIdx.x;
+  int b = blockIdx.y;
+
+  int S = gridDim.x;
+
+  const int packing_token_idx = b * S + s;
+  const int padding_token_idx = token_offset[packing_token_idx];
+  b = padding_token_idx / S;
+  s = padding_token_idx - b % S;
+
+  int total_head_size = H_QK + H_QK + H_V;
+  input += packing_token_idx * N * total_head_size;
+  output += padding_token_idx * N * total_head_size;
+  int k_offset = N * H_QK;
+  int v_offset = N * H_QK + N * H_QK;
 
   if (packing_token_idx < token_count) {
     for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
       int h = i % H_QK;
       int n = i / H_QK;
-      q[n * S * H_QK + h] = *input + *biases;
-      input++;
-      biases++;
-    }
-
-    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
-      int h = i % H_QK;
-      int n = i / H_QK;
-      k[n * S * H_QK + h] = *input + *biases;
-      input++;
-      biases++;
+      output[n * total_head_size + h] = input[i] + biases[i];
+      output[n * total_head_size + H_QK + h] = input[i + k_offset] + biases[i + k_offset];
     }
 
     for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
       int h = i % H_V;
       int n = i / H_V;
-      v[n * S * H_V + h] = *input + *biases;
-      input++;
-      biases++;
+      output[n * total_head_size + H_QK + H_QK + h] = input[i + v_offset] + biases[i + v_offset];
     }
   } else {
     for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
       int h = i % H_QK;
       int n = i / H_QK;
-      q[n * S * H_QK + h] = *biases;
-      input++;
-      biases++;
-    }
-
-    for (int i = threadIdx.x; i < N * H_QK; i += blockDim.x) {
-      int h = i % H_QK;
-      int n = i / H_QK;
-      k[n * S * H_QK + h] = *biases;
-      input++;
-      biases++;
+      output[n * total_head_size + h] = biases[i];
+      output[n * total_head_size + H_QK + h] = biases[i + k_offset];
     }
 
     for (int i = threadIdx.x; i < N * H_V; i += blockDim.x) {
       int h = i % H_V;
       int n = i / H_V;
-      v[n * S * H_V + h] = *biases;
-      input++;
-      biases++;
+      output[n * total_head_size + H_QK + H_QK + h] = biases[i + v_offset];
     }
   }
 }
@@ -187,43 +309,45 @@ void InvokeAddBiasTranspose(
     const T* input, const T* biases, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
-    const int format, const int32_t* token_offset, int32_t token_count,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   const dim3 grid(sequence_length, batch_size);
-  ORT_ENFORCE(format == 1);
-
-  AddBiasTransposeQKV<T><<<grid, 256, 0, stream>>>(input,
-                                                   biases,
-                                                   num_heads,
-                                                   qk_head_size,
-                                                   v_head_size,
-                                                   output,
-                                                   output + batch_size * sequence_length * num_heads * qk_head_size,
-                                                   output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
-                                                   token_offset,
-                                                   token_count);
-
-  // if (format == 2) {
-  //   AddBiasTransposeTrt<T><<<grid, 256, 0, stream>>>(input, biases, output);
-  // } else if (format == 1) {
-  //   if (v_head_size == -1 || qk_head_size == v_head_size) {
-  //     AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output, qkv_add_bias);
-  //   } else {
-  //     ORT_ENFORCE(total_matrix_count == 3);
-  //     AddBiasTransposeQKV<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
-  //   }
-  // } else if (format == 3) {
-  //   if (v_head_size == -1 || qk_head_size == v_head_size) {
-  //     AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
-  //   } else {
-  //     ORT_ENFORCE(total_matrix_count == 3);
-  //     AddBiasTransposeCutlass<T><<<grid, block, 0, stream>>>(input, biases, output, v_head_size);
-  //   }
-  // } else if (format == 4) {  // format == 4
-  //   AddBiasUnpack<T><<<grid, block, 0, stream>>>(total_matrix_count, input, biases, output);
-  // } else {  // format == 0
-  //   AddBiasTranspose<T><<<grid, block, 0, stream>>>(input, biases, output);
-  // }
+  if (format == AttentionQkvFormat::Q_K_V_BNSH) {
+    AddBiasTransposeQKVPacked<T><<<grid, 256, 0, stream>>>(
+        input,
+        biases,
+        num_heads,
+        qk_head_size,
+        v_head_size,
+        output,
+        output + batch_size * sequence_length * num_heads * qk_head_size,
+        output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
+        token_offset,
+        token_count);
+  } else if (format == AttentionQkvFormat::Q_K_V_BSNH) {
+    AddBiasTransposeQKVPackedCutlass<T><<<grid, 256, 0, stream>>>(
+        input,
+        biases,
+        num_heads,
+        qk_head_size,
+        v_head_size,
+        output,
+        output + batch_size * sequence_length * num_heads * qk_head_size,
+        output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
+        token_offset,
+        token_count);
+  } else {
+    ORT_ENFORCE(format == AttentionQkvFormat::QKV_BSN3H);
+    AddBiasTransposeQKVPackedTRT<T><<<grid, 256, 0, stream>>>(
+        input,
+        biases,
+        num_heads,
+        qk_head_size,
+        v_head_size,
+        output,
+        token_offset,
+        token_count);
+  }
 }
 
 // Fused kernel of Add (bias) and Transpose.
@@ -277,7 +401,7 @@ void LaunchAddBiasTranspose(
     const T* input, const T* biases, T* output,
     const int batch_size, const int sequence_length,
     const int num_heads, const int qk_head_size, const int v_head_size,
-    const int format, const int32_t* token_offset, int32_t token_count,
+    AttentionQkvFormat format, const int32_t* token_offset, int32_t token_count,
     cudaStream_t stream) {
   if (0 == (qk_head_size & 3) && 0 == (v_head_size & 3)) {
     using T4Type = typename T4<T>::Type;
@@ -428,7 +552,6 @@ Status PrepareQkv(PackedAttentionParameters& parameters,
   // For fused causal kernel, use format 1 since we need have K and V to update present state,
   //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
   bool use_fused_kernel = nullptr != data.fused_runner;
-  const int format = (use_fused_kernel ? 2 : (use_memory_efficient_attention ? 3 : 1));
   qkv_format = use_fused_kernel
                    ? AttentionQkvFormat::QKV_BSN3H
                    : (use_memory_efficient_attention
@@ -439,7 +562,7 @@ Status PrepareQkv(PackedAttentionParameters& parameters,
   // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
   LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
                          batch_size, sequence_length, num_heads, qk_head_size, v_head_size,
-                         format, data.token_offset, parameters.token_count, stream);
+                         qkv_format, data.token_offset, parameters.token_count, stream);
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
@@ -487,6 +610,9 @@ Status QkvToContext(
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
 
+  DUMP_TENSOR_D("gemm_buffer", data.gemm_buffer, parameters.token_count, (num_heads * (qk_head_size * 2 + v_head_size)));
+  DUMP_TENSOR_D("data.workspace", data.workspace, 3 * batch_size, num_heads, sequence_length, qk_head_size);
+
   // Run TRT fused attention.
   if (use_fused_kernel) {
     FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
@@ -500,48 +626,42 @@ Status QkvToContext(
     return Status::OK();
   }
 
-  /*
-  #if USE_FLASH_ATTENTION
-    if (data.use_memory_efficient_attention) {
-      // We only enable fused cross attention when there is no key padding mask.
-      // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-      assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
+#if USE_FLASH_ATTENTION
+  if (data.use_memory_efficient_attention) {
+    // We only enable fused cross attention when there is no key padding mask.
+    // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
+    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
-      const void* query = q;
-      const void* key = k;
-      const void* value = v;
-      if (data.gemm_buffer == nullptr && data.value == nullptr) {  // packed KV
-        query = data.query;
-      }
+    const void* query = q;
+    const void* key = k;
+    const void* value = v;
 
-      MemoryEfficientAttentionParams p;
-      p.sm = device_prop.major * 10 + device_prop.minor;
-      p.is_half = sizeof(T) == 2;
-      p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
-      p.num_heads = parameters.num_heads;
-      p.sequence_length = parameters.sequence_length;
-      p.kv_sequence_length = parameters.total_sequence_length;
-      p.qk_head_size = parameters.head_size;
-      p.v_head_size = parameters.v_head_size;
-      p.causal = parameters.is_unidirectional;
-      p.cu_seqlens_q = nullptr;
-      p.cu_seqlens_k = nullptr;
-      p.query = query;
-      p.key = key;
-      p.value = value;
-      p.output = data.output;
-      p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
-      p.stream = stream;
-      run_memory_efficient_attention(p);
+    MemoryEfficientAttentionParams p;
+    p.sm = device_prop.major * 10 + device_prop.minor;
+    p.is_half = sizeof(T) == 2;
+    // p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
+    p.num_heads = parameters.num_heads;
+    p.sequence_length = parameters.sequence_length;
+    p.qk_head_size = parameters.head_size;
+    p.v_head_size = parameters.v_head_size;
+    p.causal = false;
+    p.cu_seqlens_q = nullptr;
+    p.cu_seqlens_k = nullptr;
+    p.query = query;
+    p.key = key;
+    p.value = value;
+    p.output = data.output;
+    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
+    p.stream = stream;
+    run_memory_efficient_attention(p);
 
-      DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
-      return Status::OK();
-    }
-  #endif
-  */
+    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+    return Status::OK();
+  }
+#endif
 
   // The following are unfused attention.
-  assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  // assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
   // Compute Q*K' (as K'*Q), scaled by 1/sqrt(H) and store in scratch1: BxNxSxT
   // Q: BxNxSxH, K (present_k): BxNxTxH, Q*K': BxNxSxT
