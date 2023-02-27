@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include "core/common/spin_pause.h"
 #ifdef _WIN32
 #include <Windows.h>
 #include <mutex>
@@ -187,3 +188,40 @@ std::cv_status OrtCondVar::wait_for(std::unique_lock<OrtMutex>& cond_mutex,
 }
 };  // namespace onnxruntime
 #endif
+
+namespace onnxruntime {
+
+/*
+OrtSpinLock implemented mutex semantic "lock-freely",
+calling thread will not be put to sleep on blocked,
+which reduces cpu usage on context switching.
+*/
+struct OrtSpinLock {
+  void lock() noexcept {
+    bool occupied = false;
+    while (!occupied_.compare_exchange_weak(
+        occupied,
+        true,
+        std::memory_order_relaxed,
+        std::memory_order_relaxed)) {
+      occupied = false;
+      concurrency::SpinPause();  // pause and retry
+    }
+  }
+  bool try_lock() noexcept {
+    bool occupied = false;
+    return occupied_.compare_exchange_weak(
+        occupied,
+        true,
+        std::memory_order_relaxed,
+        std::memory_order_relaxed);
+  }
+  void unlock() noexcept {
+    occupied_.store(false, std::memory_order_relaxed);
+  }
+
+ private:
+  std::atomic_bool occupied_{false};
+};
+
+}  // namespace onnxruntime
