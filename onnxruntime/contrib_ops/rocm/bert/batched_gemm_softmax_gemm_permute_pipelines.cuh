@@ -36,6 +36,7 @@ GemmSoftmaxGemmPermuteGenericPipeline handles it in specialized softmax. TODO: r
 #include "core/providers/rocm/tunable/gemm.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
+#include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
 
 namespace blas = onnxruntime::rocm::tunable::blas;
@@ -80,12 +81,6 @@ std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
 
 template <typename T>
 struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
-  // - GEMM1 [m,k] * [n,k]' -> [m,n]
-  // - [m,n] + bias, act as attention mask
-  // - Apply softmax along n dimension
-  // - GEMM2 [m,n] * [n,o] -> [m,o]
-  // - Permute 0213
-
   std::string Signature() const override {
     auto [m, n, k, o, batch] = GetGemmsMNKOBatch();
     return MakeString("M", m, "_N", n, "_K", k, "_O", o, "_B", batch);
@@ -119,9 +114,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   gsl::span<const int64_t> mask_index_dims{};
 
   // optional, internal
-  T* gemm1_out{nullptr};
-  T* softmax_out{nullptr};
-  T* gemm2_out{nullptr};
+  T* workspace_buffer{nullptr};
 };
 
 template <typename T>
@@ -130,8 +123,32 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     return params->mask_index_buffer != nullptr && params->mask_index_dims.size() >= 2;
   }
 
+  inline static std::tuple<T*, T*, T*> GetWorkspacePlan(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    auto bytes = GetAttentionScratchSize(
+        sizeof(T),
+        params->attention->batch_size,
+        params->attention->num_heads,
+        params->attention->sequence_length,
+        params->attention->total_sequence_length);
+    auto gemm1_out = params->workspace_buffer;
+    auto softmax_out = gemm1_out + (bytes / sizeof(T));
+    auto gemm2_out = softmax_out + (bytes / sizeof(T));
+    return {gemm1_out, softmax_out, gemm2_out};
+  }
+
+  inline static size_t GetWorkspaceNumBytes(const AttentionParameters* attn) {
+    return GetAttentionWorkspaceSize(
+        sizeof(T),
+        attn->batch_size,
+        attn->num_heads,
+        attn->head_size,
+        attn->sequence_length,
+        attn->past_sequence_length);
+  }
+
   inline static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     // GEMM1 [m,k] * [n,k]' -> [m,n]
     return blas::row_major::StridedBatchedGemm(
         params->TuningContext(), params->Stream(), params->handle,
@@ -142,7 +159,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         params->q_buffer, k, m * k,
         params->k_buffer, k, n * k,
         /*beta=*/0.0f,
-        params->gemm1_out, n, m * n,
+        gemm1_out, n, m * n,
         batch);
   }
 
@@ -151,10 +168,11 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     // Raw attention mask could be 2D (B,S) or 3D (B,S,T) or 4D(B,1,M,M), where M is the max sequence length.
     auto attn = params->attention;
     auto [buffer, sizes, strides] = GetRawMaskBufferAddrSizesAndStrides(params->mask_index_buffer, attn);
-    T* persistent_softmax_workspace = params->gemm1_out;  // replace Q*K' in place if persistent softmax is selected.
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
+    T* persistent_softmax_workspace = gemm1_out;  // replace Q*K' in place if persistent softmax is selected.
     return ComputeSoftmaxWithRawMask<T>(
         params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
-        strides, buffer, nullptr, params->bias_buffer, params->gemm1_out, params->softmax_out,
+        strides, buffer, nullptr, params->bias_buffer, gemm1_out, softmax_out,
         attn->is_unidirectional, /* FIXME: this must not be attn.scale! */ params->scale,
         use_persistent_softmax, persistent_softmax_workspace, attn->mask_filter_value);
   }
@@ -165,22 +183,25 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     // Softmax on [m,n] along the n dimension.
     // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
     auto attn = params->attention;
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     const int* mask_start = (mask_1d_size > attn->batch_size) ? mask_1d + attn->batch_size : nullptr;
     return ComputeSoftmaxWithMask1D<T>(
         params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
-        mask_1d, mask_start, params->bias_buffer, params->gemm1_out, params->softmax_out, attn->is_unidirectional);
+        mask_1d, mask_start, params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
   static Status SoftmaxNoMask(const GemmSoftmaxGemmPermuteParams<T>* params) {
     // Softmax on [m,n] along the n dimension.
     auto attn = params->attention;
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return ComputeSoftmax<T>(
         params->Stream(), attn->total_sequence_length, attn->sequence_length, attn->batch_size, attn->num_heads,
-        params->bias_buffer, params->gemm1_out, params->softmax_out, attn->is_unidirectional);
+        params->bias_buffer, gemm1_out, softmax_out, attn->is_unidirectional);
   }
 
   inline static Status Gemm2(const GemmSoftmaxGemmPermuteParams<T>* params) {
     auto [m, n, k, o, batch] = params->GetGemmsMNKOBatch();
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     // GEMM2 [m,n] * [n,o] -> [m,o]
     // semantically, the output buffer contains B*N matrices of shape [S,H], compactly, thus B,N,S,H.
     return blas::row_major::StridedBatchedGemm(
@@ -188,10 +209,10 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
         m, o, n,
         /*alpha=*/1.0f,
-        params->softmax_out, n, m * n,
+        softmax_out, n, m * n,
         params->v_buffer, o, n * o,
         /*beta=*/0.0f,
-        params->gemm2_out, o, m * o,
+        gemm2_out, o, m * o,
         batch);
   }
 
@@ -199,10 +220,11 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
     // Permute 0213
     // gemm2_out is B,N,S,H, transpose to out_buffer as B,S,N,H
     auto attn = params->attention;
+    auto [gemm1_out, softmax_out, gemm2_out] = GetWorkspacePlan(params);
     return LaunchTransCtx(
         params->Stream(),
         attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
-        params->device_prop->maxThreadsPerBlock, false, params->gemm2_out, params->out_buffer);
+        params->device_prop->maxThreadsPerBlock, false, gemm2_out, params->out_buffer);
   }
 
   static Status Run(const GemmSoftmaxGemmPermuteParams<T>* params, bool use_persistent_softmax) {

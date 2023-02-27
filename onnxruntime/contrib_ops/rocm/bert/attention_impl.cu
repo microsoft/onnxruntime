@@ -394,28 +394,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
   rocblas_handle rocblas = GetRocblasHandle(context);
-  constexpr size_t element_size = sizeof(T);
 
   int m = attn.batch_size * attn.sequence_length;
   int n = (attn.hidden_size + attn.hidden_size + attn.v_hidden_size);
   int k = attn.input_hidden_size;
   auto gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  typedef typename ToHipType<T>::MappedType HipT;
-  size_t workspace_size = GetAttentionWorkspaceSize(element_size,
-                                                    attn.batch_size,
-                                                    attn.num_heads,
-                                                    attn.head_size,
-                                                    attn.sequence_length,
-                                                    attn.past_sequence_length);
+  using HipT = typename ToHipType<T>::MappedType;
+  using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
 
-  auto workspace = GetScratchBuffer<void>(workspace_size, context->GetComputeStream());
-
-  const size_t bytes = GetAttentionScratchSize(element_size, attn.batch_size, attn.num_heads,
-                                               attn.sequence_length, attn.total_sequence_length);
-  HipT* scratch1 = reinterpret_cast<HipT*>(workspace.get());
-  HipT* scratch2 = scratch1 + (bytes / element_size);
-  HipT* scratch3 = scratch2 + (bytes / element_size);
+  size_t attention_workspace_bytes = AttentionGeneric::GetWorkspaceNumBytes(&attn);
+  auto workspace = GetScratchBuffer<void>(attention_workspace_bytes, context->GetComputeStream());
 
   namespace blas = tunable::blas;
 
@@ -429,7 +418,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const HipT*>(bias->Data<T>()), n,
       GetConstOnes<HipT>(m, Stream(context)), 1,
       /*beta=*/0.0f,
-      scratch3, n));
+      reinterpret_cast<HipT*>(workspace.get()), n));
 
   // result(N, M) = 1 * weights x input + 1 x B.
   ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
@@ -440,11 +429,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       reinterpret_cast<const HipT*>(weights->Data<T>()), n,
       reinterpret_cast<const HipT*>(input->Data<T>()), k,
       /*beta=*/1.0f,
-      scratch3, n));
+      reinterpret_cast<HipT*>(workspace.get()), n));
 
   // input should be BxSx3xNxH => gemm_buffer: 3xBxNxSxH
   ORT_RETURN_IF_ERROR(LaunchTransQkv(Stream(context), 3, attn.sequence_length, attn.batch_size, attn.head_size, attn.num_heads,
-                      device_prop.maxThreadsPerBlock, false, scratch3, reinterpret_cast<HipT*>(gemm_buffer.get())));
+                      device_prop.maxThreadsPerBlock, false, reinterpret_cast<HipT*>(workspace.get()), reinterpret_cast<HipT*>(gemm_buffer.get())));
 
   // now scratch3 has Q, K, V: each has size BxNxSxH
   const int batches = attn.batch_size * attn.num_heads;
@@ -507,9 +496,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       params.mask_index_dims = mask_index->Shape().GetDims();
     }
 
-    params.gemm1_out = scratch1;
-    params.softmax_out = scratch2;
-    params.gemm2_out = scratch3;
+    params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   }
 
   return GemmSoftmaxGemmPermuteGenericPipeline<HipT>::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
