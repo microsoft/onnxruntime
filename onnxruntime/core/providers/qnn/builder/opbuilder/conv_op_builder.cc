@@ -345,7 +345,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                         << " num_output: " << num_output << ", num_input_channel: " << num_input_channel << ", group: " << group;
   const static std::string depthwise_conv2d = "DepthWiseConv2d";
   bool is_depthwise_conv2d = false;
-  if ((node_unit.OpType() == "Conv") && (num_input_channel == num_output) && (static_cast<const uint32_t>(group) == num_output)) {
+  if ((node_unit.OpType() == "Conv") && (num_input_channel == num_output) && (group == num_output)) {
     is_depthwise_conv2d = true;
   } else {  // DepthWiseConv2d does not need group
     // Conv attribute group
