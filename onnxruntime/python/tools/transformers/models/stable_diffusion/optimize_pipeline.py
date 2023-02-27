@@ -13,7 +13,7 @@
 #
 # Note that the optimized models are for CUDA Execution Provider. It might not run in other execution provider.
 #
-# Stable diffusion 2.1 model will get black images using float16 Attention. 
+# Stable diffusion 2.1 model will get black images using float16 Attention.
 # A walkaround is to force MultiHeadAttention to run in float32 if you are using nightly package (1.15.*):
 #    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
 # If you uses ONNX Runtime 1.14.*, you can force Attention to run in float32 like the following:
@@ -125,6 +125,7 @@ def optimize_sd_pipeline(
         logger.info(f"Optimize {onnx_model_path}...")
 
         fusion_options = FusionOptions(model_type)
+
         if model_type in ["unet"]:
             # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
             has_all_optimizations = version.parse(onnxruntime.__version__) >= version.parse("1.15.0")
