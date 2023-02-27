@@ -1277,6 +1277,7 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   // Use default value as this field is not available in OrtTensorRTProviderOptions
   trt_options_converted.trt_timing_cache_enable = 0;
   trt_options_converted.trt_force_timing_cache = 0;
+  trt_options_converted.trt_detailed_build_log = 0;
   trt_options_converted.trt_context_memory_sharing_enable = 0;
   trt_options_converted.trt_layer_norm_fp32_fallback = 0;
   return trt_options_converted;
@@ -1605,6 +1606,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRT
   (*out)->trt_layer_norm_fp32_fallback = false;
   (*out)->trt_timing_cache_enable = false;
   (*out)->trt_force_timing_cache = false;
+  (*out)->trt_detailed_build_log = false;
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(out);

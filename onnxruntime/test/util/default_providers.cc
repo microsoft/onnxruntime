@@ -41,6 +41,7 @@ std::unique_ptr<IExecutionProvider> DefaultTensorrtExecutionProvider() {
       0,
       0,
       0,
+      0,
       nullptr,
       0,
       nullptr,

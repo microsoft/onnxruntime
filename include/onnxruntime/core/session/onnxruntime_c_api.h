@@ -532,6 +532,7 @@ typedef struct OrtTensorRTProviderOptions {
   int trt_engine_cache_enable;                  // enable engine caching. Default 0 = false, nonzero = true
   int trt_timing_cache_enable;                  // enable TensorRT timing cache. Default 0 = false, nonzero = true
   int trt_force_timing_cache;                   // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
+  int trt_detailed_build_log;                   // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
   const char* trt_engine_cache_path;            // specify engine cache path
   int trt_engine_decryption_enable;             // enable engine decryption. Default 0 = false, nonzero = true
   const char* trt_engine_decryption_lib_path;   // specify engine decryption library path

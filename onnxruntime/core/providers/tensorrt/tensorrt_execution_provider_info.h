@@ -35,6 +35,7 @@ struct TensorrtExecutionProviderInfo {
   bool layer_norm_fp32_fallback{false};
   bool timing_cache_enable{false};
   bool force_timing_cache{false};
+  bool detailed_build_log{false};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);
