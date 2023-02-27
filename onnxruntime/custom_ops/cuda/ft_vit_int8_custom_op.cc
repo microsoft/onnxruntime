@@ -22,7 +22,6 @@ FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                                 int head_num,
                                                 int layer_num,
                                                 int has_cls_token,
-                                                int is_fp16,
                                                 int int8_mode):
 batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim_(embed_dim), has_cls_token_(has_cls_token) 
 {
@@ -122,21 +121,21 @@ void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
         fastertransformer::Tensor{MEMORY_GPU,
                getTensorType<T>(),
                std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans, (size_t)img_size_, (size_t)img_size_},
-               p_input_data}};
+               (const T*)p_input_data}};
 
     std::vector<fastertransformer::Tensor> output_tensors =
         std::vector<fastertransformer::Tensor>{fastertransformer::Tensor{MEMORY_GPU,
                                    getTensorType<T>(),
                                    std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len, (size_t)embed_dim_},
-                                   p_output_data}};
+                                   (T*)p_output_data}};
 
-    CudaTimer cuda_timer(stream_);
-    cuda_timer.start();
+    //CudaTimer cuda_timer(stream_);
+    //cuda_timer.start();
 
     vit_->forward(&output_tensors, &input_tensors, &params_);
 
-    float total_time = cuda_timer.stop();
-    printf("vit forward time:%.2f ms\n", total_time);
+    //float total_time = cuda_timer.stop();
+    //printf("vit forward time:%.2f ms\n", total_time);
 }
 
 template<typename T>
@@ -208,7 +207,6 @@ void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* in
                                                 num_heads,
                                                 layer_num,
                                                 with_cls_token,
-                                                is_fp16,
                                                 int8_mode); 
     } else {
         return new FTViTINT8CustomKernel<float>(info,
@@ -220,7 +218,6 @@ void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* in
                                                 num_heads,
                                                 layer_num,
                                                 with_cls_token,
-                                                is_fp16,
                                                 int8_mode); 
 
     }

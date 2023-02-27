@@ -21,7 +21,6 @@ struct FTViTINT8CustomKernel {
                         int head_num,
                         int layer_num,
                         int has_cls_token,
-                        int is_fp16,
                         int int8_mode);
 
   void Compute(OrtKernelContext* context);
