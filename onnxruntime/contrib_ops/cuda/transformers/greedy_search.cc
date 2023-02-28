@@ -46,6 +46,9 @@ GreedySearch::GreedySearch(const OpKernelInfo& info)
   SetConsoleDumper(&g_cuda_dumper_greedysearch);
 
   cuda_device_prop_ = &reinterpret_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider())->GetDeviceProp();
+
+  cuda_device_arch_ = static_cast<const cudaDeviceProp*>(cuda_device_prop_)->major * 100 +
+                      static_cast<const cudaDeviceProp*>(cuda_device_prop_)->minor * 10;
 }
 
 Status GreedySearch::ComputeInternal(OpKernelContext* context) const {

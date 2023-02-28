@@ -70,6 +70,7 @@ class GreedySearch : public IControlFlowKernel {
   }
 
   const void* cuda_device_prop_ = nullptr;
+  int cuda_device_arch_ = 0;
 
  private:
   // Device specific functions

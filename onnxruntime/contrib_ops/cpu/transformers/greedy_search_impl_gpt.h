@@ -44,7 +44,8 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
                   const GenerationDeviceHelper::InitGreedyStateFunc<T>& init_greedy_state_func,
                   const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                   const GenerationDeviceHelper::UpdateGptFeedsFunc<T>& update_feeds_func,
-                  const void* cuda_device_prop)
+                  const void* cuda_device_prop,
+                  int cuda_device_arch)
       : GreedySearchBase<T, ParametersT>(context,
                                          decoder_session_state,
                                          thread_pool,
@@ -62,7 +63,15 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
         init_greedy_state_func_(init_greedy_state_func),
         reorder_past_state_func_(reorder_past_state_func),
         update_feeds_func_(update_feeds_func),
-        cuda_device_prop_(cuda_device_prop) {
+        cuda_device_prop_(cuda_device_prop),
+        cuda_device_arch_(cuda_device_arch) {
+    if (gpt_subgraph_.has_decoder_masked_multihead_attention_) {
+      ORT_ENFORCE(cuda_device_arch_ >= 530,
+                  "Decoder masked multihead attention can only be used on "
+                  "GPU cards of compute capability 5.3 or higher. "
+                  "This card has compute capability ",
+                  cuda_device_arch_);
+    }
   }
 
   // Execute beam search in iterations util stopping criteria is reached.
@@ -99,6 +108,7 @@ class GreedySearchGpt : public GreedySearchBase<T, ParametersT> {
   GenerationDeviceHelper::UpdateGptFeedsFunc<T> update_feeds_func_;
 
   const void* cuda_device_prop_ = nullptr;
+  int cuda_device_arch_ = 0;
 };
 
 template <typename T, typename ParametersT>

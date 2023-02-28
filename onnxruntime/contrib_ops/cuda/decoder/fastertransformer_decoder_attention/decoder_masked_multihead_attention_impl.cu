@@ -23,6 +23,11 @@ template <
     // The number of threads in a threadblock.
     int THREADS_PER_BLOCK>
 __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentionParams params) {
+  // This kernel contains some code that cannot be compiled on CUDA ARCH 5.3 or lower
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
+  (void)(params);
+#else
+
   // Make sure the hidden dimension per head is a multiple of the number of threads per key.
   static_assert(head_size % THREADS_PER_KEY == 0, "");
 
@@ -453,6 +458,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   if (vo == 0) {
     ConvertFromFloat(*reinterpret_cast<V_vec_m*>(&params_out[bhi * head_size + vi]), out);
   }
+#endif
 }
 
 // Template instantiation(s)
