@@ -232,7 +232,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   relative_position_bias,
                                   parameters));
 
-  int batch_size = parameters.batch_size;
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
