@@ -83,9 +83,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using HipT = typename ToHipType<T>::MappedType;
   using QkvProjectGeneric = GemmPermuteGenericPipeline<HipT>;
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
+  using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
 
   size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
-  size_t attention_workspace_bytes = AttentionGeneric::GetWorkspaceNumBytes(&attn);
+  size_t attention_workspace_bytes = std::max(AttentionGeneric::GetWorkspaceNumBytes(&attn),
+                                              AttentionTunableOp::GetWorkspaceNumBytes(&attn));
   ORT_ENFORCE(QkvProjectGeneric::GetWorkspaceNumBytes(&attn) <= attention_workspace_bytes); // workspace reuse
 
   auto qkv_project_output = GetScratchBuffer<void>(qkv_project_output_bytes, context->GetComputeStream());
@@ -165,8 +167,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   }
 
-  if (this->GetTuningContext()->IsTunableOpEnabled() && relative_position_bias == nullptr && !use_persistent_softmax) {
-    return GemmSoftmaxGemmPermuteTunableOp<HipT>{}(&gemm_softmax_gemm_permute_params);
+  if (this->GetTuningContext()->IsTunableOpEnabled() &&
+      !use_persistent_softmax) {
+    // FIXME: set all buffer to -NaN
+    // HIP_RETURN_IF_ERROR(hipMemsetAsync(workspace.get(), 0xff, workspace_size, gemm_softmax_gemm_permute_params.Stream()));
+    return AttentionTunableOp{}(&gemm_softmax_gemm_permute_params);
   } else {
     return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
   }
