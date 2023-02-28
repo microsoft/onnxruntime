@@ -25,7 +25,11 @@ Abstract:
 bool MLASCALL
 MlasFp16AccelerationSupported()
 {
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
     return MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration();
+#else
+    return false;
+#endif
 }
 
 

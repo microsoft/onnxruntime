@@ -563,7 +563,7 @@ private:
 /**
  * @brief Supply matrices shape and data type information to quantized gemm functions
  *
- ** NOTE: AIsSigned == true is not supported on non-ARM devices for now. 
+ ** NOTE: AIsSigned == true is not supported on non-ARM devices for now.
  **       AIsSigned == true is supported on ARM devices when BIsSigned is also true.
  *
 */
@@ -654,7 +654,7 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
  *                          B must be prepacked
  * @param [IN] BatchN       Number of multiplications
- * @param [IN] ThreadPool 
+ * @param [IN] ThreadPool
 */
 void
 MLASCALL
@@ -711,8 +711,8 @@ MlasGemmPackB(
 
 /**
  * @brief For symmetric quantized GEMM, returns size of the
- *        packing buffer needed for right hand side        
- * @param N              Number of columns 
+ *        packing buffer needed for right hand side
+ * @param N              Number of columns
  * @param K              Number of rows
  * @param AIsSigned      Whether left hand size is signed int8_t
  * @return  size of the packing buffer,
@@ -722,7 +722,7 @@ size_t
 MLASCALL
 MlasSymmQgemmPackBSize(
     size_t N,
-    size_t K, 
+    size_t K,
     bool AIsSigned
     );
 
@@ -876,17 +876,17 @@ MlasConvSymDepthwiseGetKernelOutputCnt(
 
 /**
  * @brief Returns the stride M of depthwise conv kernel
- * 
- * Most optimized path is Symmetric conv. See 
+ *
+ * Most optimized path is Symmetric conv. See
  * MlasConvSymDepthwiseGetKernelOutputCnt(bool)
- * 
+ *
  * These kernels are implemented in qdwconv.cpp using
  * intrincic, all of them with stride val 1. We use
  * a slightly bigger value to improve cache reuse.
  *
  * This needs to be changed if we optimize depthwise
  * kernels.
- * 
+ *
  * @return
 */
 inline
@@ -1395,10 +1395,10 @@ MlasFp16AccelerationSupported();
 
 /**
  * @brief Interface for half gemm post processors.
- * 
+ *
  * Example implementation of this interface includes activations,
  * conversion from half precision to single precision, etc.
- * 
+ *
  * Half GEMM is computed tile by tile. When a tile of result matrix
  * is produced, the method Process() is called to process this tile.
  * Parameters of this method describe the location and shape of the
@@ -1445,6 +1445,21 @@ public:
 private:
     const MLAS_ACTIVATION& Activation_;
 };
+
+inline
+void
+MlasFp16Activation(
+    const MLAS_ACTIVATION* Activation,
+    MLAS_FP16* Buffer,
+    size_t M,
+    size_t N,
+    size_t ldc
+    )
+{
+    MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(*Activation);
+    proc.Process(Buffer, 0, 0, M, N, ldc);
+}
+
 #endif // fp16 vector intrinsic supported
 
 /**
@@ -1498,17 +1513,17 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
 /**
  * @brief Half precision Batched GEMM:  C = A * B + Bias
  *        Either A or B can be fp32 or fp16
- * 
+ *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
- * 
+ *
  * @param[in]  M       row size of matrix A and C
  * @param[in]  N       column size of matrix B and C
  * @param[in]  K       column size of matrix A and row size of matrix B
  * @param[in]  BatchN  number of batches
  * @param[inout]  DataParams  An array (size BatchN) of parameter blocks
- * @param[in]  ThreadPool 
- * @return 
+ * @param[in]  ThreadPool
+ * @return
 */
 void
 MLASCALL
@@ -1524,7 +1539,7 @@ MlasHalfGemmBatch(
 /**
  * @brief For half precision GEMM, returns size of the
  *        packing buffer needed for right hand side
- * @param[in] N   Number of columns 
+ * @param[in] N   Number of columns
  * @param[in] K   Number of rows
  * @param[in] float2half  Whether the input is float that
  *                        needs to be converted to half precision
@@ -1542,11 +1557,11 @@ MlasHalfGemmPackBSize(
 /**
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
- * 
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B 
- * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[in]  B        Address of matrix B
+ * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
 */
 void
@@ -1562,11 +1577,11 @@ MlasHalfGemmPackB(
 /**
  * @brief For half precision GEMM, convert the float matrix B
  *        to half precision and pack it into a packing buffer
- * 
+ *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows
- * @param[in]  B        Address of matrix B 
- * @param[in]  ldb      leading dimension of input matrix B 
+ * @param[in]  B        Address of matrix B
+ * @param[in]  ldb      leading dimension of input matrix B
  * @param[out] PackedB  Address of the packed matrix
 */
 void
