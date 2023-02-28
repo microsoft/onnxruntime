@@ -69,7 +69,7 @@ static bool AreOrtMemoryInfosEquivalent(
     return left == right;
   } else {
     return left.mem_type == right.mem_type &&
-           left.id == right.id &&
+           left.device.Id() == right.device.Id() &&
            left.device == right.device &&
            strcmp(left.name, right.name) == 0;
   }

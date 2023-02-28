@@ -58,7 +58,7 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
   // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
   // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
   // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
-  auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
+  auto iter = allocators_.find(MakeKey(info.device.Id(), info.mem_type));
   if (iter != allocators_.end()) {
     // check device as mem_type is relative to the device
     // e.g. OrtMemTypeDefault is CPU for a CPU EP and GPU for a CUDA EP. An individual EP will only have one
@@ -79,7 +79,7 @@ void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
 
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
+  const int key = MakeKey(info.device.Id(), info.mem_type);
 
   auto iter = allocators_.find(key);
   if (iter != allocators_.end()) {

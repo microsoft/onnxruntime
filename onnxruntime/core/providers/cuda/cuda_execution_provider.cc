@@ -2492,8 +2492,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
       AllocatorCreationInfo cpu_memory_info(
           [](int device_id) {
             return std::make_unique<CPUAllocator>(
-                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(), device_id,
-                              OrtMemTypeCPUInput));
+                OrtMemoryInfo("CUDA_CPU", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, device_id), OrtMemTypeCPUInput));
           },
           cpu_device.Id());
 
