@@ -12,7 +12,7 @@ class MLOperatorKernelCreationContext;
 #define DML_OP_EXTERN_QUERY_FUNCTION(operatorName) extern void CALLBACK Query##operatorName(IMLOperatorSupportQueryContextPrivate* context, bool* isSupported);
 
 // A specific opset version for registration.
-// e.g. 
+// e.g.
 // DML_OP_DEFINE_CREATION_FUNCTION(RoiAlign10, VersionedKernel<DmlOperatorSlice, 10>);
 template <typename BaseClass, uint32_t opsetVersion>
 class VersionedKernel : public BaseClass
@@ -31,7 +31,7 @@ public:
 //
 // Note the second parameter is the class name, but templated parameters with
 // commas in them break the macro, and so they are stuffed into the VA_ARGS.
-// 
+//
 #define DML_OP_DEFINE_CREATION_FUNCTION(operatorName, ...)\
 extern void CALLBACK Create##operatorName(IMLOperatorKernelCreationContext* kernelInfo, IMLOperatorKernel** opKernel)\
 {\

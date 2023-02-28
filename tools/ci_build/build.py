@@ -414,6 +414,7 @@ def parse_arguments():
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
         "behavior when disable exceptions.",
     )
+    parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
         "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
@@ -955,6 +956,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
@@ -1228,24 +1230,29 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+        for config in configs:
+            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.abspath(onnxruntime_extensions_path)
 
-        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
-            # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+            if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+                # use absolute path here because onnxruntime-extensions is outside onnxruntime
+                onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+                cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
+            else:
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
 
-        cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
-        print("[onnxruntime-extensions] onnxruntime_extensions_path: ", onnxruntime_extensions_path)
+            cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
 
-        if is_reduced_ops_build(args):
-            operators_config_file = os.path.abspath(args.include_ops_by_config)
-            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
+            if is_reduced_ops_build(args):
+                operators_config_file = os.path.abspath(args.include_ops_by_config)
+                cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
 
-            # generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
+                # generate _selectedoplist.cmake by operators config file
+                run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.fuzz_testing:
         if not (
