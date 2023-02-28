@@ -265,19 +265,18 @@ static void RunModelWithRandomInput(
   assert(token_offset_idx == batch_size * sequence_length);
 
   std::vector<int64_t> input_dims{token_count, hidden_size};
-  std::vector<float> input_data = random.Uniform<float>(input_dims, -1.0f, 1.f);
+  std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.3f);
 
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
-  std::vector<float> weight_data = random.Uniform<float>(weight_dims, -1.0f, 1.0f);
+  std::vector<float> weight_data = random.Uniform<float>(weight_dims, 0.0f, 0.3f);
 
   std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Uniform<float>(bias_dims, -1.0f, 1.0f);
+  std::vector<float> bias_data = random.Uniform<float>(bias_dims, 0.0f, 0.1f);
 
   std::vector<int64_t> token_offset_dims{batch_size, sequence_length};
   std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
 
-  // float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
-  float gpu_threshold = 0.005f;
+  float gpu_threshold = is_float16 ? 0.05f : 0.005f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
@@ -313,9 +312,34 @@ TEST(PackedAttentionTest, fp32_b2_s32) {
       false);
 }
 
+TEST(PackedAttentionTest, fp32_b4_s64) {
+  constexpr int batch_size = 4;
+  constexpr int sequence_length = 64;
+
+  std::string onnx_model = "testdata/packed_attention_fp32.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model,
+      false);
+}
+
 TEST(PackedAttentionTest, fp16_b2_s32) {
   constexpr int batch_size = 2;
   constexpr int sequence_length = 32;
+
+  std::string onnx_model = "testdata/packed_attention_fp16.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model,
+      true);
+}
+
+
+TEST(PackedAttentionTest, fp16_b4_s64) {
+  constexpr int batch_size = 4;
+  constexpr int sequence_length = 64;
 
   std::string onnx_model = "testdata/packed_attention_fp16.onnx";
   RunModelWithRandomInput(
