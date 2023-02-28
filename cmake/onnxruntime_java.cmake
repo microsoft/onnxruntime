@@ -213,7 +213,16 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime4j_jni> ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
   # Generate the Android AAR package
-  add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} -b build-android.gradle -c settings-android.gradle build -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR} -DminSdkVer=${ANDROID_MIN_SDK} -DheadersDir=${ANDROID_HEADERS_DIR} WORKING_DIRECTORY ${JAVA_ROOT})
+  add_custom_command(TARGET onnxruntime4j_jni
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E echo "Generating Android AAR package..."
+    COMMAND ${GRADLE_EXECUTABLE}
+      build
+      -b build-android.gradle -c settings-android.gradle
+      -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR}
+      -DminSdkVer=${ANDROID_MIN_SDK} -DheadersDir=${ANDROID_HEADERS_DIR}
+      --stacktrace
+    WORKING_DIRECTORY ${JAVA_ROOT})
 
   if (onnxruntime_BUILD_UNIT_TESTS)
     set(ANDROID_TEST_PACKAGE_ROOT ${JAVA_ROOT}/src/test/android)
@@ -226,7 +235,13 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     # Copy the built Android AAR package to libs folder of our test app
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ANDROID_PACKAGE_OUTPUT_DIR}/outputs/aar/onnxruntime-debug.aar ${ANDROID_TEST_PACKAGE_LIB_DIR}/onnxruntime-mobile.aar)
     # Build Android test apk for java package
-    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} clean WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_DIR})
-    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} assembleDebug assembleDebugAndroidTest -DminSdkVer=${ANDROID_MIN_SDK} WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_DIR})
+    add_custom_command(TARGET onnxruntime4j_jni
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E echo "Building and running Android test for Android AAR package..."
+      COMMAND ${GRADLE_EXECUTABLE}
+        clean assembleDebug assembleDebugAndroidTest
+        -DminSdkVer=${ANDROID_MIN_SDK}
+        --stacktrace
+      WORKING_DIRECTORY ${ANDROID_TEST_PACKAGE_DIR})
   endif()
 endif()
