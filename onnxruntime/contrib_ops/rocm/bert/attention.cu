@@ -1,10 +1,11 @@
-#if 0
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "contrib_ops/rocm/bert/attention.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
+#include "contrib_ops/rocm/bert/batched_gemm_permute_pipelines.cuh"
+#include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
+#include "contrib_ops/rocm/bert/transformer_common.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tunable/gemm.h"
@@ -21,13 +22,13 @@ constexpr int kPastSequenceLengthInputIndex = 6;
 constexpr int kPastInputIndex = 4;
 constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Attention,                                                  \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kRocmExecutionProvider,                                     \
+#define REGISTER_KERNEL_TYPED(T)                                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      Attention,                                                               \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T,                                                                       \
+      kRocmExecutionProvider,                                                  \
       (*KernelDefBuilder::Create())                                            \
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())               \
@@ -51,98 +52,122 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
-  AttentionParameters parameters;
+  AttentionParameters attn;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
                                   mask_index,
                                   past,
                                   relative_position_bias,
-                                  &parameters,
+                                  &attn,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
+  ORT_ENFORCE(attn.sequence_length == attn.kv_sequence_length);  // self attention
 
   TensorShapeVector output_shape(3);
-  output_shape[0] = static_cast<int64_t>(parameters.batch_size);
-  output_shape[1] = static_cast<int64_t>(parameters.sequence_length);
-  output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
+  output_shape[0] = static_cast<int64_t>(attn.batch_size);
+  output_shape[1] = static_cast<int64_t>(attn.sequence_length);
+  output_shape[2] = static_cast<int64_t>(attn.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
   std::vector<int64_t> present_dims{
-      2, parameters.batch_size, parameters.num_heads,
-      parameters.past_present_share_buffer ? parameters.max_sequence_length : parameters.total_sequence_length,
-      parameters.head_size};
+      2, attn.batch_size, attn.num_heads,
+      past_present_share_buffer_ ? attn.max_sequence_length : attn.total_sequence_length,
+      attn.head_size};
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(kPresentOutputIndex, present_shape);
 
+  auto stream = Stream(context);
   rocblas_handle rocblas = GetRocblasHandle(context);
-  constexpr size_t element_size = sizeof(T);
 
-  int m = parameters.batch_size * parameters.sequence_length;
-  int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
-  int k = parameters.input_hidden_size;
-  auto gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  using HipT = typename ToHipType<T>::MappedType;
+  using QkvProjectGeneric = GemmPermuteGenericPipeline<HipT>;
+  using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
 
-  typedef typename ToHipType<T>::MappedType HipT;
-  namespace blas = rocm::tunable::blas;
+  size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
+  size_t attention_workspace_bytes = AttentionGeneric::GetWorkspaceNumBytes(&attn);
+  ORT_ENFORCE(QkvProjectGeneric::GetWorkspaceNumBytes(&attn) <= attention_workspace_bytes); // workspace reuse
 
-  // Bias shape is (N), broadcast using B(N, M) = 1 * bias(N, 1) x ones(1, M) + 0 * B.
-  // TODO: use custom kernel of expand to improve the performance.
-  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      GetTuningContext(), Stream(context), rocblas,
-      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      n, m, 1,
-      /*alpha=*/1.0f,
-      reinterpret_cast<const HipT*>(bias->Data<T>()), n,
-      GetConstOnes<HipT>(m, Stream(context)), 1,
-      /*beta=*/0.0f,
-      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
+  auto qkv_project_output = GetScratchBuffer<void>(qkv_project_output_bytes, context->GetComputeStream());
+  auto workspace = GetScratchBuffer<void>(attention_workspace_bytes, context->GetComputeStream());
 
-  // result(N, M) = 1 * weights x input + 1 x B.
-  ORT_RETURN_IF_ERROR(blas::column_major::Gemm(
-      GetTuningContext(), Stream(context), rocblas,
-      blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
-      n, m, k,
-      /*alpha=*/1.0f,
-      reinterpret_cast<const HipT*>(weights->Data<T>()), n,
-      reinterpret_cast<const HipT*>(input->Data<T>()), k,
-      /*beta=*/1.0f,
-      reinterpret_cast<HipT*>(gemm_buffer.get()), n));
+  GemmPermuteParams<HipT> gemm_permute_params;
+  {
+    auto& params = gemm_permute_params;
+    params.tuning_ctx = GetTuningContext();
+    params.stream = stream;
+    params.handle = rocblas;
+    params.attention = &attn;
+    params.device_prop = &device_prop;
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.sequence_length,
-                                                   parameters.past_sequence_length);
+    params.input_buffer = reinterpret_cast<const HipT*>(input->DataRaw());
+    params.weight_buffer = reinterpret_cast<const HipT*>(weights->DataRaw());
+    params.bias_buffer = reinterpret_cast<const HipT*>(bias->DataRaw());
+    params.out_buffer = reinterpret_cast<HipT*>(qkv_project_output.get());
+    params.ones = GetConstOnes<HipT>(attn.batch_size * attn.sequence_length, stream);
+    params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get()); // workspace reuse
+  }
 
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
-  return LaunchAttentionKernel(
-      device_prop,
-      GetTuningContext(),
-      Stream(context),
-      rocblas,
-      element_size,
-      parameters.batch_size,
-      parameters.sequence_length,
-      parameters.num_heads,
-      parameters.head_size,
-      parameters.past_sequence_length,
-      parameters.is_unidirectional,
-      reinterpret_cast<const void*>(gemm_buffer.get()),
-      nullptr == mask_index ? nullptr : mask_index->Data<int>(),
-      nullptr == mask_index ? gsl::span<const int64_t>() : mask_index->Shape().GetDims(),
-      parameters.mask_filter_value,
-      nullptr == past ? nullptr : past->Data<T>(),
-      nullptr == relative_position_bias ? nullptr : relative_position_bias->Data<T>(),
-      work_space.get(),
-      output->MutableData<T>(),
-      nullptr == present ? nullptr : present->MutableData<T>());
+  ORT_RETURN_IF_ERROR(QkvProjectGeneric::Run(&gemm_permute_params));
+  auto [q_buffer, k_buffer, v_buffer] = QkvProjectGeneric::UnspliceOutputQKV(&gemm_permute_params);
+
+  if (nullptr != present) {
+    // Concat past (2xBxNxS'xH) to present (2xBxNxTxH):
+    // past_k (BxNxS'xH) + k (BxNxSxH) => present_k (BxNxTxH)
+    // past_v (BxNxS'xH) + v (BxNxSxH) => present_v (BxNxTxH)
+    const int batches = attn.batch_size * attn.num_heads;
+    const int present_size_per_batch = attn.total_sequence_length * attn.head_size;
+    ORT_RETURN_IF_ERROR(
+      LaunchConcatPastToPresent(Stream(context),
+                                attn.total_sequence_length,
+                                attn.sequence_length,
+                                attn.batch_size,
+                                attn.head_size,
+                                attn.num_heads,
+                                device_prop.maxThreadsPerBlock,
+                                nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
+                                k_buffer,
+                                reinterpret_cast<HipT*>(present->MutableDataRaw())));
+
+    // update pointers to present_k and present_v.
+    k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
+    v_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw()) + batches * present_size_per_batch;
+  }
+
+  // For testing, environment variable ORT_TRANSFORMER_OPTIONS=1 could enable persistent softmax
+  const TransformerOptions* options = TransformerOptions::GetInstance();
+  bool use_persistent_softmax = options->IsPrecisionMode() && !options->DisablePersistentSoftmax();
+
+  GemmSoftmaxGemmPermuteParams<HipT> gemm_softmax_gemm_permute_params;
+  {
+    auto& params = gemm_softmax_gemm_permute_params;
+    params.tuning_ctx = GetTuningContext();
+    params.stream = Stream(context);
+    params.handle = rocblas;
+    params.attention = &attn;
+    params.device_prop = &device_prop;
+    // FIXME: the params.scale seems to be different from AttentionParameters::scale;
+    params.scale = 1.0f / sqrt(static_cast<float>(attn.head_size));
+    params.q_buffer = q_buffer;
+    params.k_buffer = k_buffer;
+    params.v_buffer = v_buffer;
+    params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
+
+    if (relative_position_bias != nullptr) {
+      params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
+    }
+
+    if (mask_index != nullptr) {
+      params.mask_index_buffer = mask_index->Data<int>();
+      params.mask_index_dims = mask_index->Shape().GetDims();
+    }
+
+    params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
+  }
+
+  return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
 }
 
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
-
-#endif
