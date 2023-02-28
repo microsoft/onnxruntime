@@ -202,6 +202,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
+option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
