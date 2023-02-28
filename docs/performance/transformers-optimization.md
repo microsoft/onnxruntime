@@ -67,13 +67,13 @@ To convert the transformer model to ONNX, use [torch.onnx](https://pytorch.org/d
 
 ### GPT-2 Model conversion
 
-Converting the GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. The tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/convert_to_onnx.py) can help.
+Converting the GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. The tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/gpt2/convert_to_onnx.py) can help.
 
-You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16 or int8):
+You can use commands like the following to convert a pre-trained PyTorch GPT-2 model to ONNX for given precision (float32, float16):
 ```
-python -m onnxruntime.transformers.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
-python -m onnxruntime.transformers.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx
-python -m onnxruntime.transformers.convert_to_onnx -m [path_to_gpt2_pytorch_model_directory] --output quantized.onnx -p fp32 --optimize_onnx
+python -m onnxruntime.transformers.models.gpt2.convert_to_onnx -m gpt2 --model_class GPT2LMHeadModel --output gpt2.onnx -p fp32
+
+python -m onnxruntime.transformers.models.gpt2.convert_to_onnx -m distilgpt2 --model_class GPT2LMHeadModel --output distilgpt2.onnx -p fp16 --use_gpu --optimize_onnx --auto_mixed_precision
 ```
 
 The tool will also verify whether the ONNX model and corresponding PyTorch model generate the same outputs given the same random inputs.

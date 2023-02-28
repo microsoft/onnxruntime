@@ -2,6 +2,7 @@
 title: ORT Mobile Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
 parent: ONNX Runtime Mobile
+has_children: true
 nav_order: 1
 redirect_from: /docs/tutorials/mobile/helpers
 
