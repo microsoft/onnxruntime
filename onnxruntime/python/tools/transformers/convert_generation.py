@@ -1081,7 +1081,13 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
     Args:
         subg (GraphProto): GraphProto of the decoder subgraph
     """
-    decoder_masked_attention_supported_attr = ["past_present_share_buffer", "num_heads", "qkv_hidden_sizes", "scale", "domain"]
+    decoder_masked_attention_supported_attr = [
+        "past_present_share_buffer",
+        "num_heads",
+        "qkv_hidden_sizes",
+        "scale",
+        "domain",
+    ]
     new_nodes = []
     for node in subg.node:
         if node.op_type == "Attention":
@@ -1721,6 +1727,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                     "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
                 )
 
+            if not args.use_gpu:
+                raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
+
             update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph)
 
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
@@ -1898,7 +1907,7 @@ def test_torch_performance(
             num_return_sequences=args.num_return_sequences,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
-            bad_words_ids=bad_words_ids,
+            bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
             output_scores=args.output_sequences_scores or args.output_token_scores,
         )
@@ -2354,8 +2363,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             if args.top_p > 0.01 or args.custom or args.seed:
                 return
         else:
-            #convert_generation_model(args, GenerationType.GREEDYSEARCH)
-            print("Skipping conversion")
+            convert_generation_model(args, GenerationType.GREEDYSEARCH)
     else:
         convert_generation_model(args)
 

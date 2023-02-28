@@ -57,6 +57,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
 
+  // Sanity check
   ORT_ENFORCE(past_present_share_buffer_);
 
   int batch_size = parameters.batch_size;
@@ -99,9 +100,23 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Present input will have the same shape as the past input
   Tensor* present = context->Output(kPresentOutputIndex, past->Shape());
 
-  // Sanity check: Past/Present buffers should be the same to use this optimized kernel
-  // The user of this kernel/ORT framework should ensure this.
-  ORT_ENFORCE(present->MutableData<T1>() == past->Data<T1>());
+  auto cuda_stream = Stream(context);
+
+  auto* present_data = present->MutableData<T1>();
+  auto* past_data = past->Data<T1>();
+
+  // No production use-case will incure this copy cost as the implementation of
+  // GreedySearch/BeamSearch is written in such a way that the past and present buffers
+  // will be shared.
+  // This is just to circumvent the OpTester's limitation of not being able to bind a specific
+  // buffer to inputs/outputs.
+  // TODO(hasesh): Enhance the OpTester to support binding buffers for inputs/outputs
+  // If ever a production use-case using GreedySearch/BeamSearch incurs this copy test, we
+  // will have to debug the GreedySearch/BeamSearch operator
+  if (present_data != past_data) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_data, past_data, past->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice, cuda_stream));
+  }
 
   cublasHandle_t cublas = GetCublasHandle(context);
 
@@ -148,11 +163,14 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
   switch (parameters.head_size) {
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, Stream(context));
+      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;
 
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Unsupported head size in DecoderMaskedMultiheadAttention");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Unsupported head size in DecoderMaskedMultiheadAttention. "
+                             "Got head size: ",
+                             parameters.head_size);
   }
 
   return Status::OK();

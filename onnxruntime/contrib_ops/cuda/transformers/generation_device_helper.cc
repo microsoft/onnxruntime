@@ -60,8 +60,8 @@ Status ReorderPastState(
 
   // Copy the 'K' values into the temp staging buffer
   void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
-  cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2,
-                  cudaMemcpyDeviceToDevice, cuda_stream);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2,
+                                       cudaMemcpyDeviceToDevice, cuda_stream));
 
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
@@ -81,12 +81,11 @@ Status ReorderPastState(
   TensorShape transpose_output_shape_override = {past_state_shape[1], past_state_shape[2], past_state_shape[4] / chunk_size, past_state_shape[3], chunk_size};
 
   // TODO(hasesh): Explore perf tuning for this Transpose operation
-  auto status = onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
-                                                          cublas_handle, permutation,
-                                                          past_state_staging, past_state,
-                                                          &transpose_input_shape_override,
-                                                          &transpose_output_shape_override);
-  return status;
+  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
+                                                   cublas_handle, permutation,
+                                                   past_state_staging, past_state,
+                                                   &transpose_input_shape_override,
+                                                   &transpose_output_shape_override);
 }
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
@@ -183,7 +182,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
   ORT_ENFORCE(total_bytes > 0);
 
-  AllocatorPtr pinned_allocator = provider->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  AllocatorPtr pinned_allocator = provider->GetAllocator(OrtMemTypeCPU);
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
@@ -220,7 +219,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
   // TODO(tianleiwu): allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
-  const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+  const OrtMemoryInfo& location = provider->GetAllocator(OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
@@ -491,7 +490,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     // Apply top-k selection like the following:
     //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
     //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
-    int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
+    int64_t next_token_scores_dims[] = {batch_size, static_cast<int64_t>(num_beams) * static_cast<int64_t>(vocab_size)};
 
     TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
     auto element_type = DataTypeImpl::GetType<float>();

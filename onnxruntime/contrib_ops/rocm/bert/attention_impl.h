@@ -6,6 +6,7 @@
 #include <hip/hip_fp16.h>
 #include <rocblas/rocblas.h>
 #include "core/providers/rocm/shared_inc/rocm_utils.h"
+#include "core/providers/rocm/tunable/rocm_tunable.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -27,7 +28,7 @@ size_t GetAttentionWorkspaceSize(
 
 Status LaunchAttentionKernel(
     const hipDeviceProp_t& prop,               // Device Properties
-    bool tuning,                               // Whether to enable tuning
+    RocmTuningContext* tuning_ctx, // context for tuning
     hipStream_t stream,                        // Hip stream
     rocblas_handle& rocblas,                   // Rocblas handle
     const size_t element_size,                 // Element size of input tensor
@@ -50,7 +51,7 @@ Status LaunchAttentionKernel(
 
 Status LaunchDecoderAttentionKernel(
     const hipDeviceProp_t& prop,      // Device Properties
-    bool tuning,                      // Whether to enable tuning
+    RocmTuningContext* tuning_ctx, // context for tuning
     hipStream_t stream,               // Hip stream
     rocblas_handle& rocblas,          // Rocblas handle
     const size_t element_size,        // Element size of input tensor

@@ -78,8 +78,8 @@ inline bool Contains(const Map& map, const Key& key) {
 #if DNNL_TENSOR_PRINT_MEMORY
 void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
   auto md = mem.get_desc();
-  auto dt = md.data_type();
-  auto dims = md.dims();
+  auto dt = md.get_data_type();
+  auto dims = md.get_dims();
   if (Product(dims) > DNNL_TENSOR_PRINT_MEMORY_MAX_TENSOR_ELEMENTS) {
     printf("tensor too long ignore printing \n");
     return;
@@ -87,7 +87,7 @@ void DnnlSubgraphPrimitive::PrintMemory(const dnnl::memory& mem) {
   dnnl::memory to_mem;
   if (!IsMemoryInExpectedOrtFormat(md)|| mem.get_engine().get_kind() != dnnl::engine::kind::cpu) {
     printf("\n print memory reorder started \n");
-    dnnl::memory::desc to_md = dnnl::memory::desc(md.dims(), md.data_type(), GetDnnlFormat(md.dims().size()));
+    dnnl::memory::desc to_md = dnnl::memory::desc(md.get_dims(), md.get_data_type(), GetDnnlFormat(md.get_dims().size()));
     to_mem = dnnl::memory(to_md, GetCPUEngine());
     auto stream = dnnl::stream(mem.get_engine());
     dnnl::reorder(mem, to_mem).execute(stream, {{DNNL_ARG_FROM, mem}, {DNNL_ARG_TO, to_mem}});
@@ -411,7 +411,7 @@ void DnnlSubgraphPrimitive::AddOutputs() {
     auto dnnl_tensor_name = tensor->Name();
     auto engine = GetCPUEngine();
     auto output_mem_dnnl = GetMemory(dnnl_tensor_name);
-    auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().dims().size()));
+    auto output_md = dnnl::memory::desc(output_mem_dnnl.get_desc().get_dims(), dnnl_data_type, GetDnnlFormat(output_mem_dnnl.get_desc().get_dims().size()));
     // if output already in correct memory format, just place it to outputs instead of reorder
     bool copy_output = outputs_are_always_copied_.find(dnnl_tensor_name) != outputs_are_always_copied_.end();
     if (output_mem_dnnl.get_desc() == output_md && output_mem_dnnl.get_engine() == engine && !copy_output) {
@@ -557,9 +557,9 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
   auto mem_to = dnnl::memory(mem_desc, eng);
 
   // if it is a reshape, ensure reorder is possible by making the same dims
-  if (mem_from.get_desc().dims() != mem_to.get_desc().dims() || transpose) {
-    auto mem_from_dims = mem_from.get_desc().dims();
-    auto mem_to_dims = mem_to.get_desc().dims();
+  if (mem_from.get_desc().get_dims() != mem_to.get_desc().get_dims() || transpose) {
+    auto mem_from_dims = mem_from.get_desc().get_dims();
+    auto mem_to_dims = mem_to.get_desc().get_dims();
     if (Product(mem_from_dims) != Product(mem_to_dims)) {
       LOGS_DEFAULT(ERROR) << tensor.Name() << ", Dims From: " << mem_from_dims << ", To: " << mem_to_dims;
       throw std::invalid_argument("not a valid reshape, inconsistent dim product");
@@ -571,14 +571,12 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
       //TODO: expand to arbitrary permutation or transpose on given 2 dims for higher dimensional tensors
       mem_from_reshape_md = mem_from_reshape_md.permute_axes({1, 0});
     }
-    mem_from_reshape_md = mem_from_reshape_md.reshape(mem_desc.dims());
+    mem_from_reshape_md = mem_from_reshape_md.reshape(mem_desc.get_dims());
     auto mem_from_reshape = dnnl::memory(mem_from_reshape_md, mem_from.get_engine(), nullptr);
     if (is_constant) {  // if constant, do reshape now
       LOGS_DEFAULT(INFO) << "reshaped now";
       //use the stream as a hint to make sure data handle gets set
-      dnnl::stream s{eng};
-      mem_from_reshape.set_data_handle(mem_from.get_data_handle(),s);
-      s.wait();
+      mem_from_reshape.set_data_handle(mem_from.get_data_handle());
     } else {
       AddReshape(mem_from, mem_from_reshape);
     }
@@ -614,7 +612,7 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryAndReshape(const DnnlTensor& tensor
 dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tensor, const dnnl::engine& eng) {
   auto from_mem = GetMemory(tensor);
   auto from_desc = from_mem.get_desc();
-  auto from_dims = from_desc.dims();
+  auto from_dims = from_desc.get_dims();
   if (!IsMemoryInExpectedOrtFormat(from_desc)) {
     dnnl::memory::desc to_md = dnnl::memory::desc(from_dims, tensor.Type(), GetDnnlFormat(from_dims.size()));
     dnnl::memory to_mem = dnnl::memory(to_md, eng);
@@ -628,18 +626,18 @@ dnnl::memory DnnlSubgraphPrimitive::GetMemoryInOrtFormat(const DnnlTensor& tenso
 }
 
 bool DnnlSubgraphPrimitive::IsMemoryInExpectedOrtFormat(const dnnl::memory::desc& desc) const {
-  if (desc.data.format_kind != dnnl_blocked) {
+  if (desc.get_format_kind() != dnnl::memory::format_kind::blocked) {
     return false;
   }
-  if (desc.data.format_desc.blocking.inner_nblks != 0) {
+  if (desc.get_inner_nblks() != 0) {
     return false;
   }
-  auto strides = desc.data.format_desc.blocking.strides;
+  auto strides = desc.get_strides();
   // if a data format is dnnl_format::abcd... the stride will go from largest to smallest
   // if for example we have a shape {2,3,4} we expect a stride of {12, 4, 1} if it were
   // of dnnl_format::abc if instead the stride were {12, 1, 4} that would be dnnl_format::acb
   // which does not match what is expected from Onnxruntime.
-  for (size_t i = 1; i < desc.dims().size(); ++i) {
+  for (size_t i = 1; i < desc.get_dims().size(); ++i) {
     if (strides[i - 1] < strides[i]) {
       return false;
     }
@@ -666,23 +664,20 @@ onnxruntime::common::Status DnnlSubgraphPrimitive::Predict(const std::unordered_
 
   for (auto& input : inputs) {
     if (Contains(inputs_, input.first)) {
-      inputs_.at(input.first).set_data_handle(input.second.buffer, stream);
-      stream.wait();
+      inputs_.at(input.first).set_data_handle(input.second.buffer);
     }
   }
 
   for (auto& output : outputs) {
     if (Contains(outputs_, output.first)) {
-      outputs_.at(output.first).set_data_handle(output.second.buffer, stream);
-      stream.wait();
+      outputs_.at(output.first).set_data_handle(output.second.buffer);
     }
   }
 
   // reshapes (eg, unsqueeze)
   // it is safe to set data handle because all external data handles have been set and onednn managed memory data handles will not change
   for (auto& reshape_pair : reshapes_) {
-    reshape_pair.second.set_data_handle(reshape_pair.first.get_data_handle(),stream);
-    stream.wait();
+    reshape_pair.second.set_data_handle(reshape_pair.first.get_data_handle());
   }
 
 

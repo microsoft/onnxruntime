@@ -122,10 +122,15 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
       sessionOptions.enableProfiling = false;
     }
 
+    let optimizedModelFilePathOffset = 0;
+    if (typeof options?.optimizedModelFilePath === 'string') {
+      optimizedModelFilePathOffset = allocWasmString(options.optimizedModelFilePath, allocs);
+    }
+
     sessionOptionsHandle = wasm._OrtCreateSessionOptions(
         graphOptimizationLevel, !!sessionOptions.enableCpuMemArena!, !!sessionOptions.enableMemPattern!, executionMode,
         !!sessionOptions.enableProfiling!, 0, logIdDataOffset, sessionOptions.logSeverityLevel!,
-        sessionOptions.logVerbosityLevel!);
+        sessionOptions.logVerbosityLevel!, optimizedModelFilePathOffset);
     if (sessionOptionsHandle === 0) {
       throw new Error('Can\'t create session options');
     }

@@ -158,8 +158,10 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebA
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
+option(onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER "Enable this option to run tests in browser instead of Node.js" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option to allow WebAssembly to output optimized model" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -175,6 +177,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# option to enable custom operators in onnxruntime-extensions with a custom path
+option(onnxruntime_EXTENSIONS_OVERRIDDEN, "Enable onnxruntime-extensions overridden" OFF)
 
 # Enable registering custom op schemas from shared libraries in python environment.
 option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
@@ -1339,102 +1344,105 @@ if (onnxruntime_ENABLE_TRAINING)
   add_compile_definitions(ENABLE_STRIDED_TENSORS)
   add_compile_definitions(ENABLE_TRAINING)
 
-  if (UNIX)
-    if (EXISTS "${onnxruntime_MPI_HOME}")
-      set(MPI_HOME "${onnxruntime_MPI_HOME}")
-    elseif (EXISTS "/bert_ort/openmpi")
-      set(MPI_HOME "/bert_ort/openmpi")
-    endif()
+  add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+endif()
 
-    find_package(MPI)
+if (UNIX AND onnxruntime_USE_MPI)
+  if (EXISTS "${onnxruntime_MPI_HOME}")
+    set(MPI_HOME "${onnxruntime_MPI_HOME}")
+  elseif (EXISTS "/bert_ort/openmpi")
+    set(MPI_HOME "/bert_ort/openmpi")
+  endif()
 
-    if (onnxruntime_USE_MPI OR onnxruntime_USE_NCCL)
-      if (MPI_CXX_FOUND)
-        message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-        message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-        mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-      else ()
-        message(
+  find_package(MPI)
+
+  if (MPI_CXX_FOUND)
+    message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
+    message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
+    mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
+  else ()
+    message(
           FATAL_ERROR
           "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
         )
-      endif()
+  endif()
+
+  # Find NCCL and MPI
+  if (onnxruntime_USE_NCCL AND MPI_CXX_FOUND)
+    if (onnxruntime_USE_CUDA)
+      set(NCCL_LIBNAME "nccl")
+    elseif (onnxruntime_USE_ROCM)
+      set(NCCL_LIBNAME "rccl")
     endif()
+    find_path(NCCL_INCLUDE_DIR
+      NAMES ${NCCL_LIBNAME}.h
+      HINTS
+      ${onnxruntime_NCCL_HOME}/include
+      $ENV{CUDA_ROOT}/include)
 
-    # Find NCCL and MPI
-    if (onnxruntime_USE_NCCL)
-      if (onnxruntime_USE_CUDA)
-        set(NCCL_LIBNAME "nccl")
-      elseif (onnxruntime_USE_ROCM)
-        set(NCCL_LIBNAME "rccl")
+    find_library(NCCL_LIBRARY
+      NAMES ${NCCL_LIBNAME}
+      HINTS
+      ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
+      ${onnxruntime_NCCL_HOME}/lib
+      $ENV{CUDA_ROOT}/lib64)
+
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
+
+    if (NCCL_FOUND)
+      set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
+      message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
+      file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (NCCL_MAJOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
+                NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
+        message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
+      endif()
+      file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
+            REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
+      if (NCCL_MINOR_VERSION_DEFINED)
+        string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
+                NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
+        message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
       endif()
 
-      find_path(NCCL_INCLUDE_DIR
-        NAMES ${NCCL_LIBNAME}.h
-        HINTS
-        ${onnxruntime_NCCL_HOME}/include
-        $ENV{CUDA_ROOT}/include)
-
-      find_library(NCCL_LIBRARY
-        NAMES ${NCCL_LIBNAME}
-        HINTS
-        ${onnxruntime_NCCL_HOME}/lib/x86_64-linux-gnu
-        ${onnxruntime_NCCL_HOME}/lib
-        $ENV{CUDA_ROOT}/lib64)
-
-      include(FindPackageHandleStandardArgs)
-      find_package_handle_standard_args(NCCL DEFAULT_MSG NCCL_INCLUDE_DIR NCCL_LIBRARY)
-
-      if (NCCL_FOUND)
-        set(NCCL_HEADER_FILE "${NCCL_INCLUDE_DIR}/${NCCL_LIBNAME}.h")
-        message( STATUS "Determining NCCL version from the header file: ${NCCL_HEADER_FILE}" )
-        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MAJOR_VERSION_DEFINED
-              REGEX "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-        if (NCCL_MAJOR_VERSION_DEFINED)
-          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MAJOR[ \t]+" ""
-                  NCCL_MAJOR_VERSION ${NCCL_MAJOR_VERSION_DEFINED})
-          message( STATUS "NCCL_MAJOR_VERSION: ${NCCL_MAJOR_VERSION}" )
+      if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
+        if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
+          add_definitions(-DUSE_NCCL_P2P=1)
+          message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
         endif()
-        file (STRINGS ${NCCL_HEADER_FILE} NCCL_MINOR_VERSION_DEFINED
-              REGEX "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+[0-9]+.*$" LIMIT_COUNT 1)
-        if (NCCL_MINOR_VERSION_DEFINED)
-          string (REGEX REPLACE "^[ \t]*#define[ \t]+NCCL_MINOR[ \t]+" ""
-                  NCCL_MINOR_VERSION ${NCCL_MINOR_VERSION_DEFINED})
-          message(STATUS "NCCL_MINOR_VERSION: ${NCCL_MINOR_VERSION}")
-        endif()
+      endif()
 
-        if (NCCL_MAJOR_VERSION_DEFINED AND NCCL_MINOR_VERSION_DEFINED)
-          if ("${NCCL_MAJOR_VERSION}.${NCCL_MINOR_VERSION}" VERSION_GREATER_EQUAL "2.7")
-            add_definitions(-DUSE_NCCL_P2P=1)
-            message( STATUS "NCCL P2P is enabled for supporting ncclSend and ncclRecv." )
-          endif()
-        endif()
+      set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
+      set(NCCL_LIBRARIES ${NCCL_LIBRARY})
+      message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
+      mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
 
-        set(NCCL_INCLUDE_DIRS ${NCCL_INCLUDE_DIR})
-        set(NCCL_LIBRARIES ${NCCL_LIBRARY})
-        message( STATUS "NCCL (include: ${NCCL_INCLUDE_DIRS}, library: ${NCCL_LIBRARIES})" )
-        mark_as_advanced(NCCL_INCLUDE_DIRS NCCL_LIBRARIES)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
 
-        list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${NCCL_LIBRARIES})
 
-        add_definitions(-DORT_USE_NCCL=1)
-        message( STATUS "NCCL is enabled in Linux GPU Build." )
-      else ()
-        message(
+      add_definitions(-DORT_USE_NCCL=1)
+      message( STATUS "NCCL is enabled in Linux GPU Build." )
+    else ()
+      set(onnxruntime_USE_NCCL OFF)
+      message(
           FATAL_ERROR
           "NCCL is not found. Please use --nccl_home to specify the path of NCCL. Otherwise, NCCL is disabled."
         )
-      endif()
     endif()
   endif()
+else()
+  set(onnxruntime_USE_NCCL OFF)
+  set(onnxruntime_USE_MPI OFF)
+message( WARNING "MPI and NCCL disabled on Win build." )
+endif()
 
-  if (onnxruntime_USE_MPI)
-    add_definitions(-DUSE_MPI=1)
-  endif()
-
-  add_subdirectory(tensorboard EXCLUDE_FROM_ALL)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
+if (onnxruntime_USE_MPI)
+  add_definitions(-DUSE_MPI=1)
 endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
@@ -1540,6 +1548,10 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   message(STATUS "WebAssembly Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+    add_compile_definitions(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+  endif()
 endif()
 
 if(onnxruntime_BUILD_KERNEL_EXPLORER)

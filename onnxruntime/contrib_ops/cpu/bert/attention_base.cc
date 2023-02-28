@@ -125,6 +125,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   int64_t past_sequence_length = 0;
+  int64_t original_past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
     if (k_hidden_size != v_hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' expect k_hidden_size == v_hidden_size");
@@ -157,6 +158,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
     if (!past_present_share_buffer_) {
       past_sequence_length = past_dims[3];
+      original_past_sequence_length = past_sequence_length;
     } else {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -237,6 +239,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->batch_size = static_cast<int>(batch_size);
     output_parameters->sequence_length = static_cast<int>(sequence_length);
     output_parameters->past_sequence_length = static_cast<int>(past_sequence_length);
+    output_parameters->original_past_sequence_length = static_cast<int>(original_past_sequence_length);
     output_parameters->kv_sequence_length = static_cast<int>(kv_sequence_length);
     output_parameters->total_sequence_length = static_cast<int>(total_sequence_length);
     output_parameters->max_sequence_length = static_cast<int>(max_sequence_length);
@@ -248,6 +251,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
+    output_parameters->do_rotary = do_rotary_;
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;

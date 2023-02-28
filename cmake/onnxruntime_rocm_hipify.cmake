@@ -98,6 +98,9 @@ set(contrib_ops_excluded_files
 if (NOT onnxruntime_ENABLE_ATEN)
   list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
 endif()
+if (NOT onnxruntime_USE_NCCL)
+  list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
@@ -119,7 +122,9 @@ set(provider_excluded_files
   "math/softmax_impl.cu"
   "math/softmax_warpwise_impl.cuh"
   "math/softmax_common.cc"
+  "math/softmax_common.h"
   "math/softmax.cc"
+  "math/softmax.h"
   "nn/conv.cc"
   "nn/conv.h"
   "nn/conv_transpose.cc"
