@@ -19,7 +19,7 @@ bool UpStreamGatherGraphTransformer::UpStreamInternal(
     Node& current_node, SliceInfo& info,
     const OpPassThroughConfig<UpStreamGatherOperatorActorBase>& pass_through_config,
     const logging::Logger& logger, const std::string& entry_node_name) const {
-  Node& slice_node = info->node_ptr;
+  Node& slice_node = *info.node_ptr;
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::unordered_map<int, int> candidate_input_indices;
@@ -239,7 +239,9 @@ std::optional<SliceInfo> UpStreamGatherGraphTransformer::IsSupportedGather(Graph
   auto indices_shape = node.MutableInputDefs()[1]->Shape();
   auto gather_out_shape = node.MutableOutputDefs()[0]->Shape();
   if (data_shape == nullptr || indices_shape == nullptr || gather_out_shape == nullptr) {
-    LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to undefined shape.");
+    LOG_DEBUG_INFO(logger, "Skip Gather node " + node.Name() + " due to undefined shape." +
+                               std::to_string(data_shape == nullptr) + std::to_string(indices_shape == nullptr) +
+                               std::to_string(gather_out_shape == nullptr));
     return std::nullopt;
   }
 

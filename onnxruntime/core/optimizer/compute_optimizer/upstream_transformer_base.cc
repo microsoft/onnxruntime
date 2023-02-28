@@ -10,6 +10,7 @@
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
+#include "core/optimizer/compute_optimizer/upstream_reshape_actors.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
@@ -117,6 +118,7 @@ bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>
 }
 
 template class UpStreamGraphTransformerBase<SliceInfo, UpStreamGatherOperatorActorBase>;
+template class UpStreamGraphTransformerBase<ReshapeInfo, UpStreamReshapeOperatorActorBase>;
 
 }  // namespace onnxruntime::optimizer::compute_optimizer
 

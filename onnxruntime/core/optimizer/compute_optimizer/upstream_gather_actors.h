@@ -231,18 +231,6 @@ class MatMulPassThroughActor : public DefaultUpStreamGatherOperatorActorBase {
 };
 
 /**
- * @brief Update the dim value using given new dim value at specified axis.
- *
- * @param arg_to_update The NodeArg to be updated.
- * @param reverse_axis A negative axis MUST be given here. This is to make sure if arg_to_update has less rank
- *   than expected value, the update will be ignored.
- * @param output_dim_on_axis New dim value to be updated.
- * @return true if the update is done.
- */
-bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis,
-                            const ONNX_NAMESPACE::TensorShapeProto_Dimension& new_dim_value);
-
-/**
  * @brief Insert adaptor nodes for the inputs and output, to make sure they remain the same rank, when scalar slicing
  *  is done.
  *

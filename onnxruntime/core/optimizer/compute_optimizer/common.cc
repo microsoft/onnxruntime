@@ -112,5 +112,83 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
   return &new_node;
 }
 
+/**
+ * @brief From given TensorShape, update specified dimension with given value.
+ * If no new_dim is provided, the dimension will be removed.
+ *
+ * @param shape TensorShape used as base shape to modify.
+ * @param axis The dimension to be replaced/removed.
+ * @param new_dim The new dimension value. If not provided, the dimension will be removed.
+ * @return TensorShapeProto A copy of "shape" after modification.
+ */
+ONNX_NAMESPACE::TensorShapeProto CreateNewShapeWithUpdatedDim(
+    const ONNX_NAMESPACE::TensorShapeProto* shape, const int axis,
+    const ONNX_NAMESPACE::TensorShapeProto_Dimension& new_dim) {
+  ORT_ENFORCE(axis >= 0 && axis < shape->dim_size());
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  for (int i = 0; i < shape->dim_size(); ++i) {
+    auto& dim = shape->dim(i);
+    if (i == axis) {
+      if (new_dim.has_dim_value()) {
+        output_shape.add_dim()->set_dim_value(new_dim.dim_value());
+      } else if (new_dim.has_dim_param()) {
+        output_shape.add_dim()->set_dim_param(new_dim.dim_param());
+      } else {
+        // do nothing, unassigned dim will be removed.
+      }
+
+      continue;
+    }
+
+    if (dim.has_dim_value()) {
+      output_shape.add_dim()->set_dim_value(dim.dim_value());
+    } else if (dim.has_dim_param()) {
+      output_shape.add_dim()->set_dim_param(dim.dim_param());
+    } else {
+      ORT_THROW("Invalid dim found in CreateNewShapeWithUpdatedDim");
+    }
+  }
+
+  return output_shape;
+}
+
+bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const ONNX_NAMESPACE::TensorShapeProto_Dimension& output_dim_on_axis) {
+  ORT_ENFORCE(reverse_axis < 0, " reverse_axis should be negative, representing the index from right to left.");
+  const ONNX_NAMESPACE::TensorShapeProto* shape = arg_to_update.Shape();
+  int rank = shape->dim_size();
+  if (rank < -reverse_axis) {
+    return false;
+  }
+
+  int axis_to_update = rank + reverse_axis;
+  ONNX_NAMESPACE::TensorShapeProto new_output_shape = CreateNewShapeWithUpdatedDim(shape, axis_to_update, output_dim_on_axis);
+  arg_to_update.SetShape(new_output_shape);
+  return true;
+}
+
+int GetONNXOpSetVersion(const Graph& graph) {
+  int onnx_opset = -1;
+  auto onnx_domain_it = graph.DomainToVersionMap().find(kOnnxDomain);
+  if (onnx_domain_it != graph.DomainToVersionMap().end()) {
+    onnx_opset = onnx_domain_it->second;
+  } else {
+    auto onnx_domain_alias_it = graph.DomainToVersionMap().find(kOnnxDomainAlias);
+    if (onnx_domain_alias_it != graph.DomainToVersionMap().end())
+      onnx_opset = onnx_domain_alias_it->second;
+    else
+      ORT_THROW("ONNX domain not found in this model");
+  }
+  return onnx_opset;
+}
+
+NodeArg* CreateUnsqueezeAxesInitializer(Graph& graph, const std::vector<int64_t>& values) {
+  ONNX_NAMESPACE::TensorProto axes_const_tensor;
+  axes_const_tensor.set_name(graph.GenerateNodeArgName("axes"));
+  axes_const_tensor.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  axes_const_tensor.add_dims(values.size());
+  axes_const_tensor.set_raw_data(values.data(), values.size() * sizeof(int64_t));
+  return &graph_utils::AddInitializer(graph, axes_const_tensor);
+}
+
 }  // namespace onnxruntime::optimizer::compute_optimizer
 #endif
