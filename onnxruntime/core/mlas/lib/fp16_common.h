@@ -16,6 +16,7 @@ Abstract:
 
 #pragma once
 
+#include "mlas_float16.h"
 #include "mlasi.h"
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
@@ -26,8 +27,6 @@ typedef float16x8_t MLAS_FLOAT16X8;
 typedef float16x4_t MLAS_FLOAT16X4;
 typedef uint16x8_t MLAS_UINT16X8;
 typedef uint16x4_t MLAS_UINT16X4;
-
-#include "mlas_float16.h"
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
