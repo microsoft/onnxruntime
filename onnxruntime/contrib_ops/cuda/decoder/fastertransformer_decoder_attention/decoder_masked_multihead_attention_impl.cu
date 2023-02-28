@@ -3,6 +3,7 @@
 
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
+#include <cfloat>
 
 namespace onnxruntime {
 namespace contrib {
