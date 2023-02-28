@@ -35,6 +35,7 @@ stages:
       machine_pool: 'Onnxruntime-Linux-GPU'
       device: 'GPU'
       python_wheel_suffix: '_gpu'
+      timeout: 480
 
 
 # if final job not extecuted, it will not run nightlly build
