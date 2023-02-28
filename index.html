@@ -101,17 +101,23 @@
 					</section>
 					<section class="py-md-5 pb-4 pt-4 border-top">
 						<div class="container-fluid">
+							<div class="row ml-0">
+								<div class="col mb-4">
+									<div class="text-center pb-3">
+										<h2 class="section-heading">GET STARTED EASILY</h2>
+									</div>
+								</div>
+							</div>
 							<div class="row">
-							  <div class="col-md-5">
-								<pre class="bg-dark bg-gradient"></pre>
-									<code class=“text-white”>
+							  <div class="col-md-5 row">
+								<pre class="bg-dark bg-gradient text-white">
+									<code class="language-python">
 										import onnxruntime as ort
 										import numpy as np
 										x, y = test_data[0][0], test_data[0][1]
 										ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
 										outputs = ort_sess.run(None, {'input': x.numpy()})
 
-										# Print Result 
 										predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
 										print(f'Predicted: "{predicted}", Actual: "{actual}"')
 									</code>
@@ -119,27 +125,24 @@
 							</div>
 							  <div class="col-md-2">
 								<div class="d-gridd-grid mr-xl-5 btn-block">
-									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 10%;">Install ONNX Runtime</a>
-									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 10%;">Get Started</a>
-									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 10%;">Tutorials</a>
-									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 10%;">Execution Providers</a>
-									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 10%;">API Docs</a>
+									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 8%;">Install ONNX Runtime</a>
+									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 8%;">Get Started</a>
+									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 8%;">Tutorials</a>
+									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 8%;">Execution Providers</a>
+									<a href="#" class="btn btn-block btn-lg btn-primary" style="padding: 8%;">API Docs</a>
 								</div>
 							</div>
-							  <div class="col-md-5 ">
+							  <div class="col-md-5">
 							
 								<div class="list-group border border-primary rounded">
-									<a href="#" class="list-group-item">
+									<a href="https://cloudblogs.microsoft.com/opensource/2023/01/25/improve-bert-inference-speed-by-combining-the-power-of-optimum-openvino-onnx-runtime-and-azure/" target="_blank" class="list-group-item">
 									<h4 class="list-group-item-heading">Improve BERT inference speed by combining the power of Optimum, OpenVINO™, ONNX Runtime, and Azure</h4>
 									</a>
-									<a href="#" class="list-group-item">
+									<a href="https://huggingface.co/blog/optimum-onnxruntime-training/"  target="_blank" class="list-group-item">
 									<h4 class="list-group-item-heading">Optimum + ONNX Runtime: Easier, Faster training for your Hugging Face models</h4>
 									</a>
-									<a href="#" class="list-group-item">
+									<a href="https://cloudblogs.microsoft.com/opensource/2022/06/06/live-demos-of-machine-learning-models-with-onnx-and-hugging-face-spaces/"  target="_blank" class="list-group-item">
 									<h4 class="list-group-item-heading">Live demos of machine learning models with ONNX and Hugging Face Spaces</h4>
-									</a>
-									<a href="#" class="list-group-item">
-									<h4 class="list-group-item-heading">Optimizing and deploying transformer INT8 inference with ONNX Runtime-TensorRT on NVIDIA GPUs</h4>
 									</a>
 								</div>
 							</div>
@@ -162,13 +165,7 @@
 									</div>
 								</div>
 							</noscript>
-							<div class="row ml-0">
-								<div class="col mb-4">
-									<div class="text-center pb-3">
-										<h2 class="section-heading">GET STARTED EASILY</h2>
-									</div>
-								</div>
-							</div>
+
 
 							<div>
 
