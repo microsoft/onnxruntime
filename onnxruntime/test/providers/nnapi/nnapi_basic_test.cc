@@ -64,10 +64,10 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_y, values_mul_y,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_y, values_mul_y,
                        &ml_value_y);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -92,7 +92,7 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -119,7 +119,7 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
 
   NameMLValMap feeds;
@@ -148,7 +148,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -205,13 +205,13 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -539,7 +539,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data,
                        &ml_value);
 
   NameMLValMap feeds;

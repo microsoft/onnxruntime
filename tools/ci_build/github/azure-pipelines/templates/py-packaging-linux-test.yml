@@ -16,9 +16,13 @@ parameters:
   type: string
   default: ''
 
+- name: timeout
+  type: number
+  default: 120
+
 jobs:
 - job: Linux_Test_${{ parameters.device }}${{ parameters.extra_job_id }}_${{ parameters.arch }}
-  timeoutInMinutes: 360
+  timeoutInMinutes: ${{ parameters.timeout }}
   variables:
     skipComponentGovernanceDetection: true
   workspace:
