@@ -51,8 +51,8 @@ Subgraph::Subgraph(
     subgraph_output_names.push_back(subgraph_outputs[i]->Name());
   }
 
-  for (const auto& node : subgraph.Nodes()) {
-    if (node.OpType() == "DecoderMaskedMultiheadAttention") {
+  for (const auto& n : subgraph.Nodes()) {
+    if (n.OpType() == "DecoderMaskedMultiheadAttention") {
       has_decoder_masked_multihead_attention_ = true;
       break;
     }
