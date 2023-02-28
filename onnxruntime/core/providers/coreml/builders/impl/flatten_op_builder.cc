@@ -55,7 +55,7 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -70,7 +70,7 @@ bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   const auto input_rank = input_shape.size();
   if (input_rank < 3) {
-    LOGS_DEFAULT(VERBOSE) << "Flatten only supports input rank greater than equal to 3, input rank is"
+    LOGS(logger, VERBOSE) << "Flatten only supports input rank greater than equal to 3, input rank is"
                           << input_rank;
     return false;
   }

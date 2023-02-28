@@ -59,7 +59,7 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool LRNOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+bool LRNOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& /*input_params*/,
                                      const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
@@ -74,7 +74,7 @@ bool LRNOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
 
   const auto input_rank = input_shape.size();
   if (input_rank < 3) {
-    LOGS_DEFAULT(VERBOSE) << "LRN only supports input rank greater than equal to 3, input rank is"
+    LOGS(logger, VERBOSE) << "LRN only supports input rank greater than equal to 3, input rank is"
                           << input_rank;
     return false;
   }
