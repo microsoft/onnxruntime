@@ -333,10 +333,14 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
                              3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
-  } else if (data.past_key != nullptr || data.present_key != nullptr) { // T5 cross attention
-    assert(data.bias == nullptr); // no bias for T5 cross attention
+  }
+  // T5 cross attention with past/present state
+  else if (data.past_key != nullptr || data.present_key != nullptr) {
+    // no bias for T5 cross attention
+    assert(data.bias == nullptr);
     if (data.past_key != nullptr) {
       assert(data.past_value != nullptr);
+      assert(data.present_key == nullptr);
       assert(data.query != nullptr);
       assert(data.key == nullptr);
       assert(data.value == nullptr);
@@ -348,6 +352,22 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       DUMP_TENSOR_D("data.past_value[BNSH]", data.past_value, batch_size, num_heads, kv_sequence_length, v_head_size);
       DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
+    } else { // past is null, present is not null
+      assert(data.past_value == nullptr);
+      assert(data.present_key != nullptr);
+      assert(data.present_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key != nullptr);
+      assert(data.value != nullptr);
+
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.query, q));
+
+      // TODO: support packed kv
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                          max_threads_per_block, false, data.key, data.present_key));
+      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                          max_threads_per_block, false, data.value, data.present_value));
     }
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
@@ -551,11 +571,14 @@ Status QkvToContext(
       // Update pointers to present_k and present_v.
       k = data.present;
       v = data.present + batches * present_size_per_batch_k;
-    }
-    if (nullptr != data.past_key && nullptr != data.past_value) {
+    } else if (nullptr != data.past_key && nullptr != data.past_value) {
       assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
       k = const_cast<T*>(data.past_key);
       v = const_cast<T*>(data.past_value);
+    } else if (nullptr != data.present_key && nullptr != data.present_value) {
+      assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+      k = data.present_key;
+      v = data.present_value;
     }
   } else {
     assert(qk_head_size == v_head_size);

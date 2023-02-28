@@ -12,12 +12,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import math
 import numpy as np
 import torch
 from torch import nn
+import unittest
 
-torch.set_printoptions(threshold=10000)
+torch.set_printoptions(threshold=30)
 
 
 def create_t5_mha_graph(
@@ -26,23 +26,30 @@ def create_t5_mha_graph(
     kv_sequence_length,
     head_size,
     num_heads,
+    use_past,
 ):
     from onnx import TensorProto, helper
+
+    use_present = not use_past
 
     nodes = [
         helper.make_node(
             "MultiHeadAttention",
             [
                 "query",
-                "",  # key
-                "",  # value
+                "key" if use_present else "",
+                "value" if use_present else "",
                 "",  # bias
                 "key_padding_mask",
                 "",  # rel_pos_bias
-                "past_key",
-                "past_value",
+                "past_key" if use_past else "",
+                "past_value" if use_past else "",
             ],
-            ["output"],
+            [
+                "output",
+                "present_key" if use_present else "",
+                "present_value" if use_present else "",
+            ],
             "MHA_0",
             num_heads=num_heads,
             mask_filter_value=-10000.0,
@@ -55,22 +62,50 @@ def create_t5_mha_graph(
 
     hidden_size = head_size * num_heads
 
+    graph_inputs = [
+        helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+        helper.make_tensor_value_info("key_padding_mask", TensorProto.INT32, [batch_size, kv_sequence_length]),
+    ]
+
+    graph_outputs = [
+        helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
+    ]
+
+    if use_past:
+        graph_inputs.append(
+            helper.make_tensor_value_info(
+                "past_key", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
+            )
+        )
+        graph_inputs.append(
+            helper.make_tensor_value_info(
+                "past_value", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
+            )
+        )
+
+    if use_present:
+        graph_inputs.append(
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, kv_sequence_length, hidden_size])
+        )
+        graph_inputs.append(
+            helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, kv_sequence_length, hidden_size])
+        )
+        graph_outputs.append(
+            helper.make_tensor_value_info(
+                "present_key", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
+            )
+        )
+        graph_outputs.append(
+            helper.make_tensor_value_info(
+                "present_value", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
+            )
+        )
+
     graph = helper.make_graph(
         nodes,
         "T5_MHA_Graph",
-        [
-            helper.make_tensor_value_info("query", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-            helper.make_tensor_value_info("key_padding_mask", TensorProto.INT32, [batch_size, kv_sequence_length]),
-            helper.make_tensor_value_info(
-                "past_key", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
-            ),
-            helper.make_tensor_value_info(
-                "past_value", TensorProto.FLOAT, [batch_size, num_heads, kv_sequence_length, head_size]
-            ),
-        ],
-        [
-            helper.make_tensor_value_info("output", TensorProto.FLOAT, [batch_size, seq_len, hidden_size]),
-        ],
+        graph_inputs,
+        graph_outputs,
         initializers,
     )
 
@@ -79,7 +114,7 @@ def create_t5_mha_graph(
 
 
 class T5Config:
-    def __init__(self, is_decoder, batch_size, seq_len, kv_sequence_length, num_heads, head_size):
+    def __init__(self, is_decoder, batch_size, seq_len, kv_sequence_length, num_heads, head_size, use_past):
         self.is_decoder = is_decoder
         self.relative_attention_num_buckets = 32
         self.relative_attention_max_distance = 128
@@ -95,6 +130,7 @@ class T5Config:
         self.head_size = head_size
         self.num_heads = num_heads
         self.hidden_size = self.d_model
+        self.use_past = use_past
 
 
 class T5Attention(nn.Module):
@@ -126,10 +162,11 @@ class T5Attention(nn.Module):
         self.head_size = config.head_size
         self.num_heads = config.num_heads
         self.hidden_size = self.d_model
+        self.use_past = config.use_past
 
         # Create onnx graph
         self.onnx_graph = create_t5_mha_graph(
-            config.batch_size, config.seq_len, config.kv_sequence_length, config.head_size, config.num_heads
+            self.batch_size, self.seq_len, self.kv_sequence_length, self.head_size, self.num_heads, self.use_past
         )
 
     def create_inputs(self):
@@ -274,17 +311,71 @@ class T5Attention(nn.Module):
         use_cache=False,
         query_length=None,
     ):
-        torch_query = self.q(hidden_states)
-        torch_key_padding_mask = mask.to(torch.int32)
-        torch_past_key = past_key_value[0]
-        torch_past_value = past_key_value[1]
+        batch_size, seq_length = hidden_states.shape[:2]
 
-        ort_inputs = {
-            "query": np.ascontiguousarray(torch_query.detach().numpy()),
-            "key_padding_mask": np.ascontiguousarray(torch_key_padding_mask.detach().numpy()),
-            "past_key": np.ascontiguousarray(torch_past_key.detach().numpy()),
-            "past_value": np.ascontiguousarray(torch_past_value.detach().numpy()),
-        }
+        real_seq_length = seq_length
+
+        if past_key_value is not None:
+            assert (
+                len(past_key_value) == 2
+            ), f"past_key_value should have 2 past states: keys and values. Got { len(past_key_value)} past states"
+            real_seq_length += past_key_value[0].shape[2] if query_length is None else query_length
+
+        def project(hidden_states, proj_layer, key_value_states, past_key_value):
+            if key_value_states is None:
+                # self-attn
+                hidden_states = proj_layer(hidden_states)
+            elif past_key_value is None:
+                # cross-attn
+                # (batch_size, n_heads, seq_length, dim_per_head)
+                hidden_states = proj_layer(key_value_states)
+
+            if past_key_value is not None:
+                if key_value_states is None:
+                    # self-attn
+                    # (batch_size, n_heads, key_length, dim_per_head)
+                    hidden_states = torch.cat([past_key_value, hidden_states], dim=2)
+                elif past_key_value.shape[2] != key_value_states.shape[1]:
+                    # checking that the `sequence_length` of the `past_key_value` is the same as
+                    # the provided `key_value_states` to support prefix tuning
+                    # cross-attn
+                    # (batch_size, n_heads, seq_length, dim_per_head)
+                    hidden_states = proj_layer(key_value_states)
+                else:
+                    # cross-attn
+                    hidden_states = past_key_value
+            return hidden_states
+
+        # get query states
+        query_states = self.q(hidden_states)  # (batch_size, n_heads, seq_length, dim_per_head)
+
+        # get key/value states
+        key_states = project(
+            hidden_states, self.k, key_value_states, past_key_value[0] if past_key_value is not None else None
+        )
+        value_states = project(
+            hidden_states, self.v, key_value_states, past_key_value[1] if past_key_value is not None else None
+        )
+
+        torch_key_padding_mask = mask.to(torch.int32)
+
+        ort_inputs = None
+        if past_key_value is None:
+            ort_inputs = {
+                "query": np.ascontiguousarray(query_states.detach().numpy()),
+                "key": np.ascontiguousarray(key_states.detach().numpy()),
+                "value": np.ascontiguousarray(value_states.detach().numpy()),
+                "key_padding_mask": np.ascontiguousarray(torch_key_padding_mask.detach().numpy()),
+            }
+        else:
+            torch_past_key = past_key_value[0]
+            torch_past_value = past_key_value[1]
+            ort_inputs = {
+                "query": np.ascontiguousarray(query_states.detach().numpy()),
+                "key_padding_mask": np.ascontiguousarray(torch_key_padding_mask.detach().numpy()),
+                "past_key": np.ascontiguousarray(torch_past_key.detach().numpy()),
+                "past_value": np.ascontiguousarray(torch_past_value.detach().numpy()),
+            }
 
         from onnxruntime import InferenceSession, SessionOptions
 
@@ -292,18 +383,16 @@ class T5Attention(nn.Module):
         ort_session = InferenceSession(self.onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
 
-        output = torch.tensor(ort_output)
+        output = None
+        if past_key_value is None:
+            output = (torch.tensor(ort_output[0]),) + ((torch.tensor(ort_output[1]), torch.tensor(ort_output[2])),)
+        else:
+            output = torch.tensor(ort_output)
 
         return output
 
 
-if __name__ == "__main__":
-    batch_size = 1
-    seq_len = 2
-    num_heads = 2
-    head_size = 4
-    kv_sequence_length = 3
-
+def test_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -311,6 +400,7 @@ if __name__ == "__main__":
         kv_sequence_length=kv_sequence_length,
         num_heads=num_heads,
         head_size=head_size,
+        use_past=True,
     )
     T5CrossAttention = T5Attention(config, has_relative_attention_bias=False)
 
@@ -321,5 +411,55 @@ if __name__ == "__main__":
     ort_output = T5CrossAttention.ort_forward(
         hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cache=False
     )
-    print("torch_output", torch_output)
-    print("ort_output", ort_output)
+
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+
+
+def test_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
+    config = T5Config(
+        is_decoder=True,
+        batch_size=batch_size,
+        seq_len=seq_len,
+        kv_sequence_length=kv_sequence_length,
+        num_heads=num_heads,
+        head_size=head_size,
+        use_past=False,
+    )
+    T5CrossAttention = T5Attention(config, has_relative_attention_bias=False)
+
+    hidden_states, key_value_states, _, attention_mask = T5CrossAttention.create_inputs()
+    torch_output = T5CrossAttention.torch_forward(
+        hidden_states, key_value_states, None, attention_mask, position_bias=None, use_cache=True
+    )
+    ort_output = T5CrossAttention.ort_forward(
+        hidden_states, key_value_states, None, attention_mask, position_bias=None, use_cache=True
+    )
+
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+    assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+    assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+
+
+class TestT5MHAParity(unittest.TestCase):
+    def init_input_shapes(self):
+        self.batch_size = 1
+        self.seq_len = 2
+        self.num_heads = 2
+        self.head_size = 4
+        self.kv_sequence_length = 3
+
+    def test_t5_cross_attention_decoder(self):
+        self.init_input_shapes()
+        test_t5_cross_attention_decoder(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
+
+    def test_t5_cross_attention_decoder_init(self):
+        self.init_input_shapes()
+        test_t5_cross_attention_decoder_init(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
