@@ -65,7 +65,7 @@ Status ReorderPastState(
 
   // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
   // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
-  int chunk_size = 16 / past_state.DataType()->Size();
+  int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
 
   std::vector<size_t> permutation_vector = {0, 1, 3, 2, 4};
   gsl::span<size_t> permutation(permutation_vector.data(), 5);
