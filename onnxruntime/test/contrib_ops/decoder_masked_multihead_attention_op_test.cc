@@ -15,6 +15,9 @@ namespace onnxruntime {
 
 namespace test {
 
+// This op is currently only supported on CUDA- so test it only for CUDA
+#ifdef USE_CUDA
+
 template <typename T>
 static std::vector<T> CreateOnes(int size) {
   std::vector<T> f;
@@ -840,5 +843,8 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
     }
   }
 }
+
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
