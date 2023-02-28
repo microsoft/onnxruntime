@@ -100,7 +100,6 @@ MLAS_FORCEINLINE MLAS_FLOAT16X4
 MlasToLowHalfFloat16x4(MLAS_FLOAT16X8 V)
 {
     // vget_low should be compiled to nothing
-    // https://godbolt.org/z/ad2fVM
     return vget_low_f16(V);
 }
 
@@ -287,7 +286,7 @@ MlasCmpLessEqualFloat16x4(MLAS_FLOAT16X4 left, MLAS_FLOAT16X4 right)
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasBitwiseSelectFloat16x8(MLAS_UINT16X8 select, MLAS_FLOAT16X8 ones, MLAS_FLOAT16X8 zeros) 
+MlasBitwiseSelectFloat16x8(MLAS_UINT16X8 select, MLAS_FLOAT16X8 ones, MLAS_FLOAT16X8 zeros)
 {
     return vbslq_f16(select, ones, zeros);
 }

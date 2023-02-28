@@ -651,7 +651,7 @@ struct MLAS_SYMM_QGEMM_DATA_PARAMS {
  * @param [IN] Shape        A single shape descriptor for all multiplicatons.
                             Currently A and B must be signed, and accumulation
                             mode not supported
- * @param [IN] DataParams   Array of data descriptors, one for each mutliplication
+ * @param [IN] DataParams   Array of data descriptors, one for each multiplication
  *                          B must be prepacked
  * @param [IN] BatchN       Number of multiplications
  * @param [IN] ThreadPool
@@ -1389,7 +1389,9 @@ using MLAS_FP16 = onnxruntime::MLFloat16;
 
 constexpr size_t FP16_SIZE = sizeof(uint16_t);
 
-
+/**
+ * @brief Whether current CPU supports FP16 acceleration.
+*/
 bool MLASCALL
 MlasFp16AccelerationSupported();
 
@@ -1420,7 +1422,6 @@ public:
     virtual ~MLAS_HALF_GEMM_POSTPROCESSOR() {}
 };
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 /**
  * @brief Half precision activation functions
 */
@@ -1460,7 +1461,6 @@ MlasFp16Activation(
     proc.Process(Buffer, 0, 0, M, N, ldc);
 }
 
-#endif // fp16 vector intrinsic supported
 
 /**
  * @brief Convert half gemm result matrix to single precision float matrix

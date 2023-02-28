@@ -291,4 +291,47 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
     }
 }
 
+#else
+// Really dumb implementation when fp16 acceleration is not supported
+
+#include <vector>
+
+MLAS_FORCEINLINE
+void
+CvtFloat2Half(
+    _mlas_fp16_* dest,
+    const float* src,
+    size_t len
+)
+{
+    for (size_t i = 0; i < len; i++) {
+        *dest++ = MLAS_Float2Half(*src++);
+    }
+}
+
+void
+MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
+    MLAS_FP16* C,
+    size_t StartM,
+    size_t StartN,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc
+    ) const
+{
+    std::vector<float> buffer(CountM*CountN);
+    MLAS_HALF_GEMM_2FLOAT_PROCESSOR proc(this->Activation_, buffer.data(), CountN);
+    proc.Process(C, StartM, StartN, CountM, CountN, ldc);
+
+    _mlas_fp16_* Output = reinterpret_cast<_mlas_fp16_*>(C);
+    const auto* CRow = buffer.data();
+    Output += StartM * ldc + StartN;
+
+    while (CountM-- > 0) {
+        CvtFloat2Half(Output, CRow, CountN);
+        CRow += CountN;
+        Output += ldc;
+    }
+}
+
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
