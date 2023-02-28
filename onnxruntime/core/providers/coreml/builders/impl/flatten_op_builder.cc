@@ -37,6 +37,7 @@ Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
+  // Note: ONNX Flatten corresponds to CoreML FlattenTo2DLayerParams
   auto* coreml_flatten = layer->mutable_flattento2d();
 
   NodeAttrHelper helper(node);
