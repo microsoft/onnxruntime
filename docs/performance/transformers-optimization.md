@@ -1,5 +1,6 @@
 ---
 title: Transformers Optimizer 
+description: Transformer model optimization tool to use with ONNX Runtime
 parent: Performance
 nav_order: 4
 ---
@@ -14,25 +15,51 @@ nav_order: 4
 
 ## Transformer Model Optimization Tool Overview
 
-ONNX Runtime automatically applies most optimizations while loading a transformer model. Some of the latest optimizations that have not yet been integrated into ONNX Runtime are available using a [separate tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) that tunes models for the best performance.
+While ONNX Runtime automatically applies most optimizations while loading transformer models, some of the latest optimizations that have not yet been integrated into ONNX Runtime. These additional optimizations can be applied using a [separate tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) that tunes models for the best performance. This optimization tool provides an offline capability to optimize transformer models in scenarios where ONNX Runtime does not apply the optimization at load time.
 
-This tool can help in the following senarios:
-* Model is exported by tf2onnx or keras2onnx, and ONNX Runtime does not have graph optimization for them right now.
-* Convert model to use float16 to boost performance using mixed precision on GPUs with Tensor Cores (like V100 or T4).
-* Model has inputs with dynamic axis, which blocks some optimizations to be applied in ONNX Runtime due to shape inference.
-* Disable or enable some fusions to see its impact on performance or accuracy.
+This tool can be helpful when:
+* ONNX Runtime does not yet have transformer-specific graph optimization enabled
+* The model can be converted to use float16 to boost performance using mixed precision on GPUs with Tensor Cores (like V100 or T4)
+* The model has inputs with dynamic axis, which blocks some optimizations from being applied by ONNX Runtime due to shape inference.
+* Experimenting with disabling or enabling some fusions to evaluate impact on performance or accuracy.
 
-## Installation
+### Usage workflow
+1. [Install ONNX Runtime](#1-install-onnx-runtime)
+2. [Convert the transformer model to ONNX](#2-convert-a-transformer-model-to-onnx)
+3. [Run the model optimizer tool](#3-run-the-model-optimizer-tool)
+4. [Benchmark and profile the model](#4-benchmark-and-profile-the-model)
+
+### Supported models
+
+Below is the list of models that have been explicitly tested with the optimizer. Models not in the list may only be partially optimized or not optimized at all.
+
+PyTorch (from [Huggingface Transformers](https://github.com/huggingface/transformers/)):
+- BERT
+- DistilBERT
+- DistilGPT2
+- RoBERTa
+- ALBERT
+- GPT-2 (**GPT2Model**, **GPT2LMHeadModel**)
+
+TensorFlow
+- The only TensorFlow model tested so far is BERT.
+
+Most optimizations require exact match of a subgraph. Any layout change in the subgraph might cause some optimization to not work. Note that different versions of training or export tool might lead to different graph layouts. It is recommended to use the latest released version of PyTorch and Transformers.
+
+#### Limitations to note
+* Due to the CUDA implementation of the Attention kernel in ONNX Runtime, the maximum number of attention heads is 1024. 
+* Normally, due to GPU memory constraints, the maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
+
+---
+
+## 1. Install ONNX Runtime
 
 First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inference. To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable. See [Python installation instructions](./../install/index.md#python-installs).
 
-## Limitations
 
-Due to the CUDA implementation of the Attention kernel, the maximum number of attention heads is 1024. Normally, maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
+## 2. Convert a transformer model to ONNX
 
-## Export a transformer model to ONNX
-
-To convert the transoformer model to ONNX convert, use [torch.onnx](https://pytorch.org/docs/stable/onnx.html) (PyTorch), or [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx). 
+To convert the transformer model to ONNX, use [torch.onnx](https://pytorch.org/docs/stable/onnx.html) or [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx). 
 
 - Huggingface transformers has a [notebook](https://github.com/huggingface/notebooks/blob/master/examples/onnx-export.ipynb) shows an example of exporting a pretrained model to ONNX.
 
@@ -75,7 +102,7 @@ python convert_to_onnx.py -m longformer-base-4096
 
 The exported ONNX model can only run on GPU right now.
 
-## Model Optimizer
+## 3. Run the model optimizer tool
 
 In your Python code, you can use the optimizer like the following:
 
@@ -98,7 +125,6 @@ python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 
 ### Optimizer Options
 
-
 - **input**: input model path
 - **output**: output model path
 - **model_type**: (*defaul: bert*)
@@ -118,22 +144,6 @@ python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
 
-### Supported Models
-
-Below is the list of models that have been explicitly tested with the optimizer. Models not in the list may only be partially optimized or not optimized at all.
-
-PyTorch (from [Huggingface Transformers](https://github.com/huggingface/transformers/)):
-- BERT
-- DistilBERT
-- DistilGPT2
-- RoBERTa
-- ALBERT
-- GPT-2 (**GPT2Model**, **GPT2LMHeadModel**)
-
-TensorFlow
-- The only TensorFlow model tested so far is BERT.
-
-Most optimizations require exact match of a subgraph. Any layout change in the subgraph might cause some optimization to not work. Note that different versions of training or export tool might lead to different graph layouts. It is recommended to use the latest released version of PyTorch and Transformers.
 
 ### BERT Model Verification
 
@@ -147,7 +157,7 @@ python -m onnxruntime.transformers.compare_bert_results --baseline_model origina
 
 For GPU, please append --use_gpu to the command.
 
-## Benchmarking and Profiling
+## 4. Benchmark and profile the model
 
 ### Benchmark
 There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.

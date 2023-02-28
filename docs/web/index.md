@@ -1,6 +1,6 @@
 ---
 title: ONNX Runtime Web
-description: ONNX Runtime for web-based deploymentss
+description: ONNX Runtime for web-based deployments
 has_children: true
 has_toc: false 
 nav_order: 9

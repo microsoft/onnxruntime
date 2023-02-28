@@ -13,7 +13,7 @@ nav_order: 3
 * TOC placeholder
 {:toc}
 
-The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops) contains ops that are built in to the runtime by default. Only selective operators are added as contrib ops to avoid increasing the binary size of the core runtime package. When possible, [custom operators](./add-custom-op.md) should be used.
+The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops) contains ops that are built in to the runtime by default. Only selected operators are added as contrib ops to avoid increasing the binary size of the core runtime package. When possible, [custom operators](./add-custom-op.md) should be used.
 
 ## Contrib Op List
 

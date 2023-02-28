@@ -3,6 +3,8 @@ title: ORT Mobile Model Export Helpers
 descriptions: Helpers to assist with export and usage of models with ORT Mobile
 parent: ONNX Runtime Mobile
 nav_order: 1
+redirect_from: /docs/tutorials/mobile/helpers
+
 ---
 
 # ORT Mobile Model Export Helpers
@@ -29,7 +31,7 @@ See [here](./model-usability-checker.md) for more details.
 
 The ORT Mobile pre-built package only supports the most recent ONNX opsets in order to minimize binary size. Most ONNX models can be updated to a newer ONNX opset using this tool. It is recommended to use the latest opset the pre-built package supports, which is currently opset 15.
 
-The ONNX opsets supported by the pre-built package are documented [here](../../reference/operators/mobile_package_op_type_support_1.10.md).
+The ONNX opsets supported by the pre-built package are documented [here](../../reference/operators/MobileOps.md).
 
 Usage:
 

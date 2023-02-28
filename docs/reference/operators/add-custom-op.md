@@ -7,7 +7,7 @@ nav_order: 4
 # Custom operators
 {: .no_toc }
 
-ONNX Runtime provides options to run custom operators that are not official ONNX operators. ONNX Runtime provides options to run custom operators that are not official ONNX operators. Note that custom operators differ from [contrib ops](./ContribOperators.md), which are select non-official ONNX operators that are built in directly to ORT.
+ONNX Runtime provides options to run custom operators that are not official ONNX operators. Note that custom operators differ from [contrib ops](./ContribOperators.md), which are selected unofficial ONNX operators that are built in directly to ORT.
 
 ## Contents
 {: .no_toc }
