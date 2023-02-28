@@ -219,5 +219,160 @@ TEST(PackedAttentionTest, PackedBatch) {
       4);
 }
 
+static void RunModelWithRandomInput(
+    int64_t batch_size,
+    int64_t sequence_length,
+    std::string& onnx_model,
+    bool is_float16) {
+  // ORT enables TF32 in GEMM for A100. TF32 will cause precsion loss and fail this test.
+  // Do not run this test unless TF32 is disabled explicitly.
+  if (HasCudaEnvironment(800) && ParseEnvironmentVariableWithDefault<int>("NVIDIA_TF32_OVERRIDE", 1) != 0) {
+    GTEST_SKIP() << "Skipping RunModelWithRandomInput in A100 since TF32 is enabled";
+    return;
+  }
+
+  RandomValueGenerator random{234};
+
+  constexpr int hidden_size = 768;
+  constexpr int num_heads = 12;
+
+  int token_count = 0;
+  std::vector<int32_t> cum_seq_len(batch_size + 1);
+  cum_seq_len[0] = 0;
+
+  int original_offset = 0;
+  int token_offset_idx = 0;
+  std::vector<int32_t> token_offset(batch_size * sequence_length);
+  for (int b = 0; b < batch_size; b++) {
+    int actual_seq_len = (sequence_length / (b + 1));
+    token_count += actual_seq_len;
+    cum_seq_len[b + 1] = token_count;
+
+    original_offset = b * sequence_length;
+    for (int s = 0; s < actual_seq_len; s++) {
+      token_offset[token_offset_idx++] = original_offset++;
+    }
+  }
+
+  for (int b = 0; b < batch_size; b++) {
+    int actual_seq_len = (sequence_length / (b + 1));
+    original_offset = b * sequence_length + actual_seq_len;
+    for (int s = actual_seq_len; s < sequence_length; s++) {
+      token_offset[token_offset_idx++] = original_offset++;
+    }
+  }
+
+  assert(token_offset_idx == batch_size * sequence_length);
+
+  std::vector<int64_t> input_dims{token_count, hidden_size};
+  std::vector<float> input_data = random.Uniform<float>(input_dims, -1.0f, 1.f);
+
+  std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
+  std::vector<float> weight_data = random.Uniform<float>(weight_dims, -1.0f, 1.0f);
+
+  std::vector<int64_t> bias_dims{3 * hidden_size};
+  std::vector<float> bias_data = random.Uniform<float>(bias_dims, -1.0f, 1.0f);
+
+  std::vector<int64_t> token_offset_dims{batch_size, sequence_length};
+  std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
+
+  // float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
+  float gpu_threshold = 0.005f;
+  constexpr float cpu_threshold = 0.002f;
+  bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
+  if (enable_cuda) {
+    OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
+    test.AddAttribute<int64_t>("num_heads", num_heads);
+    if (is_float16) {
+      test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
+      test.AddInput<MLFloat16>("weight", weight_dims, ToFloat16(weight_data));
+      test.AddInput<MLFloat16>("bias", bias_dims, ToFloat16(bias_data));
+    } else {
+      test.AddInput<float>("input", input_dims, input_data);
+      test.AddInput<float>("weight", weight_dims, weight_data);
+      test.AddInput<float>("bias", bias_dims, bias_data);
+    }
+    test.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
+    test.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
+
+    test.AddReferenceOutputs(onnx_model, gpu_threshold);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  }
+}
+
+TEST(PackedAttentionTest, fp32_b2_s32) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 32;
+
+  std::string onnx_model = "testdata/packed_attention_fp32.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model,
+      false);
+}
+
+TEST(PackedAttentionTest, fp16_b2_s32) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 32;
+
+  std::string onnx_model = "testdata/packed_attention_fp16.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model,
+      true);
+}
+
+/*
+TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
+  constexpr int batch_size = 2;
+  constexpr int sequence_length = 64;
+
+  std::vector<int64_t> mask_index_dims{batch_size};
+  std::vector<int32_t> mask_index_data;
+  for (int i = 0; i < batch_size; i++) {
+    mask_index_data.push_back(i == 0 ? sequence_length : (sequence_length / 2));
+  }
+
+  std::string onnx_model = "testdata/attention_mask1d_fp32.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      mask_index_dims,
+      mask_index_data,
+      onnx_model,
+      false);
+}
+
+// This test is disabled since it is flaky.
+TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
+  constexpr int batch_size = 2;
+
+  // Sequence lengths used in TRT fused attention fp16 v2 kernels.
+  std::vector<int> sequence_lengths{64, 128, 192, 256, 384, 512};
+
+  for (const auto& sequence_length : sequence_lengths) {
+    std::vector<int64_t> mask_index_dims{batch_size};
+    std::vector<int32_t> mask_index_data;
+    for (int i = 0; i < batch_size; i++) {
+      mask_index_data.push_back(sequence_length);
+    }
+
+    std::string onnx_model = "testdata/attention_mask1d_fp16.onnx";
+
+    RunModelWithRandomInput(
+        batch_size,
+        sequence_length,
+        mask_index_dims,
+        mask_index_data,
+        onnx_model,
+        true);
+  }
+}
+*/
+
 }  // namespace test
 }  // namespace onnxruntime
