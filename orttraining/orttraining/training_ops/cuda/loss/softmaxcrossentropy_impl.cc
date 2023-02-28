@@ -26,7 +26,7 @@ namespace cuda {
       kCudaExecutionProvider,                                           \
       (*KernelDefBuilder::Create())                                     \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
-          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),   \
+          .TypeConstraint("Tind", DataTypeImpl::GetTensorType<Tin>()),  \
       Class<T, Tin>);
 
 template <typename T>
@@ -49,11 +49,11 @@ Status SoftmaxCrossEntropy<T>::ComputeInternal(OpKernelContext* ctx) const {
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, true>(Stream(ctx),
-                                              logit_data,
-                                              logit_reshape,
-                                              log_prob_data,
-                                              1 /*axis default*/);
+  auto status = SoftMaxComputeHelper<T, T, true>(Stream(ctx),
+                                                 logit_data,
+                                                 logit_reshape,
+                                                 log_prob_data,
+                                                 1 /*axis default*/);
   ORT_RETURN_IF_ERROR(status);
 
   size_t normalize_factor = N;
@@ -151,11 +151,11 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   T* log_prob_data = log_prob->template MutableData<T>();
 
   // calculate logsoftmax
-  auto status = SoftMaxComputeHelper<T, true>(Stream(ctx),
-                                              logit_data,
-                                              logit_reshape,
-                                              log_prob_data,
-                                              1 /*axis default*/);
+  auto status = SoftMaxComputeHelper<T, T, true>(Stream(ctx),
+                                                 logit_data,
+                                                 logit_reshape,
+                                                 log_prob_data,
+                                                 1 /*axis default*/);
   ORT_RETURN_IF_ERROR(status);
 
   // calculate  (label * log(softmax)) for each sample
@@ -177,11 +177,13 @@ Status SparseSoftmaxCrossEntropy<T, Tin>::ComputeInternal(OpKernelContext* ctx) 
   auto normalize_factor_data = GetScratchBuffer<T>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::SUM) {
     constexpr T normalize_factor_one = static_cast<T>(1);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T),
+                                         cudaMemcpyHostToDevice, Stream(ctx)));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T),
+                                           cudaMemcpyHostToDevice, Stream(ctx)));
     } else {
       ORT_RETURN_IF_ERROR(reduce_sum(
           Stream(ctx),
@@ -247,11 +249,13 @@ Status SparseSoftmaxCrossEntropyGrad<T, Tin>::ComputeInternal(OpKernelContext* c
   auto normalize_factor_data = GetScratchBuffer<T>(1, ctx->GetComputeStream());
   if (reduction_ == ReductionType::SUM) {
     constexpr T normalize_factor_one = static_cast<T>(1);
-    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor_one, sizeof(T),
+                                         cudaMemcpyHostToDevice, Stream(ctx)));
   } else if (reduction_ == ReductionType::MEAN) {
     if (weight_data == nullptr) {
       const T normalize_factor = static_cast<T>(N);
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T), cudaMemcpyHostToDevice, Stream(ctx)));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(normalize_factor_data.get(), &normalize_factor, sizeof(T),
+                                           cudaMemcpyHostToDevice, Stream(ctx)));
     } else {
       // Compute buffer size in byte for reduction APIs.
       const auto buffer_size =
