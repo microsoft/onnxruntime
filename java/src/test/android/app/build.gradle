@@ -7,7 +7,6 @@ def minSdkVer = System.properties.get("minSdkVer")?:24
 
 android {
 	compileSdkVersion 32
-	buildToolsVersion "30.0.3"
 
 	defaultConfig {
 		applicationId "ai.onnxruntime.example.javavalidator"
