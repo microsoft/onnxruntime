@@ -156,6 +156,12 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   parameters.v_cache = present->MutableData<T1>() + k_size;
   parameters.out = output->MutableDataRaw();
 
+  // Scale
+  // If the scale is not provided - use `1/sqrt(head_size)`
+  if (parameters.scale == 0.f) {
+    parameters.scale = 1.f / sqrtf(static_cast<float>(parameters.head_size));
+  }
+
   // Mask
   if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
     parameters.mask = mask_index->Data<int32_t>();

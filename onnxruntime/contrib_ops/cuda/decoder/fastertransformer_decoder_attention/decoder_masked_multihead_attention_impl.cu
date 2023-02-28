@@ -200,7 +200,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     qk = block_sum<WARPS_PER_RED>(&red_smem[WARPS_PER_RED], qk);
   }
 
-  const float inv_sqrt_dh = 1.f / (sqrtf(static_cast<float>(head_size)));
+  const float inv_sqrt_dh = params.scale;
 
   //int temp_offset = (bi * params.num_heads * params.sequence_length * params.total_sequence_length) + (hi * params.sequence_length * params.total_sequence_length);
 
