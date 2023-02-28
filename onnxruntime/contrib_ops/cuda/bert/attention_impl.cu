@@ -334,41 +334,50 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
   }
-  // T5 cross attention with past/present state
+  // cross attention with past/present state
   else if (data.past_key != nullptr || data.present_key != nullptr) {
     // no bias for T5 cross attention
     assert(data.bias == nullptr);
-    if (data.past_key != nullptr) {
+    // cross attention with past state
+    if (data.past_key != nullptr && data.present_key == nullptr) {
       assert(data.past_value != nullptr);
-      assert(data.present_key == nullptr);
       assert(data.query != nullptr);
       assert(data.key == nullptr);
       assert(data.value == nullptr);
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                                          max_threads_per_block, false, data.query, q));
 
-      DUMP_TENSOR_D("data.query[BSNH]", data.query, batch_size, sequence_length, num_heads*qk_head_size);
-      DUMP_TENSOR_D("data.past_key[BNSH]", data.past_key, batch_size, num_heads, kv_sequence_length, qk_head_size);
-      DUMP_TENSOR_D("data.past_value[BNSH]", data.past_value, batch_size, num_heads, kv_sequence_length, v_head_size);
-      DUMP_TENSOR_D("q[BNSH]", q, batch_size, num_heads, sequence_length, qk_head_size);
-      qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-    } else { // past is null, present is not null
+
+    }
+    // cross attention with present state or self attention with present state
+    else if (data.past_key == nullptr && data.present_key != nullptr) {
       assert(data.past_value == nullptr);
-      assert(data.present_key != nullptr);
       assert(data.present_value != nullptr);
       assert(data.query != nullptr);
       assert(data.key != nullptr);
       assert(data.value != nullptr);
 
+      // TODO: support packed qkv for self attention
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
                           max_threads_per_block, false, data.query, q));
 
-      // TODO: support packed kv
+      // TODO: support packed kv for cross attention
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
                           max_threads_per_block, false, data.key, data.present_key));
       ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
                           max_threads_per_block, false, data.value, data.present_value));
     }
+    // self attention with past and present state
+    else {
+      assert(data.past_key != nullptr);
+      assert(data.past_value != nullptr);
+      assert(data.present_key != nullptr);
+      assert(data.present_value != nullptr);
+      assert(data.query != nullptr);
+      assert(data.key != nullptr);
+      assert(data.value != nullptr);
+    }
+    qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
     assert(data.bias == nullptr);
     assert(qk_head_size == v_head_size);

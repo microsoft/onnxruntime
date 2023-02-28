@@ -367,12 +367,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(1,
                 "present_key",
-                "present state for cross key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+                "present state for cross key with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self key with shape (batch_size, num_heads, total_sequence_length, head_size)",
                 "T",
                 OpSchema::Optional)
         .Output(2,
                 "present_value",
-                "present state for cross value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+                "present state for cross value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self value with shape (batch_size, num_heads, total_sequence_length, head_size)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
