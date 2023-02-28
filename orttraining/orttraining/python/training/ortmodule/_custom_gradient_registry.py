@@ -239,8 +239,10 @@ def native_group_norm_gradient():
 
 # PyTorch removed related backward functions with "vec" overload name since 1.13. The functions with no overload name
 # are available for all versions, though they are not that convienent to use.
-def _upsample_nearest_gradient(backward_fn, dims):
+def _upsample_gradient(backward_fn, dims):
     scales = ["" for _ in range(dims)]
+    if "bilinear" in backward_fn:
+        scales = ["I(2)"] + scales
     return [
         ("Shape", ["I(0)"], ["Shape_X"]),
         ("Shape", ["O(0)"], ["Shape_Y"]),
@@ -258,14 +260,19 @@ def _upsample_nearest_gradient(backward_fn, dims):
 
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest1d", "vec")
 def upsample_nearest1d_gradient():
-    return _upsample_nearest_gradient("upsample_nearest1d_backward", 1)
+    return _upsample_gradient("upsample_nearest1d_backward", 1)
 
 
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest2d", "vec")
 def upsample_nearest2d_gradient():
-    return _upsample_nearest_gradient("upsample_nearest2d_backward", 2)
+    return _upsample_gradient("upsample_nearest2d_backward", 2)
 
 
 @register_gradient("org.pytorch.aten", "ATen", "upsample_nearest3d", "vec")
 def upsample_nearest3d_gradient():
-    return _upsample_nearest_gradient("upsample_nearest3d_backward", 3)
+    return _upsample_gradient("upsample_nearest3d_backward", 3)
+
+
+@register_gradient("org.pytorch.aten", "ATen", "upsample_bilinear2d", "vec")
+def upsample_bilinear2d_gradient():
+    return _upsample_gradient("upsample_bilinear2d_backward", 2)

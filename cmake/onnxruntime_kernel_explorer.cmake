@@ -51,6 +51,7 @@ if (onnxruntime_USE_CUDA)
     "${KERNEL_EXPLORER_ROOT}/kernels/cuda/*.cuh"
   )
   target_sources(kernel_explorer PRIVATE ${kernel_explorer_cuda_kernel_srcs})
+  target_include_directories(kernel_explorer PUBLIC ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 elseif (onnxruntime_USE_ROCM)
   file(GLOB kernel_explorer_rocm_kernel_srcs CONFIGURE_DEPENDS
     "${KERNEL_EXPLORER_ROOT}/kernels/rocm/*.cc"

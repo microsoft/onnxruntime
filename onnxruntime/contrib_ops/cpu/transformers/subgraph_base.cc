@@ -116,7 +116,9 @@ const IExecutionProvider* Subgraph::GetProvider() const {
   const ExecutionProviders& providers = session_state_->GetExecutionProviders();
   const IExecutionProvider* cpu_provider = providers.Get(onnxruntime::kCpuExecutionProvider);
   const IExecutionProvider* cuda_provider = providers.Get(onnxruntime::kCudaExecutionProvider);
-  const IExecutionProvider* provider = cuda_provider ? cuda_provider : cpu_provider;
+  const IExecutionProvider* rocm_provider = providers.Get(onnxruntime::kRocmExecutionProvider);
+  const IExecutionProvider* gpu_provider = cuda_provider ? cuda_provider : rocm_provider;
+  const IExecutionProvider* provider = gpu_provider ? gpu_provider : cpu_provider;
   return provider;
 }
 

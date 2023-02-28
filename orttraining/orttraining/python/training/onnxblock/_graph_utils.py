@@ -8,6 +8,7 @@ import random
 import onnx
 
 from onnxruntime.capi._pybind_state import GradientGraphBuilder, get_optimized_model
+import onnxruntime.training.onnxblock._qat_utils as qat_utils
 
 
 def get_output_from_output_name(onnx_model, output_name):
@@ -50,6 +51,8 @@ def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requi
 
     model = accessor.model
 
+    quant_params = qat_utils.get_quant_params(model)
+
     # Collect names of parameters that need gradients computed
     all_args_requiring_gradient = []
     # Move all trainable and non trainable initializers to graph inputs.
@@ -58,7 +61,7 @@ def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requi
     graph_inputs = model.graph.input
     initializers = []
     for initializer in model.graph.initializer:
-        if not initializer.name.startswith("onnx::"):
+        if not initializer.name.startswith("onnx::") and initializer.name not in quant_params:
             # Move only those initializers as inputs that are not local
             # to the onnx model. i.e. initializers that are model parameters.
             # These are tpically those initializers without any onnx:: prefixed
@@ -69,7 +72,7 @@ def build_gradient_graph(accessor, user_args_requiring_grad, user_args_not_requi
             if initializer.name not in user_args_not_requiring_grad:
                 all_args_requiring_gradient.append(initializer.name)
         else:
-            # All other initializers stay where they were.
+            # All other initializers (including any quantization parameter) stay where they were.
             initializers.append(initializer)
 
     # Update the initializers in the graph
@@ -189,6 +192,8 @@ def build_gradient_accumulation_graph(grad_model, all_args_requiring_gradient_na
 def get_model_parameters(model, args_not_requiring_gradient):
     """Returns trainable and non trainable onnx model parameters."""
 
+    quant_params = qat_utils.get_quant_params(model)
+
     trainable_params = []
     non_trainable_params = []
     for initializer in model.graph.initializer:
@@ -204,7 +209,9 @@ def get_model_parameters(model, args_not_requiring_gradient):
         # logic and have a `onnx::` prefix.
         # TODO: validate this assumption. If assumption is not valid,
         # the alternative is to enforce the user to provide the parameter names.
-        if not initializer.name.startswith("onnx::"):
+        # Do not move quantization parameters to graph inputs, so skip putting them in either
+        # trainable or non-trainable parameters.
+        if not initializer.name.startswith("onnx::") and initializer.name not in quant_params:
             if initializer.name in args_not_requiring_gradient:
                 non_trainable_params.append(initializer)
             else:
