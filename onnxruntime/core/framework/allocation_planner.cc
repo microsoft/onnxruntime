@@ -83,28 +83,26 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   const SessionState& session_state = *planinfo.second;
 
   const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
-  InlinedHashMap<int, std::string_view> index_to_name;
-  index_to_name.reserve(name_idx_map.Size());
+  std::map<int, std::string_view> index_to_name;  // order by Node_Arg index by default
 
   out << "Allocation Plan:\n";
   out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
-
   for (auto& name_index : name_idx_map) {
-    auto index = name_index.second;
-    index_to_name[index] = name_index.first;
-    out << "(" << index << ") " << name_index.first << " : ";
+    index_to_name[name_index.second] = name_index.first;
+  }
+  for (auto it = index_to_name.begin(); it != index_to_name.end(); it++) {
+    int index = it->first;
+    out << "(" << index << ")" << it->second << " : ";
     if (0 <= index && static_cast<size_t>(index) < plan_size) {
       auto& elt_plan = plan.allocation_plan[index];
       out << elt_plan.alloc_kind;
       if (elt_plan.alloc_kind == AllocKind::kReuse) out << " " << elt_plan.reused_buffer;
-
       auto& loc = elt_plan.location;
       out << ", " << loc.ToString();
     } else {
       out << "Index out-of-range!";
     }
-
     out << std::endl;
   }
 

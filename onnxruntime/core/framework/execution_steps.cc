@@ -154,7 +154,6 @@ void RetrieveRegionBoundaryFromProgramCounter(std::vector<std::unique_ptr<Sequen
   const InlinedHashMap<NodeIndex, size_t>& node_index_2_toposort_index, size_t start_pc, size_t end_pc, size_t& start_region, size_t& end_region) {
   size_t cur = 0;
   start_region = GetFirstWaitOrBarrierIndexAfterPC(steps, node_index_2_toposort_index, cur, start_pc);
-  cur++;
   end_region = GetFirstWaitOrBarrierIndexAfterPC(steps, node_index_2_toposort_index, cur, end_pc);
 }
 #endif

@@ -6,6 +6,7 @@ namespace onnxruntime::test {
 
 #ifdef ENABLE_TRAINING
 TEST(ExecutionStepsTest, RetrieveRegionBoundaryFromProgramCounter) {
+  {
   std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>> steps;
   steps.emplace_back(std::make_unique<BarrierStep>(0));
   steps.emplace_back(std::make_unique<LaunchKernelStep>(10));
@@ -25,6 +26,22 @@ TEST(ExecutionStepsTest, RetrieveRegionBoundaryFromProgramCounter) {
   RetrieveRegionBoundaryFromProgramCounter(steps, node_index_2_toposort_index, 2, node_index_2_toposort_index.size(), start_region, end_region);
   EXPECT_EQ(start_region, 6);
   EXPECT_EQ(end_region, steps.size());
+  }
+  {
+  // test case from: python -m pytest -sv orttraining_test_ortmodule_api.py -k "test_aten_upsample_nearest"
+  std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>> steps;
+  steps.emplace_back(std::make_unique<LaunchKernelStep>(5));
+  steps.emplace_back(std::make_unique<TriggerDownstreamStep>(0));
+  InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index{{6, 0}, {0, 1}, {4, 2}, {2, 3}, {5, 4}, {7, 5}};
+  size_t start_region = 0, end_region = 0;
+  RetrieveRegionBoundaryFromProgramCounter(steps, node_index_2_toposort_index, 0, 3, start_region, end_region); // Node with Index 2 is yieldOp
+  EXPECT_EQ(start_region, 0);
+  EXPECT_EQ(end_region, 0);
+
+  RetrieveRegionBoundaryFromProgramCounter(steps, node_index_2_toposort_index, 3, node_index_2_toposort_index.size(), start_region, end_region);
+  EXPECT_EQ(start_region, 0);
+  EXPECT_EQ(end_region, steps.size());
+  }
 }
 #endif
 }
