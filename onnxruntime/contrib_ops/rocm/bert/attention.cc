@@ -1,3 +1,5 @@
+#if 0
+
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -59,7 +61,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
-  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention 
+  ORT_ENFORCE(parameters.sequence_length == parameters.kv_sequence_length);  // self attention
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size);
@@ -108,12 +110,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       /*beta=*/1.0f,
       reinterpret_cast<HipT*>(gemm_buffer.get()), n));
 
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size, 
+  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
-                                                   parameters.num_heads, 
+                                                   parameters.num_heads,
                                                    parameters.head_size,
                                                    parameters.sequence_length,
-                                                   parameters.past_sequence_length); 
+                                                   parameters.past_sequence_length);
 
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
   return LaunchAttentionKernel(
@@ -142,3 +144,5 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif
