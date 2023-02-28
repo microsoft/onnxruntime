@@ -42,12 +42,19 @@ The last two optimizations (Packed QKV and BiasAdd) are only available in nightl
 
 ## Scripts:
 
-| Script                                                                                                                                                     | Description                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| [optimize_pipeline.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/optimize_pipeline.py) | Optimize Stable Diffusion ONNX models                                                                  |
+| Script                                                                                                                                                     | Description                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| [optimize_pipeline.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/optimize_pipeline.py) | Optimize Stable Diffusion ONNX models                                                     |
 | [benchmark.py](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/stable_diffusion/benchmark.py)                 | Benchmark latency and memory of OnnxRuntime, xFormers or PyTorch 2.0 on stable diffusion. |
 
-## Usage
+In below example, we run the scripts in source code directory. You can get source code like the following:
+
+```
+git clone https://github.com/microsoft/onnxruntime
+cd onnxruntime/python/tools/transformers/models/stable_diffusion
+```
+
+## Example of Stable Diffusion 1.5
 
 Below is an example to optimize Stable Diffusion 1.5 in Linux. For Windows OS, please change the format of path to be like `.\sd-v1-5` instead of `./sd-v1-5`.
 
@@ -61,12 +68,13 @@ conda activate py310
 pip install -r requirements.txt
 ```
 
-In below example, we run the scripts in source code directory. You can get source code like the following:
+For Windows, please install PyTorch like the following after the above commands:
 
 ```
-git clone https://github.com/microsoft/onnxruntime
-cd onnxruntime/python/tools/transformers/models/stable_diffusion
+pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
 ```
+
+ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions (like [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) and cuDNN 8.5.0.96 in Windows).
 
 ### Install Nightly (Optional)
 
@@ -112,10 +120,10 @@ python benchmark.py -v 1.5 -p ./sd-v1-5-fp16/ -c 5 -b 1
 
 ### Run Benchmark on xFormers
 
-Run PyTorch 1.13.1 with xFormers in the py310 environment created above.
+Run PyTorch 1.13.1+cu117 with xFormers in the py310 environment created above.
 
 ```
-pip install xformers
+pip install xformers==0.0.16
 pip install triton==2.0.0a2
 python benchmark.py -e torch -v 1.5 -c 5 -b 1 --use_xformers
 ```
@@ -133,6 +141,7 @@ pip install -r requirements.txt
 pip3 install numpy --pre torch --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cu117
 python benchmark.py -e torch -v 1.5 -c 5 -b 1 --enable_torch_compile
 ```
+
 Sometime, it complains ptxas not found when there are multiple CUDA versions installed. It can be fixed like `export TRITON_PTXAS_PATH=/usr/local/cuda-11.7/bin/ptxas` before running benchmark.
 
 If you run it in Windows (not in WSL), you might encounter error `Windows not yet supported for torch.compile`.
