@@ -305,7 +305,7 @@ JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info)
 // implement RegisterAllocator to test/validate sharing the CPU EP's allocator
 void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
   OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  auto cpu_input_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cpu_input_alloc = GetAllocator(OrtMemTypeCPUInput);
   if (!cpu_input_alloc) {
     cpu_input_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
     if (!cpu_input_alloc) {
@@ -318,7 +318,7 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
     InsertAllocator(cpu_input_alloc);
   }
 
-  auto cpu_output_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUOutput);
+  auto cpu_output_alloc = GetAllocator(OrtMemTypeCPUOutput);
   if (!cpu_output_alloc) {
     cpu_output_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, cpu_device);
     if (!cpu_output_alloc) {
@@ -332,7 +332,7 @@ void JsExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager)
   }
 
   OrtDevice custom_device{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0};
-  auto custom_alloc = GetAllocator(custom_device.Id(), OrtMemTypeDefault);
+  auto custom_alloc = GetAllocator(OrtMemTypeDefault);
   if (!custom_alloc) {
     custom_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, custom_device);
     if (!custom_alloc) {
