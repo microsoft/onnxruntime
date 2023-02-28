@@ -39,7 +39,7 @@ class KernelRegistry {
   using TypeConstraintMap = std::unordered_map<std::string, MLDataType>;
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
-  // Kernel matching uses the explicit type constraint to type list in type_constraints.
+  // Kernel matching uses the explicit type constraint name to required type map in type_constraints.
   Status TryFindKernel(const Node& node, ProviderType exec_provider,
                        const TypeConstraintMap& type_constraints,
                        const KernelCreateInfo** out) const;
@@ -88,7 +88,7 @@ class KernelRegistry {
   // Either kernel_type_str_resolver or type_constraints is provided and not both.
   static bool VerifyKernelDef(const Node& node, const KernelDef& kernel_def,
                               const IKernelTypeStrResolver* kernel_type_str_resolver,
-                              const TypeConstraintMap* type_constraint_values,
+                              const TypeConstraintMap* type_constraints,
                               std::string& error_str);
 
   static std::string GetMapKey(std::string_view op_name, std::string_view domain, std::string_view provider) {

@@ -149,7 +149,7 @@ TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&standalone_op);
 
-  //  load the ORT format model and execute it
+  // load the ORT format model and execute it
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
