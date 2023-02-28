@@ -98,16 +98,24 @@
 								<span aria-hidden="true">&times;</span>
 							</button>
 						</div>
-
 					</section>
-					
-					<section class="py-md-5 pt-3 pb-4 blue-title-columns">
+					<section class="py-md-5 pb-4 pt-4 border-top">
 						<div class="container-fluid">
 							<div class="row">
-							  <div class="col-md-5 border border-primary rounded">
-																<p class="mr-xl-5 mb-md-0">
-									<img src="images/svg/icon-4.svg" alt="" />
-								</p>
+							  <div class="col-md-5">
+								<pre class="bg-dark bg-gradient"></pre>
+									<code class=“text-white”>
+										import onnxruntime as ort
+										import numpy as np
+										x, y = test_data[0][0], test_data[0][1]
+										ort_sess = ort.InferenceSession('fashion_mnist_model.onnx')
+										outputs = ort_sess.run(None, {'input': x.numpy()})
+
+										# Print Result 
+										predicted, actual = classes[outputs[0][0].argmax(0)], classes[y]
+										print(f'Predicted: "{predicted}", Actual: "{actual}"')
+									</code>
+								</pre>
 							</div>
 							  <div class="col-md-2">
 								<div class="d-gridd-grid mr-xl-5 btn-block">
