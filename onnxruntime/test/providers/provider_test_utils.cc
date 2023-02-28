@@ -226,10 +226,6 @@ struct TensorCheck<double> {
       } else {
         if (!has_abs_err && !has_rel_err) {
           // the default for existing tests
-            if (expected[i] != output[i]) {
-                float a = 2.f;
-                (void)(a);
-            }
           ASSERT_NEAR(expected[i], output[i], threshold)
               << "i:" << i << ", provider_type: " << provider_type;
         } else {
@@ -288,22 +284,6 @@ void InternalNumericalCheck(const Tensor& expected_tensor,
       ASSERT_EQ(expected[i], output[i]) << "Expected infinity. i:" << i << ", provider_type: " << provider_type;
     } else {
       if (!has_abs_err && !has_rel_err) {
-          if ((std::abs(expected[i] - output[i]) >= 0.005)) {
-              float a = expected[i];
-              float b = output[i];
-              float c = 1.f;
-              (void)(a);
-              (void)(b);
-              (void)(c);
-          } else {
-              float a = expected[i];
-              float b = output[i];
-              float c = 1.f;
-              (void)(a);
-              (void)(b);
-              (void)(c);
-          }
-
         // the default for existing tests
         ASSERT_NEAR(expected[i], output[i], threshold)
             << "i:" << i << ", provider_type: " << provider_type;
@@ -966,7 +946,7 @@ std::vector<OrtValue> OpTester::ExecuteModel(
               }
             }
 
-              Check(expected_data, ort_value.Get<Tensor>(), provider_type);
+            Check(expected_data, ort_value.Get<Tensor>(), provider_type);
           } else {
             Check(expected_data, ort_value, provider_type);
           }
