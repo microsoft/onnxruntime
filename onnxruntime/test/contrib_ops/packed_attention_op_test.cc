@@ -295,9 +295,9 @@ static void RunModelWithRandomInput(
     test.AddInput<int32_t>("token_offset", token_offset_dims, token_offset);
     test.AddInput<int32_t>("cumulative_sequence_length", cum_seq_len_dims, cum_seq_len);
 
-    test.AddReferenceOutputs(onnx_model, gpu_threshold);
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
     execution_providers.push_back(DefaultCudaExecutionProvider());
+    test.AddReferenceOutputs(onnx_model, gpu_threshold, DefaultCudaExecutionProvider());
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   }
 }

@@ -413,9 +413,9 @@ struct TensorCheck<BFloat16> {
           if (abs_error <= abs_threshold) {
             // if the absolute error is small enough, then no need to calculate realative error
             EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: "
-                                                 << provider_type;
+                                                     << provider_type;
           } else {
-            //default for existing tests.
+            // default for existing tests.
             const float rel_error = abs_error / max_value;
             EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
                                                  << provider_type;
@@ -1402,7 +1402,7 @@ void OpTester::ExecuteModelForEps(
   }
 };
 
-void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error, std::unique_ptr<IExecutionProvider> ep) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1419,6 +1419,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 
   // Retrieve output names
   auto model_outputs = subgraph_session_object.GetModelOutputs();
+  subgraph_session_object.RegisterExecutionProvider(std::move(ep));
   ASSERT_TRUE(model_outputs.first.IsOK());
   std::vector<std::string> output_names;
   std::transform(model_outputs.second->begin(),
