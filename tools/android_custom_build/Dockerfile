@@ -53,9 +53,9 @@ RUN CMAKE_VERSION=3.25.2 && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # gradle
-RUN GRADLE_VERSION=6.8.3 && \
+RUN GRADLE_VERSION=8.0.1 && \
   aria2c -q -d /tmp -o gradle-${GRADLE_VERSION}-bin.zip \
-  --checksum=sha-256=7faa7198769f872826c8ef4f1450f839ec27f0b4d5d1e51bade63667cbccd205 \
+  --checksum=sha-256=1b6b558be93f29438d3df94b7dfee02e794b94d9aca4611a92cdb79b6b88e909 \
   https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip && \
   mkdir /opt/gradle && \
   unzip -d /opt/gradle /tmp/gradle-${GRADLE_VERSION}-bin.zip && \
