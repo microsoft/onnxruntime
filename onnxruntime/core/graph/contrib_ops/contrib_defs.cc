@@ -26,7 +26,7 @@
 namespace ONNX_NAMESPACE {
 
 inline int64_t HandleNegativeAxis(int64_t axis, int64_t rank) {
-  if (axis >= rank || axis < -rank) {
+  if (rank < 0 || axis >= rank || axis < -rank) {
     fail_shape_inference("axis ", axis,
                          " is not in valid range [-", rank, ",", rank - 1, "]");
   }
