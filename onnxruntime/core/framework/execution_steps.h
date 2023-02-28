@@ -20,10 +20,6 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
-#ifdef ENABLE_TRAINING
-  // Only applicable when using PartialExecutor
-  bool IsBarrier() const override;
-#endif
  private:
   size_t barrier_id_{0};
 };
@@ -56,6 +52,8 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
+
+  NodeIndex GetNodeIndex() { return node_index_; }
 
  private:
   NodeIndex node_index_{0};
@@ -91,4 +89,14 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  private:
   size_t trigger_point_index_;
 };
+#ifdef ENABLE_TRAINING
+/// <summary>
+/// Retrieve Region start and end from Program Counter's start and end.
+/// The returned start_region and end_region are the index of the argument steps within start_pc and end_pc
+/// which is the topological order index of the nodes.
+/// </summary>
+void RetrieveRegionBoundaryFromProgramCounter(std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>>& steps,
+  const InlinedHashMap<NodeIndex, size_t>& node_index_2_toposort_index,
+  size_t start_pc, size_t end_pc, size_t& start_region, size_t& end_region);
+#endif
 }  // namespace onnxruntime

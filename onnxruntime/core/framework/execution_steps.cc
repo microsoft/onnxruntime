@@ -4,7 +4,11 @@
 #include "core/framework/sequential_executor.h"
 namespace onnxruntime {
 BarrierStep::BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
-                                      barrier_id_{id} {}
+                                      barrier_id_{id} {
+#ifdef ENABLE_TRAINING
+  type_ = ExecutionStepType::BARRIER;
+#endif
+}
 
 Status BarrierStep::Execute(StreamExecutionContext& ctx,
                             size_t /*stream_idx*/,
@@ -19,13 +23,15 @@ std::string BarrierStep::ToString() const {
   return ::onnxruntime::MakeString("Set a barrier with id: ",
                                    barrier_id_, ", count: ", 2, ".");
 }
-#ifdef ENABLE_TRAINING
-bool BarrierStep::IsBarrier() const { return true; }
-#endif
+
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
                            NotificationIndex idx) : SequentialExecutionPlan::ExecutionStep(),
                                                     wait_handle_(handle),
-                                                    notification_idx_(idx) {}
+                                                    notification_idx_(idx) {
+#ifdef ENABLE_TRAINING
+  type_ = ExecutionStepType::WAIT;
+#endif
+}
 
 Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              size_t stream_idx,
@@ -49,7 +55,11 @@ std::string WaitOnEPStep::ToString() const {
 }
 
 LaunchKernelStep::LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
-                                                      node_index_{index} {}
+                                                      node_index_{index} {
+#ifdef ENABLE_TRAINING
+  type_ = ExecutionStepType::LAUNCH;
+#endif
+}
 
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
@@ -75,7 +85,11 @@ std::string LaunchKernelStep::ToString() const {
 
 ActivateNotificationStep::ActivateNotificationStep(
     NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
-                                            notification_idx_(notification_index) {}
+                                            notification_idx_(notification_index) {
+#ifdef ENABLE_TRAINING
+  type_ = ExecutionStepType::ACTIVATENOTIFICATION;
+#endif
+}
 
 Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
                                          size_t stream_idx,
@@ -97,7 +111,11 @@ std::string ActivateNotificationStep::ToString() const {
 }
 
 TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
-                                                                           trigger_point_index_(trigger_point_index) {}
+                                                                           trigger_point_index_(trigger_point_index) {
+#ifdef ENABLE_TRAINING
+  type_ = ExecutionStepType::TRIGGERDOWNSTREAM;
+#endif
+}
 
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
                                       size_t /*stream_idx*/,
@@ -113,5 +131,31 @@ std::string TriggerDownstreamStep::ToString() const {
   return ::onnxruntime::MakeString("TriggerDownstreamStep: trigger downstream of trigger point: ",
                                    trigger_point_index_, ".");
 }
+#ifdef ENABLE_TRAINING
+size_t GetFirstWaitOrBarrierIndexAfterPC(std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>>& steps,
+  const InlinedHashMap<NodeIndex, size_t>& node_index_2_toposort_index, size_t& current, size_t pc) {
+  size_t first_wait_or_barrier = steps.size();
+  while (current < steps.size()) {
+    if (first_wait_or_barrier >= steps.size() &&
+      (steps[current]->type_ == ExecutionStepType::BARRIER || steps[current]->type_ == ExecutionStepType::WAIT)) {
+      first_wait_or_barrier = current;
+    }
+    if (steps[current]->type_ == ExecutionStepType::LAUNCH) {
+      NodeIndex launch_index = static_cast<LaunchKernelStep*>(steps[current].get())->GetNodeIndex();
+      if (node_index_2_toposort_index.at(launch_index) < pc) first_wait_or_barrier = steps.size();
+      else break;
+    }
+    current++;
+  }
+  return first_wait_or_barrier >= steps.size() ? current : first_wait_or_barrier;
+}
 
+void RetrieveRegionBoundaryFromProgramCounter(std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>>& steps,
+  const InlinedHashMap<NodeIndex, size_t>& node_index_2_toposort_index, size_t start_pc, size_t end_pc, size_t& start_region, size_t& end_region) {
+  size_t cur = 0;
+  start_region = GetFirstWaitOrBarrierIndexAfterPC(steps, node_index_2_toposort_index, cur, start_pc);
+  cur++;
+  end_region = GetFirstWaitOrBarrierIndexAfterPC(steps, node_index_2_toposort_index, cur, end_pc);
+}
+#endif
 }  // namespace onnxruntime

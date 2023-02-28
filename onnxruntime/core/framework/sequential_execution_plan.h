@@ -84,6 +84,13 @@ struct AllocPlanPerValue {
 
 using NotificationIndex = size_t;
 
+  enum ExecutionStepType {
+    LAUNCH = 1,
+    BARRIER = 2,
+    WAIT = 3,
+    ACTIVATENOTIFICATION = 4,
+    TRIGGERDOWNSTREAM = 5,
+  };
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
@@ -117,8 +124,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
 #ifdef ENABLE_TRAINING
-    // the partial execution mode for training needs special handling for barrier
-    virtual bool IsBarrier() const { return false; }
+    ExecutionStepType type_;
 #endif
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
@@ -126,9 +132,6 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
-#ifdef ENABLE_TRAINING
-    std::vector<NodeIndex> step_pc;
-#endif
    public:
     LogicStream(const OrtDevice& device) : device_(device) {}
   };
@@ -168,7 +171,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
 #ifdef ENABLE_TRAINING
   InlinedVector<NodeIndex> node_execution_order_in_training;
-  InlinedVector<NodeIndex> node_topo_order;
+  InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
 #endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {
