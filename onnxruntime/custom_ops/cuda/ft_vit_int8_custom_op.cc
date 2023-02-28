@@ -10,7 +10,7 @@
 
 using namespace fastertransformer;
 
-static fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
+//static fastertransformer::Allocator<AllocatorType::CUDA> allocator(0);
 
 template<typename T>
 FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
@@ -23,7 +23,7 @@ FTViTINT8CustomKernel<T>::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                                 int layer_num,
                                                 int has_cls_token,
                                                 int int8_mode):
-batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim_(embed_dim), has_cls_token_(has_cls_token) 
+batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim)
 {
     checkCUDNN(cudnnCreate(&cudnn_handle_));
     checkCUDNN(cudnnSetStream(cudnn_handle_, stream_));
@@ -36,6 +36,7 @@ batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim
     int sm = getSMVersion();
 
     cublas_wrapper_mutex_ = new std::mutex();
+    allocator_ = new fastertransformer::Allocator<AllocatorType::CUDA>(getDevice());
 
     bool use_ORDER_COL32_2R_4R4 = false;
 #if (CUDART_VERSION >= 11000)
@@ -54,11 +55,13 @@ batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim
         cublas_wrapper_->setFP32GemmConfig();
     }
 
-    const int  in_chans       = 3;
-    const int  inter_size     = embed_dim * 4;
-    const int  head_dim       = embed_dim / head_num;
-    const bool with_cls_token = has_cls_token > 0;
-    const int  seq_len        = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
+    int  in_chans       = 3;
+    int  inter_size     = embed_dim * 4;
+    int  head_dim       = embed_dim / head_num;
+    bool with_cls_token = has_cls_token > 0;
+    int  seq_len        = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
+    seq_len_ = seq_len;
+    in_chans_ = in_chans;
 
     params_ = ViTINT8Weight<T>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
 
@@ -96,37 +99,31 @@ batch_size_(batch_size), img_size_(img_size), patch_size_(patch_size), embed_dim
                                          stream_,
                                          cudnn_handle_,
                                          cublas_wrapper_,
-                                         &allocator,
+                                         allocator_,
                                          false,
                                          attention_type_);
 }
 
 template<typename T>
 void FTViTINT8CustomKernel<T>::Compute(OrtKernelContext* context) {
-
-    const int  in_chans       = 3;
-    const bool with_cls_token = has_cls_token_ > 0;
-    const int seq_len       = (img_size_ / patch_size_) * (img_size_ / patch_size_) + (with_cls_token ? 1 : 0);
-
     Ort::KernelContext kcontext(context);
-
     Ort::ConstValue ort_val = kcontext.GetInput(0);
     const void* p_input_data = ort_val.GetTensorData<void>();
 
-    std::vector<int64_t> output_shape{(int64_t)batch_size_, (int64_t)seq_len, (int64_t)embed_dim_};
+    std::vector<int64_t> output_shape{(int64_t)batch_size_, (int64_t)seq_len_, (int64_t)embed_dim_};
     Ort::UnownedValue ort_val_output = kcontext.GetOutput(0, output_shape);
     const void* p_output_data = ort_val_output.GetTensorData<void>();
 
     std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
         fastertransformer::Tensor{MEMORY_GPU,
                getTensorType<T>(),
-               std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans, (size_t)img_size_, (size_t)img_size_},
+               std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans_, (size_t)img_size_, (size_t)img_size_},
                (const T*)p_input_data}};
 
     std::vector<fastertransformer::Tensor> output_tensors =
         std::vector<fastertransformer::Tensor>{fastertransformer::Tensor{MEMORY_GPU,
                                    getTensorType<T>(),
-                                   std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len, (size_t)embed_dim_},
+                                   std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len_, (size_t)embed_dim_},
                                    (T*)p_output_data}};
 
     //CudaTimer cuda_timer(stream_);

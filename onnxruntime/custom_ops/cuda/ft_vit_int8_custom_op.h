@@ -34,6 +34,7 @@ struct FTViTINT8CustomKernel {
   cudaStream_t     stream_ = 0;
   cublasINT8MMWrapper* cublas_wrapper_;
   std::mutex* cublas_wrapper_mutex_;
+  fastertransformer::Allocator<AllocatorType::CUDA>* allocator_;
   AttentionType attention_type_;
   ViTINT8Weight<T> params_;
   ViTTransformerINT8<T>* vit_;
@@ -44,7 +45,8 @@ struct FTViTINT8CustomKernel {
   int img_size_;
   int patch_size_;
   int embed_dim_;
-  int has_cls_token_;
+  int seq_len_;
+  int in_chans_;
 };
 
 struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel<float>> {
