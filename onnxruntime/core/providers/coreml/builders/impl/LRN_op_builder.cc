@@ -3,7 +3,6 @@
 
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/coreml/builders/helper.h"
-
 #ifdef __APPLE__
 #include "core/providers/coreml/builders/model_builder.h"
 #endif
@@ -14,7 +13,7 @@
 namespace onnxruntime {
 namespace coreml {
 
-class FlattenOpBuilder : public BaseOpBuilder {
+class LRNOpBuilder : public BaseOpBuilder {
   // Add operator related
 #ifdef __APPLE__
  private:
@@ -32,30 +31,36 @@ class FlattenOpBuilder : public BaseOpBuilder {
 
 #ifdef __APPLE__
 
-Status FlattenOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                               const Node& node,
-                                               const logging::Logger& logger) const {
+Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
+                                           const Node& node,
+                                           const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = CreateNNLayer(model_builder, node);
 
-  auto* coreml_flatten = layer->mutable_flattento2d();
+  auto* coreml_lrn = layer->mutable_lrn();
 
   NodeAttrHelper helper(node);
-  const int64_t axis = helper.Get("axis ", 1);
-  coreml_flatten->set_axis(axis);
+  const auto alpha = helper.Get("alpha", 0.0001f);
+  const auto beta = helper.Get("beta", 0.75f);
+  const auto bias = helper.Get("bias", 1.0f);  // k
+  const auto size = helper.Get("size", 1);     // localSize
+
+  coreml_lrn->set_alpha(alpha);
+  coreml_lrn->set_beta(beta);
+  coreml_lrn->set_localsize(size);
+  coreml_lrn->set_k(bias);
 
   *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
 
   model_builder.AddLayer(std::move(layer));
-
   return Status::OK();
 }
 #endif
 
 // Operator support related
 
-bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
-                                         const logging::Logger& logger) const {
+bool LRNOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
 
   std::vector<int64_t> input_shape;
@@ -63,13 +68,13 @@ bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
 
   if (input_shape.empty()) {
-    LOGS(logger, VERBOSE) << "Flatten does not support empty input shape";
+    LOGS(logger, VERBOSE) << "LRN does not support empty input shape";
     return false;
   }
 
   const auto input_rank = input_shape.size();
   if (input_rank < 3) {
-    LOGS_DEFAULT(VERBOSE) << "Flatten only supports input rank greater than equal to 3, input rank is"
+    LOGS_DEFAULT(VERBOSE) << "LRN only supports input rank greater than equal to 3, input rank is"
                           << input_rank;
     return false;
   }
@@ -77,8 +82,8 @@ bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   return true;
 }
 
-void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  op_registrations.builders.push_back(std::make_unique<FlattenOpBuilder>());
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
+  op_registrations.builders.push_back(std::make_unique<LRNOpBuilder>());
   op_registrations.op_builder_map.emplace(op_type, op_registrations.builders.back().get());
 }
 

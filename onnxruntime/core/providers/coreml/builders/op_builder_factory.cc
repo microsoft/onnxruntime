@@ -86,6 +86,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateFlattenOpBuilder("Flatten", op_registrations);
   }
 
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
   return op_registrations;
 }
 

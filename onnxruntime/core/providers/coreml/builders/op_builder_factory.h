@@ -33,5 +33,7 @@ void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 void CreateArgMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateFlattenOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace coreml
 }  // namespace onnxruntime
