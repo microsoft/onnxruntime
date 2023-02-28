@@ -278,7 +278,6 @@ static void RunModelWithRandomInput(
 
   // float gpu_threshold = is_float16 ? static_cast<float>(sequence_length) / 32.0f : 0.005f;
   float gpu_threshold = 0.005f;
-  constexpr float cpu_threshold = 0.002f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
