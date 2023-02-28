@@ -498,6 +498,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.v_buffer = v_buffer;
     params.out_buffer = reinterpret_cast<HipT*>(output->MutableDataRaw());
 
+    if (relative_position_bias != nullptr) {
+      params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
+    }
+
     if (mask_index != nullptr) {
       params.mask_index_buffer = mask_index->Data<int>();
       params.mask_index_dims = mask_index->Shape().GetDims();
@@ -508,13 +512,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.gemm2_out = scratch3;
   }
 
-  auto relative_position_bias_buffer = nullptr == relative_position_bias
-                                           ? nullptr
-                                           : reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
-  return GemmSoftmaxGemmPermuteGenericPipeline<HipT>::Run(
-      &gemm_softmax_gemm_permute_params,
-      relative_position_bias_buffer,
-      use_persistent_softmax);
+  return GemmSoftmaxGemmPermuteGenericPipeline<HipT>::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
 }
 
 
