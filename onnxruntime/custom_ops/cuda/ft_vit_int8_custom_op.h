@@ -10,7 +10,6 @@
 
 using namespace fastertransformer;
 
-template<typename T>
 struct FTViTINT8CustomKernel {
   FTViTINT8CustomKernel(const OrtKernelInfo* info,
                         void* compute_stream,
@@ -21,6 +20,7 @@ struct FTViTINT8CustomKernel {
                         int head_num,
                         int layer_num,
                         int has_cls_token,
+                        int is_fp16,
                         int int8_mode);
 
   void Compute(OrtKernelContext* context);
@@ -36,8 +36,10 @@ struct FTViTINT8CustomKernel {
   std::mutex* cublas_wrapper_mutex_;
   fastertransformer::Allocator<AllocatorType::CUDA>* allocator_;
   AttentionType attention_type_;
-  ViTINT8Weight<T> params_;
-  ViTTransformerINT8<T>* vit_;
+  ViTINT8Weight<float> params_fp32_;
+  ViTINT8Weight<half> params_fp16_;
+  ViTTransformerINT8<float>* vit_fp32_;
+  ViTTransformerINT8<half>* vit_fp16_;
   cublasAlgoMap* cublas_algo_map_;
   void* compute_stream_;
 
@@ -47,9 +49,10 @@ struct FTViTINT8CustomKernel {
   int embed_dim_;
   int seq_len_;
   int in_chans_;
+  int is_fp16_;
 };
 
-struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel<float>> {
+struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel> {
   explicit FTViTINT8CustomOp(const char* provider, void* compute_stream);
 
   void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const;
