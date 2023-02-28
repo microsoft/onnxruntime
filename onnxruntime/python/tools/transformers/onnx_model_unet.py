@@ -89,7 +89,7 @@ class UnetOnnxModel(BertOnnxModel):
         if total:
             logger.info("Removed %d Transpose nodes", total)
 
-    def fuse_attention(self, options: Optional[FusionOptions] = None):
+    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
         # Self Attention
         enable_packed_qkv = (options is None) or options.enable_packed_qkv
         self_attention_fusion = FusionAttentionUnet(
@@ -139,7 +139,7 @@ class UnetOnnxModel(BertOnnxModel):
             bias_split_gelu_fusion.apply()
 
         if (options is None) or options.enable_attention:
-            self.fuse_attention(options)
+            self.fuse_multi_head_attention(options)
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
