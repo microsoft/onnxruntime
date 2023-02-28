@@ -5,7 +5,6 @@
 
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-// #include "core/framework/kernel_type_str_resolver.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/op_node_proto_helper.h"
 #include "core/graph/graph_viewer.h"
@@ -15,7 +14,6 @@ namespace onnxruntime {
 
 class DataTransferManager;
 class FuncManager;
-class IKernelTypeStrResolver;
 class OrtValueNameIdxMap;
 struct AllocPlanPerValue;
 

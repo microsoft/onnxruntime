@@ -96,6 +96,14 @@ class NodeRepo {
     return node_repo;
   }
 
+  // create the kernel using the FuncManager NodeRepo owns for consistency
+  onnxruntime::Status CreateKernel(const KernelCreateInfo& kernel_create_info,
+                                   const OpKernelInfo& kernel_info,
+                                   std::unique_ptr<OpKernel>& op_kernel) {
+    std::lock_guard<std::mutex> guard(mutex_);
+    return kernel_create_info.kernel_create_func(func_mgr_, kernel_info, op_kernel);
+  }
+
   onnxruntime::Status AddNode(const onnxruntime::OpKernel* kernel, NodePtr&& node_ptr, ArgPtrs&& args) {
     std::lock_guard<std::mutex> guard(mutex_);
     auto ret = resource_map_.try_emplace(kernel, NodeResource{std::move(node_ptr), std::move(args)});
@@ -166,6 +174,7 @@ class NodeRepo {
 
   std::mutex mutex_;
   NodeResourceMap resource_map_;
+  FuncManager func_mgr_;
 };
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -369,7 +378,8 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   auto ep = reinterpret_cast<const IExecutionProvider*>(kernel_info->GetExecutionProvider());
   auto kernel_registry = ep->GetKernelRegistry();
   const KernelCreateInfo* kernel_create_info{};
-  std::unordered_map<std::string, MLDataType> type_constraint_map;
+  InlinedHashMap<std::string, MLDataType> type_constraint_map;
+
   for (int i = 0; i < type_constraint_count; ++i) {
     ONNX_NAMESPACE::TypeProto proto;
     proto.mutable_tensor_type()->set_elem_type(type_constraint_values[i]);
@@ -407,19 +417,16 @@ onnxruntime::Status CreateOp(const OrtKernelInfo* info,
   ORT_RETURN_IF_NOT(kernel_def, "Kernel definition was not found for node Domain:'",
                     node_ptr->Domain(), "' op_type:", node_ptr->OpType());
 
-  static std::unordered_map<int, OrtValue> kEmptyValueMap;
-  static OrtValueNameIdxMap kEmptyNameMap;
+  static const std::unordered_map<int, OrtValue> kEmptyValueMap;
+  static const OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
                                kernel_info->GetDataTransferManager());
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
-  static FuncManager kFuncMgr;
-  status = kernel_create_info->kernel_create_func(kFuncMgr, tmp_kernel_info, op_kernel);
-  ORT_RETURN_IF_ERROR(status);
-
-  status = NodeRepo::GetInstance().AddNode(op_kernel.get(), std::move(node_ptr), std::move(arg_ptrs));
-  ORT_RETURN_IF_ERROR(status);
+  auto& node_repo = NodeRepo::GetInstance();
+  ORT_RETURN_IF_ERROR(node_repo.CreateKernel(*kernel_create_info, tmp_kernel_info, op_kernel));
+  ORT_RETURN_IF_ERROR(node_repo.AddNode(op_kernel.get(), std::move(node_ptr), std::move(arg_ptrs)));
 
   *op = reinterpret_cast<OrtOp*>(op_kernel.release());
   return status;

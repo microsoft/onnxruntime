@@ -36,7 +36,7 @@ class KernelRegistry {
                        const KernelCreateInfo** out) const;
 
   // map of type constraint name to required type
-  using TypeConstraintMap = std::unordered_map<std::string, MLDataType>;
+  using TypeConstraintMap = InlinedHashMap<std::string, MLDataType>;
 
   // Check if an execution provider can create kernel for a node and return the kernel if so.
   // Kernel matching uses the explicit type constraint name to required type map in type_constraints.

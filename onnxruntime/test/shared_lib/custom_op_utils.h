@@ -56,9 +56,13 @@ struct MyCustomOp : Ort::CustomOpBase<MyCustomOp, MyCustomKernel> {
 };
 
 struct MyCustomOpSecondInputOnCpu : Ort::CustomOpBase<MyCustomOpSecondInputOnCpu, MyCustomKernelSecondInputOnCpu> {
-  explicit MyCustomOpSecondInputOnCpu(const char* provider, void* compute_stream) : provider_(provider), compute_stream_(compute_stream) {}
+  explicit MyCustomOpSecondInputOnCpu(const char* provider, void* compute_stream)
+      : provider_(provider), compute_stream_(compute_stream) {}
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelSecondInputOnCpu(info, compute_stream_); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomKernelSecondInputOnCpu(info, compute_stream_);
+  };
+
   const char* GetName() const { return "Foo"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -94,7 +98,8 @@ struct MyCustomKernelMultipleDynamicInputs {
   const OrtApi& ort_;
 };
 
-struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs, MyCustomKernelMultipleDynamicInputs> {
+struct MyCustomOpMultipleDynamicInputs : Ort::CustomOpBase<MyCustomOpMultipleDynamicInputs,
+                                                           MyCustomKernelMultipleDynamicInputs> {
   explicit MyCustomOpMultipleDynamicInputs(const char* provider) : provider_(provider) {}
   void* CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const {
     return new MyCustomKernelMultipleDynamicInputs(api, info);
@@ -125,7 +130,10 @@ struct MyCustomKernelWithOptionalInput {
 struct MyCustomOpWithOptionalInput : Ort::CustomOpBase<MyCustomOpWithOptionalInput, MyCustomKernelWithOptionalInput> {
   explicit MyCustomOpWithOptionalInput(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const { return new MyCustomKernelWithOptionalInput(info); };
+  void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
+    return new MyCustomKernelWithOptionalInput(info);
+  };
+
   const char* GetName() const { return "FooBar"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
@@ -181,7 +189,15 @@ struct TemplatedCustomOp : Ort::CustomOpBase<TemplatedCustomOp<T>, T> {
                     bool input_homogeneity, std::vector<ONNXTensorElementDataType> output_types,
                     std::vector<OrtCustomOpInputOutputCharacteristic> output_characs, int output_min_arity,
                     bool output_homogeneity)
-      : op_name_(op_name), input_types_(std::move(input_types)), input_characs_(std::move(input_characs)), input_min_arity_(input_min_arity), input_homogeneity_(input_homogeneity), output_types_(std::move(output_types)), output_characs_(std::move(output_characs)), output_min_arity_(output_min_arity), output_homogeneity_(output_homogeneity) {}
+      : op_name_(op_name),
+        input_types_(std::move(input_types)),
+        input_characs_(std::move(input_characs)),
+        input_min_arity_(input_min_arity),
+        input_homogeneity_(input_homogeneity),
+        output_types_(std::move(output_types)),
+        output_characs_(std::move(output_characs)),
+        output_min_arity_(output_min_arity),
+        output_homogeneity_(output_homogeneity) {}
 
   void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* info) const {
     return new T(info);
@@ -266,7 +282,10 @@ struct MyCustomKernelWithAttributes {
 struct MyCustomOpWithAttributes : Ort::CustomOpBase<MyCustomOpWithAttributes, MyCustomKernelWithAttributes> {
   explicit MyCustomOpWithAttributes(const char* provider) : provider_(provider) {}
 
-  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const { return new MyCustomKernelWithAttributes(info); };
+  void* CreateKernel(const OrtApi&, const OrtKernelInfo* info) const {
+    return new MyCustomKernelWithAttributes(info);
+  };
+
   const char* GetName() const { return "FooBar_Attr"; };
   const char* GetExecutionProviderType() const { return provider_; };
 
