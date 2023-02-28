@@ -82,6 +82,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateCastOpBuilder("Cast", op_registrations);
   }
 
+  {  // Flatten
+    CreateFlattenOpBuilder("Flatten", op_registrations);
+  }
+
   return op_registrations;
 }
 
