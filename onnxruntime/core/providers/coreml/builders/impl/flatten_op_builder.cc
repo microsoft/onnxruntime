@@ -68,13 +68,6 @@ bool FlattenOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  const auto input_rank = input_shape.size();
-  if (input_rank < 3) {
-    LOGS(logger, VERBOSE) << "Flatten only supports input rank greater than equal to 3, input rank is"
-                          << input_rank;
-    return false;
-  }
-
   return true;
 }
 
