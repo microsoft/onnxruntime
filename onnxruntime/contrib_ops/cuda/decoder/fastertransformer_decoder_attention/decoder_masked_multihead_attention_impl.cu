@@ -139,7 +139,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   const size_t bi_total_seq_length = bi * params.total_sequence_length;
 
-  const size_t bi_seq_len_offset = bi * params.max_sequence_length;
+  const size_t bi_max_seq_length = bi * params.max_sequence_length;
 
   int tlength = params.past_sequence_length;
 
@@ -290,7 +290,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr;
 
-  const int* beam_indices = has_beams ? &params.cache_indir[bi_seq_len_offset] : nullptr;
+  const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
     bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
@@ -427,7 +427,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Loop over the timesteps to compute the partial outputs.
   for (int ti = vo; ti < tlength; ti += V_PER_ITER) {
     // Fetch offset based on cache_indir when beam sampling
-    const int beam_src = has_beams ? params.cache_indir[bi_seq_len_offset + ti] : 0;
+    const int beam_src = has_beams ? params.cache_indir[bi_max_seq_length + ti] : 0;
     const int beam_offset = has_beams ? beam_src * params.num_heads * params.max_sequence_length * head_size : 0;
 
     // Load the values from the cache.
