@@ -14,7 +14,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions, get_version_string
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
@@ -58,6 +58,9 @@ class TestInferenceSession(unittest.TestCase):
         import tvm
 
         self.assertTrue(tvm is not None)
+
+    def testGetVersionString(self):
+        self.assertTrue(get_version_string() is not None)
 
     def testModelSerialization(self):
         try:

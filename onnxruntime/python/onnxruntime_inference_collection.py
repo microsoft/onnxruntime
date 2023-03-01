@@ -10,6 +10,10 @@ import warnings
 from onnxruntime.capi import _pybind_state as C
 
 
+def get_version_string():
+    return C.get_version_string()
+
+
 def get_ort_device_type(device_type, device_index):
     if device_type == "cuda":
         return C.OrtDevice.cuda()
