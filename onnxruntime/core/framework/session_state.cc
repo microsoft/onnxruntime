@@ -245,6 +245,17 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
+Status SessionState::PruneRemovableAttributes() {
+  for (size_t i = 0; i < session_kernels_.size(); ++i) {
+    // TODO: better design
+    onnxruntime::Node* node = (onnxruntime::Node*)&(session_kernels_[i].get()->Node());
+    if (!node->ClearRemovableAttribute()) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unable to remove removable attributes.");
+    }
+  }
+  return Status::OK();
+}
+
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   if (!p_seq_exec_plan_.has_value()) {
     return nullptr;
@@ -1377,10 +1388,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
-// Record the allocation plan
+  // Record the allocation plan
 
-// Uncomment the below to dump the allocation plan to std::cout
-// LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // Uncomment the below to dump the allocation plan to std::cout
+  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());

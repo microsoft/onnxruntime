@@ -298,6 +298,8 @@ class SessionState {
   const InlinedHashSet<NodeIndex>* GetToBeExecutedRange(gsl::span<int const> fetch_mlvalue_idxs) const;
 #endif
 
+  Status PruneRemovableAttributes();
+
   Status FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_loc,
                               const KernelRegistryManager& kernel_registry_manager,
                               bool remove_initializers = true,

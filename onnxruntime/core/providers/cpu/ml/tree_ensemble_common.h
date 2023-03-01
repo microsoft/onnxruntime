@@ -45,7 +45,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
-  std::vector<SparseValue<ThresholdType>> weights_;    
+  std::vector<SparseValue<ThresholdType>> weights_;
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
  public:
@@ -98,7 +98,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKe
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "target_weights_as_tensor", target_weights_as_tensor));
 #endif
 
-  return Init(
+  auto status = Init(
       80,
       128,
       50,
@@ -123,6 +123,28 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKe
       info.GetAttrsOrDefault<int64_t>("target_treeids"),
       info.GetAttrsOrDefault<float>("target_weights"),
       target_weights_as_tensor);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (status.IsOK()) {
+    std::vector<std::string> names = {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                      "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                      "nodes_truenodeids", "nodes_values",
+                                      "target_ids", "target_treeids", "target_nodeids", "target_weights"};
+    // #if !defined(ORT_MINIMAL_BUILD)
+    names.push_back("base_values_as_tensor");
+    names.push_back("nodes_hitrates_as_tensor");
+    names.push_back("nodes_values_as_tensor");
+    names.push_back("class_weights_as_tensor");
+    // #endif
+    for (auto name : names) {
+      if (info.TryGetAttribute(name) != nullptr) {
+        // TODO: find a better design
+        Node* node = (Node*)(&info.node());
+        node->RegisterRemovableAttribute(name);
+      }
+    }
+  }
+#endif
+  return status;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -209,7 +231,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   n_nodes_ = nodes_treeids.size();
   limit = static_cast<size_t>(n_nodes_);
-  InlinedVector<TreeNodeElementId> node_tree_ids;  
+  InlinedVector<TreeNodeElementId> node_tree_ids;
   node_tree_ids.reserve(limit);
   nodes_.clear();
   nodes_.reserve(limit);
@@ -308,19 +330,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
       // models converted with an old version of onnxmltools. There weights are ignored.
-      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");      
+      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
 
     w.i = target_class_ids[i];
-    w.value = target_class_weights_as_tensor.empty() 
-        ? static_cast<ThresholdType>(target_class_weights[i])
-        : target_class_weights_as_tensor[i];
+    w.value = target_class_weights_as_tensor.empty()
+                  ? static_cast<ThresholdType>(target_class_weights[i])
+                  : target_class_weights_as_tensor[i];
     if (leaf.falsenode_inc_or_n_weights == 0) {
       leaf.truenode_inc_or_first_weight = static_cast<uint32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
     }
-    ++leaf.falsenode_inc_or_n_weights; 
+    ++leaf.falsenode_inc_or_n_weights;
     weights_.push_back(w);
   }
 
@@ -627,22 +649,22 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   }
 }  // namespace detail
 
-#define TREE_FIND_VALUE(CMP)                                         \
-  if (has_missing_tracks_) {                                         \
-    while (root->is_not_leaf()) {                                    \
-      val = x_data[root->feature_id];                                \
-      root += (val CMP root->value_or_unique_weight ||               \
-              (root->is_missing_track_true() && _isnan_(val)))       \
-                 ? root->truenode_inc_or_first_weight                \
-                 : root->falsenode_inc_or_n_weights;                 \
-    }                                                                \
-  } else {                                                           \
-    while (root->is_not_leaf()) {                                    \
-      val = x_data[root->feature_id];                                \
-      root += val CMP root->value_or_unique_weight                   \
-                ? root->truenode_inc_or_first_weight                 \
-                : root->falsenode_inc_or_n_weights;                  \
-    }                                                                \
+#define TREE_FIND_VALUE(CMP)                                    \
+  if (has_missing_tracks_) {                                    \
+    while (root->is_not_leaf()) {                               \
+      val = x_data[root->feature_id];                           \
+      root += (val CMP root->value_or_unique_weight ||          \
+               (root->is_missing_track_true() && _isnan_(val))) \
+                  ? root->truenode_inc_or_first_weight          \
+                  : root->falsenode_inc_or_n_weights;           \
+    }                                                           \
+  } else {                                                      \
+    while (root->is_not_leaf()) {                               \
+      val = x_data[root->feature_id];                           \
+      root += val CMP root->value_or_unique_weight              \
+                  ? root->truenode_inc_or_first_weight          \
+                  : root->falsenode_inc_or_n_weights;           \
+    }                                                           \
   }
 
 inline bool _isnan_(float x) { return std::isnan(x); }
@@ -789,7 +811,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "class_weights_as_tensor", class_weights_as_tensor));
 #endif
 
-  return Init(
+  auto status = Init(
       80,
       128,
       50,
@@ -815,6 +837,28 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
       class_weights_as_tensor,
       info.GetAttrsOrDefault<std::string>("classlabels_strings"),
       info.GetAttrsOrDefault<int64_t>("classlabels_int64s"));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (status.IsOK()) {
+    std::vector<std::string> names = {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                      "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                      "nodes_truenodeids", "nodes_values", "class_ids", "class_treeids", "class_nodeids",
+                                      "class_weights", "classlabels_strings", "classlabels_int64s"};
+    // #if !defined(ORT_MINIMAL_BUILD)
+    names.push_back("base_values_as_tensor");
+    names.push_back("nodes_hitrates_as_tensor");
+    names.push_back("nodes_values_as_tensor");
+    names.push_back("class_weights_as_tensor");
+    // #endif
+    for (auto name : names) {
+      if (info.TryGetAttribute(name) != nullptr) {
+        // TODO: find a better design
+        Node* node = (Node*)(&info.node());
+        node->RegisterRemovableAttribute(name);
+      }
+    }
+  }
+#endif
+  return status;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
