@@ -572,15 +572,6 @@ class PlannerImpl {
   }
 
   Status ComputeReuseCount() {
-    // Note: for every ml-value, its definition must appear before all its uses in a topological sort of a valid model
-    using GraphInputsSet = InlinedHashSet<std::string_view>;
-    const auto& graph_inputs_nodes = graph_viewer_.GetInputsIncludingInitializers();
-    GraphInputsSet graph_inputs;
-    graph_inputs.reserve(graph_inputs_nodes.size());
-    for (auto& graph_input : graph_inputs_nodes) {
-      graph_inputs.insert(graph_input->Name());
-    }
-
     for (auto graph_input : graph_viewer_.GetInputs()) {
       OrtValueIndex index = Index(graph_input->Name());
       UseCount(index)++;  // Models caller's usage post-inference; ensures it will not be reused.
@@ -1050,9 +1041,8 @@ class PlannerImpl {
     auto& allocation_plan = plan_.allocation_plan;
 
     // build the consumer list for each value
-    std::vector<InlinedVector<NodeIndex>> value_consumers;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
-    value_consumers.resize(num_ml_values);
+    value_consumer_map_.reserve(num_ml_values);
 
     // iterate each stream from back, so the first element is the last consumer in single stream case
     for (auto& stream : stream_nodes_) {
@@ -1068,7 +1058,7 @@ class PlannerImpl {
             auto origin = Buffer(value_idx);
             if (origin != -1 && plan_.allocation_plan[origin].alloc_kind == AllocKind::kAllocate) {
               // add current node as consumer for origin buffer
-              value_consumers[origin].push_back(node_index);
+              value_consumer_map_[origin].insert(node_index);
             }
           }
           return Status::OK();
@@ -1119,8 +1109,8 @@ class PlannerImpl {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
                 OrtValueIndex reusable_input{};
-                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
-                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
+                if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
+                    allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/) {
                   std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                   allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                   allocation_plan[output_idx_global].reused_buffer = reusable_input;
@@ -1152,7 +1142,6 @@ class PlannerImpl {
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
-                std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as input" << std::endl;
                 allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                 allocation_plan[output_idx_global].reused_buffer = reusable_input;
                 value_consumer_map_[reusable_input].insert(value_consumer_map_[output_idx_global].begin(),
@@ -1175,7 +1164,6 @@ class PlannerImpl {
                 if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
                     allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
                   if (value_consumer_map_[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
-                    std::cout << p_input_arg->Name() << " reused by " << p_output_arg->Name() << " as an input" << std::endl;
                     allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
                     allocation_plan[output_idx_global].reused_buffer = input_arg_index;
                     value_consumer_map_[input_arg_index].insert(value_consumer_map_[output_idx_global].begin(),
@@ -1302,6 +1290,17 @@ class PlannerImpl {
         }
       }
     }
+
+    for (size_t value_index = 0; value_index < allocation_plan.size(); ++value_index) {
+      if (allocation_plan[value_index].alloc_kind == AllocKind::kReuse) {
+        while (allocation_plan[allocation_plan[value_index].reused_buffer].alloc_kind == AllocKind::kReuse &&
+               allocation_plan[value_index].reused_buffer != allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer) {
+          allocation_plan[value_index].reused_buffer = allocation_plan[allocation_plan[value_index].reused_buffer].reused_buffer;
+        }
+        ort_value_info_[value_index].reused_buffer_index = allocation_plan[value_index].reused_buffer;
+      }
+    }
+
     return Status::OK();
   }
 #endif
@@ -2110,19 +2109,6 @@ Status PlannerImpl::CreatePlan(
   ORT_RETURN_IF_ERROR(BuildExecutionPlan(execution_providers_));
 #endif
 
-  // build value_node_map
-  for (auto node_index : graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder())) {
-    auto* node = graph_viewer_.GetNode(node_index);
-    const auto& output_defs = node->OutputDefs();
-    for (size_t output_idx_local = 0; output_idx_local < output_defs.size(); ++output_idx_local) {
-      const auto& node_output = output_defs[output_idx_local];
-      if (!node_output->Exists()) continue;
-      OrtValueIndex output_idx_global;
-      ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(node_output->Name(), output_idx_global));
-      value_node_map_[output_idx_global] = node_index;
-    }
-  }
-
   // determine sharing/reuse among ml-values
   ORT_RETURN_IF_ERROR(ComputeReusePlan());
 
@@ -2365,7 +2351,7 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
                                                                              const PathString& config_file) {
   // use device based partitioner by default
   IGraphPartitioner::GraphPartitioningStrategy partitioner_type =
-      IGraphPartitioner::GraphPartitioningStrategy::Unknown;
+      IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
   if (!config_file.empty()) {
     std::ifstream f(config_file);
     if (f.is_open()) {
@@ -2383,11 +2369,8 @@ std::unique_ptr<IGraphPartitioner> IGraphPartitioner::CreateGraphPartitioner(con
       f.close();
     }
   }
-  if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::Unknown) {
-    partitioner_type = IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition;
-    LOGS(logger, INFO) << "Use DeviceBasedPartition as default";
-  }
   if (partitioner_type == IGraphPartitioner::GraphPartitioningStrategy::DeviceBasedPartition) {
+    LOGS(logger, INFO) << "Use DeviceBasedPartition as default";
     return std::make_unique<DeviceBasedPartitioner>(logger, config_file);
   }  // else if other partitioner types ...
   ORT_THROW("Failed to create partitioner");
