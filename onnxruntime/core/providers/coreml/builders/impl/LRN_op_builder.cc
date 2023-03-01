@@ -72,12 +72,12 @@ bool LRNOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
   }
 
-  // Note: For higher ranks ( > 3), CoreML LRN treats all leading dimentions as the batch,
+  // Note: For higher ranks ( > 3), CoreML LRN treats all leading dimensions as the batch,
   // which differs from ONNX LRN. Only support the case - input rank equals 3 or 4 here.
   // CoreML Spec:https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#lrnlayerparams
   const auto input_rank = input_shape.size();
   if (input_rank != 3 && input_rank != 4) {
-    LOGS(logger, VERBOSE) << "LRN only supports input rank equals to 3 or 4, input rank is"
+    LOGS(logger, VERBOSE) << "LRN only supports input rank equals to 3 or 4, input rank is "
                           << input_rank;
     return false;
   }
