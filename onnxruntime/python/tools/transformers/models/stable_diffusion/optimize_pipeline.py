@@ -5,19 +5,18 @@
 #
 # This script converts stable diffusion onnx models from float to half (mixed) precision for GPU inference.
 #
-# Before running this script, you need convert checkpoint to float32 onnx models. See README.md for for more information.
-# Assume that you float32 ONNX pipeline is saved to ./sd-v1-6 directory, we can optimize it and convert to float16 like the following:
+# Before running this script, follow README.md to setup python environment and convert stable diffusion checkpoint to float32 onnx models.
+#
+# For example, the float32 ONNX pipeline is saved to ./sd-v1-5 directory, you can optimize and convert it to float16 like the following:
 #    python optimize_pipeline.py -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
-# Or
-#    python -m onnxruntime.transformers.models.stable_diffusion.optimize_pipeline -i ./sd-v1-5 -o ./sd-v1-5-fp16 --float16
 #
 # Note that the optimized models are for CUDA Execution Provider. It might not run in other execution provider.
 #
-# Stable diffusion 2.1 model will get black images using float16 Attention.
-# A walkaround is to force MultiHeadAttention to run in float32 if you are using nightly package (1.15.*):
-#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
-# If you uses ONNX Runtime 1.14.*, you can force Attention to run in float32 like the following:
+# Stable diffusion 2.1 model will get black images using float16 Attention. A walkaround is to force Attention to run in float32 like the following:
 #    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:Attention
+#
+# If you are using nightly package (or built from source), you can force MultiHeadAttention to run in float32:
+#    python optimize_pipeline.py -i ./sd-v2-1 -o ./sd-v2-1-fp16 --float16 --force_fp32_ops unet:MultiHeadAttention
 
 import argparse
 import logging

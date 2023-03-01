@@ -17,7 +17,7 @@ ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CU
 * BiasAdd fuses Add bias and residual.
 * Reduce Transpose nodes by graph transformation.
 
-Many CUDA kernels (like Flash Attention, GroupNorm and SplitGelu etc.) were originally implemented in TensorRT by Nvidia. Compare to TensorRT, our optimizations have some advantages: (1) Support older GPUs like V100. (2) Use less GPU memory. (3) Support float32 models and Stable Diffusion 2.* models.
+Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia. Compare to TensorRT, our optimizations have some advantages: (1) Support older GPUs like V100. (2) Use less GPU memory. (3) Support float32 models and Stable Diffusion 2.* models.
 
 To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
 
@@ -143,7 +143,7 @@ python benchmark.py -e torch -b 1 --enable_torch_compile
 
 Sometime, it complains ptxas not found when there are multiple CUDA versions installed. It can be fixed like `export TRITON_PTXAS_PATH=/usr/local/cuda-11.7/bin/ptxas` before running benchmark.
 
-If you run it in Windows (not in WSL), you might encounter error `Windows not yet supported for torch.compile`.
+Note that torch.compile is not supported in Windows: we encountered error `Windows not yet supported for torch.compile`. So it is excluded from RTX 3060 results of Windows.
 
 ### Example Benchmark output
 
@@ -189,8 +189,8 @@ Results from Standard_NC6s_v3 Azure virtual machine:
 
 #### Results of T4 (in Ubuntu 20.04)
 
-To make the result stable, we lock the frequency of T4 GPU like the following 
-`sudo nvidia-smi --lock-gpu-clocks=990` for fair comparison. See [nvidia blog](https://developer.nvidia.com/blog/advanced-api-performance-setstablepowerstate/) for more information. Note that performance might be slightly better without locking the frequency.
+To make the result stable, we lock the frequency of T4 GPU like 
+`sudo nvidia-smi --lock-gpu-clocks=990` for fair comparison. See [nvidia blog](https://developer.nvidia.com/blog/advanced-api-performance-setstablepowerstate/) for more information. Note that performance might be slightly better without locking frequency.
 
 Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
