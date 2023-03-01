@@ -19,17 +19,7 @@ else()
   set(JAVA_DEPENDS onnxruntime)
 endif()
 
-# use the gradle wrapper if it exists
-if(EXISTS "${JAVA_ROOT}/gradlew")
-    set(GRADLE_EXECUTABLE "${JAVA_ROOT}/gradlew")
-else()
-    # fall back to gradle on our PATH
-    find_program(GRADLE_EXECUTABLE gradle)
-    if(NOT GRADLE_EXECUTABLE)
-        message(SEND_ERROR "Gradle installation not found")
-    endif()
-endif()
-message(STATUS "Using gradle: ${GRADLE_EXECUTABLE}")
+set(GRADLE_EXECUTABLE "${JAVA_ROOT}/gradlew")
 
 # Specify the Java source files
 file(GLOB_RECURSE onnxruntime4j_gradle_files "${JAVA_ROOT}/*.gradle")

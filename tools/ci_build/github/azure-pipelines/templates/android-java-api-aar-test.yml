@@ -39,8 +39,6 @@ jobs:
 
   - template: use-android-ndk.yml
 
-  - template: set-up-gradle-wrapper-step.yml
-
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \

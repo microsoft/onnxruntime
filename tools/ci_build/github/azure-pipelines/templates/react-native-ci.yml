@@ -60,8 +60,6 @@ jobs:
       brew install coreutils ninja npm yarn
     displayName: Install coreutils, ninja, npm, and yarn
 
-  - template: set-up-gradle-wrapper-step.yml
-
   - script: |
       python3 -m pip install -q flatbuffers
     displayName: Install python modules
