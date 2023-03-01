@@ -9,7 +9,7 @@
 ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CUDA:
 
 * [Flash Attention](https://arxiv.org/abs/2205.14135) for float16 precision. Flash Attention uses tiling to reduce number of GPU memory reads/writes, and improves performance with less memory for long sequence length. The kernel requires GPUs of Compute Capability >= 7.5 (like T4, A100, and RTX 2060~4090).
-* [Memory Efficient Attention](https://arxiv.org/abs/2112.05682v2) for float32 precision or older GPUs (like V100). We used the fused multi-head attention in CUTLASS.
+* [Memory Efficient Attention](https://arxiv.org/abs/2112.05682v2) for float32 precision or older GPUs (like V100). We used the fused multi-head attention kernel in CUTLASS, and the kernel was contributed by xFormers.
 * Channel-last (NHWC) convolution. For NVidia GPU with Tensor Cores support, NHWC tensor layout is recommended for convolution. See [Tensor Layouts In Memory: NCHW vs NHWC](https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout).
 * GroupNorm kernel for NHWC tensor layout.
 * SkipLayerNormalization which fuses LayerNormalization with Add bias and residual inputs.
@@ -17,7 +17,7 @@ ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CU
 * BiasAdd fuses Add bias and residual.
 * Reduce Transpose nodes by graph transformation.
 
-Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia. Compare to TensorRT, our optimizations have some advantages: (1) Support older GPUs like V100. (2) Use less GPU memory. (3) Support float32 models and Stable Diffusion 2.* models.
+Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia. Compare to TensorRT, ONNX Runtime has some advantages on stable diffusion: (1) Supports older GPUs like V100. (2) Uses less GPU memory. (3) Supports float32 models and Stable Diffusion 2.* models.
 
 To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
 
@@ -32,7 +32,7 @@ To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
 | FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV           | 4.8                            | 4,625                       | 33.5                           | 6,663                       |
 | FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV + BiasAdd | 4.7                            | 4,480                       | 33.3                           | 6,499                       |
 
-FP16 baseline contains optimizations available in ORT 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
+FP16 baseline contains optimizations available in ONNX Runtime 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
 
 Here FMHA means Attention and MultiHeadAttention operators with Flash Attention and Memory Efficient Attention kernels but inputs are not packed. Packed QKV means the inputs are packed.
 
