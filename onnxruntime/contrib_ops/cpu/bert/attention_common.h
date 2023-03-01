@@ -61,13 +61,12 @@ struct AttentionParameters {
 struct PackedAttentionParameters {
   int batch_size;
   int sequence_length;
-  int input_hidden_size;  // first dimension of weights for input projection
+  int input_hidden_size;  // hidden size of input
   int hidden_size;        // hidden size of Q or K
   int head_size;          // hidden size per head of Q or K
   int v_hidden_size;      // hidden size of V
   int v_head_size;        // hidden size per head of V
   int num_heads;
-  float mask_filter_value;
   float scale;
   int token_count;
 };

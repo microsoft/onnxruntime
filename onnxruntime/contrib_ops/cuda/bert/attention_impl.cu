@@ -26,8 +26,6 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define DEBUG_GENERATION 1
-
 #include <cassert>
 #include <cuda_fp16.h>
 #include <cub/cub.cuh>
@@ -651,7 +649,7 @@ Status QkvToContext(
       }
 
       fused_fp16_runner->run(packed_qkv, sequence_offset, data.output, stream);
-      DUMP_TENSOR("attention fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
+      DUMP_TENSOR("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     } else {
       assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
       fused_fp16_runner->run(data.gemm_buffer, sequence_offset, data.output, stream);

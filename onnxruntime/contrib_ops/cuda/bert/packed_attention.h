@@ -34,7 +34,6 @@ class PackedAttention final : public CudaKernel {
  private:
   int32_t num_heads_;                      // number of attention heads
   std::vector<int64_t> qkv_hidden_sizes_;  // Q, K, V hidden sizes parsed from the qkv_hidden_sizes attribute.
-  float mask_filter_value_;                // the value to be used for filtered out positions
   float scale_;                            // the scale to be used for softmax
   bool disable_fused_runner_;
   bool enable_trt_flash_attention_;

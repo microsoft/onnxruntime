@@ -38,7 +38,6 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info)
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int32_t>(num_heads);
 
-  mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
@@ -62,7 +61,7 @@ template <typename T>
 Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                                        const TensorShape& weights_shape,
                                        const TensorShape& bias_shape,
-                                       const TensorShape& packing_token_offset_shape,
+                                       const TensorShape& token_offset_shape,
                                        const TensorShape& cu_seq_len_shape,
                                        const Tensor* relative_position_bias,
                                        PackedAttentionParameters& parameters) const {
@@ -78,12 +77,12 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   //   D_v:  v_hidden_size = num_heads * v_head_size
 
   // Input shapes:
-  //   input        (Q/K/V)    : (T, D_i)
+  //   input:                  : (T, D_i)
   //   weights      (Q/K/V)    : (D_i, D + D + D_v)
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   token_offset            : (B, S)
   //   cu_seq_len_shape        : (B + 1)
-  //   relative_position_bias            : (B, N, S, T) or NULL
+  //   relative_position_bias  : (B, N, S, T) or NULL
 
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
@@ -94,7 +93,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   int64_t token_count = input_dims[0];
   int64_t input_hidden_size = input_dims[1];
 
-  const auto& token_offset_dims = packing_token_offset_shape.GetDims();
+  const auto& token_offset_dims = token_offset_shape.GetDims();
   if (token_offset_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'packing_token_offset' is expected to have 2 dimensions in packing mode, got ",
@@ -206,7 +205,6 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.head_size = static_cast<int>(q_hidden_size) / num_heads_;
   parameters.v_head_size = static_cast<int>(v_hidden_size) / num_heads_;
   parameters.num_heads = num_heads_;
-  parameters.mask_filter_value = mask_filter_value_;
   parameters.scale = scale_;
   parameters.token_count = static_cast<int32_t>(token_count);
 
@@ -218,7 +216,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
-  const Tensor* packing_token_offset = context->Input<Tensor>(3);
+  const Tensor* token_offset = context->Input<Tensor>(3);
   const Tensor* cumulative_sequence_length = context->Input<Tensor>(4);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
@@ -227,7 +225,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
                                   bias->Shape(),
-                                  packing_token_offset->Shape(),
+                                  token_offset->Shape(),
                                   cumulative_sequence_length->Shape(),
                                   relative_position_bias,
                                   parameters));
@@ -261,19 +259,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
- 
-#if 0 // USE_FLASH_ATTENTION TODO: enable cutlass FlashAttention
-  bool use_memory_efficient_attention = fused_runner == nullptr &&
-                                        !disable_memory_efficient_attention_ &&
-                                        nullptr == relative_position_bias &&
-                                        (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
-                                         parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
-                                        has_memory_efficient_attention(sm, sizeof(T) == 2);
-#else
-  constexpr bool use_memory_efficient_attention = false;
-#endif
-
-
   cublasHandle_t cublas = GetCublasHandle(context);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -302,8 +287,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.head_size,
                                                    parameters.v_head_size,
                                                    parameters.sequence_length,
-                                                   fused_runner,
-                                                   use_memory_efficient_attention);
+                                                   fused_runner);
   auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -312,11 +296,10 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
-  data.token_offset = packing_token_offset->Data<int32_t>();
+  data.token_offset = token_offset->Data<int32_t>();
   data.cumulative_sequence_length = cumulative_sequence_length->Data<int32_t>();
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
-  data.use_memory_efficient_attention = use_memory_efficient_attention;
 
   return QkvToContext<CudaT>(device_prop, cublas, Stream(context), parameters, data);
 }

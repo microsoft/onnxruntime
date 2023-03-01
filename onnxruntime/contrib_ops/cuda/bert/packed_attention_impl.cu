@@ -71,23 +71,9 @@ size_t GetAttentionWorkspaceSize(
     size_t qk_head_size,
     size_t v_head_size,
     size_t sequence_length,
-    void* fused_runner,
-    bool use_memory_efficient_attention) {
+    void* fused_runner) {
   // Note that q, k and v might need alignment for fused attention kernels.
   const size_t qkv_bytes = element_size * batch_size * num_heads * sequence_length * (qk_head_size + qk_head_size + v_head_size);
-
-#if USE_FLASH_ATTENTION
-  if (use_memory_efficient_attention) {
-    size_t fmha_buffer_bytes = 0;
-    if (MemoryEfficientAttentionParams::need_workspace(v_head_size, element_size == sizeof(float))) {
-      fmha_buffer_bytes = batch_size * sequence_length * num_heads * v_head_size * sizeof(float);
-    }
-
-    return qkv_bytes + fmha_buffer_bytes;
-  }
-#else
-  ORT_UNUSED_PARAMETER(use_memory_efficient_attention);
-#endif
 
   if (fused_runner != nullptr) {
     return qkv_bytes;
@@ -538,8 +524,36 @@ Status PrepareQkv(PackedAttentionParameters& parameters,
   return Status::OK();
 }
 
+template<typename T>
+Status FusedScaledDotProductAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<T>& data) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int num_heads = parameters.num_heads;
+  const int qk_head_size = parameters.head_size;
+  const int v_head_size = parameters.v_head_size;
+  void* fused_runner = data.fused_runner;
+  assert(nullptr != fused_runner);
+
+  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+                         batch_size, sequence_length,
+                         num_heads, qk_head_size, v_head_size,
+                         AttentionQkvFormat::QKV_BSN3H, data.token_offset,
+                         parameters.token_count, stream);
+
+  FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
+  const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
+  fused_fp16_runner->setup(S, batch_size);
+
+  fused_fp16_runner->run(data.workspace, data.cumulative_sequence_length, data.output, stream);
+  return Status::OK();
+}
+
 template <typename T>
-Status QkvToContext(
+Status UnfusedScaledDotProductAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
     cudaStream_t stream,
@@ -551,10 +565,6 @@ Status QkvToContext(
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
-  void* fused_runner = data.fused_runner;
-
-  // At most one fused kernel is enabled.
-  assert(int(data.use_memory_efficient_attention) + int(fused_runner != nullptr) <= 1);
 
   const int batches = batch_size * num_heads;
   const int size_per_batch_q = sequence_length * qk_head_size;
@@ -570,10 +580,11 @@ Status QkvToContext(
   T* k = q + elements_q;
   T* v = k + elements_k;
 
-  bool use_fused_kernel = nullptr != fused_runner;
-
-  AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
-  ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, qkv_format, stream));
+  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
+                         batch_size, sequence_length,
+                         num_heads, qk_head_size, v_head_size,
+                         AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
+                         parameters.token_count, stream);
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
@@ -582,53 +593,6 @@ Status QkvToContext(
 
   DUMP_TENSOR_D("gemm_buffer", data.gemm_buffer, parameters.token_count, (num_heads * (qk_head_size * 2 + v_head_size)));
   DUMP_TENSOR_D("data.workspace", data.workspace, 3 * batch_size, num_heads, sequence_length, qk_head_size);
-
-  // Run TRT fused attention.
-  if (use_fused_kernel) {
-    FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(fused_runner);
-
-    const int S = fused_fp16_runner->getSFromMaxSeqLen(sequence_length);
-    fused_fp16_runner->setup(S, batch_size);
-
-    assert(qkv_format == AttentionQkvFormat::QKV_BSN3H);
-    fused_fp16_runner->run(qkv, data.cumulative_sequence_length, data.output, stream);
-    DUMP_TENSOR("fused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
-    return Status::OK();
-  }
-
-#if USE_FLASH_ATTENTION
-  if (data.use_memory_efficient_attention) {
-    // We only enable fused cross attention when there is no key padding mask.
-    // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-    assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-
-    const void* query = q;
-    const void* key = k;
-    const void* value = v;
-
-    MemoryEfficientAttentionParams p;
-    p.sm = device_prop.major * 10 + device_prop.minor;
-    p.is_half = sizeof(T) == 2;
-    // p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
-    p.num_heads = parameters.num_heads;
-    p.sequence_length = parameters.sequence_length;
-    p.qk_head_size = parameters.head_size;
-    p.v_head_size = parameters.v_head_size;
-    p.causal = false;
-    p.cu_seqlens_q = nullptr;
-    p.cu_seqlens_k = nullptr;
-    p.query = query;
-    p.key = key;
-    p.value = value;
-    p.output = data.output;
-    p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
-    p.stream = stream;
-    run_memory_efficient_attention(p);
-
-    DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
-    return Status::OK();
-  }
-#endif
 
   // The following are unfused attention.
   // assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
@@ -691,6 +655,21 @@ Status QkvToContext(
 
   DUMP_TENSOR("unfused output", data.output, parameters.token_count, num_heads, v_head_size);
   return result;
+}
+
+template <typename T>
+Status QkvToContext(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudaStream_t stream,
+    PackedAttentionParameters& parameters,
+    PackedAttentionData<T>& data) {
+  void* fused_runner = data.fused_runner;
+  if (nullptr != fused_runner) {
+    return FusedScaledDotProductAttention<T>(device_prop, stream, parameters, data);
+  } else {
+    return UnfusedScaledDotProductAttention<T>(device_prop, cublas, stream, parameters, data);
+  }
 }
 
 template Status QkvToContext<float>(
