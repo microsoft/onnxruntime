@@ -21,7 +21,7 @@ from onnxruntime.capi import _pybind_state as C
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from onnxruntime.training import ortmodule
 
-from . import _are_deterministic_algorithms_enabled, _data_observer, _io, _logger, _onnx_models, _utils
+from . import _are_deterministic_algorithms_enabled, _io, _logger, _onnx_models, _runtime_inspector, _utils
 from ._custom_autograd_function_exporter import _post_process_after_export
 from ._fallback import (
     ORTModuleDeviceException,
@@ -113,7 +113,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._first_skip_check_warning = True
 
         # Inspect embedding input index sparsity.
-        self._data_observer = _data_observer.DataObserver()
+        self._rt_inspector = _runtime_inspector.RuntimeInspector()
 
         # Graph transformer config
         # Specify cast propagation strategy. Currently three strategies are available, NONE, INSERT-AND-REDUCE and FLOOD-FILL

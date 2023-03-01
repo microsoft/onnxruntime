@@ -162,7 +162,7 @@ class _InputInfo(object):
 
 
 def _combine_input_buffers_initializers(
-    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, data_observer
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
 ):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
@@ -234,7 +234,7 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            data_observer.inspect_from_input_data(name, inp)
+            input_density_ob.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(

@@ -135,15 +135,15 @@ debugging). Disable it with following command:
 	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
 	```
 
-#### ORTMODULE_ENABLE_DATA_OBSERVER
+#### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
 
-- **Feature Area**: *ORTMODULE/DataObserver*
+- **Feature Area**: *ORTMODULE/Runtime inspector*
 - **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
 inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
 command:
 
 	```bash
-	export ORTMODULE_ENABLE_DATA_OBSERVER=1
+	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
 	```
 
 ### 2.2 Memory Optimization

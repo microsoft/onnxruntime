@@ -134,7 +134,7 @@ class InferenceManager(GraphExecutionManager):
                     inputs,
                     kwargs,
                     self._device,
-                    self._data_observer,
+                    self._rt_inspector.input_density_ob,
                 ),
             )
 
@@ -166,7 +166,9 @@ class InferenceManager(GraphExecutionManager):
                 self._export_mode,
             )
 
-        self._data_observer.initialize(self._onnx_models.optimized_model, self._graph_info.user_input_names)
+        self._rt_inspector.input_density_ob.initialize(
+            self._onnx_models.optimized_model, self._graph_info.user_input_names
+        )
 
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""

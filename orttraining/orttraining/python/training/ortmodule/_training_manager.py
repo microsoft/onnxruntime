@@ -262,7 +262,7 @@ class TrainingManager(GraphExecutionManager):
                         inputs,
                         kwargs,
                         self._device,
-                        self._data_observer,
+                        self._rt_inspector,
                     )
                 ),
             )
@@ -318,7 +318,9 @@ class TrainingManager(GraphExecutionManager):
                 self._gradient_map.append(-1)
 
         # Set up data sparsity inspection.
-        self._data_observer.initialize(self._onnx_models.optimized_pre_grad_model, self._graph_info.user_input_names)
+        self._rt_inspector.input_density_ob.initialize(
+            self._onnx_models.optimized_pre_grad_model, self._graph_info.user_input_names
+        )
 
     def _create_execution_agent(self):
         """Creates a TrainingAgent that can run the forward and backward graph on the training model"""

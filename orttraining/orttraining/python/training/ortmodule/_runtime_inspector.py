@@ -12,14 +12,20 @@ from onnx import onnx_pb as onnx_proto
 from onnxruntime.training import ortmodule
 
 
-class DataObserver:
-    """Configurable data observer for ORTModule."""
+class RuntimeInspector:
+    def __init__(self):
+        self.input_density_ob = InputDensityObserver()
+
+
+class InputDensityObserver:
+    """Configurable input data observer for ORTModule."""
 
     def __init__(self, log_steps=10):
-        self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_DATA_OBSERVER", 0, warn=True) == 1
+        self._enabled = ortmodule._defined_from_envvar("ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR", 0, warn=True) == 1
         self._embedding_graph_input_to_padding_idx_map = {}
         self._loss_label_graph_input_to_ignore_idx_map = {}
         self._stats = []
+        self._is_initialized = False
 
         self._last_step = 0
         self._current_step = 0
@@ -40,6 +46,8 @@ class DataObserver:
 
         self._initialize_embedding_padding_inspector(model, user_input_names)
         self._initialize_loss_label_padding_inspector(model, user_input_names)
+
+        self._is_initialized = True
 
     def _initialize_embedding_padding_inspector(self, model, user_input_names):
         """Register embedding input padding inspector.
@@ -177,7 +185,7 @@ class DataObserver:
             )
 
     def inspect_from_input_data(self, name, inp):
-        if not self._enabled:
+        if not self._enabled or not self._is_initialized:
             return
 
         data = inp.clone()
