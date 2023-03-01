@@ -104,8 +104,8 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
                                                           const NodeUnit& node_unit,
                                                           std::vector<std::string>&& input_names,
                                                           const logging::Logger& logger,
-                                                  bool is_quantized_model,
-                                                  bool do_op_validation) const {
+                                                          bool is_quantized_model,
+                                                          bool do_op_validation) const {
   NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
