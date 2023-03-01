@@ -749,7 +749,7 @@ extern "C" {
 
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
-#define MLAS_QGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
+#define MLAS_QGEMM_THREAD_COMPLEXITY                65536
 
 //
 // Single-threaded single precision matrix/matrix multiply operation.
@@ -2076,7 +2076,7 @@ MlasMultiplyFloat64x2(MLAS_FLOAT64X2 Vector1, MLAS_FLOAT64X2 Vector2)
 #endif
 }
 
-#endif
+#endif  // !MLAS_FLOAT64X2_UNSUPPORTED
 
 //
 // Reads a platform specific time stamp counter.

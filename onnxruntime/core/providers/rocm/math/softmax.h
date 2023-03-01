@@ -11,12 +11,12 @@ namespace rocm {
 
 using tunable::RocmTuningContext;
 
-template <typename T, bool IsLogSoftmax>
+template <typename T, typename TOut, bool IsLogSoftmax>
 Status SoftMaxComputeHelper(
     hipStream_t stream,
     const T* input,
     const TensorShape& shape,
-    T* Y,
+    TOut* Y,
     int64_t axis,
     RocmTuningContext* tuning_ctx = nullptr);
 
