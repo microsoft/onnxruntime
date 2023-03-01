@@ -35,10 +35,18 @@ The formula corresponding to LayerNorm activation subgraph:
 */
 class SimplifiedLayerNormFusion : public GraphTransformer {
  public:
-  SimplifiedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers) {}
+  SimplifiedLayerNormFusion(const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                            bool is_for_pre_training = false) noexcept
+      : GraphTransformer("SimplifiedLayerNormFusion", compatible_execution_providers),
+        is_for_pre_training_(is_for_pre_training) {}
 
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+
+ private:
+  // A flag indicate whether this optimizer is registered for pre-training.
+  // This is introduced to skip some device check, since when optimization passes are running, devices placement is
+  // done yet.
+  bool is_for_pre_training_;
 };
 
 }  // namespace onnxruntime
