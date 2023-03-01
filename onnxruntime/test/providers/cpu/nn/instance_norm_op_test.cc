@@ -76,7 +76,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   // Disable for QNN because it requires an input rank of 4.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 #endif
 }
 
@@ -115,7 +115,7 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   // Disable for QNN because it requires an input rank of 4.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 #endif
 }
 
@@ -261,7 +261,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   // Disable for QNN because it requires an input rank of 4.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 #endif
 }
 

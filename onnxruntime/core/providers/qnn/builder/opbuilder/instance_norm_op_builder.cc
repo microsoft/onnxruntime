@@ -61,20 +61,20 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
+  const size_t input_rank = input_shape.size();
 
   // TODO: Check if HTP backend supports ranks != 4. QNN op documentation may be out-of-date.
-  if (input_shape.size() <= 2) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports input ranks greater than 2.");
+  if (input_rank <= 2 || input_rank > 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports input ranks of size 3 or 4.");
   }
 
   if (node_unit.Domain() != kMSInternalNHWCDomain) {  // Layout has not been transformed to NHWC, so do it here.
-    const size_t rank = input_shape.size();
     const uint32_t chans = input_shape[1];
-    for (size_t i = 1; i < rank - 1; ++i) {
+    for (size_t i = 1; i < input_rank - 1; ++i) {
       input_shape[i] = input_shape[i + 1];
     }
 
-    input_shape[rank - 1] = chans;
+    input_shape[input_rank - 1] = chans;
   }
 
   const uint32_t num_channels = input_shape.back();
