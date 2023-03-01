@@ -26,7 +26,7 @@ limitations under the License.
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#define DEBUG_GENERATION 1
+// #define DEBUG_GENERATION 1
 
 #include <cassert>
 #include <cuda_fp16.h>

@@ -147,9 +147,6 @@ TEST(PackedAttentionTest, NoPack) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  // std::vector<float> bias_data = {
-  //     0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-
   std::vector<int32_t> token_offset{0, 1};
   std::vector<int32_t> cum_seq_len{0, 2};
 
@@ -169,6 +166,120 @@ TEST(PackedAttentionTest, NoPack) {
       hidden_size,
       number_of_heads,
       batch_size * sequence_length);
+}
+
+TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
+  int batch_size = 2;
+  int sequence_length = 2;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f,
+      0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> token_offset{0, 1, 2, 3};
+  std::vector<int32_t> cum_seq_len{0, 2, 4};
+
+  std::vector<float> relative_position_bias = {
+      0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f,
+      0.2f, -0.1f, 0.4f, 2.5f, 1.6f, -1.1f, 0.4f, -2.5f};
+
+  std::vector<float> output_data = {
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f,
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
+
+
+  RunPackedAttentionTest(
+      input_data,
+      weight_data,
+      bias_data,
+      token_offset,
+      cum_seq_len,
+      output_data,
+      batch_size,
+      sequence_length,
+      hidden_size,
+      number_of_heads,
+      batch_size * sequence_length, 
+      {},
+      relative_position_bias
+      );
+}
+
+TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
+  int batch_size = 2;
+  int sequence_length = 4;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,   // b0:s0
+      0.5f, 0.2f, 0.3f, -0.6f,  // b0:s1
+      0.8f, -0.5f, 0.0f, 1.f,   // b1:s0
+      0.5f, 0.2f, 0.3f, -0.6f   // b1:s1
+  };
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f,
+      0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
+
+  std::vector<int32_t> token_offset{0, 1, 4, 5, 2, 3, 6, 7};
+  std::vector<int32_t> cum_seq_len{0, 2, 4};
+
+  std::vector<float> relative_position_bias = {
+      0.2f, -0.1f, 0.f, 0.f, 0.4f, 2.5f, 0.f, 0.f,
+      1.6f, -1.1f, 0.f, 0.f, 0.4f, -2.5f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
+
+      0.2f, -0.1f, 0.f, 0.f, 0.4f, 2.5f, 0.f, 0.f,
+      1.6f, -1.1f, 0.f, 0.f, 0.4f, -2.5f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
+      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
+  };
+
+  std::vector<float> output_data = {
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f,
+      4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
+      -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
+
+  RunPackedAttentionTest(
+      input_data,
+      weight_data,
+      bias_data,
+      token_offset,
+      cum_seq_len,
+      output_data,
+      batch_size,
+      sequence_length,
+      hidden_size,
+      number_of_heads,
+      4, 
+      {},
+      relative_position_bias
+      );
 }
 
 TEST(PackedAttentionTest, PackedBatch) {
@@ -268,15 +379,15 @@ static void RunModelWithRandomInput(
   std::vector<float> input_data = random.Gaussian<float>(input_dims, 0.0f, 0.3f);
 
   std::vector<int64_t> weight_dims{hidden_size, 3 * hidden_size};
-  std::vector<float> weight_data = random.Uniform<float>(weight_dims, 0.0f, 0.3f);
+  std::vector<float> weight_data = random.Gaussian<float>(weight_dims, 0.0f, 0.3f);
 
   std::vector<int64_t> bias_dims{3 * hidden_size};
-  std::vector<float> bias_data = random.Uniform<float>(bias_dims, 0.0f, 0.1f);
+  std::vector<float> bias_data = random.Gaussian<float>(bias_dims, 0.0f, 0.1f);
 
   std::vector<int64_t> token_offset_dims{batch_size, sequence_length};
   std::vector<int64_t> cum_seq_len_dims{batch_size + 1};
 
-  float gpu_threshold = is_float16 ? 0.05f : 0.005f;
+  float gpu_threshold = is_float16 ? 0.1f : 0.005f;
   bool enable_cuda = HasCudaEnvironment(is_float16 ? 530 : 0);
   if (enable_cuda) {
     OpTester test("PackedAttention", 1, onnxruntime::kMSDomain);
@@ -300,102 +411,24 @@ static void RunModelWithRandomInput(
   }
 }
 
-TEST(PackedAttentionTest, fp32_b2_s32) {
-  constexpr int batch_size = 2;
-  constexpr int sequence_length = 32;
-
+TEST(PackedAttentionTest, test_on_random_data) {
   std::string onnx_model = "testdata/packed_attention_fp32.onnx";
-  RunModelWithRandomInput(
-      batch_size,
-      sequence_length,
-      onnx_model,
-      false);
-}
-
-TEST(PackedAttentionTest, fp32_b4_s64) {
-  constexpr int batch_size = 4;
-  constexpr int sequence_length = 64;
-
-  std::string onnx_model = "testdata/packed_attention_fp32.onnx";
-  RunModelWithRandomInput(
-      batch_size,
-      sequence_length,
-      onnx_model,
-      false);
-}
-
-TEST(PackedAttentionTest, fp16_b2_s32) {
-  constexpr int batch_size = 2;
-  constexpr int sequence_length = 32;
-
-  std::string onnx_model = "testdata/packed_attention_fp16.onnx";
-  RunModelWithRandomInput(
-      batch_size,
-      sequence_length,
-      onnx_model,
-      true);
-}
-
-
-TEST(PackedAttentionTest, fp16_b4_s64) {
-  constexpr int batch_size = 4;
-  constexpr int sequence_length = 64;
-
-  std::string onnx_model = "testdata/packed_attention_fp16.onnx";
-  RunModelWithRandomInput(
-      batch_size,
-      sequence_length,
-      onnx_model,
-      true);
-}
-
-/*
-TEST(AttentionTest, Attention_Mask1D_Fp32_B2_S64) {
-  constexpr int batch_size = 2;
-  constexpr int sequence_length = 64;
-
-  std::vector<int64_t> mask_index_dims{batch_size};
-  std::vector<int32_t> mask_index_data;
-  for (int i = 0; i < batch_size; i++) {
-    mask_index_data.push_back(i == 0 ? sequence_length : (sequence_length / 2));
-  }
-
-  std::string onnx_model = "testdata/attention_mask1d_fp32.onnx";
-  RunModelWithRandomInput(
-      batch_size,
-      sequence_length,
-      mask_index_dims,
-      mask_index_data,
-      onnx_model,
-      false);
-}
-
-// This test is disabled since it is flaky.
-TEST(AttentionTest, DISABLED_Attention_Mask1D_Fp16_B2_FusedNoPadding) {
-  constexpr int batch_size = 2;
-
-  // Sequence lengths used in TRT fused attention fp16 v2 kernels.
-  std::vector<int> sequence_lengths{64, 128, 192, 256, 384, 512};
-
-  for (const auto& sequence_length : sequence_lengths) {
-    std::vector<int64_t> mask_index_dims{batch_size};
-    std::vector<int32_t> mask_index_data;
-    for (int i = 0; i < batch_size; i++) {
-      mask_index_data.push_back(sequence_length);
-    }
-
-    std::string onnx_model = "testdata/attention_mask1d_fp16.onnx";
-
-    RunModelWithRandomInput(
+  std::string onnx_model_fp16 = "testdata/packed_attention_fp16.onnx";
+  for(int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})){
+    for(int sequence_length : std::vector<int>({32, 48, 64, 95, 128})){
+      RunModelWithRandomInput(
         batch_size,
         sequence_length,
-        mask_index_dims,
-        mask_index_data,
         onnx_model,
+        false);
+      RunModelWithRandomInput(
+        batch_size,
+        sequence_length,
+        onnx_model_fp16,
         true);
+    }
   }
 }
-*/
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#define DEBUG_GENERATION 1
+// #define DEBUG_GENERATION 1
 
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/bert/remove_padding.h"
