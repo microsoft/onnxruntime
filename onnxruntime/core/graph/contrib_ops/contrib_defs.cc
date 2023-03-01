@@ -2694,9 +2694,9 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .Attr("output_shapes", "output_shapes", AttributeProto::STRINGS)
       .Attr("match_pairs", "match output dynamic shape to input", AttributeProto::INTS)
       .Attr("dynamic_shape", "how to archive dynamic shape from input tensor", AttributeProto::INTS)
-      .Input(0, "X1", "The input tensor", "T1")
-      .Input(1, "X2", "", "T", OpSchema::Optional)
-      .Input(2, "X3", "input 'X'.", "T", OpSchema::Optional)
+      .Input(0, "X1", "The input tensor", "T")
+      .Input(1, "X2", "", "T1", OpSchema::Optional)
+      .Input(2, "X3", "input 'X'.", "T2", OpSchema::Optional)
       .Input(3, "X4", "input 'X'.", "T", OpSchema::Optional)
       .Input(4, "X5", "input 'X'.", "T", OpSchema::Optional)
       .Input(5, "X6", "input 'X'.", "T", OpSchema::Optional)
@@ -2708,8 +2708,9 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       .Output(5, "Y", "tensor. The output tensor has the same rank as the input. ", "T", OpSchema::Optional)
       .Output(6, "Y", "tensor. The output tensor has the same rank as the input. ", "T", OpSchema::Optional)
       .Output(7, "Y", "tensor. The output tensor has the same rank as the input. ", "T", OpSchema::Optional)
-      .TypeConstraint("T", {"tensor(float)", "tensor(int64)", "tensor(bool)"}, "Constrain input and output types to float tensors.")
-      .TypeConstraint("T1", {"tensor(float)", "tensor(int64)", "tensor(bool)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T", {"tensor(float)", "tensor(int64)","tensor(uint8)", "tensor(bool)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T1", {"tensor(float)", "tensor(int64)", "tensor(uint8)", "tensor(bool)"}, "Constrain input and output types to float tensors.")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(int64)", "tensor(uint8)", "tensor(bool)"}, "Constrain input and output types to float tensors.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 0, 0);

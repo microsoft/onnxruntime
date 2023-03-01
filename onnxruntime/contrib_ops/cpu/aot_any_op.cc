@@ -17,7 +17,7 @@
 namespace onnxruntime {
 namespace contrib {
 
-template <typename T>
+template < typename T>
 AOTanyOp<T>::AOTanyOp(const OpKernelInfo& info) : OpKernel(info) {
   std::string lib_path;
   if (info.GetAttr<std::string>("lib_path", &lib_path).IsOK() == false) {
@@ -85,7 +85,7 @@ AOTanyOp<T>::AOTanyOp(const OpKernelInfo& info) : OpKernel(info) {
                                                          (void**)&func_));
 }
 
-template <typename T>
+template < typename T>
 Status AOTanyOp<T>::Compute(OpKernelContext* context) const {
   auto input_cnt = context->InputCount();
   auto output_cnt = context->OutputCount();
@@ -93,14 +93,14 @@ Status AOTanyOp<T>::Compute(OpKernelContext* context) const {
 
   InlinedVector<const Tensor*> inputs(input_cnt);
   InlinedVector<Tensor*> outputs(output_cnt);
-  InlinedVector<const T*> input_args(input_cnt);
-  InlinedVector<T*> output_args(output_cnt);
+  InlinedVector<const void*> input_args(input_cnt);
+  InlinedVector<void*> output_args(output_cnt);
 
   TensorShape broadcast_input_shape(output_shapes_[0]);
 
   for (int i = 0; i < input_cnt; i++) {
     inputs[i] = context->Input<Tensor>(i);
-    input_args[i] = inputs[i]->Data<T>();
+    input_args[i] = inputs[i]->DataRaw();
     for (size_t j = 0; inputs[i]->Shape().NumDimensions() == broadcast_input_shape.NumDimensions() &&
                        j < broadcast_input_shape.NumDimensions(); j++) {
       broadcast_input_shape[j] = std::max(broadcast_input_shape[j], inputs[i]->Shape()[j]);
@@ -125,7 +125,7 @@ Status AOTanyOp<T>::Compute(OpKernelContext* context) const {
     }
 
     outputs[i] = context->Output(i, output_shape);
-    output_args[i] = outputs[i]->MutableData<T>();
+    output_args[i] = outputs[i]->MutableDataRaw();
   }
   auto task_count = loop_shape.NumDimensions()>1? loop_shape[0] * loop_shape[1]: loop_shape[0];
 
@@ -149,8 +149,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     float,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<bool>()})
-    .TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
+.TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(),DataTypeImpl::GetTensorType<int64_t>(),DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<bool>()})
+    .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),DataTypeImpl::GetTensorType<int64_t>(),DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<bool>()}),
     AOTanyOp<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -159,8 +160,9 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     1,
     int64_t,
     kCpuExecutionProvider,
-    KernelDefBuilder().TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<bool>()})
-    .TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>()),,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<int64_t>())
+    .TypeConstraint("T1", {DataTypeImpl::GetTensorType<float>(), DataTypeImpl::GetTensorType<int64_t>(), DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<bool>()})
+    .TypeConstraint("T2", {DataTypeImpl::GetTensorType<float>(),DataTypeImpl::GetTensorType<int64_t>(),DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<bool>()}),
     AOTanyOp<int64_t>);
 
 }  // namespace contrib
