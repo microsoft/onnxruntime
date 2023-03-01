@@ -192,6 +192,7 @@ Status Attention<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pre
 
 template <typename T>
 Status Attention<T>::Compute(OpKernelContext* context) const {
+  // std::cout << "Computing attention CPU..." << std::endl;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = is_prepack_ ? nullptr : context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);

@@ -41,6 +41,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
 
 template <typename T>
 Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
+  // std::cout << "Computing MHA CPU..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);

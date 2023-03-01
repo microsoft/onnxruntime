@@ -349,6 +349,45 @@ class FusionAttention(Fusion):
         self.node_name_to_graph_name[gather_k_name] = self.this_graph_name
         self.node_name_to_graph_name[gather_v_name] = self.this_graph_name
 
+    def transpose_kv(self, past_k: str, past_v: str):
+        """Transpose past_k and past_v from (B,N,P,H) to (B,P,N,H)
+
+        Args:
+            past_k (str): name of past K value of shape (B,N,P,H)
+            past_v (str): name of past V value of shape (B,N,P,H)
+
+        Returns:
+            past_k_transpose (str): name of past K value of shape (B,P,N,H)
+            past_v_transpose (str): name of past V value of shape (B,P,N,H)
+        """
+        past_k_transpose = (past_k + "_transposed").replace(".", "_")
+        past_v_transpose = (past_v + "_transposed").replace(".", "_")
+        transpose_k_name = self.model.create_node_name("Transpose")
+        transpose_v_name = self.model.create_node_name("Transpose")
+        
+        transpose_k = helper.make_node(
+            "Transpose",
+            inputs=[past_k],
+            outputs=[past_k_transpose],
+            name=transpose_k_name,
+            perm=[0,2,1,3],
+        )
+        transpose_v = helper.make_node(
+            "Transpose",
+            inputs=[past_v],
+            outputs=[past_v_transpose],
+            name=transpose_v_name,
+            perm=[0,2,1,3],
+        )
+
+        # Add reshape nodes to graph
+        self.nodes_to_add.append(transpose_k)
+        self.nodes_to_add.append(transpose_v)
+        self.node_name_to_graph_name[transpose_k_name] = self.this_graph_name
+        self.node_name_to_graph_name[transpose_v_name] = self.this_graph_name
+
+        return past_k_transpose, past_v_transpose
+
     def create_multihead_attention_node(
         self,
         q_input: str,
@@ -364,9 +403,9 @@ class FusionAttention(Fusion):
         """Create a MultiHeadAttention node.
 
         Args:
-            q_input (str): name of output from Q path (could be after MatMul, could be after MatMul + Add)
-            k_input (str): name of output from K path (could be after MatMul, could be after MatMul + Add, or could be past K value)
-            v_input (str): name of output from V path (could be after MatMul, could be after MatMul + Add, or could be past V value)
+            q_input (str): name of output from Q path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose)
+            k_input (str): name of output from K path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose, or could be past K value)
+            v_input (str): name of output from V path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose, or could be past V value)
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             output (str): output name of MHA
@@ -386,10 +425,38 @@ class FusionAttention(Fusion):
 
         graph_input_names = [node.name for node in self.model.graph().input]
         graph_output_names = [node.name for node in self.model.graph().output]
+        mha_node_name = self.model.create_node_name("Attention")
 
-        if k_input in graph_input_names and v_input in graph_input_names:
-            # K and V are past values of size (B,N,P,H) and need to be reshaped to (B,P,N*H)
+        mha_inputs = [q_input, k_input, v_input]
+        if self.fuse_mha_bias and k_input in graph_input_names and v_input in graph_input_names:
+            # K and V are past values of size (B,N,P,H) and need to be transposed to (B,P,N,H) and then reshaped to (B,P,N*H)
+            k_input, v_input = self.transpose_kv(k_input, v_input)
             k_input, v_input = self.reshape_kv(k_input, v_input)
+            mha_inputs[1], mha_inputs[2] = k_input, v_input
+
+            # Create QKV bias with q_input = after MatMul
+            input_name_to_nodes = self.model.input_name_to_nodes()
+            q_add = input_name_to_nodes[q_input][0]
+            q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+            
+            qb = NumpyHelper.to_array(q_bias)
+            kb = np.zeros_like(qb)
+            vb = np.zeros_like(qb)
+            q_bias_shape = np.prod(qb.shape)
+            qkv_bias = np.stack((qb, kb, vb), axis=0)
+            qkv_bias_dim = 3 * q_bias_shape
+
+            bias = helper.make_tensor(
+                name=mha_node_name + "_qkv_bias",
+                data_type=TensorProto.FLOAT,
+                dims=[qkv_bias_dim],
+                vals=qkv_bias.flatten().tolist(),
+            )
+            if q_bias.data_type == 10:
+                bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+            self.model.add_initializer(bias, self.this_graph_name)
+
+            mha_inputs.append(mha_node_name + "_qkv_bias")
 
         mha_outputs = [output]
         if present_k != "" and present_v != "" and present_k in graph_output_names and present_v in graph_output_names:
@@ -399,9 +466,9 @@ class FusionAttention(Fusion):
 
         mha_node = helper.make_node(
             "MultiHeadAttention",
-            inputs=[q_input, k_input, v_input],
+            inputs=mha_inputs,
             outputs=mha_outputs,
-            name=self.model.create_node_name("Attention"),
+            name=mha_node_name,
         )
         mha_node.domain = "com.microsoft"
         mha_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])

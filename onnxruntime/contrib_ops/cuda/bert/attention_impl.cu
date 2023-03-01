@@ -319,8 +319,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              true, v_head_size, qkv_add_bias, 3);
     }
   } else {  // gemm_buffer == nullptr
-    assert(data.query != nullptr && data.key != nullptr && data.value != nullptr);
-    // std::cout << "Passed QKV assert" << std::endl;
+    assert(data.query != nullptr && data.key != nullptr && data.value != nullptr && data.bias != nullptr);
+    std::cout << "Passed QKV assert" << std::endl;
 
     // DUMP_ATTENTION_D("query", data.query, batch_size * sequence_length, num_heads, qk_head_size);
     // DUMP_ATTENTION_D("query_bias", data.bias, num_heads, qk_head_size);
@@ -331,7 +331,6 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
-      // std::cout << "This should not print" << std::endl;
 
       // For fused cross attention, besides adding bias, K and V needed to be packed:
       //   K (BxSxNxH), V (BxSxNxH) => BxSxNx2xH
@@ -370,6 +369,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       qkv_format = AttentionQkvFormat::QKV_BSN3H;
     } else {  // unfused kernel
       ORT_ENFORCE(!use_fused_causal, "MultiHeadAttention has not enabled fused causal");
+      std::cout << "Not using fused causal" << std::endl;
 
       // Query (BxSxNxH) => Q (BxNxSxH)
       constexpr int format = 0;
@@ -397,7 +397,9 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     }
   }
 
+  std::cout << "Is there CUDA error?" << std::endl;
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
+  std::cout << "No CUDA error" << std::endl;
   return Status::OK();
 }
 
@@ -444,6 +446,7 @@ Status QkvToContext(
 
   AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block, q, k, v, qkv_format));
+  std::cout << "QKV is prepared" << std::endl;
 
   T* scratch1 = qkv + elements_q + elements_k + elements_v;
 
@@ -468,11 +471,13 @@ Status QkvToContext(
       v = data.present + batches * present_size_per_batch_k;
     }
   } else {
+    std::cout << "Starting asserts" << std::endl;
     assert(qk_head_size == v_head_size);
     assert(data.fused_cross_attention_kernel == nullptr);
     assert(!use_fused_kernel);
     assert(data.gemm_buffer != nullptr);
     assert(!data.use_memory_efficient_attention);
+    std::cout << "Passed asserts" << std::endl;
 
     if (data.present != data.past) {
       // For easy testing. Production should better avoid this path.
@@ -494,6 +499,7 @@ Status QkvToContext(
   }
 
   // Q, K and V are ready now
+  std::cout << "Q, K, V are ready now" << std::endl;
   DUMP_ATTENTION_INIT();
 
   if (data.fused_cross_attention_kernel != nullptr) {
@@ -572,7 +578,7 @@ Status QkvToContext(
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
     assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
-    // std::cout << "Preparing to run MHA using memory efficient attention" << std::endl;
+    std::cout << "Preparing to run MHA using memory efficient attention" << std::endl;
 
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
@@ -594,14 +600,16 @@ Status QkvToContext(
     p.stream = stream;
     run_memory_efficient_attention(p);
 
-    // std::cout << "Dumping MHA output" << std::endl;
+    std::cout << "Dumping MHA output" << std::endl;
     // DUMP_ATTENTION("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
 #endif
 
   // The following are unfused attention.
+  std::cout << "Checking qkv format" << std::endl;
   assert(qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
+  std::cout << "Passed qkv format assert" << std::endl;
   const int* mask_index = data.mask_index;
   gsl::span<const int64_t>& mask_index_dims = data.mask_index_dims;
 
@@ -627,7 +635,7 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
-  // std::cout << "Dumping QK info" << std::endl;
+  std::cout << "Dumping QK info" << std::endl;
   // DUMP_ATTENTION_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
   // DUMP_ATTENTION_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
   // DUMP_ATTENTION_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
@@ -664,7 +672,7 @@ Status QkvToContext(
                           scratch1, scratch2, parameters.is_unidirectional));
   }
 
-  // std::cout << "Dumping softmax info" << std::endl;
+  std::cout << "Dumping softmax info" << std::endl;
   // DUMP_ATTENTION_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
   // DUMP_ATTENTION_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
 
@@ -680,11 +688,9 @@ Status QkvToContext(
   // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
   Status result = LaunchTransCtx(stream, sequence_length, batch_size, v_head_size, num_heads,
                                  max_threads_per_block, false, temp_output, data.output);
-  // std::cout << "Dumping reshape info" << std::endl;
+  std::cout << "Dumping reshape info" << std::endl;
   // DUMP_ATTENTION("unfused output", data.output, batch_size * sequence_length, num_heads, v_head_size);
   return result;
-
-  // Change attention dump for model_opt.onnx
 }
 
 template <typename T>

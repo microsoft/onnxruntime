@@ -151,7 +151,32 @@ Status CheckInputs4D(const T* query,
   const auto& key_dims = key->Shape().GetDims();
   const auto& value_dims = value->Shape().GetDims();
 
-  // Store these values as if Q/K/V is 3D
+  if (query_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 4 dimensions, got ",
+                           query_dims.size());
+  }
+  if (key_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 4 dimensions, got ",
+                           key_dims.size());
+  }
+  if (value_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+                           value_dims.size());
+  }
+  if (query_dims[0] != key_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'key' shall have same dim 0 (batch size)");
+  }
+  if (query_dims[0] != value_dims[0]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'query' and 'value' shall have same dim 0 (batch_size)");
+  }
+  if (key_dims[2] != value_dims[2]) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'key' and 'value' shall have same same dim 2 (sequence_length)");
+  }
+
+  // Store these 4D values as if Q/K/V is 3D
   // Query 3D = (B, S, N*D), Query 4D = (B, N, S, D)
   // Key 3D = (B, L, N*D), Key 4D = (B, N, L, D)
   // Value 3D = (B, L, N*D_v), Value 4D = (B, N, L, D_v)

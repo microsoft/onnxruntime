@@ -58,7 +58,7 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
-  // std::cout << "Computing MHA..." << std::endl;
+  std::cout << "Computing MHA CUDA..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -76,7 +76,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       device_prop.maxThreadsPerBlock));
-
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -165,7 +164,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   AttentionData<CudaT> data;
   data.gemm_buffer = nullptr;
   data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
-  // data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
   data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
