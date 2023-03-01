@@ -346,7 +346,7 @@ class OnnxTensorWrapper : public WRL::Base<IMLOperatorTensor>, public Closable
 class OpKernelInfoWrapper : public OpNodeInfoWrapper<
     onnxruntime::ProtoHelperNodeContext,
     WRL::Base<
-        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
+        Microsoft::WRL::ChainInterfaces<IMLOperatorKernelCreationContextNodeWrapperPrivate, IMLOperatorKernelCreationContextPrivate, IMLOperatorKernelCreationContext>,
         IMLOperatorTensorShapeDescription, IMLOperatorTensorShapeDescriptionPrivate, IMLOperatorAttributes1>,
     onnxruntime::null_type>
 {
@@ -388,6 +388,13 @@ class OpKernelInfoWrapper : public OpNodeInfoWrapper<
         ) const noexcept override
     {
         return E_NOTIMPL;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetExecutionProvider(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept override
+    {
+        return m_winmlProvider.CopyTo(executionProvider);
     }
 
 private:

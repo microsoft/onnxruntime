@@ -79,6 +79,14 @@ IMLOperatorKernelCreationContextPrivate : public IMLOperatorKernelCreationContex
     ) const noexcept PURE;
 };
 
+interface __declspec(uuid("1d2e1226-a918-4236-8775-175cf1f52c9a"))
+IMLOperatorKernelCreationContextNodeWrapperPrivate : public IMLOperatorKernelCreationContextPrivate
+{
+    STDMETHOD(GetExecutionProvider)(
+        _Outptr_result_maybenull_ IUnknown** executionProvider
+        ) const noexcept PURE;
+};
+
 //! \interface IMLOperatorAttributes1
 //! \brief Represents the values of an operator's attributes, as determined by a model using the operator.
 //! This interface is called by implementations of custom operator kernels, and by implementations
