@@ -499,6 +499,20 @@ template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 2, 8, 1
 
 template void __global__ masked_multihead_attention_kernel<uint16_t, 64, 1, 8, 256>(DecoderMaskedMultiheadAttentionParams params);
 
+// fp32 + head size = 128
+template void __global__ masked_multihead_attention_kernel<float, 128, 4, 32, 64>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 128, 2, 32, 128>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<float, 128, 1, 32, 256>(DecoderMaskedMultiheadAttentionParams params);
+
+// fp16 + head size = 128
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 4, 16, 64>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 2, 16, 128>(DecoderMaskedMultiheadAttentionParams params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, 128, 1, 16, 256>(DecoderMaskedMultiheadAttentionParams params);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
