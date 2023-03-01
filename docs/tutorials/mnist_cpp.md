@@ -128,13 +128,13 @@ To make things more interesting, the window painting handler graphs the probabil
 ### The Ort::Session
 
 1. Creation: The Ort::Session is created inside the MNIST structure here:
-     ```
-    Ort::Session session_{env, L"model.onnx", Ort::SessionOptions{nullptr}};
+     ```c++
+    Ort::Session session_{env, ORT_TSTR("model.onnx"), Ort::SessionOptions{nullptr}};
     ```
     [[Source]](https://github.com/microsoft/onnxruntime/blob/521dc757984fbf9770d0051997178fbb9565cd52/samples/c_cxx/MNIST/MNIST.cpp#L43)
 
 2. Setup inputs & outputs: The input & output tensors are created here:
-    ```
+    ```c++
     MNIST() {
     auto allocator_info = Ort::AllocatorInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
     input_tensor_ = Ort::Value::CreateTensor<float>(allocator_info, input_image_.data(), input_image_.size(), input_shape_.data(), input_shape_.size());
@@ -146,7 +146,7 @@ To make things more interesting, the window painting handler graphs the probabil
     In this usage, we're providing the memory location for the data instead of having Ort allocate the buffers. This is simpler in this case since the buffers are small and can just be fixed members of the MNIST struct.
 
 3. Run: Running the session is done in the Run() method:
-    ```
+    ```c++
      int Run() {
     const char* input_names[] = {"Input3"};
     const char* output_names[] = {"Plus214_Output_0"};
