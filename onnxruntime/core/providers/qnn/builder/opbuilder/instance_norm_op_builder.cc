@@ -62,20 +62,22 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
 
-  if (input_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports inputs of rank 4.");
+  // TODO: Check if HTP backend supports ranks != 4. QNN op documentation may be out-of-date.
+  if (input_shape.size() <= 2) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports input ranks greater than 2.");
   }
-
-  // After layout transformation, all the layout sensitive nodes are converted to domain kMSInternalNHWCDomain.
-  // See SelectorManager::GetQDQSelections in core/optimizer/qdq_transformer/selector_actions/shared/utils.cc
 
   if (node_unit.Domain() != kMSInternalNHWCDomain) {  // Layout has not been transformed to NHWC, so do it here.
-    std::vector<uint32_t> input_shape_nhwc(input_shape.size());
-    ORT_RETURN_IF_ERROR(NchwShapeToNhwc(input_shape, input_shape_nhwc));
-    input_shape = std::move(input_shape_nhwc);
+    const size_t rank = input_shape.size();
+    const uint32_t chans = input_shape[1];
+    for (size_t i = 1; i < rank - 1; ++i) {
+      input_shape[i] = input_shape[i + 1];
+    }
+
+    input_shape[rank - 1] = chans;
   }
 
-  const uint32_t num_channels = input_shape[3];
+  const uint32_t num_channels = input_shape.back();
 
   std::vector<uint32_t> scale_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, scale_shape), "Cannot get shape of input 1 (scale)");

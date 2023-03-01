@@ -45,7 +45,7 @@ TEST(InstanceNormalizationOpTest, InstanceNorm) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   // Disable for QNN because it requires an input rank of 4.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 #endif
 }
 
