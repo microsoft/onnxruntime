@@ -59,22 +59,20 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm data type " + *output_data_type + " is not supported in CPU backend.");
   }
 
-  // After layout transformation, all the layout sensitive nodes are converted to domain kMSInternalNHWCDomain.
-  // Use this to properly extract the channel.
-  // See SelectorManager::GetQDQSelections in core/optimizer/qdq_transformer/selector_actions/shared/utils.cc
-
-  const bool is_layout_transformed = node_unit.Domain() == kMSInternalNHWCDomain;
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
 
-  if (!is_layout_transformed) {
+  if (input_shape.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports inputs of rank 4.");
+  }
+
+  // After layout transformation, all the layout sensitive nodes are converted to domain kMSInternalNHWCDomain.
+  // See SelectorManager::GetQDQSelections in core/optimizer/qdq_transformer/selector_actions/shared/utils.cc
+
+  if (node_unit.Domain() != kMSInternalNHWCDomain) {  // Layout has not been transformed to NHWC, so do it here.
     std::vector<uint32_t> input_shape_nhwc(input_shape.size());
     ORT_RETURN_IF_ERROR(NchwShapeToNhwc(input_shape, input_shape_nhwc));
     input_shape = std::move(input_shape_nhwc);
-  }
-
-  if (input_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports inputs of rank 4.");
   }
 
   const uint32_t num_channels = input_shape[3];

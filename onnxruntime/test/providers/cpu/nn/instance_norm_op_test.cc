@@ -44,7 +44,8 @@ TEST(InstanceNormalizationOpTest, InstanceNorm) {
 #if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable for QNN because it requires an input rank of 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 #endif
 }
 
@@ -74,7 +75,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch1) {
 #if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable for QNN because it requires an input rank of 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 #endif
 }
 
@@ -112,7 +114,8 @@ TEST(InstanceNormalizationOpTest, InstanceNormBatch2) {
 #if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable for QNN because it requires an input rank of 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 #endif
 }
 
@@ -257,8 +260,36 @@ TEST(InstanceNormalizationOpTest, InstanceNorm_2) {
 #if defined(OPENVINO_CONFIG_MYRIAD)  //Disabling this test on MYRIADX temporarily due to a bug
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable for QNN because it requires an input rank of 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 #endif
+}
+
+TEST(InstanceNormalizationOpTest, InstanceNormNCHW) {
+  OpTester test("InstanceNormalization");
+  test.AddAttribute("epsilon", 0.009999999776482582f);
+
+  vector<float> input = {1.0f, 2.0f, 3.0f, 2.0f, 2.0f, 2.0f};
+  vector<int64_t> input_dims = {1, 2, 1, 3};
+  test.AddInput<float>("input", input_dims, input);
+
+  vector<float> scale = {1.0f, 1.0f};
+  vector<int64_t> scale_dims = {2};
+  test.AddInput<float>("scale", scale_dims, scale);
+
+  vector<float> B = {0.0f, 2.0f};
+  vector<int64_t> B_dims = {2};
+  test.AddInput<float>("B", B_dims, B);
+
+  vector<float> expected_output = {-1.21566f, 0.0f, 1.21566f, 2.0f, 2.0f, 2.0f};
+  test.AddOutput<float>("Y", input_dims, expected_output);
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {
+      kTensorrtExecutionProvider,
+#if defined(OPENVINO_CONFIG_MYRIAD)  // Disabling this test on MYRIADX temporarily due to a bug
+      kOpenVINOExecutionProvider,
+#endif
+  });
 }
 
 }  // namespace test
