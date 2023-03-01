@@ -81,9 +81,9 @@ void TestBFloat16(const char* op_name, const std::vector<int64_t>& lhs_dim,
 
 TEST(MathOpTest, DimWithZeroHandling) {
   auto run = [](OpTester& tester) {
-    // exclude TensorRT and NNAPI as this isn't handled by those EPs
+    // exclude QNN, TensorRT and NNAPI as this isn't handled by those EPs
     tester.Run(OpTester::ExpectResult::kExpectSuccess, "",
-               {kTensorrtExecutionProvider, kNnapiExecutionProvider});
+               {kTensorrtExecutionProvider, kNnapiExecutionProvider, kQnnExecutionProvider});
   };
 
   // test binary element-wise op broadcasting when there's a dim with value of zero
