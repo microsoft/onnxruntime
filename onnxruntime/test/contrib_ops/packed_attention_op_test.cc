@@ -33,24 +33,27 @@ static void RunPackedAttentionTest(
   int min_cuda_architecture = use_float16 ? 530 : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
 
-  int head_size = hidden_size / number_of_heads;
   if (enable_cuda) {
     OpTester tester("PackedAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(number_of_heads));
-    if (use_scale) {
-      tester.AddAttribute<float>("scale", static_cast<float>(1.f / sqrt(head_size)));
-    }
 
     int32_t qkv_hidden_size_sum;
     int32_t v_hidden_size;
+    int32_t head_size_k;
     if (qkv_sizes.size() != 0) {
       qkv_hidden_size_sum = qkv_sizes[0] + qkv_sizes[1] + qkv_sizes[2];
       std::vector<int64_t> sizes_attribute{qkv_sizes[0], qkv_sizes[1], qkv_sizes[2]};
       tester.AddAttribute<std::vector<int64_t>>("qkv_hidden_sizes", sizes_attribute);
       v_hidden_size = qkv_sizes[2];
+      head_size_k = qkv_sizes[1] / number_of_heads;
     } else {
       qkv_hidden_size_sum = 3 * hidden_size;
       v_hidden_size = hidden_size;
+      head_size_k = hidden_size / number_of_heads;
+    }
+
+    if (use_scale) {
+      tester.AddAttribute<float>("scale", static_cast<float>(1.f / sqrt(head_size_k)));
     }
 
     std::vector<int64_t> input_dims = {token_count, hidden_size};
@@ -304,9 +307,6 @@ TEST(PackedAttentionTest, PackedBatch) {
   std::vector<float> bias_data = {
       -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f, 0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f};
 
-  // std::vector<float> bias_data = {
-  //     0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
-
   std::vector<int32_t> token_offset{0, 1, 4, 5, 2, 3, 6, 7};
   std::vector<int32_t> cum_seq_len{0, 2, 4};
 
@@ -328,6 +328,61 @@ TEST(PackedAttentionTest, PackedBatch) {
       hidden_size,
       number_of_heads,
       4);
+}
+
+TEST(PackedAttentionTest, PackedBatchWithQKV) {
+  int batch_size = 2;
+  int sequence_length = 4;
+  int hidden_size = 4;
+  int number_of_heads = 2;
+
+  std::vector<float> input_data = {
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f,
+
+      0.8f, -0.5f, 0.0f, 1.f,
+      0.5f, 0.2f, 0.3f, -0.6f};
+
+  std::vector<int32_t> qkv_sizes = { 6, 6, 4 };
+
+  std::vector<float> weight_data = {
+      0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
+      0.5f, 0.1f, 0.4f, 1.6f, 1.0f, 2.0f, 0.4f, 0.8f, 0.9f, 0.1f, -1.3f, 0.7f,
+
+      0.3f, 0.2f, 4.0f, 2.2f, 1.6f, 1.1f, 0.7f, 0.2f, 0.4f, 1.0f, 1.2f, 0.5f,
+      0.2f, 0.1f, 0.4f, 1.6f, 2.4f, 3.3f, 2.1f, 4.2f, 8.4f, 0.0f, 2.1f, 3.2f,
+
+      0.3f, 0.2f, 4.0f, 2.2f, 2.4f, 3.3f, 2.1f, 4.2f, 0.5f, 0.1f, 0.4f, 1.6f,
+      0.4f, 0.8f, 0.9f, 0.1f};
+
+  std::vector<float> bias_data = {
+      -0.5f, 0.6f, 1.2f, 2.1f, 0.5f, 0.7f,
+      0.2f, 1.2f, 0.5f, 0.4f, 0.3f, 1.2f,
+      0.5f, 0.7f, 0.2f, 1.2f};
+
+  std::vector<int32_t> token_offset{0, 1, 4, 5, 2, 3, 6, 7};
+  std::vector<int32_t> cum_seq_len{0, 2, 4};
+
+  std::vector<float> output_data = {
+      3.1967618465423584f, 0.51903456449508667f, 0.63051539659500122f, 2.9394614696502686f,
+      0.65332180261611938f, 1.000949501991272f, 0.74175024032592773f, 2.8231701850891113f,
+
+      3.1967618465423584f, 0.51903456449508667f, 0.63051539659500122f, 2.9394614696502686f,
+      0.65332180261611938f, 1.000949501991272f, 0.74175024032592773f, 2.8231701850891113f};
+
+  RunPackedAttentionTest(
+      input_data,
+      weight_data,
+      bias_data,
+      token_offset,
+      cum_seq_len,
+      output_data,
+      batch_size,
+      sequence_length,
+      hidden_size,
+      number_of_heads,
+      4,
+      qkv_sizes);
 }
 
 static void RunModelWithRandomInput(
