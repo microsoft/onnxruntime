@@ -172,6 +172,10 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
       mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
       break;
 
+    case 128:
+      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+      break;
+
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Unsupported head size in DecoderMaskedMultiheadAttention. "
