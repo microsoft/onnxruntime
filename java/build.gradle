@@ -60,10 +60,6 @@ task javadocJar(type: Jar, dependsOn: javadoc) {
 	}
 }
 
-wrapper {
-	gradleVersion = '6.1.1'
-}
-
 spotless {
 	java {
 		removeUnusedImports()

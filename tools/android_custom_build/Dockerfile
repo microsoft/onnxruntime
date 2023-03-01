@@ -53,6 +53,8 @@ RUN CMAKE_VERSION=3.25.2 && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
 # gradle
+# Note: A system-installed gradle is not required in more recent versions of ORT which use an included gradle wrapper,
+#       but keep it around to support building older versions.
 RUN GRADLE_VERSION=8.0.1 && \
   aria2c -q -d /tmp -o gradle-${GRADLE_VERSION}-bin.zip \
   --checksum=sha-256=1b6b558be93f29438d3df94b7dfee02e794b94d9aca4611a92cdb79b6b88e909 \

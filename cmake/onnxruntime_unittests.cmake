@@ -1398,9 +1398,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
           # On windows ctest requires a test to be an .exe(.com) file
-          # So there are two options 1) Install Chocolatey and its gradle package
-          # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
-          # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+          # With gradle wrapper we get gradlew.bat. We delegate execution to a separate .cmake file
           # That can handle both .exe and .bat
           add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
             -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
