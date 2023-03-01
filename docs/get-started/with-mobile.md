@@ -12,11 +12,11 @@ redirect_from: /docs/reference/mobile
 # Get started with ONNX Runtime Mobile 
 ORT Mobile allows you to run model inferencing on mobile devices (iOS and Android). 
 
-## Reference Content
+## Reference 
 * [Install ONNX Runtime Mobile](./../install/index.md#install-on-web-and-mobile)
 * [Tutorials: Deploy on mobile](./../tutorials/mobile/index.md)
-* Build from source: [Android](./../build/android.html) / [iOS](./../build/ios.md)
+* Build from source: [Android](./../build/android.md) / [iOS](./../build/ios.md)
 * [ORT Mobile Operators](./../reference/operators/MobileOps.md)
-* [Model Export Helpers](helpers/index.md)
-* [ORT Format Model Runtime Optimization](./ort-format-model-runtime-optimization.md)
+* [Model Export Helpers](./../tutorials/mobile/helpers/index.md)
+* [ORT Format Model Runtime Optimization](./../performance/ort-format-model-runtime-optimization.md)
 

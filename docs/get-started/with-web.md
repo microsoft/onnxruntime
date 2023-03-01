@@ -11,12 +11,10 @@ redirect_from: /docs/reference/build-web-app
 # Get started with ONNX Runtime Web
 ORT Web can be used in your web applications for model inferencing.
 
-## Contents
 {: .no_toc}
-
 
 ## Reference
 * [Install ONNX Runtime Web](./../install/index.md#install-on-web-and-mobile)
 * [Build from source](./../build/web.md)
 * [Tutorials: Deploy on web](./../tutorials/web/index.md)
-* [Build a web application with ONNX Runtime](./../tutorials/web/build-a-w)
+  * [Guide: Build a web application with ONNX Runtime](./../tutorials/web/build-web-app)
