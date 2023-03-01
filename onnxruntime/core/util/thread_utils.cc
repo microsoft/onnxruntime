@@ -91,7 +91,6 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   if (!options.affinity_str.empty()) {
 #if defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     ORT_THROW("Setting thread affinity is not implemented in this build.");
-    return nullptr;
 #else
     to.affinities = ReadThreadAffinityConfig(options.affinity_str);
     // Limiting the number of affinities to be of thread_pool_size - 1,
@@ -233,7 +232,7 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
   }
   tp_options->intra_op_thread_pool_params.affinity_str = affinity_string;
   return nullptr;
- #endif
+#endif
 }
 
 }  // namespace OrtApis
