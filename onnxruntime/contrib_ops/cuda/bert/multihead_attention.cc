@@ -44,6 +44,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
+  is_static_kv_ = info.GetAttrOrDefault<int64_t>("static_kv", 1) == 1;
+
   disable_fused_self_attention_ = sizeof(T) != 2 ||
                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
@@ -92,6 +94,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       num_heads_,
                                                                       mask_filter_value_,
                                                                       scale_,
+                                                                      is_static_kv_,
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;

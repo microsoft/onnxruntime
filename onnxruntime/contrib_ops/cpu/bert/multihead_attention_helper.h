@@ -24,6 +24,7 @@ Status CheckInputs(const T* query,
                    int num_heads,
                    float mask_filter_value,
                    float scale,
+                   bool is_static_kv,
                    int max_threads_per_block) {
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
@@ -57,6 +58,7 @@ Status CheckInputs(const T* query,
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 
+  int past_sequence_length = 0;
   if (past_key != nullptr && past_value != nullptr) {
     const auto& past_key_dims = past_key->Shape().GetDims();
     const auto& past_value_dims = past_value->Shape().GetDims();
@@ -107,8 +109,7 @@ Status CheckInputs(const T* query,
                              "Input 'past_value' dimension 3 should be same as head_size, got ",
                              past_value_dims[3]);
     }
-    // Cross-Attention
-    kv_sequence_length = static_cast<int>(past_key_dims[2]);
+    past_sequence_length = static_cast<int>(past_key_dims[2]);
   }
 
   if (key != nullptr) {
@@ -156,7 +157,7 @@ Status CheckInputs(const T* query,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
   } else {
-    // TODO:
+    kv_sequence_length = past_sequence_length;
   }
 
   if (bias != nullptr) {
@@ -209,6 +210,8 @@ Status CheckInputs(const T* query,
     v_hidden_size = static_cast<int>(value_dims[2]);
   }
 
+
+  int total_sequence_length = is_static_kv ? kv_sequence_length : past_sequence_length + kv_sequence_length;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -232,7 +235,7 @@ Status CheckInputs(const T* query,
                              "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
                              relative_position_bias_dims[2]);
     }
-    if (relative_position_bias_dims[3] != kv_sequence_length) {
+    if (relative_position_bias_dims[3] != total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
                              relative_position_bias_dims[3]);
@@ -243,9 +246,9 @@ Status CheckInputs(const T* query,
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = 0;
+    output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->total_sequence_length = kv_sequence_length;
+    output_parameters->total_sequence_length = total_sequence_length;
     output_parameters->max_sequence_length = 0;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
