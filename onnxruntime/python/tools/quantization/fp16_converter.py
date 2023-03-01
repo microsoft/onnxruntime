@@ -41,9 +41,6 @@ class FP16Converter:
         :param np_array: numpy float16 list
         :return int_list: python int list
         """
-        if not isinstance(np_array, np.ndarray(dtype=np.float16)):
-            raise ValueError("Expected input type is an numpy.ndarray but got %s" % type(np_array))
-
         return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_array]
 
     @staticmethod
