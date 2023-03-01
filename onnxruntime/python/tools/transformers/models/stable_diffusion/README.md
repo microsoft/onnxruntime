@@ -25,12 +25,12 @@ To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
 | ---------------------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
 | Raw FP32 models                                                                    | 25.6                           | 10,667                      | OOM                            | OOM                         |
 | FP16 baseline                                                                      | 10.2                           | 10,709                      | OOM                            | OOM                         |
-| FP16 baseline + FMHA                                                               | 6.1                            | 7,719                       | 39.1                           | 11,916                      |
-| FP16 baseline + FMHA + NhwcConv                                                    | 5.5                            | 7,543                       | 38.8                           | 11,566                      |
+| FP16 baseline + FMHA                                                               | 6.1                            | 7,719                       | 39.1                           | 10,821                      |
+| FP16 baseline + FMHA + NhwcConv                                                    | 5.5                            | 7,656                       | 38.8                           | 11,615                      |
 | FP16 baseline + FMHA + NhwcConv + GroupNorm                                        | 5.1                            | 6,673                       | 35.8                           | 10,763                      |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu                        | 4.8                            | 4,655                       | 33.7                           | 6,734                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV           | 4.7                            | 4,611                       | 33.4                           | 6,820                       |
-| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV + BiasAdd | 4.7                            | 4,621                       | 33.1                           | 6,661                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu                        | 4.9                            | 4,447                       | 33.7                           | 6,669                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV           | 4.8                            | 4,625                       | 33.5                           | 6,663                       |
+| FP16 baseline + FMHA + NhwcConv + GroupNorm + BiasSplitGelu + Packed QKV + BiasAdd | 4.7                            | 4,480                       | 33.3                           | 6,499                       |
 
 FP16 baseline contains optimizations available in ORT 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
 
@@ -38,7 +38,7 @@ Here FMHA means Attention and MultiHeadAttention operators with Flash Attention 
 
 The second_run_memory_MB in benchmark output is used for GPU memory in this table. Note that the first run might need more memory for cuDNN convolution algorithm search.
 
-The last two optimizations (Packed QKV and BiasAdd) are only available in nightly package, and not in  1.14 package. All above tests use nightly package.
+The last two optimizations (Packed QKV and BiasAdd) are only available in nightly package. Compared to 1.14.1, nightly package has slight improvement in performance.
 
 ## Scripts:
 
@@ -68,17 +68,18 @@ conda activate py310
 pip install -r requirements.txt
 ```
 
-For Windows, please install PyTorch like the following after the above commands:
-
+For Windows, torch installed from pypi is CPU only. Need install PyTorch 1.13.1+cu117 instead like the following to support GPU:
 ```
 pip install torch==1.13.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
 ```
 
 ONNX Runtime requires CUDA and [cuDNN](https://developer.nvidia.com/rdp/cudnn-download) for GPU inference. See https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html for compatible versions (like [CUDA 11.7](https://developer.nvidia.com/cuda-11-7-0-download-archive) and cuDNN 8.5.0.96 in Windows).
 
-### Install Nightly (Optional)
+#### Install Nightly (Optional)
 
-If you want to try latest optimizations, you can install [ort-nightly-gpu](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/) package like the following:
+Skip this step if you use onnxruntime-gpu 1.14.* release package.
+
+To try latest optimizations, you can install [ort-nightly-gpu](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-gpu/) package like the following:
 
 ```
 pip uninstall onnxruntime-gpu
@@ -112,23 +113,21 @@ For Stable Diffusion 2.1 model, you will need force Attention to run in float32 
 
 Our benchmark script will run a warm-up prompt twice, and measure the peak GPU memory usage and record them as first_run_memory_MB and second_run_memory_MB.
 
-Example to benchmark the optimized pipeline with batch size 1 (and default parameters height=512, width=512, steps=50), then the average and median latency (in seconds) of 5 batches are output.
+Example to benchmark the optimized pipeline with batch size 1, then the average and median latency (in seconds) are output.
 
 ```
-python benchmark.py -v 1.5 -p ./sd-v1-5-fp16/ -c 5 -b 1
+python benchmark.py -p ./sd-v1-5-fp16/ -b 1
 ```
 
-### Run Benchmark on xFormers
+The default parameters are stable diffusion version=1.5, height=512, width=512, steps=50, batch_count=5. Run `python benchmark.py --help` for more information.
 
-Run PyTorch 1.13.1+cu117 with xFormers in the py310 environment created above.
+### Run Benchmark with xFormers
+
+Run PyTorch 1.13.1+cu117 with xFormers like the following
 
 ```
-pip install xformers==0.0.16
-pip install triton==2.0.0a2
-python benchmark.py -e torch -v 1.5 -c 5 -b 1 --use_xformers
+python benchmark.py -e torch -b 1 --use_xformers
 ```
-
-Note that triton package is only available in Linux right now.
 
 ### Run Benchmark with PyTorch 2.0 with torch.compile
 
@@ -137,9 +136,9 @@ Let's create a new environment to run PyTorch 2.0:
 ```
 conda create -n pt2 python=3.10
 conda activate pt2
-pip install -r requirements.txt
 pip3 install numpy --pre torch --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cu117
-python benchmark.py -e torch -v 1.5 -c 5 -b 1 --enable_torch_compile
+pip install -r requirements.txt
+python benchmark.py -e torch -b 1 --enable_torch_compile
 ```
 
 Sometime, it complains ptxas not found when there are multiple CUDA versions installed. It can be fixed like `export TRITON_PTXAS_PATH=/usr/local/cuda-11.7/bin/ptxas` before running benchmark.
@@ -158,51 +157,57 @@ Common settings for below test results:
 
 | engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 1          | 5.0             | 4.9            | 4,068               | 4,576                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4.8            | 4,117               | 4,625                |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 5.6             | 5.6            | 4,330               | 4,050                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 6.0            | 9,124               | 9,130                |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 4          | 17.7            | 17.7           | 6,643               | 6,643                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 17.7           | 6,659               | 6,659                |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 20.2            | 20.2           | 6,425               | 6,911                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 21.4           | 10,407              | 10,409               |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 8          | 33.7            | 33.6           | 6,636               | 6,636                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 33.5           | 6,663               | 6,663                |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 39.8            | 39.9           | 10,894              | 10,782               |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 41.1           | 10,825              | 9,255                |
 
-#### Results of V100 (in Ubuntu 20.04)
+#### Results of V100-PCIE-16GB (in Ubuntu 20.04)
+
+Results from Standard_NC6s_v3 Azure virtual machine:
 
 | engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 1          | 2.7             | 2.7            | 6,636               | 7,142                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 2.7            | 6,646               | 7,152                |
 | torch       | 2.0.0.dev20230220+cu117 | compile               | 1          | 3.1             | 3.1            | 13,461              | 4,051                |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 2.7             | 2.7            | 13,461              | 4,041                |
 | torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 3.5            | 14,979              | 10,449               |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 4          | 8.3             | 8.3            | 7,128               | 7,128                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 8.4            | 7,114               | 7,114                |
 | torch       | 2.0.0.dev20230220+cu117 | compile               | 4          | 8.0             | 8.0            | 14,015              | 7,085                |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 8.8             | 8.8            | 13,985              | 6,749                |
 | torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 9.1            | 12,969              | 8,421                |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 8          | 15.7            | 15.7           | 7,126               | 7,126                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 15.9           | 7,120               | 7,120                |
 | torch       | 2.0.0.dev20230220+cu117 | compile               | 8          | 15.6            | 15.5           | 14,819              | 11,055               |
 | torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 16.9            | 16.9           | 14,603              | 10,563               |
 | torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 17.4           | 15,593              | 9,133                |
 
-Compared to 1.14.0, nightly package has better performance with less memory usage on GPUs with Compute Capability >= 7.5 (like T5, A100 etc).
 
 #### Results of T4 (in Ubuntu 20.04)
 
+To make the result stable, we lock the frequency of T4 GPU like the following 
+`sudo nvidia-smi --lock-gpu-clocks=990` for fair comparison. See [nvidia blog](https://developer.nvidia.com/blog/advanced-api-performance-setstablepowerstate/) for more information. Note that performance might be slightly better without locking the frequency.
+
+Results are from Standard_NC4as_T4_v3 Azure virtual machine:
+
 | engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
 | ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 1          | 5.3             | 5.3            | 4,877               | 4,877                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 6.4             | 6.4            | 14,844              | 10,312               |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 1          | 6.1             | 6.1            | 13,134              | 3,986                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 1          | 6.4             | 6.4            | 13,128              | 3,978                |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 4          | 22.2            | 22.2           | 6,967               | 6,967                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 25.3            | 25.2           | 12,786              | 8,238                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 4          | 22.7            | 22.8           | 14,764              | 6,710                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 4          | 25.3            | 25.3           | 14,494              | 6,440                |
-| onnxruntime | 1.14.0                  | CUDAExecutionProvider | 8          | 46.1            | 46.2           | 6,953               | 6,953                |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 51.9            | 52.3           | 14,804              | 8,978                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 8          | 46.6            | 46.6           | 12,796              | 9,860                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 8          | 51.3            | 51.3           | 12,096              | 9,674                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 5.6            | 4,925               | 4,925                |
+| torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 6.9            | 14,845              | 10,317               |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 1          | 6.0             | 6.0            | 13,125              | 3,977                |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 1          | 6.3             | 6.3            | 13,127              | 3,979                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 23.0           | 6,977               | 6,977                |
+| torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 25.8           | 12,819              | 8,269                |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 4          | 22.1            | 22.1           | 14,751              | 6,697                |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 4          | 25.0            | 25.0           | 14,535              | 6,481                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 46.4           | 6,779               | 6,779                |
+| torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 51.4           | 14,827              | 9,001                |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 8          | 45.6            | 45.6           | 12,675              | 10,249               |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 8          | 50.5            | 50.5           | 12,077              | 9,653                |
 
 ### Future Works
 
