@@ -481,9 +481,12 @@ packages = [
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.transformers",
+    "onnxruntime.transformers.models.bart",
+    "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.stable_diffusion",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}

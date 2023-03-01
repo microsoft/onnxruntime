@@ -192,7 +192,7 @@ def parse_arguments():
     parser.add_argument("--enable_training_apis", action="store_true", help="Enable ort training apis.")
     parser.add_argument("--enable_training_ops", action="store_true", help="Enable training ops in inference graph.")
 
-    parser.add_argument("--disable_nccl", action="store_false", help="Disable NCCL, by default NCCL is disabled.")
+    parser.add_argument("--enable_nccl", action="store_true", help="Enable Nccl.")
     parser.add_argument("--mpi_home", help="Path to MPI installation dir")
     parser.add_argument("--nccl_home", help="Path to NCCL installation dir")
     parser.add_argument(
@@ -397,7 +397,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -414,6 +414,7 @@ def parse_arguments():
         help="Enable exception throwing in WebAssembly, this will override default disabling exception throwing "
         "behavior when disable exceptions.",
     )
+    parser.add_argument("--wasm_run_tests_in_browser", action="store_true", help="Run WebAssembly tests in browser")
 
     parser.add_argument(
         "--enable_wasm_profiling", action="store_true", help="Enable WebAsselby profiling and preserve function names"
@@ -940,7 +941,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
         # Enable advanced computations such as AVX for some traininig related ops.
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
-        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_training and not args.disable_nccl else "OFF"),
+        "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
         "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-DOnnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
@@ -955,6 +956,7 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_api_exception_catching else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING="
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
+        "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
@@ -1220,6 +1222,9 @@ def generate_build_tree(
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
 
+        # set -s STACK_SIZE=1048576
+        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
+
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
 
@@ -1228,24 +1233,29 @@ def generate_build_tree(
         cmake_args += ["-Donnxruntime_USE_EXTENSIONS=ON"]
 
         # default path of onnxruntime-extensions, using git submodule
-        onnxruntime_extensions_path = os.path.join(cmake_dir, "external", "onnxruntime-extensions")
+        for config in configs:
+            onnxruntime_extensions_path = os.path.join(build_dir, config, "_deps", "extensions-src")
+            onnxruntime_extensions_path = os.path.abspath(onnxruntime_extensions_path)
 
-        if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
-            # use absolute path here because onnxruntime-extensions is outside onnxruntime
-            onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+            if args.extensions_overridden_path and os.path.exists(args.extensions_overridden_path):
+                # use absolute path here because onnxruntime-extensions is outside onnxruntime
+                onnxruntime_extensions_path = os.path.abspath(args.extensions_overridden_path)
+                cmake_args += ["-Donnxruntime_EXTENSIONS_OVERRIDDEN=ON"]
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: ", onnxruntime_extensions_path)
+            else:
+                print("[onnxruntime-extensions] Loading onnxruntime-extensions from: FetchContent")
 
-        cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
-        print("[onnxruntime-extensions] onnxruntime_extensions_path: ", onnxruntime_extensions_path)
+            cmake_args += ["-Donnxruntime_EXTENSIONS_PATH=" + onnxruntime_extensions_path]
 
-        if is_reduced_ops_build(args):
-            operators_config_file = os.path.abspath(args.include_ops_by_config)
-            cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
+            if is_reduced_ops_build(args):
+                operators_config_file = os.path.abspath(args.include_ops_by_config)
+                cmake_tool_dir = os.path.join(onnxruntime_extensions_path, "tools")
 
-            # generate _selectedoplist.cmake by operators config file
-            run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
+                # generate _selectedoplist.cmake by operators config file
+                run_subprocess([sys.executable, "gen_selectedops.py", operators_config_file], cwd=cmake_tool_dir)
 
     if path_to_protoc_exe:
-        cmake_args += ["-DONNX_CUSTOM_PROTOC_EXECUTABLE=%s" % path_to_protoc_exe]
+        cmake_args += [f"-DONNX_CUSTOM_PROTOC_EXECUTABLE={path_to_protoc_exe}"]
 
     if args.fuzz_testing:
         if not (

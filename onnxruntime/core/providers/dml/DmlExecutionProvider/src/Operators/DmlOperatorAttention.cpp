@@ -401,15 +401,15 @@ public:
 void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
     *isSupported = false;
-    // Fall back to CPU if input 'past' and 'extra_add' is present because there is no current use case for this.
+    // Fall back to CPU if input 'past' and 'relative_position_bias' is present because there is no current use case for this.
     //  and it will make the implementation more complex.
     // Also fall back to CPU if output 'present' is present for same reason as above.
     if (context->GetInputCount() > 4 || context->GetOutputCount() > 1)
     {
         return;
     }
-    // Checking input count alone is not sufficient to fallback to CPU if input 'past' and 'extra_add' is present
-    // because input 'mask_index', 'past', and 'extra_add' all are optional.
+    // Checking input count alone is not sufficient to fallback to CPU if input 'past' and 'relative_position_bias' is present
+    // because input 'mask_index', 'past', and 'relative_position_bias' all are optional.
     if (context->IsInputValid(4) || context->IsInputValid(5))
     {
         return;

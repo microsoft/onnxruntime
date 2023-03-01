@@ -19,12 +19,12 @@ namespace contrib {
 namespace rocm {
 
 template <typename T>
-struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
-  SkipLayerNormParams(hipStream_t stream, T* output, const T* input,
+struct SkipLayerNormParams : OpParams {
+  SkipLayerNormParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* output, T* skip_input_bias_add_output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, int ld, int element_count)
-      : OpParams(stream), output(output), input(input), skip(skip), gamma(gamma), beta(beta), bias(bias),
-        epsilon(epsilon), ld(ld), element_count(element_count) {}
+      : OpParams(tuning_ctx, stream), output(output), skip_input_bias_add_output(skip_input_bias_add_output), input(input), skip(skip), 
+        gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
 
   std::string Signature() const override {
     std::string sig = std::to_string(ld) + "_" + std::to_string(element_count);
@@ -32,6 +32,7 @@ struct SkipLayerNormParams : onnxruntime::rocm::tunable::OpParams {
   }
 
   T* output;
+  T* skip_input_bias_add_output;
   const T* input;
   const T* skip;
   const T* gamma;
@@ -51,8 +52,8 @@ Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
                                                           dim3(ThreadsPerBlock),
                                                           0, params->stream>>>(
       params->ld, params->input, params->skip,
-      params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output,
-      (params->bias == nullptr) ? false : true);
+      params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output,
+      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
   return HIP_CALL(hipGetLastError());
 }
 
@@ -66,51 +67,52 @@ Status SkipLayerNormRegularOp(const SkipLayerNormParams<T>* params) {
                                                         dim3(ThreadsPerBlock),
                                                         0, params->stream>>>(
       params->ld, params->input, params->skip,
-      params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output,
-      (params->bias == nullptr) ? false : true);
+      params->beta, params->gamma, params->bias, maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output,
+      (params->bias == nullptr) ? false : true, (params->skip_input_bias_add_output == nullptr) ? false : true);
   return HIP_CALL(hipGetLastError());
 }
 
 template <typename T>
 Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
   bool hasBias = (params->bias == nullptr) ? false : true;
+  bool hasSkipInputBiasAdditionOutput = (params->skip_input_bias_add_output == nullptr) ? false : true;
   if (0 == (params->ld % 4)) {
     const int grid_size = params->element_count / params->ld;
     if (params->ld <= 32) {
       constexpr int block_size = 32;
       SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 64) {
       constexpr int block_size = 64 / 2;
       SkipLayerNormKernelSmall<T, block_size, 2><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 128) {
       constexpr int block_size = 128 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 384) {
       constexpr int block_size = 384 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 768) {
       constexpr int block_size = 768 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 1024) {
       constexpr int block_size = 1024 / 4;
       SkipLayerNormKernelSmall<T, block_size, 4><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else {
       constexpr int block_size = 256;
       SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
     }
   } else {
     const int grid_size = params->element_count / params->ld;
@@ -118,27 +120,27 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
       constexpr int block_size = 32;
       SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 64) {
       constexpr int block_size = 64;
       SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld <= 128) {
       constexpr int block_size = 128;
       SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else if (params->ld == 384) {
       constexpr int block_size = 384;
       SkipLayerNormKernelSmall<T, block_size, 1><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output, hasBias);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else {
       constexpr int block_size = 256;
       SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
           params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-          maybe2half<T>(params->epsilon), params->output);
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
     }
   }
   return HIP_CALL(hipPeekAtLastError());
@@ -160,7 +162,7 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
   ADD_OP_FOR_ALL_VEC_SIZE(name, 384)
 
 template <typename T>
-class SkipLayerNormTunableOp : public onnxruntime::rocm::tunable::TunableOp<SkipLayerNormParams<T>> {
+class SkipLayerNormTunableOp : public TunableOp<SkipLayerNormParams<T>> {
  public:
   SkipLayerNormTunableOp() {
     this->RegisterOp(SkipLayerNormStaticSelection<T>);
