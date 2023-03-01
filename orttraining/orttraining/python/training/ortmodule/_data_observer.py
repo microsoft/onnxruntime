@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import warnings
 import onnx
 import torch
-import warnings
 
 from onnx import helper
 from onnx import onnx_pb as onnx_proto
@@ -35,7 +35,8 @@ class DataObserver:
         self._tensor_to_node_map.clear()
         for node in model.graph.node:
             for output_name in node.output:
-                self._tensor_to_node_map[output_name] = node
+                if output_name != "":
+                    self._tensor_to_node_map[output_name] = node
 
         self._initialize_embedding_padding_inspector(model, user_input_names)
         self._initialize_loss_label_padding_inspector(model, user_input_names)
@@ -43,22 +44,25 @@ class DataObserver:
     def _initialize_embedding_padding_inspector(self, model, user_input_names):
         """Register embedding input padding inspector.
 
-        This is used for collecting data/compute sparsity information for embedding layer.
+        Iterate all ATen embedding nodes, and check if the following conditions are met:
+        > 1. the data input is ONNX graph input;
+        > 2. and the padding_idx is a non-negative scalar constant.
+
+        If yes, append <ONNX graph input, padding_idx> into _embedding_graph_input_to_padding_idx_map, which is later
+        used for collecting data/compute sparsity information for embedding layer.
         """
 
         self._embedding_graph_input_to_padding_idx_map.clear()
 
         for node in model.graph.node:
-            if not (
-                node.domain == "org.pytorch.aten" and node.op_type in ["ATen"] and node.input[1] in user_input_names
-            ):
+            if not (node.domain == "org.pytorch.aten" and node.op_type == "ATen" and node.input[1] in user_input_names):
                 continue
 
             found = [attr for attr in node.attribute if attr.name == "operator"]
             if not found or helper.get_attribute_value(found[0]).decode() != "embedding":
                 continue
 
-            tensor = self._get_initializer(model, node.input[2])
+            tensor = self._try_get_initializer(model, node.input[2])
             if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
                 continue
 
@@ -80,7 +84,14 @@ class DataObserver:
     def _initialize_loss_label_padding_inspector(self, model, user_input_names):
         """Register loss label input padding inspector.
 
-        This is used for collecting data/compute sparsity information for loss.
+        Iterate all SoftmaxCrossEntropyLossInternal nodes, and check if the following conditions are met:
+        > 1. ignore_index (the 4th input) is a non-negative scalar constant;
+        > 2. label input (the 2nd input) is either a). ONNX graph input or b). a Reshape node with a Slice node as its
+          input. In the case of b), the Slice node must be a pattern defined in Bloom model.
+
+        If yes, append <ONNX graph input, <ignore_index, label_preprocess_function>> into
+        _loss_label_graph_input_to_ignore_idx_map, which is later used for collecting data/compute sparsity information
+        for labels.
         """
         if not self._enabled:
             return
@@ -92,12 +103,12 @@ class DataObserver:
         for node in model.graph.node:
             if not (
                 node.domain == "com.microsoft"
-                and node.op_type in ["SoftmaxCrossEntropyLossInternal"]
+                and node.op_type == "SoftmaxCrossEntropyLossInternal"
                 and len(node.input) == 4
             ):
                 continue
 
-            tensor = self._get_initializer(model, node.input[3])
+            tensor = self._try_get_initializer(model, node.input[3])
             if tensor is None or tensor.data_type not in [onnx_proto.TensorProto.INT32, onnx_proto.TensorProto.INT64]:
                 continue
 
@@ -114,12 +125,12 @@ class DataObserver:
             label_graph_input = None
 
             label_preprocess_func = _default_label_preprocess
-            if node.input[1] not in self._tensor_to_node_map:
+            reshape_node = self._try_get_node_from_its_output(node.input[1])
+            if reshape_node is None:
                 if node.input[1] not in user_input_names:
                     continue
                 label_graph_input = node.input[1]
             else:
-                reshape_node = self._tensor_to_node_map[node.input[1]]
                 if reshape_node.op_type != "Reshape":
                     continue
 
@@ -127,18 +138,18 @@ class DataObserver:
                 if reshape_input in user_input_names:
                     label_graph_input = reshape_input
                 else:  # Pattern defined in Bloom model.
-                    if reshape_input not in self._tensor_to_node_map:
+                    slice_node = self._try_get_node_from_its_output(reshape_input)
+                    if slice_node is None:
                         continue
 
-                    slice_node = self._tensor_to_node_map[reshape_input]
                     if slice_node.op_type != "Slice":
                         continue
 
                     slice_input = slice_node.input[0]
-                    starts = self._get_initializer_value(model, slice_node.input[1])
-                    ends = self._get_initializer_value(model, slice_node.input[2])
-                    axes = self._get_initializer_value(model, slice_node.input[3])
-                    steps = self._get_initializer_value(model, slice_node.input[4])
+                    starts = self._try_get_initializer_value(model, slice_node.input[1])
+                    ends = self._try_get_initializer_value(model, slice_node.input[2])
+                    axes = self._try_get_initializer_value(model, slice_node.input[3])
+                    steps = self._try_get_initializer_value(model, slice_node.input[4])
                     if (
                         slice_input in user_input_names
                         and starts is not None
@@ -150,8 +161,8 @@ class DataObserver:
                     ):
                         label_graph_input = slice_input
 
-                        def _slice_label_preprocess(labels):
-                            return labels[:, starts[0] : ends[0] : steps[0]]
+                        def _slice_label_preprocess(labels, s=starts[0], e=ends[0], st=steps[0]):
+                            return labels[:, s:e:st]
 
                         label_preprocess_func = _slice_label_preprocess
 
@@ -165,10 +176,11 @@ class DataObserver:
                 [ignore_index, label_preprocess_func]
             )
 
-    def inspect_from_input_data(self, name, data):
+    def inspect_from_input_data(self, name, inp):
         if not self._enabled:
             return
 
+        data = inp.clone()
         found = self._inspect_embed_label_input(name, data)
         if found:
             self._current_step += 1
@@ -229,7 +241,7 @@ class DataObserver:
 
     def _print_embed_label_stats(self):
         if len(self._stats) > 0:
-            stat = ">>>Valid token/label density (e.g. valid/total) in passing {} steps:\n".format(self._log_steps)
+            stat = f">>>Valid token/label density (e.g. valid/total) in passing {self._log_steps} steps:\n"
             stat += "\t| {:<10} | {:<10} | {:<15} | {:<10} | {:<10} | {:<15} | {:<15} | {:<15} |\n".format(
                 "STEP",
                 "INPUT TYPE",
@@ -257,15 +269,21 @@ class DataObserver:
             print(stat)
             self._stats.clear()
 
-    def _get_initializer(self, model, name):
+    def _try_get_node_from_its_output(self, name):
+        if name == "" or name not in self._tensor_to_node_map:
+            return None
+
+        return self._tensor_to_node_map[name]
+
+    def _try_get_initializer(self, model, name):
         for tensor in model.graph.initializer:
             if tensor.name == name:
                 return tensor
 
         return None
 
-    def _get_initializer_value(self, model, name):
-        tensor = self._get_initializer(model, name)
+    def _try_get_initializer_value(self, model, name):
+        tensor = self._try_get_initializer(model, name)
         if tensor is None:
             return None
         value = onnx.numpy_helper.to_array(tensor)

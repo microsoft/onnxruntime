@@ -234,7 +234,7 @@ def _combine_input_buffers_initializers(
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
 
-            data_observer.inspect_from_input_data(name, inp.clone())
+            data_observer.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(
