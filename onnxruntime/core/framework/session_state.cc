@@ -245,37 +245,15 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
-void SessionState::PruneRemovableAttributes() {
-  InlinedVector<std::string> removable_attributes;
+Status SessionState::PruneRemovableAttributes() {
   for (size_t i = 0; i < session_kernels_.size(); ++i) {
-    if (session_kernels_[i].get() == nullptr)
-      continue;
-    auto status = session_kernels_[i].get()->GetRemovableAttributes(removable_attributes);
-    if (!status.IsOK()) {
-      const Node& node_const = session_kernels_[i].get()->Node();
-      LOGS(logger_, WARNING) << "failed at retrieving the removable attributes"
-                             << "for node '" << node_const.Name() << "' ('" << node_const.OpType() << "').";
-      continue;
+    // TODO: better design
+    onnxruntime::Node* node = (onnxruntime::Node*)&(session_kernels_[i].get()->Node());
+    if (!node->ClearRemovableAttribute()) {
+      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unable to remove removable attributes.");
     }
-    if (removable_attributes.empty())
-      continue;
-    auto index = session_kernels_[i].get()->Node().Index();
-    Node* node = graph_.GetNode(index);
-    int n_removed = node->PruneRemovableAttributes(removable_attributes);
-    if (n_removed == 0)
-      continue;
-    LOGS(logger_, INFO) << "removed " << n_removed << " removable attributes "
-                        << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
-                        << "among attributes: " << [removable_attributes]() -> std::string{
-                          std::ostringstream os;
-                          for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
-                            if (it != removable_attributes.cbegin())
-                              os << ", ";
-                            os << *it;
-                          }
-                          return os.str();
-                        }() << ".";
   }
+  return Status::OK();
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {

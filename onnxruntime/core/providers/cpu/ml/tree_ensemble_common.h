@@ -98,7 +98,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKe
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "target_weights_as_tensor", target_weights_as_tensor));
 #endif
 
-  return Init(
+  auto status = Init(
       80,
       128,
       50,
@@ -123,6 +123,28 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(const OpKe
       info.GetAttrsOrDefault<int64_t>("target_treeids"),
       info.GetAttrsOrDefault<float>("target_weights"),
       target_weights_as_tensor);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (status.IsOK()) {
+    std::vector<std::string> names = {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                      "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                      "nodes_truenodeids", "nodes_values",
+                                      "target_ids", "target_treeids", "target_nodeids", "target_weights"};
+    // #if !defined(ORT_MINIMAL_BUILD)
+    names.push_back("base_values_as_tensor");
+    names.push_back("nodes_hitrates_as_tensor");
+    names.push_back("nodes_values_as_tensor");
+    names.push_back("class_weights_as_tensor");
+    // #endif
+    for (auto name : names) {
+      if (info.TryGetAttribute(name) != nullptr) {
+        // TODO: find a better design
+        Node* node = (Node*)(&info.node());
+        node->RegisterRemovableAttribute(name);
+      }
+    }
+  }
+#endif
+  return status;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>
@@ -317,7 +339,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     TreeNodeElement<ThresholdType>& leaf = nodes_[found->second];
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
-      // models converted with an old version of onnxmltools. These weights are ignored.
+      // models converted with an old version of onnxmltools. There weights are ignored.
       // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
@@ -799,7 +821,7 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
   ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "class_weights_as_tensor", class_weights_as_tensor));
 #endif
 
-  return Init(
+  auto status = Init(
       80,
       128,
       50,
@@ -825,6 +847,28 @@ Status TreeEnsembleCommonClassifier<InputType, ThresholdType, OutputType>::Init(
       class_weights_as_tensor,
       info.GetAttrsOrDefault<std::string>("classlabels_strings"),
       info.GetAttrsOrDefault<int64_t>("classlabels_int64s"));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  if (status.IsOK()) {
+    std::vector<std::string> names = {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                      "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                      "nodes_truenodeids", "nodes_values", "class_ids", "class_treeids", "class_nodeids",
+                                      "class_weights", "classlabels_strings", "classlabels_int64s"};
+    // #if !defined(ORT_MINIMAL_BUILD)
+    names.push_back("base_values_as_tensor");
+    names.push_back("nodes_hitrates_as_tensor");
+    names.push_back("nodes_values_as_tensor");
+    names.push_back("class_weights_as_tensor");
+    // #endif
+    for (auto name : names) {
+      if (info.TryGetAttribute(name) != nullptr) {
+        // TODO: find a better design
+        Node* node = (Node*)(&info.node());
+        node->RegisterRemovableAttribute(name);
+      }
+    }
+  }
+#endif
+  return status;
 }
 
 template <typename InputType, typename ThresholdType, typename OutputType>

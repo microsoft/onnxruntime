@@ -405,6 +405,12 @@ class Node {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
+  
+  /** Marks an attribute as removable. */
+  void RegisterRemovableAttribute(const std::string& name);
+
+  /** Remove the removable attribute from this Node */
+  bool ClearRemovableAttribute();
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
@@ -658,8 +664,8 @@ class Node {
   // Graph instances for subgraphs that are owned by this Node
   std::vector<std::unique_ptr<Graph>> subgraphs_;
 
-  // Can be saved? The node cannot be saved anymore if removable attributes have been cleared.
-  bool can_be_saved_;  
+  // List of removable attributes.
+  std::set<std::string> removable_attributes_;
 };
 
 /**

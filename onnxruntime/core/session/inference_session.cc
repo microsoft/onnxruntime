@@ -1539,6 +1539,9 @@ common::Status InferenceSession::Initialize() {
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
+
+    // once the model is saved, we may remove unnecessary attributes for inference
+    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->PruneRemovableAttributes());
   }
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
