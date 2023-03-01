@@ -17,9 +17,11 @@ ONNX Runtime uses the following optimizations to speed up Stable Diffusion in CU
 * BiasAdd fuses Add bias and residual.
 * Reduce Transpose nodes by graph transformation.
 
-Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia. Compare to TensorRT, ONNX Runtime has some advantages on stable diffusion: (1) Supports older GPUs like V100. (2) Uses less GPU memory. (3) Supports float32 models and Stable Diffusion 2.* models.
+Some CUDA kernels (Flash Attention, GroupNorm, SplitGelu and BiasAdd etc.) were originally implemented in TensorRT by Nvidia.
 
-To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
+Compare to TensorRT, ONNX Runtime has some advantages on stable diffusion: (1) Supports older GPUs like V100. (2) Uses less GPU memory. (3) Supports float32 models and Stable Diffusion 2.* models.
+
+To show the impact of each optimization on latency and GPU memory, we did an experiment on RTX 3060 GPU:
 
 | Optimizations                                                                      | Average Latency (batch_size=1) | Memory in MB (batch_size=1) | Average Latency (batch_size=8) | Memory in MB (batch_size=8) |
 | ---------------------------------------------------------------------------------- | ------------------------------ | --------------------------- | ------------------------------ | --------------------------- |
@@ -35,8 +37,6 @@ To show the impact of each optimization, we did an experiment on RTX 3060 GPU:
 FP16 baseline contains optimizations available in ONNX Runtime 1.13 including LayerNormalization, SkipLayerNormalization, Gelu and float16 conversion.
 
 Here FMHA means Attention and MultiHeadAttention operators with Flash Attention and Memory Efficient Attention kernels but inputs are not packed. Packed QKV means the inputs are packed.
-
-The second_run_memory_MB in benchmark output is used for GPU memory in this table. Note that the first run might need more memory for cuDNN convolution algorithm search.
 
 The last two optimizations (Packed QKV and BiasAdd) are only available in nightly package. Compared to 1.14.1, nightly package has slight improvement in performance.
 
@@ -111,10 +111,11 @@ For Stable Diffusion 2.1 model, you will need force Attention to run in float32 
 
 ### Run Benchmark
 
-Our benchmark script will run a warm-up prompt twice, and measure the peak GPU memory usage and record them as first_run_memory_MB and second_run_memory_MB.
+The benchmark.py script will run a warm-up prompt twice, and measure the peak GPU memory usage in these two runs, then record them as first_run_memory_MB and second_run_memory_MB. Then it will run 5 runs to get average latency (in seconds), and output the results to benchmark_result.csv.
 
-Example to benchmark the optimized pipeline with batch size 1, then the average and median latency (in seconds) are output.
+Note that the first run might need more time and memory: For example, cuDNN convolution algorithm search or model compile happens in the first run.
 
+Example to benchmark the optimized pipeline with batch size 1:
 ```
 python benchmark.py -p ./sd-v1-5-fp16/ -b 1
 ```
@@ -155,36 +156,36 @@ Common settings for below test results:
 
 #### Results of RTX 3060 (in Windows 11)
 
-| engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4.8            | 4,117               | 4,625                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 5.6             | 5.6            | 4,330               | 4,050                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 6.0            | 9,124               | 9,130                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 17.7           | 6,659               | 6,659                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 20.2            | 20.2           | 6,425               | 6,911                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 21.4           | 10,407              | 10,409               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 33.5           | 6,663               | 6,663                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 39.8            | 39.9           | 10,894              | 10,782               |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 41.1           | 10,825              | 9,255                |
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 4.8             | 4,117               | 4,625                |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 5.6             | 4,330               | 4,050                |
+| torch       | 1.13.1+cu117            | xformers              | 1          | 6.0             | 9,124               | 9,130                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 17.7            | 6,659               | 6,659                |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 20.2            | 6,425               | 6,911                |
+| torch       | 1.13.1+cu117            | xformers              | 4          | 21.6            | 10,407              | 10,409               |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 33.5            | 6,663               | 6,663                |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 39.8            | 10,894              | 10,782               |
+| torch       | 1.13.1+cu117            | xformers              | 8          | 41.1            | 10,825              | 9,255                |
 
 #### Results of V100-PCIE-16GB (in Ubuntu 20.04)
 
 Results from Standard_NC6s_v3 Azure virtual machine:
 
-| engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 2.7            | 6,646               | 7,152                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 1          | 3.1             | 3.1            | 13,461              | 4,051                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 2.7             | 2.7            | 13,461              | 4,041                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 3.5            | 14,979              | 10,449               |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 8.4            | 7,114               | 7,114                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 4          | 8.0             | 8.0            | 14,015              | 7,085                |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 8.8             | 8.8            | 13,985              | 6,749                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 9.1            | 12,969              | 8,421                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 15.9           | 7,120               | 7,120                |
-| torch       | 2.0.0.dev20230220+cu117 | compile               | 8          | 15.6            | 15.5           | 14,819              | 11,055               |
-| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 16.9            | 16.9           | 14,603              | 10,563               |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 17.4           | 15,593              | 9,133                |
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 2.7             | 6,646               | 7,152                |
+| torch       | 2.0.0.dev20230220+cu117 | compile               | 1          | 3.1             | 13,461              | 4,051                |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 1          | 2.7             | 13,461              | 4,041                |
+| torch       | 1.13.1+cu117            | xformers              | 1          | 3.5             | 14,979              | 10,449               |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 8.4             | 7,114               | 7,114                |
+| torch       | 2.0.0.dev20230220+cu117 | compile               | 4          | 8.0             | 14,015              | 7,085                |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 4          | 8.8             | 13,985              | 6,749                |
+| torch       | 1.13.1+cu117            | xformers              | 4          | 9.1             | 12,969              | 8,421                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 15.9            | 7,120               | 7,120                |
+| torch       | 2.0.0.dev20230220+cu117 | compile               | 8          | 15.6            | 14,819              | 11,055               |
+| torch       | 2.0.0.dev20230220+cu117 | default               | 8          | 16.9            | 14,603              | 10,563               |
+| torch       | 1.13.1+cu117            | xformers              | 8          | 17.4            | 15,593              | 9,133                |
 
 
 #### Results of T4 (in Ubuntu 20.04)
@@ -194,20 +195,20 @@ To make the result stable, we lock the frequency of T4 GPU like
 
 Results are from Standard_NC4as_T4_v3 Azure virtual machine:
 
-| engine      | version                 | provider              | batch_size | average_latency | median_latency | first_run_memory_MB | second_run_memory_MB |
-| ----------- | ----------------------- | --------------------- | ---------- | --------------- | -------------- | ------------------- | -------------------- |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 5.6            | 4,925               | 4,925                |
-| torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 6.9            | 14,845              | 10,317               |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 1          | 6.0             | 6.0            | 13,125              | 3,977                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 1          | 6.3             | 6.3            | 13,127              | 3,979                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 23.0           | 6,977               | 6,977                |
-| torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 25.8           | 12,819              | 8,269                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 4          | 22.1            | 22.1           | 14,751              | 6,697                |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 4          | 25.0            | 25.0           | 14,535              | 6,481                |
-| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 46.4           | 6,779               | 6,779                |
-| torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 51.4           | 14,827              | 9,001                |
-| torch       | 2.0.0.dev20230226+cu117 | compile               | 8          | 45.6            | 45.6           | 12,675              | 10,249               |
-| torch       | 2.0.0.dev20230226+cu117 | default               | 8          | 50.5            | 50.5           | 12,077              | 9,653                |
+| engine      | version                 | provider              | batch size | average latency | first run memory MB | second run memory MB |
+| ----------- | ----------------------- | --------------------- | ---------- | --------------- | ------------------- | -------------------- |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 1          | 5.6             | 4,925               | 4,925                |
+| torch       | 1.13.1+cu117            | xformers              | 1          | 6.9             | 14,845              | 10,317               |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 1          | 6.0             | 13,125              | 3,977                |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 1          | 6.3             | 13,127              | 3,979                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 4          | 23.0            | 6,977               | 6,977                |
+| torch       | 1.13.1+cu117            | xformers              | 4          | 25.8            | 12,819              | 8,269                |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 4          | 22.1            | 14,751              | 6,697                |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 4          | 25.0            | 14,535              | 6,481                |
+| onnxruntime | 1.14.1                  | CUDAExecutionProvider | 8          | 46.4            | 6,779               | 6,779                |
+| torch       | 1.13.1+cu117            | xformers              | 8          | 51.4            | 14,827              | 9,001                |
+| torch       | 2.0.0.dev20230226+cu117 | compile               | 8          | 45.6            | 12,675              | 10,249               |
+| torch       | 2.0.0.dev20230226+cu117 | default               | 8          | 50.5            | 12,077              | 9,653                |
 
 ### Future Works
 
