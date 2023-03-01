@@ -2,9 +2,8 @@
 title: Make dynamic input shape fixed
 descriptions: 
 parent: ORT Mobile Model Export Helpers
-grand_parent: ONNX Runtime Mobile
-nav_order: 1
-redirect_from: /docs/tutorials/mobile/helpers/make-dynamic-shape-fixed
+grand_parent: Deploy on Mobile
+nav_order: 2
 
 ---
 
