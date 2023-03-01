@@ -262,7 +262,7 @@ class TrainingManager(GraphExecutionManager):
                         inputs,
                         kwargs,
                         self._device,
-                        self._rt_inspector,
+                        self._rt_inspector.input_density_ob,
                     )
                 ),
             )
