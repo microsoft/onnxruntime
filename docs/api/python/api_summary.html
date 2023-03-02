@@ -4,7 +4,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
@@ -15,7 +15,7 @@
         gtag('config', 'UA-156955408-1');
     </script>
     
-    <title>API &#8212; ONNX Runtime 1.14.0 documentation</title>
+    <title>API &#8212; ONNX Runtime 1.15.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="static/graphviz.css" />
@@ -51,7 +51,7 @@
             
   <section id="api">
 <h1>API<a class="headerlink" href="#api" title="Permalink to this heading">¶</a></h1>
-<div class="contents local topic" id="contents">
+<nav class="contents local" id="contents">
 <ul class="simple">
 <li><p><a class="reference internal" href="#api-overview" id="id1">API Overview</a></p>
 <ul>
@@ -95,13 +95,13 @@
 </li>
 <li><p><a class="reference internal" href="#backend" id="id20">Backend</a></p></li>
 </ul>
-</div>
+</nav>
 <section id="api-overview">
-<h2><a class="toc-backref" href="#id1">API Overview</a><a class="headerlink" href="#api-overview" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">API Overview</a><a class="headerlink" href="#api-overview" title="Permalink to this heading">¶</a></h2>
 <p><em>ONNX Runtime</em> loads and runs inference on a model in ONNX graph format, or ORT format (for memory and disk constrained environments).</p>
 <p>The data consumed and produced by the model can be specified and accessed in the way that best matches your scenario.</p>
 <section id="load-and-run-a-model">
-<h3><a class="toc-backref" href="#id2">Load and run a model</a><a class="headerlink" href="#load-and-run-a-model" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id2" role="doc-backlink">Load and run a model</a><a class="headerlink" href="#load-and-run-a-model" title="Permalink to this heading">¶</a></h3>
 <p>InferenceSession is the main class of ONNX Runtime. It is used to load and run an ONNX model,
 as well as specify environment and application configuration options.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">session</span> <span class="o">=</span> <span class="n">onnxruntime</span><span class="o">.</span><span class="n">InferenceSession</span><span class="p">(</span><span class="s1">&#39;model.onnx&#39;</span><span class="p">)</span>
@@ -135,10 +135,10 @@ profiling on the session:</p>
 </div>
 </section>
 <section id="data-inputs-and-outputs">
-<h3><a class="toc-backref" href="#id3">Data inputs and outputs</a><a class="headerlink" href="#data-inputs-and-outputs" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">Data inputs and outputs</a><a class="headerlink" href="#data-inputs-and-outputs" title="Permalink to this heading">¶</a></h3>
 <p>The ONNX Runtime Inference Session consumes and produces data using its OrtValue class.</p>
 <section id="data-on-cpu">
-<h4><a class="toc-backref" href="#id4">Data on CPU</a><a class="headerlink" href="#data-on-cpu" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id4" role="doc-backlink">Data on CPU</a><a class="headerlink" href="#data-on-cpu" title="Permalink to this heading">¶</a></h4>
 <p>On CPU (the default), OrtValues can be mapped to and from native Python data structures: numpy arrays, dictionaries and lists of
 numpy arrays.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># X is numpy array on cpu</span>
@@ -159,7 +159,7 @@ may not optimal if the input or output is consumed and produced on a device
 other than CPU because it introduces data copy between CPU and the device.</p>
 </section>
 <section id="data-on-device">
-<h4><a class="toc-backref" href="#id5">Data on device</a><a class="headerlink" href="#data-on-device" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id5" role="doc-backlink">Data on device</a><a class="headerlink" href="#data-on-device" title="Permalink to this heading">¶</a></h4>
 <p><em>ONNX Runtime</em> supports a custom data structure that supports all ONNX data formats that allows users
 to place the data backing these on a device, for example, on a CUDA supported device. In ONNX Runtime,
 this called <cite>IOBinding</cite>.</p>
@@ -262,15 +262,15 @@ Users can thus consume the <em>ONNX Runtime</em> allocated memory for the output
 </section>
 </section>
 <section id="api-details">
-<h2><a class="toc-backref" href="#id6">API Details</a><a class="headerlink" href="#api-details" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">API Details</a><a class="headerlink" href="#api-details" title="Permalink to this heading">¶</a></h2>
 <section id="inferencesession">
-<h3><a class="toc-backref" href="#id7">InferenceSession</a><a class="headerlink" href="#inferencesession" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id7" role="doc-backlink">InferenceSession</a><a class="headerlink" href="#inferencesession" title="Permalink to this heading">¶</a></h3>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.InferenceSession">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">InferenceSession</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path_or_bytes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sess_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">providers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#InferenceSession"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.InferenceSession" title="Permalink to this definition">¶</a></dt>
 <dd><p>This is the main class used to run a model.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>path_or_bytes</strong> – filename or serialized ONNX or ORT format model in a byte string</p></li>
 <li><p><strong>sess_options</strong> – session options</p></li>
@@ -383,14 +383,14 @@ For instance, on Windows and MacOS, the precision will be ~100ns</p>
 <span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_feed</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>output_names</strong> – name of the outputs</p></li>
 <li><p><strong>input_feed</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_value</span> <span class="pre">}</span></code></p></li>
 <li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>list of results, every result is either a numpy array,
 a sparse tensor, a list or a dictionary.</p>
 </dd>
@@ -405,7 +405,7 @@ a sparse tensor, a list or a dictionary.</p>
 <span class="sig-name descname"><span class="pre">run_with_iobinding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iobinding</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run_with_iobinding" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>iobinding</strong> – the iobinding object that has graph inputs/outputs bind.</p></li>
 <li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
@@ -419,7 +419,7 @@ a sparse tensor, a list or a dictionary.</p>
 <span class="sig-name descname"><span class="pre">run_with_ort_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">output_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_dict_ort_values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">run_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run_with_ort_values" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>output_names</strong> – name of the outputs</p></li>
 <li><p><strong>input_dict_ort_values</strong> – dictionary <code class="docutils literal notranslate"><span class="pre">{</span> <span class="pre">input_name:</span> <span class="pre">input_ort_value</span> <span class="pre">}</span></code>
@@ -428,7 +428,7 @@ from numpy array or <cite>SparseTensor</cite></p></li>
 <li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>an array of <cite>OrtValue</cite></p>
 </dd>
 </dl>
@@ -442,7 +442,7 @@ from numpy array or <cite>SparseTensor</cite></p></li>
 <span class="sig-name descname"><span class="pre">run_with_ortvaluevector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">run_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feed_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">feeds</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fetch_names</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fetches</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fetch_devices</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.run_with_ortvaluevector" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the predictions similar to other run_*() methods but with minimal C++/Python conversion overhead.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>run_options</strong> – See <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a>.</p></li>
 <li><p><strong>feed_names</strong> – list of input names.</p></li>
@@ -460,7 +460,7 @@ from numpy array or <cite>SparseTensor</cite></p></li>
 <span class="sig-name descname"><span class="pre">set_providers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">providers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">provider_options</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.InferenceSession.set_providers" title="Permalink to this definition">¶</a></dt>
 <dd><p>Register the input list of execution providers. The underlying session is re-created.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>providers</strong> – Optional sequence of providers in order of decreasing
 precedence. Values can either be provider names or tuples of
@@ -483,9 +483,9 @@ otherwise execute using CPUExecutionProvider.</p>
 
 </section>
 <section id="options">
-<h3><a class="toc-backref" href="#id8">Options</a><a class="headerlink" href="#options" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Options</a><a class="headerlink" href="#options" title="Permalink to this heading">¶</a></h3>
 <section id="runoptions">
-<h4><a class="toc-backref" href="#id9">RunOptions</a><a class="headerlink" href="#runoptions" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id9" role="doc-backlink">RunOptions</a><a class="headerlink" href="#runoptions" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.RunOptions">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">RunOptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.RunOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.RunOptions</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.RunOptions" title="Permalink to this definition">¶</a></dt>
@@ -528,12 +528,6 @@ Applies to a particular Run() invocation. Default is 0.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="onnxruntime.RunOptions.synchronize_execution_providers">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">synchronize_execution_providers</span></span><a class="headerlink" href="#onnxruntime.RunOptions.synchronize_execution_providers" title="Permalink to this definition">¶</a></dt>
-<dd><p>Synchronize execution providers after executing session.</p>
-</dd></dl>
-
-<dl class="py property">
 <dt class="sig sig-object py" id="onnxruntime.RunOptions.terminate">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">terminate</span></span><a class="headerlink" href="#onnxruntime.RunOptions.terminate" title="Permalink to this definition">¶</a></dt>
 <dd><p>Set to True to terminate any currently executing calls that are using this
@@ -544,7 +538,7 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 
 </section>
 <section id="sessionoptions">
-<h4><a class="toc-backref" href="#id10">SessionOptions</a><a class="headerlink" href="#sessionoptions" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id10" role="doc-backlink">SessionOptions</a><a class="headerlink" href="#sessionoptions" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.SessionOptions">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">SessionOptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">self</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions"><span class="pre">onnxruntime.capi.onnxruntime_pybind11_state.SessionOptions</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.SessionOptions" title="Permalink to this definition">¶</a></dt>
@@ -691,9 +685,9 @@ Serialized model format will default to ONNX unless:
 </section>
 </section>
 <section id="data">
-<h3><a class="toc-backref" href="#id11">Data</a><a class="headerlink" href="#data" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">Data</a><a class="headerlink" href="#data" title="Permalink to this heading">¶</a></h3>
 <section id="ortvalue">
-<h4><a class="toc-backref" href="#id12">OrtValue</a><a class="headerlink" href="#ortvalue" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id12" role="doc-backlink">OrtValue</a><a class="headerlink" href="#ortvalue" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.OrtValue">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">OrtValue</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numpy_obj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue" title="Permalink to this definition">¶</a></dt>
@@ -777,7 +771,7 @@ The new instance of OrtValue will assume the ownership of sparse_tensor</p>
 <dd><p>Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
 A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>numpy_obj</strong> – The Numpy object to construct the OrtValue from</p></li>
 <li><p><strong>device_type</strong> – e.g. cpu, cuda, cpu by default</p></li>
@@ -792,7 +786,7 @@ A copy of the data in the Numpy object is held by the OrtValue only if the devic
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ortvalue_from_shape_and_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtValue.ortvalue_from_shape_and_type"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtValue.ortvalue_from_shape_and_type" title="Permalink to this definition">¶</a></dt>
 <dd><p>Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>shape</strong> – List of integers indicating the shape of the OrtValue</p></li>
 <li><p><strong>element_type</strong> – The data type of the elements in the OrtValue (numpy type)</p></li>
@@ -823,7 +817,7 @@ the memory address can not be changed.</p>
 
 </section>
 <section id="sparsetensor">
-<h4><a class="toc-backref" href="#id13">SparseTensor</a><a class="headerlink" href="#sparsetensor" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id13" role="doc-backlink">SparseTensor</a><a class="headerlink" href="#sparsetensor" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.SparseTensor">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">SparseTensor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sparse_tensor</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor" title="Permalink to this definition">¶</a></dt>
@@ -898,7 +892,7 @@ You can query indices as:</p>
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sparse_coo_from_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dense_shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coo_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.sparse_coo_from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.sparse_coo_from_numpy" title="Permalink to this definition">¶</a></dt>
 <dd><p>Factory method to construct a SparseTensor in COO format from given arguments</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dense_shape</strong> – 1-D  numpy array(int64) or a python list that contains a dense_shape of the sparse tensor
 must be on cpu memory</p></li>
@@ -928,7 +922,7 @@ on other devices and their memory can not be mapped.</p>
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sparse_csr_from_numpy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dense_shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">values</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inner_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outer_indices</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.sparse_csr_from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.sparse_csr_from_numpy" title="Permalink to this definition">¶</a></dt>
 <dd><p>Factory method to construct a SparseTensor in CSR format from given arguments</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dense_shape</strong> – 1-D numpy array(int64) or a python list that contains a dense_shape of the
 sparse tensor (rows, cols) must be on cpu memory</p></li>
@@ -958,7 +952,7 @@ on other devices and their memory can not be mapped.</p>
 <span class="sig-name descname"><span class="pre">to_cuda</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#SparseTensor.to_cuda"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.SparseTensor.to_cuda" title="Permalink to this definition">¶</a></dt>
 <dd><p>Returns a copy of this instance on the specified cuda device</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>ort_device</strong> – with name ‘cuda’ and valid gpu device id</p>
 </dd>
 </dl>
@@ -984,9 +978,9 @@ copies of the strings.</p>
 </section>
 </section>
 <section id="devices">
-<h3><a class="toc-backref" href="#id14">Devices</a><a class="headerlink" href="#devices" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id14" role="doc-backlink">Devices</a><a class="headerlink" href="#devices" title="Permalink to this heading">¶</a></h3>
 <section id="iobinding">
-<h4><a class="toc-backref" href="#id15">IOBinding</a><a class="headerlink" href="#iobinding" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id15" role="doc-backlink">IOBinding</a><a class="headerlink" href="#iobinding" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.IOBinding">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">IOBinding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">session</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding" title="Permalink to this definition">¶</a></dt>
@@ -1003,7 +997,7 @@ copies of the strings.</p>
 <dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_input">
 <span class="sig-name descname"><span class="pre">bind_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer_ptr</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_input" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>name</strong> – input name</p></li>
 <li><p><strong>device_type</strong> – e.g. cpu, cuda</p></li>
@@ -1020,7 +1014,7 @@ copies of the strings.</p>
 <dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_ortvalue_input">
 <span class="sig-name descname"><span class="pre">bind_ortvalue_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_ortvalue_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_ortvalue_input" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>name</strong> – input name</p></li>
 <li><p><strong>ortvalue</strong> – OrtValue instance to bind</p></li>
@@ -1033,7 +1027,7 @@ copies of the strings.</p>
 <dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_ortvalue_output">
 <span class="sig-name descname"><span class="pre">bind_ortvalue_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ortvalue</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_ortvalue_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_ortvalue_output" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>name</strong> – output name</p></li>
 <li><p><strong>ortvalue</strong> – OrtValue instance to bind</p></li>
@@ -1046,7 +1040,7 @@ copies of the strings.</p>
 <dt class="sig sig-object py" id="onnxruntime.IOBinding.bind_output">
 <span class="sig-name descname"><span class="pre">bind_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'cpu'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device_id</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">element_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">buffer_ptr</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#IOBinding.bind_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.IOBinding.bind_output" title="Permalink to this definition">¶</a></dt>
 <dd><dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>name</strong> – output name</p></li>
 <li><p><strong>device_type</strong> – e.g. cpu, cuda, cpu by default</p></li>
@@ -1076,7 +1070,7 @@ The data buffer of the obtained OrtValues may not reside on CPU memory</p>
 
 </section>
 <section id="ortdevice">
-<h4><a class="toc-backref" href="#id16">OrtDevice</a><a class="headerlink" href="#ortdevice" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id16" role="doc-backlink">OrtDevice</a><a class="headerlink" href="#ortdevice" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.OrtDevice">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">OrtDevice</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">c_ort_device</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="modules/onnxruntime/capi/onnxruntime_inference_collection.html#OrtDevice"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#onnxruntime.OrtDevice" title="Permalink to this definition">¶</a></dt>
@@ -1087,11 +1081,11 @@ The data buffer of the obtained OrtValues may not reside on CPU memory</p>
 </section>
 </section>
 <section id="internal-classes">
-<h3><a class="toc-backref" href="#id17">Internal classes</a><a class="headerlink" href="#internal-classes" title="Permalink to this heading">¶</a></h3>
+<h3><a class="toc-backref" href="#id17" role="doc-backlink">Internal classes</a><a class="headerlink" href="#internal-classes" title="Permalink to this heading">¶</a></h3>
 <p>These classes cannot be instantiated by users but they are returned
 by methods or functions of this library.</p>
 <section id="modelmetadata">
-<h4><a class="toc-backref" href="#id18">ModelMetadata</a><a class="headerlink" href="#modelmetadata" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id18" role="doc-backlink">ModelMetadata</a><a class="headerlink" href="#modelmetadata" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.ModelMetadata">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">ModelMetadata</span></span><a class="headerlink" href="#onnxruntime.ModelMetadata" title="Permalink to this definition">¶</a></dt>
@@ -1144,7 +1138,7 @@ facilitate the comparison.</p>
 
 </section>
 <section id="nodearg">
-<h4><a class="toc-backref" href="#id19">NodeArg</a><a class="headerlink" href="#nodearg" title="Permalink to this heading">¶</a></h4>
+<h4><a class="toc-backref" href="#id19" role="doc-backlink">NodeArg</a><a class="headerlink" href="#nodearg" title="Permalink to this heading">¶</a></h4>
 <dl class="py class">
 <dt class="sig sig-object py" id="onnxruntime.NodeArg">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">onnxruntime.</span></span><span class="sig-name descname"><span class="pre">NodeArg</span></span><a class="headerlink" href="#onnxruntime.NodeArg" title="Permalink to this definition">¶</a></dt>
@@ -1174,7 +1168,7 @@ including arg name, arg type (contains both type and shape).</p>
 </section>
 </section>
 <section id="backend">
-<h2><a class="toc-backref" href="#id20">Backend</a><a class="headerlink" href="#backend" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id20" role="doc-backlink">Backend</a><a class="headerlink" href="#backend" title="Permalink to this heading">¶</a></h2>
 <p>In addition to the regular API which is optimized for performance and usability,
 <em>ONNX Runtime</em> also implements the
 <a class="reference external" href="https://github.com/onnx/onnx/blob/main/docs/ImplementingAnOnnxBackend.md">ONNX backend API</a>
@@ -1185,13 +1179,13 @@ The following functions are supported:</p>
 <span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">is_compatible</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.is_compatible" title="Permalink to this definition">¶</a></dt>
 <dd><p>Return whether the model is compatible with the backend.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> – unused</p></li>
 <li><p><strong>device</strong> – None to use the default device or a string (ex: <cite>‘CPU’</cite>)</p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>boolean</p>
 </dd>
 </dl>
@@ -1203,7 +1197,7 @@ The following functions are supported:</p>
 <dd><p>Load the model and creates a <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a>
 ready to be used as a backend.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> – ModelProto (returned by <cite>onnx.load</cite>),
 string for a filename or bytes for a serialized model</p></li>
@@ -1213,7 +1207,7 @@ the compilation settings</p></li>
 <li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.SessionOptions" title="onnxruntime.SessionOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.SessionOptions</span></code></a></p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a></p>
 </dd>
 </dl>
@@ -1224,7 +1218,7 @@ the compilation settings</p></li>
 <span class="sig-prename descclassname"><span class="pre">onnxruntime.backend.</span></span><span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#onnxruntime.backend.run" title="Permalink to this definition">¶</a></dt>
 <dd><p>Compute the prediction.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters</dt>
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> – <a class="reference internal" href="#onnxruntime.InferenceSession" title="onnxruntime.InferenceSession"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.InferenceSession</span></code></a> returned
 by function <em>prepare</em></p></li>
@@ -1235,7 +1229,7 @@ the compilation settings</p></li>
 <li><p><strong>kwargs</strong> – see <a class="reference internal" href="#onnxruntime.RunOptions" title="onnxruntime.RunOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">onnxruntime.RunOptions</span></code></a></p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns</dt>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>predictions</p>
 </dd>
 </dl>

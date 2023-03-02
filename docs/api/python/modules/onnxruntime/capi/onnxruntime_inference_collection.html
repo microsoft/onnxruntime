@@ -14,7 +14,7 @@
         gtag('config', 'UA-156955408-1');
     </script>
     
-    <title>onnxruntime.capi.onnxruntime_inference_collection &#8212; ONNX Runtime 1.14.0 documentation</title>
+    <title>onnxruntime.capi.onnxruntime_inference_collection &#8212; ONNX Runtime 1.15.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../../../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../../../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../../../static/graphviz.css" />
@@ -334,6 +334,12 @@
 <span class="sd">        :param run_options: See :class:`onnxruntime.RunOptions`.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">run_with_iobinding</span><span class="p">(</span><span class="n">iobinding</span><span class="o">.</span><span class="n">_iobinding</span><span class="p">,</span> <span class="n">run_options</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_tuning_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">get_tuning_results</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">set_tuning_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">results</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">error_on_invalid</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sess</span><span class="o">.</span><span class="n">set_tuning_results</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">error_on_invalid</span><span class="p">)</span>
 
     <span class="k">def</span> <span class="nf">run_with_ortvaluevector</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">run_options</span><span class="p">,</span> <span class="n">feed_names</span><span class="p">,</span> <span class="n">feeds</span><span class="p">,</span> <span class="n">fetch_names</span><span class="p">,</span> <span class="n">fetches</span><span class="p">,</span> <span class="n">fetch_devices</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>

@@ -4,7 +4,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
 
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=UA-156955408-1"></script>
@@ -15,7 +15,7 @@
         gtag('config', 'UA-156955408-1');
     </script>
     
-    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.14.0 documentation</title>
+    <title>Train, convert and predict with ONNX Runtime &#8212; ONNX Runtime 1.15.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="../static/pygments.css" />
     <link rel="stylesheet" type="text/css" href="../static/alabaster.css" />
     <link rel="stylesheet" type="text/css" href="../static/graphviz.css" />
@@ -58,16 +58,16 @@ to download the full example code</p>
 <p>This example demonstrates an end to end scenario
 starting with the training of a machine learned model
 to its use in its converted from.</p>
-<div class="contents local topic" id="contents">
+<nav class="contents local" id="contents">
 <ul class="simple">
 <li><p><a class="reference internal" href="#train-a-logistic-regression" id="id1">Train a logistic regression</a></p></li>
 <li><p><a class="reference internal" href="#conversion-to-onnx-format" id="id2">Conversion to ONNX format</a></p></li>
 <li><p><a class="reference internal" href="#probabilities" id="id3">Probabilities</a></p></li>
 <li><p><a class="reference internal" href="#benchmark-with-randomforest" id="id4">Benchmark with RandomForest</a></p></li>
 </ul>
-</div>
+</nav>
 <section id="train-a-logistic-regression">
-<h2><a class="toc-backref" href="#id1">Train a logistic regression</a><a class="headerlink" href="#train-a-logistic-regression" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Train a logistic regression</a><a class="headerlink" href="#train-a-logistic-regression" title="Permalink to this heading">¶</a></h2>
 <p>The first step consists in retrieving the iris datset.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.datasets</span> <span class="kn">import</span> <span class="n">load_iris</span>
 
@@ -108,14 +108,14 @@ and we show the confusion matrix.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">y_test</span><span class="p">,</span> <span class="n">pred</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[14  0  0]
- [ 0 11  0]
- [ 0  1 12]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0  9  3]
+ [ 0  1 13]]
 </pre></div>
 </div>
 </section>
 <section id="conversion-to-onnx-format">
-<h2><a class="toc-backref" href="#id2">Conversion to ONNX format</a><a class="headerlink" href="#conversion-to-onnx-format" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Conversion to ONNX format</a><a class="headerlink" href="#conversion-to-onnx-format" title="Permalink to this heading">¶</a></h2>
 <p>We use module
 <a class="reference external" href="https://github.com/onnx/sklearn-onnx">sklearn-onnx</a>
 to convert the model into ONNX format.</p>
@@ -152,15 +152,15 @@ output name=&#39;output_label&#39; and shape=[None]
 <span class="nb">print</span><span class="p">(</span><span class="n">confusion_matrix</span><span class="p">(</span><span class="n">pred</span><span class="p">,</span> <span class="n">pred_onx</span><span class="p">))</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[14  0  0]
- [ 0 12  0]
- [ 0  0 12]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[12  0  0]
+ [ 0 10  0]
+ [ 0  0 16]]
 </pre></div>
 </div>
 <p>The prediction are perfectly identical.</p>
 </section>
 <section id="probabilities">
-<h2><a class="toc-backref" href="#id3">Probabilities</a><a class="headerlink" href="#probabilities" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Probabilities</a><a class="headerlink" href="#probabilities" title="Permalink to this heading">¶</a></h2>
 <p>Probabilities are needed to compute other
 relevant metrics such as the ROC Curve.
 Let’s see how to get them first with
@@ -169,9 +169,9 @@ scikit-learn.</p>
 <span class="nb">print</span><span class="p">(</span><span class="n">prob_sklearn</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.90908960e-01 8.02874408e-01 6.21663156e-03]
- [2.81698299e-02 9.12759445e-01 5.90707247e-02]
- [9.67801591e-01 3.21983324e-02 7.64754321e-08]]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[[9.58233020e-01 4.17668309e-02 1.49163214e-07]
+ [1.53795202e-03 4.60102441e-01 5.38359607e-01]
+ [2.29794597e-04 1.56222826e-01 8.43547379e-01]]
 </pre></div>
 </div>
 <p>And then with ONNX Runtime.
@@ -184,9 +184,9 @@ The probabilies appear to be</p>
 <span class="n">pprint</span><span class="o">.</span><span class="n">pprint</span><span class="p">(</span><span class="n">prob_rt</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">3</span><span class="p">])</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.19090914726257324, 1: 0.8028742074966431, 2: 0.0062166303396224976},
- {0: 0.02816985361278057, 1: 0.9127594232559204, 2: 0.059070732444524765},
- {0: 0.9678016304969788, 1: 0.03219832107424736, 2: 7.647536648391906e-08}]
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>[{0: 0.9582330584526062, 1: 0.041766852140426636, 2: 1.4916314228230476e-07},
+ {0: 0.0015379516407847404, 1: 0.46010255813598633, 2: 0.538359522819519},
+ {0: 0.0002297950559295714, 1: 0.15622295439243317, 2: 0.8435472249984741}]
 </pre></div>
 </div>
 <p>Let’s benchmark.</p>
@@ -210,11 +210,11 @@ The probabilies appear to be</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 4.44e-05 min=4.24e-05 max=5.4e-05
+Average 4.45e-05 min=4.29e-05 max=5.45e-05
 Execution time for ONNX Runtime
-Average 2.21e-05 min=2.16e-05 max=2.71e-05
+Average 2.28e-05 min=2.23e-05 max=2.82e-05
 
-2.2087500000509407e-05
+2.2827599999573066e-05
 </pre></div>
 </div>
 <p>Let’s benchmark a scenario similar to what a webservice
@@ -242,11 +242,11 @@ as opposed to a batch of prediction.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for clr.predict
-Average 0.00406 min=0.00404 max=0.00414
+Average 0.00409 min=0.00406 max=0.00418
 Execution time for sess_predict
-Average 0.00104 min=0.00102 max=0.00107
+Average 0.00106 min=0.00105 max=0.00107
 
-0.00103513229499967
+0.0010555420499989054
 </pre></div>
 </div>
 <p>Let’s do the same for the probabilities.</p>
@@ -263,11 +263,11 @@ Average 0.00104 min=0.00102 max=0.00107
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.0061 min=0.00608 max=0.00626
+Average 0.00611 min=0.00608 max=0.00617
 Execution time for sess_predict_proba
-Average 0.00108 min=0.00107 max=0.0011
+Average 0.00113 min=0.00112 max=0.00114
 
-0.001081757285000009
+0.001127644135000594
 </pre></div>
 </div>
 <p>This second comparison is better as
@@ -276,7 +276,7 @@ computes the label and the probabilities
 in every case.</p>
 </section>
 <section id="benchmark-with-randomforest">
-<h2><a class="toc-backref" href="#id4">Benchmark with RandomForest</a><a class="headerlink" href="#benchmark-with-randomforest" title="Permalink to this heading">¶</a></h2>
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Benchmark with RandomForest</a><a class="headerlink" href="#benchmark-with-randomforest" title="Permalink to this heading">¶</a></h2>
 <p>We first train and save a model in ONNX format.</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">sklearn.ensemble</span> <span class="kn">import</span> <span class="n">RandomForestClassifier</span>
 
@@ -305,11 +305,11 @@ in every case.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Execution time for predict_proba
-Average 0.674 min=0.672 max=0.678
+Average 0.682 min=0.68 max=0.687
 Execution time for sess_predict_proba
-Average 0.0013 min=0.00129 max=0.00133
+Average 0.00139 min=0.00136 max=0.00165
 
-0.001301839815000676
+0.0013870261599987545
 </pre></div>
 </div>
 <p>Let’s see with different number of trees.</p>
@@ -344,40 +344,40 @@ Average 0.0013 min=0.00129 max=0.00133
 </pre></div>
 </div>
 <img src="../images/sphx_glr_plot_train_convert_predict_001.png" srcset="../images/sphx_glr_plot_train_convert_predict_001.png" alt="Speed comparison between scikit-learn and ONNX Runtime For a random forest on Iris dataset" class = "sphx-glr-single-img"/><div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>5
-Average 0.0491 min=0.049 max=0.0491
-Average 0.00103 min=0.00102 max=0.00105
+Average 0.0499 min=0.0493 max=0.0509
+Average 0.00108 min=0.00107 max=0.00111
 10
-Average 0.0823 min=0.0822 max=0.0824
-Average 0.00104 min=0.00102 max=0.00106
+Average 0.0831 min=0.083 max=0.0835
+Average 0.0011 min=0.00109 max=0.00112
 15
-Average 0.115 min=0.115 max=0.115
-Average 0.00103 min=0.00102 max=0.00106
+Average 0.116 min=0.116 max=0.116
+Average 0.0011 min=0.00109 max=0.00113
 20
-Average 0.148 min=0.148 max=0.148
-Average 0.00105 min=0.00104 max=0.00108
+Average 0.15 min=0.149 max=0.15
+Average 0.0011 min=0.00109 max=0.00113
 25
-Average 0.181 min=0.181 max=0.182
-Average 0.00107 min=0.00106 max=0.00109
-30
-Average 0.214 min=0.214 max=0.214
-Average 0.00107 min=0.00106 max=0.00109
-35
-Average 0.247 min=0.247 max=0.248
-Average 0.00109 min=0.00108 max=0.00111
-40
-Average 0.28 min=0.279 max=0.28
-Average 0.00109 min=0.00108 max=0.00112
-45
-Average 0.312 min=0.311 max=0.312
-Average 0.00112 min=0.00111 max=0.00115
-50
-Average 0.345 min=0.344 max=0.345
+Average 0.183 min=0.183 max=0.183
 Average 0.00112 min=0.00111 max=0.00114
+30
+Average 0.217 min=0.216 max=0.218
+Average 0.00113 min=0.00112 max=0.00116
+35
+Average 0.251 min=0.249 max=0.258
+Average 0.00114 min=0.00113 max=0.00117
+40
+Average 0.283 min=0.282 max=0.283
+Average 0.00116 min=0.00115 max=0.00118
+45
+Average 0.315 min=0.315 max=0.315
+Average 0.00116 min=0.00115 max=0.0012
+50
+Average 0.349 min=0.349 max=0.349
+Average 0.00117 min=0.00116 max=0.0012
 
-&lt;matplotlib.legend.Legend object at 0x7f0fd5bd2a40&gt;
+&lt;matplotlib.legend.Legend object at 0x7fd1ba2bd600&gt;
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  8.150 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> ( 3 minutes  10.279 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-auto-examples-plot-train-convert-predict-py">
 <div class="sphx-glr-download sphx-glr-download-python docutils container">
 <p><a class="reference download internal" download="" href="../downloads/c647c128e0cf2b3db04ce60b41ef1a14/plot_train_convert_predict.py"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Python</span> <span class="pre">source</span> <span class="pre">code:</span> <span class="pre">plot_train_convert_predict.py</span></code></a></p>
