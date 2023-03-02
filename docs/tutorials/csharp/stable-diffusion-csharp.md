@@ -12,8 +12,6 @@ nav_order: 1
 
 In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#. Stable Diffusion models denoise a static image to create an image that represents the text prompt given by the user.
 
-For the below example sentence the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) creates a text embedding that "understands" text and image relationship. A random noise image is created and then denoised with the `unet` model and scheduler algorithm to create an image that represents the text prompt.
-
 ```text
 "make a picture of green tree with flowers around it and a red sky" 
 ```
@@ -62,7 +60,7 @@ git clone https://huggingface.co/<contributor>/<model-name>
 - Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`.
 
 ## Inference with C#
-Now lets start to break down how to inference in C#! The `unet` model takes the text embedding of the user prompt, the latent seed noisy image that is created as a starting point, and the current timestep. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt. 
+Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point, and the current timestep. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt.
 
 ## Main Function
 The main function sets the prompt, number of inference steps, and the guidance scale. It then calls the `RunInference` function to run the inference.
