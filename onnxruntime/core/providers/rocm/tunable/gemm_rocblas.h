@@ -233,6 +233,234 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
   }
 };
 
+template <typename T>
+class IndexedRocBlasBatchedGemmOp {
+ public:
+  IndexedRocBlasBatchedGemmOp()
+      : index_(0) {}
+  IndexedRocBlasBatchedGemmOp(int index)
+      : index_(index) {}
+
+  Status operator()(const BatchedGemmParams<T>* params) {
+    RocblasHandleStreamGuard guard(params->handle, params->stream);
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
+    return ROCBLAS_CALL(
+        rocblas_gemm_batched_ex(
+            params->handle,
+            params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->n, params->m, params->k,
+            &h_a,
+            params->bs, RocBlasDataTypeFor(*(params->bs)), params->ldb,
+            params->as, RocBlasDataTypeFor(*(params->as)), params->lda,
+            &h_b,
+            params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+            params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+            params->batch,
+            RocBlasComputeTypeFor(*(params->as)),
+            rocblas_gemm_algo_solution_index,
+            index_,
+            rocblas_gemm_flags_none));
+  }
+
+  Status IsSupported(const BatchedGemmParams<T>*) {
+    return Status::OK();
+  }
+
+ private:
+  int index_;
+};
+
+template <typename T>
+class RocBlasBatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
+ public:
+  RocBlasBatchedGemmTunableOp() {
+    // Ensure that the default implementation is always present
+    this->RegisterOp(IndexedRocBlasBatchedGemmOp<T>{0});
+  }
+
+  Status IsSupported(const BatchedGemmParams<T>* params) {
+    ORT_UNUSED_PARAMETER(params);
+    return Status::OK();
+  }
+
+ protected:
+  virtual int FindFastest(const BatchedGemmParams<T>* params) override {
+    auto solution_indices = this->GetSolutions(params);
+    std::vector<Op<BatchedGemmParams<T>>> candidates;
+    for (int solution_idx : solution_indices) {
+      candidates.emplace_back(IndexedRocBlasBatchedGemmOp<T>{solution_idx});
+    }
+
+    auto id = this->FindFastestImpl(params, candidates);
+    // memoize the result
+    this->RegisterOp(std::move(candidates[id]));
+    return this->NumberOfOps() - 1;
+  }
+
+ private:
+  std::vector<int> GetSolutions(const BatchedGemmParams<T>* params) {
+    int num_solutions = 0;
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
+    // Get the number of candidate solutions
+    ROCBLAS_CALL_THROW(rocblas_gemm_batched_ex_get_solutions(
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &h_a,
+        params->bs, RocBlasDataTypeFor(*(params->bs)), params->ldb,
+        params->as, RocBlasDataTypeFor(*(params->as)), params->lda,
+        &h_b,
+        params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+        params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+        params->batch,
+        RocBlasComputeTypeFor(*(params->as)),
+        rocblas_gemm_algo_solution_index,
+        rocblas_gemm_flags_none,
+        NULL,
+        &num_solutions));
+
+    // Get the actual candidate solutions
+    std::vector<int> solutions(num_solutions);
+    ROCBLAS_CALL_THROW(rocblas_gemm_batched_ex_get_solutions(
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &h_a,
+        params->bs, RocBlasDataTypeFor(*(params->bs)), params->ldb,
+        params->as, RocBlasDataTypeFor(*(params->as)), params->lda,
+        &h_b,
+        params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+        params->cs, RocBlasDataTypeFor(*(params->cs)), params->ldc,
+        params->batch,
+        RocBlasComputeTypeFor(*(params->as)),
+        rocblas_gemm_algo_solution_index,
+        rocblas_gemm_flags_none,
+        solutions.data(),
+        &num_solutions));
+
+    return solutions;
+  }
+};
+
+template <typename T>
+class IndexedRocBlasStridedBatchedGemmOp {
+ public:
+  IndexedRocBlasStridedBatchedGemmOp()
+      : index_(0) {}
+  IndexedRocBlasStridedBatchedGemmOp(int index)
+      : index_(index) {}
+
+  Status operator()(const StridedBatchedGemmParams<T>* params) {
+    RocblasHandleStreamGuard guard(params->handle, params->stream);
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
+    return ROCBLAS_CALL(
+        rocblas_gemm_strided_batched_ex(
+            params->handle,
+            params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+            params->n, params->m, params->k,
+            &h_a,
+            params->b, RocBlasDataTypeFor(params->b), params->ldb, params->stride_b,
+            params->a, RocBlasDataTypeFor(params->a), params->lda, params->stride_a,
+            &h_b,
+            params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+            params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+            params->batch,
+            RocBlasComputeTypeFor(params->a),
+            rocblas_gemm_algo_solution_index,
+            index_,
+            rocblas_gemm_flags_none));
+  }
+
+  Status IsSupported(const StridedBatchedGemmParams<T>*) {
+    return Status::OK();
+  }
+
+ private:
+  int index_;
+};
+
+template <typename T>
+class RocBlasStridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmParams<T>> {
+ public:
+  RocBlasStridedBatchedGemmTunableOp() {
+    // Ensure that the default implementation is always present
+    this->RegisterOp(IndexedRocBlasStridedBatchedGemmOp<T>{0});
+  }
+
+  Status IsSupported(const StridedBatchedGemmParams<T>* params) {
+    ORT_UNUSED_PARAMETER(params);
+    return Status::OK();
+  }
+
+ protected:
+  virtual int FindFastest(const StridedBatchedGemmParams<T>* params) override {
+    auto solution_indices = this->GetSolutions(params);
+    std::vector<Op<StridedBatchedGemmParams<T>>> candidates;
+    for (int solution_idx : solution_indices) {
+      candidates.emplace_back(IndexedRocBlasStridedBatchedGemmOp<T>{solution_idx});
+    }
+
+    auto id = this->FindFastestImpl(params, candidates);
+    // memoize the result
+    this->RegisterOp(std::move(candidates[id]));
+    return this->NumberOfOps() - 1;
+  }
+
+ private:
+  std::vector<int> GetSolutions(const StridedBatchedGemmParams<T>* params) {
+    int num_solutions = 0;
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
+    // Get the number of candidate solutions
+    ROCBLAS_CALL_THROW(rocblas_gemm_strided_batched_ex_get_solutions(
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &h_a,
+        params->b, RocBlasDataTypeFor(params->b), params->ldb, params->stride_b,
+        params->a, RocBlasDataTypeFor(params->a), params->lda, params->stride_a,
+        &h_b,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+        params->batch,
+        RocBlasComputeTypeFor(params->a),
+        rocblas_gemm_algo_solution_index,
+        rocblas_gemm_flags_none,
+        NULL,
+        &num_solutions));
+
+    // Get the actual candidate solutions
+    std::vector<int> solutions(num_solutions);
+    ROCBLAS_CALL_THROW(rocblas_gemm_strided_batched_ex_get_solutions(
+        params->handle,
+        params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
+        params->n, params->m, params->k,
+        &h_a,
+        params->b, RocBlasDataTypeFor(params->b), params->ldb, params->stride_b,
+        params->a, RocBlasDataTypeFor(params->a), params->lda, params->stride_a,
+        &h_b,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+        params->c, RocBlasDataTypeFor(params->c), params->ldc, params->stride_c,
+        params->batch,
+        RocBlasComputeTypeFor(params->a),
+        rocblas_gemm_algo_solution_index,
+        rocblas_gemm_flags_none,
+        solutions.data(),
+        &num_solutions));
+
+    return solutions;
+  }
+};
+
 #endif /* #ifdef USE_ROCBLAS_EXTENSION_API */
 
 template <typename T>
