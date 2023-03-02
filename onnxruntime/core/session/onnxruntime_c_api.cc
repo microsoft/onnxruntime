@@ -678,6 +678,200 @@ ORT_API_STATUS_IMPL(OrtApis::EnableOrtCustomOps, _Inout_ OrtSessionOptions* opti
   API_IMPL_END
 }
 
+using CustomOpDomainMap = InlinedHashMap<std::string, std::unique_ptr<OrtCustomOpDomain>>;
+
+CustomOpDomainMap& GetCustomOpDomainMap() {
+  static CustomOpDomainMap custom_op_domain_map;
+  return custom_op_domain_map;
+}
+
+struct LiteCustomKernel {
+  LiteCustomKernel(const CustomComputeFn custom_compute_fn) : custom_compute_fn_(custom_compute_fn) {}
+  void Compute(OrtKernelContext* context) {
+    custom_compute_fn_(context);
+  }
+  CustomComputeFn custom_compute_fn_;
+};
+
+//struct LiteCustomOp : public OrtCustomOp {
+//  LiteCustomOp(const char* op_name, const CustomComputeFn custom_compute_fn) : op_name_(op_name), custom_compute_fn_(custom_compute_fn) {
+//    OrtCustomOp::version = ORT_API_VERSION;
+// 
+//    OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* /*api*/, const OrtKernelInfo* /*info*/) {
+//        return (void*)(new LiteCustomKernel(((LiteCustomOp*)this_)->custom_compute_fn_));
+//    };
+//
+//    OrtCustomOp::GetName = [](const OrtCustomOp* this_) {
+//        return static_cast<const LiteCustomOp*>(this_)->op_name_.c_str();
+//    };
+//
+//    OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* /*this_*/) {
+//        return "CPUExecutionProvider";
+//    };
+//
+//    OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* /*this_*/) {
+//        return (size_t)1;
+//    };
+//
+//    OrtCustomOp::GetInputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+//        return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+//    };
+//
+//    OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+//        return OrtMemTypeDefault;
+//    };
+//
+//    OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* /*this_*/) {
+//        return (size_t)1;
+//    };
+//
+//    OrtCustomOp::GetOutputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+//        return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+//    };
+//
+//    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
+//      ((LiteCustomKernel*)op_kernel)->custom_compute_fn_(context);
+//    };
+//
+//    OrtCustomOp::KernelDestroy = [](void* op_kernel) {
+//      if (op_kernel) {
+//        delete op_kernel;
+//      }
+//    };
+//
+//    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+//        return INPUT_OUTPUT_REQUIRED;
+//    };
+//
+//    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+//        return INPUT_OUTPUT_REQUIRED;
+//    };
+//
+//    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp* /*this_*/) {
+//        return 0;
+//    };
+//
+//    OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* /*this_*/) {
+//        return 0;
+//    };
+//
+//    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* /*this_*/) {
+//        return 0;
+//    };
+//
+//    OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* /*this_*/) {
+//        return 0;
+//    };
+//  }
+//  const std::string op_name_;
+//  const CustomComputeFn custom_compute_fn_;
+//};
+
+struct LiteCustomOp : public OrtCustomOp {
+  LiteCustomOp(const char* op_name,
+               const char* execution_provider,
+               const CustomComputeFn custom_compute_fn) : op_name_(op_name),
+                                                          execution_provider_(execution_provider),
+                                                          custom_compute_fn_(custom_compute_fn) {
+    OrtCustomOp::version = ORT_API_VERSION;
+
+    OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* /*api*/, const OrtKernelInfo* /*info*/) {
+      return (void*)(new LiteCustomKernel(((LiteCustomOp*)this_)->custom_compute_fn_));
+    };
+
+    OrtCustomOp::GetName = [](const OrtCustomOp* this_) {
+      return static_cast<const LiteCustomOp*>(this_)->op_name_.c_str();
+    };
+
+    OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* this_) {
+      return ((LiteCustomOp*)this_)->execution_provider_.c_str();
+    };
+
+    OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* /*this_*/) {
+      return (size_t)1;
+    };
+
+    OrtCustomOp::GetInputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    };
+
+    OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+      return OrtMemTypeDefault;
+    };
+
+    OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* /*this_*/) {
+      return (size_t)1;
+    };
+
+    OrtCustomOp::GetOutputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+    };
+
+    OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
+      ((LiteCustomKernel*)op_kernel)->custom_compute_fn_(context);
+    };
+
+    OrtCustomOp::KernelDestroy = [](void* op_kernel) {
+      if (op_kernel) {
+        delete op_kernel;
+      }
+    };
+
+    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+      return INPUT_OUTPUT_VARIADIC;
+    };
+
+    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
+      return INPUT_OUTPUT_VARIADIC;
+    };
+
+    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp* /*this_*/) {
+      return 1;
+    };
+
+    OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp* /*this_*/) {
+      return 0;
+    };
+
+    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp* /*this_*/) {
+      return 1;
+    };
+
+    OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp* /*this_*/) {
+      return 0;
+    };
+  }
+  const std::string op_name_;
+  const std::string execution_provider_;
+  const CustomComputeFn custom_compute_fn_;
+};
+
+//LiteCustomOp dummpy_op;
+
+using CustomOpPool = InlinedVector<std::unique_ptr<LiteCustomOp>>;
+CustomOpPool custom_op_pool;
+
+ORT_API_STATUS_IMPL(OrtApis::LiteCustomOpResgiter,
+                    _In_ const char* domain_name,
+                    _In_ const char* op_name,
+                    _In_ const char* execution_provider,
+                    _In_ const CustomComputeFn custom_compute_fn) {
+
+  API_IMPL_BEGIN
+  auto& domain_map = GetCustomOpDomainMap();
+  auto domain_iter = domain_map.find(domain_name);
+  if (domain_iter == domain_map.end()) {
+    domain_iter = domain_map.emplace(std::string{domain_name},
+                                     std::make_unique<OrtCustomOpDomain>())
+                      .first;
+    domain_iter->second->domain_ = domain_name;
+  }
+  custom_op_pool.emplace_back(std::make_unique<LiteCustomOp>(op_name, execution_provider, custom_compute_fn));
+  domain_iter->second->custom_ops_.emplace_back(custom_op_pool.back().get());
+  return nullptr;
+  API_IMPL_END
+}
+
 namespace {
 // provider either model_path, or modal_data + model_data_length.
 static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* options,
@@ -685,7 +879,6 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
                                                 _In_opt_z_ const ORTCHAR_T* model_path,
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
-
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
   // quick check here to decide load path. InferenceSession will provide error message for invalid values.
   // TODO: Could move to a helper
@@ -721,6 +914,12 @@ static ORT_STATUS_PTR CreateSessionAndLoadModel(_In_ const OrtSessionOptions* op
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(options->custom_op_domains_));
   }
 #endif
+
+  std::vector<OrtCustomOpDomain*> lite_custom_op_domains;
+  for (const auto& iter : GetCustomOpDomainMap()) {
+    lite_custom_op_domains.push_back(iter.second.get());
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddCustomOpDomains(lite_custom_op_domains));
 
   // Finish load
   if (load_config_from_model) {
@@ -2697,6 +2896,8 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::UpdateDnnlProviderOptions,
     &OrtApis::GetDnnlProviderOptionsAsString,
     &OrtApis::ReleaseDnnlProviderOptions,
+
+    &OrtApis::LiteCustomOpResgiter,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

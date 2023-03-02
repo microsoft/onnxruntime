@@ -442,4 +442,10 @@ ORT_API_STATUS_IMPL(GetDnnlProviderOptionsAsString, _In_ const OrtDnnlProviderOp
                     _Inout_ OrtAllocator* allocator, _Outptr_ char** ptr);
 ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions*);
 
+ORT_API_STATUS_IMPL(LiteCustomOpResgiter,
+                    _In_ const char* domain_name,
+                    _In_ const char* op_name,
+                    _In_ const char* execution_provider,
+                    _In_ const CustomComputeFn custom_compute_fn);
+
 }  // namespace OrtApis

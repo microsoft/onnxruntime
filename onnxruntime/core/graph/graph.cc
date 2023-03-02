@@ -2486,6 +2486,11 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     node.ToProto(node_proto);
     const auto& node_name = node.Name();
 
+    //if (node.Domain() == "test") {
+    //  SetOpSchemaFromRegistryForNode(node);
+    //  continue;
+    //}
+
     if (!node.Op()) {
       {
         auto status = Status::OK();
