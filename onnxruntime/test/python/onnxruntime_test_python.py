@@ -60,7 +60,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue(tvm is not None)
 
     def testGetVersionString(self):
-        self.assertTrue(onnxrt.get_version_string() is not None)
+        self.assertIsNot(onnxrt.get_version_string(), None)
 
     def testModelSerialization(self):
         try:
