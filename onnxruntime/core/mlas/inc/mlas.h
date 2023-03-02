@@ -1054,6 +1054,15 @@ MlasTranspose(
 void
 MLASCALL
 MlasTranspose(
+    const uint16_t* Input,
+    uint16_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
     const uint32_t* Input,
     uint32_t* Output,
     size_t M,
