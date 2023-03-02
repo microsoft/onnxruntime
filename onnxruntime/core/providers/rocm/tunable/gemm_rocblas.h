@@ -104,6 +104,25 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
 }
 
 template <typename T>
+auto maybe_cast(const T fp) {
+  return fp;
+}
+
+template <>
+auto maybe_cast<half>(const half fp) {
+  // alpha and beta should be the same as compute_type, in half case it is float.
+  float h = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(&fp));
+  return h;
+}
+
+template <>
+auto maybe_cast<BFloat16>(const BFloat16 fp) {
+  // alpha and beta should be the same as compute_type, in bfloat16 case it is float.
+  float h = fp.ToFloat();
+  return h;
+}
+
+template <typename T>
 class IndexedRocBlasGemmOp {
  public:
   IndexedRocBlasGemmOp()
@@ -113,16 +132,18 @@ class IndexedRocBlasGemmOp {
 
   Status operator()(const GemmParams<T>* params) {
     RocblasHandleStreamGuard guard(params->handle, params->stream);
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
     return ROCBLAS_CALL(
         rocblas_gemm_ex(
             params->handle,
             params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
             params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
             params->n, params->m, params->k,
-            &(params->alpha),
+            &h_a,
             params->b, RocBlasDataTypeFor(params->b), params->ldb,
             params->a, RocBlasDataTypeFor(params->a), params->lda,
-            &(params->beta),
+            &h_b,
             params->c, RocBlasDataTypeFor(params->c), params->ldc,
             params->c, RocBlasDataTypeFor(params->c), params->ldc,
             RocBlasComputeTypeFor(params->a),
@@ -169,16 +190,18 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
  private:
   std::vector<int> GetSolutions(const GemmParams<T>* params) {
     int num_solutions = 0;
+    auto h_a = maybe_cast(params->alpha);
+    auto h_b = maybe_cast(params->beta);
     // Get the number of candidate solutions
     ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
         params->handle,
         params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
         params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
         params->n, params->m, params->k,
-        &(params->alpha),
+        &h_a,
         params->b, RocBlasDataTypeFor(params->b), params->ldb,
         params->a, RocBlasDataTypeFor(params->a), params->lda,
-        &(params->beta),
+        &h_b,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         RocBlasComputeTypeFor(params->a),
@@ -194,10 +217,10 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
         params->opb == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
         params->opa == BlasOp::N ? rocblas_operation_none : rocblas_operation_transpose,
         params->n, params->m, params->k,
-        &(params->alpha),
+        &h_a,
         params->b, RocBlasDataTypeFor(params->b), params->ldb,
         params->a, RocBlasDataTypeFor(params->a), params->lda,
-        &(params->beta),
+        &h_b,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         RocBlasComputeTypeFor(params->a),
