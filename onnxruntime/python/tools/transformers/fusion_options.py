@@ -52,6 +52,7 @@ class FusionOptions:
 
         # options for stable diffusion
         if model_type in ["unet", "vae", "clip"]:
+            self.enable_nhwc_conv = True
             self.enable_group_norm = True
             self.enable_bias_splitgelu = True
             self.enable_packed_qkv = True
@@ -100,12 +101,18 @@ class FusionOptions:
             options.disable_attention_mask()
 
         if args.model_type in ["unet", "vae", "clip"]:
+            if args.disable_nhwc_conv:
+                options.enable_nhwc_conv = False
             if args.disable_group_norm:
                 options.enable_group_norm = False
-            if args.disable_packed_kv:
-                options.enable_packed_kv = False
+            if args.disable_bias_splitgelu:
+                options.enable_bias_splitgelu = False
             if args.disable_packed_qkv:
                 options.enable_packed_qkv = False
+            if args.disable_packed_kv:
+                options.enable_packed_kv = False
+            if args.disable_bias_add:
+                options.enable_bias_add = False
 
         return options
 
@@ -264,3 +271,11 @@ class FusionOptions:
             help="not fuse BiasSplitGelu. Only works for model_type=unet",
         )
         parser.set_defaults(disable_bias_splitgelu=False)
+
+        parser.add_argument(
+            "--disable_nhwc_conv",
+            required=False,
+            action="store_true",
+            help="Do not use NhwcConv. Only works for model_type=unet or vae",
+        )
+        parser.set_defaults(disable_nhwc_conv=False)
