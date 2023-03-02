@@ -329,13 +329,13 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedMultiheadAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
-      int64_t offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
+      size_t offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose
       // operations.
       // If we ever do them in different streams, we must use different staging buffers to avoid data
       // races.
-      for (int64_t i = 0; i < gpt_subgraph_.num_layers; ++i) {
+      for (size_t i = 0; i < gpt_subgraph_.num_layers; ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
                                                      *fetches[offset + i].GetMutable<Tensor>(),
                                                      greedy_state.staging_for_past_state_reorder,
