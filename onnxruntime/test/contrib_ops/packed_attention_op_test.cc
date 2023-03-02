@@ -481,5 +481,22 @@ TEST(PackedAttentionTest, test_on_random_data) {
   }
 }
 
+TEST(PackedAttentionTest, test_on_random_data_large_seq) {
+  int batch_size = 2;
+  int sequence_length = 1152; // > 1024
+  std::string onnx_model = "testdata/packed_attention_fp32.onnx";
+  std::string onnx_model_fp16 = "testdata/packed_attention_fp16.onnx";
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model,
+      false);
+  RunModelWithRandomInput(
+      batch_size,
+      sequence_length,
+      onnx_model_fp16,
+      true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

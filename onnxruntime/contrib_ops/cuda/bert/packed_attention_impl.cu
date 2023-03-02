@@ -1,32 +1,5 @@
-/*
- The implementation of this file is based on qkvToContext plugin in TensorRT demo:
- https://github.com/NVIDIA/TensorRT/tree/release/5.1/demo/BERT/
-
-Copyright 2019 NVIDIA Corporation
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-// Modifications:
-// (1) support GPT-2 past state, unidirectional mask and 4D attention mask from Megatron
-// (2) support 2D attention mask
-// (3) allow persistent softmax from PyTorch for debugging purpose.
-// (4) support different input hidden size and model hidden size for pruned model
-// (5) support different hidden sizes of Q/K and V
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
-// #define DEBUG_GENERATION 1
 
 #include <cassert>
 #include <cuda_fp16.h>
@@ -53,7 +26,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define CUDA_MEMORY_ALIGNMENT 256
+constexpr size_t kCUDAMemoryAlignment = 256;
+
+constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
 
 size_t GetAttentionScratchSize(
     size_t element_size,
@@ -61,7 +36,7 @@ size_t GetAttentionScratchSize(
     size_t num_heads,
     size_t sequence_length) {
   const size_t bytes = element_size * batch_size * num_heads * sequence_length * sequence_length;
-  return ((bytes + CUDA_MEMORY_ALIGNMENT - 1) / CUDA_MEMORY_ALIGNMENT) * CUDA_MEMORY_ALIGNMENT;
+  return ((bytes + kCUDAMemoryAlignment - 1) / kCUDAMemoryAlignment) * kCUDAMemoryAlignment;
 }
 
 size_t GetAttentionWorkspaceSize(
@@ -96,13 +71,13 @@ __global__ void AddBiasTransposeQKVPacked(const T* input,
 
 // Grid: (B, S)
 // Block: 256
-// Format 1 for unfused attention
-//     Input: TxMxNxH
-//     Output: MxBxNxSxH
-// C is token_count
+// For unfused PackedAttention
+//     Input: Tx3xNxH
+//     Output: 3xBxNxSxH
+// Where:
+// T is token_count
 // B is batch_size
 // S is sequence_length
-// M is number of matrices
 // N is num_heads
 // H is head_size
 template <typename T>
@@ -165,13 +140,12 @@ __global__ void AddBiasTransposeQKVPacked(
 
 // Grid: (B, S)
 // Block: 256
-// Format 1 for unfused attention
-//     Input: TxMxNxH
-//     Output: MxBxNxSxH
-// C is token_count
+// For memory efficient fMHA from CUTLASS. For future use, doesn't support fMHA from CUTLASS yet.
+//     Input: Tx3xNxH
+//     Output: 3xBxNxSxH
+// T is token_count
 // B is batch_size
 // S is sequence_length
-// M is number of matrices
 // N is num_heads
 // H is head_size
 template <typename T>
@@ -226,13 +200,12 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
 
 // Grid: (B, S)
 // Block: 256
-// Format 1 for unfused attention
-//     Input: TxMxNxH
-//     Output: TxNxMxH
-// C is token_count
+// For fMHA from TRT
+//     Input: Tx3xNxH
+//     Output: TxNx3xH
+// T is token_count
 // B is batch_size
 // S is sequence_length
-// M is number of matrices
 // N is num_heads
 // H is head_size
 template <typename T>
@@ -270,7 +243,7 @@ void InvokeAddBiasTranspose(
     cudaStream_t stream) {
   if (format == AttentionQkvFormat::Q_K_V_BNSH) {
     const dim3 grid(sequence_length, batch_size);
-    AddBiasTransposeQKVPacked<T><<<grid, 256, 0, stream>>>(
+    AddBiasTransposeQKVPacked<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         input,
         biases,
         num_heads,
@@ -281,9 +254,9 @@ void InvokeAddBiasTranspose(
         output + 2 * batch_size * sequence_length * num_heads * qk_head_size,
         token_offset,
         token_count);
-  } else if (format == AttentionQkvFormat::Q_K_V_BSNH) {
+  } else if (format == AttentionQkvFormat::Q_K_V_BSNH) { // TODO: add memory efficient support
     const dim3 grid(sequence_length, batch_size);
-    AddBiasTransposeQKVPackedCutlass<T><<<grid, 256, 0, stream>>>(
+    AddBiasTransposeQKVPackedCutlass<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         input,
         biases,
         num_heads,
@@ -297,7 +270,7 @@ void InvokeAddBiasTranspose(
   } else {
     ORT_ENFORCE(format == AttentionQkvFormat::QKV_BSN3H);
     const dim3 grid(token_count);
-    AddBiasTransposeQKVPackedTRT<T><<<grid, 256, 0, stream>>>(
+    AddBiasTransposeQKVPackedTRT<T><<<grid, kMAX_THREADS_PER_BLOCK, 0, stream>>>(
         input,
         biases,
         num_heads,
@@ -305,26 +278,6 @@ void InvokeAddBiasTranspose(
         output);
   }
 }
-
-// Fused kernel of Add (bias) and Transpose.
-// Shape of inputs and outputs:
-//     biases:  (num_matrices, num_heads * head_size)
-// format 0: (requires sequence_length = kv_sequence_length and qk_head_size = v_head_size when num_matrices == 3)
-//     input:   (num_matrices, batch_size, sequence_length, num_heads, head_size)
-//     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
-// format 1:
-//     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)
-//     output:  (num_matrices, batch_size, num_heads, sequence_length, head_size)
-//     qkv_add_bias: (batch_size, sequence_length, num_matrices, num_heads, head_size) optional
-// format 2:
-//     input :  (batch_size, sequence_length, num_matrices, num_heads, head_size)
-//     output:  (batch_size, sequence_length, num_heads, num_matrices, head_size)
-// format 3: (requires sequence_length = kv_sequence_length and qk_head_size = v_head_size when num_matrices == 3)
-//     input:   (batch_size, sequence_length, num_matrices, num_heads, head_size)
-//     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
-// format 4: (requires qk_head_size = v_head_size)
-//     input:   (batch_size, sequence_length, num_heads, num_matrices, head_size)
-//     output:  (num_matrices, batch_size, sequence_length, num_heads, head_size)
 
 template <typename T>
 struct T4;
@@ -392,10 +345,15 @@ void LaunchAddBiasTranspose(
   }
 }
 
-constexpr int32_t kMAX_THREADS_PER_BLOCK = 256;
-
 // Input:  BxNxSxH
 // Output: TxNxH
+// where:
+// T is token_count
+// B is batch_size
+// S is sequence_length
+// N is num_heads
+// H is head_size
+
 // Grid: T
 // Block: 256
 template <typename T>
@@ -552,7 +510,7 @@ Status UnfusedScaledDotProductAttention(
                          AttentionQkvFormat::Q_K_V_BNSH, data.token_offset,
                          parameters.token_count, stream);
 
-  T* scratch1 = qkv + elements_q + elements_k + elements_v;
+  T* scaled_qk = qkv + elements_q + elements_k + elements_v;
 
   // Q, K and V are ready now
   DUMP_TENSOR_INIT();
@@ -581,27 +539,27 @@ Status UnfusedScaledDotProductAttention(
       k, qk_head_size, sequence_length * qk_head_size,
       q, qk_head_size, sequence_length * qk_head_size,
       &zero,
-      scratch1, sequence_length, sequence_length * sequence_length,
+      scaled_qk, sequence_length, sequence_length * sequence_length,
       batches, device_prop));
 
-  DUMP_TENSOR_D("QK", scratch1, batch_size * num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("QK", scaled_qk, batch_size * num_heads, sequence_length, sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
                                                sequence_length);
-  T* scratch2 = scratch1 + (bytes / element_size);
+  T* attention_score = scaled_qk + (bytes / element_size);
 
   // Apply softmax and store result R to scratch2: BxNxSxT
   // mask_index has 1D shape: either (batch_size) or (2*batch_size). Only the later one has start postions.
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
-      scratch1,
+      scaled_qk,
       data.relative_position_bias,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,
       num_heads,
-      scratch2, stream));
+      attention_score, stream));
 
-  DUMP_TENSOR_D("Softmax", scratch2, batch_size * num_heads, sequence_length, sequence_length);
+  DUMP_TENSOR_D("Softmax", attention_score, batch_size * num_heads, sequence_length, sequence_length);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;
@@ -609,7 +567,7 @@ Status UnfusedScaledDotProductAttention(
       cublas, CUBLAS_OP_N, CUBLAS_OP_N,
       v_head_size, sequence_length, sequence_length,
       &one, v, v_head_size, sequence_length * v_head_size,
-      scratch2, sequence_length, sequence_length * sequence_length,
+      attention_score, sequence_length, sequence_length * sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
 
   // Temp_output is BxNxSxH_v, transpose and remove padding to output token_countxNxH_v

@@ -201,7 +201,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.num_heads = num_heads_;
   parameters.scale = scale_;
   parameters.token_count = static_cast<int32_t>(token_count);
-  parameters.has_relative_position_bias = nullptr != relative_position_bias_dims;
+  parameters.has_relative_position_bias = nullptr != relative_position_bias;
 
   return Status::OK();
 }
@@ -257,8 +257,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                   cumulative_sequence_length->Shape(),
                                   relative_position_bias,
                                   parameters));
-
-  int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
