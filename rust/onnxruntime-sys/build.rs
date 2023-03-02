@@ -14,6 +14,7 @@ use std::{
 ///          To do so, run this:
 ///              cargo build --package onnxruntime-sys --features generate-bindings
 const ORT_VERSION: &str = include_str!("../../VERSION_NUMBER");
+const ORT_ENV_VERSION: &str = "ORT_VERSION";
 
 /// Base Url from which to download pre-built releases/
 const ORT_RELEASE_BASE_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download";
@@ -47,6 +48,7 @@ fn main() {
     println!("cargo:rustc-link-lib=onnxruntime");
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
+    println!("cargo:rerun-if-env-changed={}", ORT_ENV_VERSION);
     println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_STRATEGY);
     println!("cargo:rerun-if-env-changed={}", ORT_RUST_ENV_GPU);
     println!(
@@ -324,7 +326,7 @@ impl OnnxPrebuiltArchive for Triplet {
     }
 }
 
-fn prebuilt_archive_url() -> (PathBuf, String) {
+fn prebuilt_archive_url(version: &str) -> (PathBuf, String) {
     let triplet = Triplet {
         os: env::var("CARGO_CFG_TARGET_OS")
             .expect("Unable to get TARGET_OS")
@@ -343,19 +345,19 @@ fn prebuilt_archive_url() -> (PathBuf, String) {
     let prebuilt_archive = format!(
         "onnxruntime-{}-{}.{}",
         triplet.as_onnx_str(),
-        ORT_VERSION.trim(),
+        version,
         triplet.os.archive_extension()
     );
     let prebuilt_url = format!(
         "{}/v{}/{}",
-        ORT_RELEASE_BASE_URL, ORT_VERSION.trim(), prebuilt_archive
+        ORT_RELEASE_BASE_URL, version, prebuilt_archive
     );
 
     (PathBuf::from(prebuilt_archive), prebuilt_url)
 }
 
-fn prepare_libort_dir_prebuilt() -> PathBuf {
-    let (prebuilt_archive, prebuilt_url) = prebuilt_archive_url();
+fn prepare_libort_dir_prebuilt(version: &str) -> PathBuf {
+    let (prebuilt_archive, prebuilt_url) = prebuilt_archive_url(version);
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let extract_dir = out_dir.join(ORT_PREBUILT_EXTRACT_DIR);
@@ -384,13 +386,14 @@ fn prepare_libort_dir_prebuilt() -> PathBuf {
 }
 
 fn prepare_libort_dir() -> PathBuf {
+    let version = env::var(ORT_ENV_VERSION).unwrap_or(ORT_VERSION.to_string());
     let strategy = env::var(ORT_RUST_ENV_STRATEGY);
     println!(
         "strategy: {:?}",
         strategy.as_ref().map_or_else(|_| "unknown", String::as_str)
     );
     match strategy.as_ref().map(String::as_str) {
-        Ok("download") => prepare_libort_dir_prebuilt(),
+        Ok("download") => prepare_libort_dir_prebuilt(&version),
         Ok("system") => PathBuf::from(match env::var(ORT_RUST_ENV_SYSTEM_LIB_LOCATION) {
             Ok(p) => p,
             Err(e) => {
