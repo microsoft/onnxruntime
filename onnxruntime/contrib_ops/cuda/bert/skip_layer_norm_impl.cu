@@ -185,10 +185,22 @@ Status LaunchSkipLayerNormKernel(
                                                  maybe2half<T>(epsilon), output,
                                                  skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      int cuda_device_id{0};
+      int max_threads_per_block{1024};
+      CUDA_CALL_THROW(cudaGetDevice(&cuda_device_id));
+      CUDA_CALL_THROW(cudaDeviceGetAttribute(&max_threads_per_block, cudaDevAttrMaxThreadsPerBlock, cuda_device_id));
+
+      if (max_threads_per_block >= 1024 && ld > (512 * 4)) {
+        constexpr int block_size = 1024;
+        SkipLayerNormKernel<T, block_size, Simplified>
+            <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
+                                                   maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      } else {
+        constexpr int block_size = 512;
+        SkipLayerNormKernel<T, block_size, Simplified>
+            <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
+                                                   maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      }
     }
   } else {
     const int grid_size = element_count / ld;
@@ -210,17 +222,35 @@ Status LaunchSkipLayerNormKernel(
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
                                                  maybe2half<T>(epsilon), output,
                                                  skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld == 384) {
+    } else if (ld <= 256) {
+      constexpr int block_size = 256;
+      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
+          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
+                                                 maybe2half<T>(epsilon), output,
+                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
+    } else if (ld <= 384) {
       constexpr int block_size = 384;
       SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
           <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
                                                  maybe2half<T>(epsilon), output,
                                                  skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
     } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      int cuda_device_id{0};
+      int max_threads_per_block{1024};
+      CUDA_CALL_THROW(cudaGetDevice(&cuda_device_id));
+      CUDA_CALL_THROW(cudaDeviceGetAttribute(&max_threads_per_block, cudaDevAttrMaxThreadsPerBlock, cuda_device_id));
+
+      if (max_threads_per_block >= 1024 && ld >= 1024) {
+        constexpr int block_size = 1024;
+        SkipLayerNormKernel<T, block_size, Simplified>
+            <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
+                                                   maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      } else {
+        constexpr int block_size = 512;
+        SkipLayerNormKernel<T, block_size, Simplified>
+            <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
+                                                   maybe2half<T>(epsilon), output, skip_input_bias_add_output);
+      }
     }
   }
   return CUDA_CALL(cudaGetLastError());
