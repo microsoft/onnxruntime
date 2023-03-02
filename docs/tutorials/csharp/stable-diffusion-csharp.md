@@ -54,7 +54,7 @@ Once you have selected a model version repo, click `Files and Versions`, then se
 - Clone the repo:
 ```text
 git lfs install
-git clone https://huggingface.co/<contributor>/<model-name>
+git clone https://huggingface.co/CompVis/stable-diffusion-v1-4 -b onnx
 ```
 
 - Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`.
