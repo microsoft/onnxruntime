@@ -45,7 +45,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
-  std::vector<SparseValue<ThresholdType>> weights_;
+  std::vector<SparseValue<ThresholdType>> weights_;    
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
  public:
@@ -209,7 +209,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   n_nodes_ = nodes_treeids.size();
   limit = static_cast<size_t>(n_nodes_);
-  InlinedVector<TreeNodeElementId> node_tree_ids;
+  InlinedVector<TreeNodeElementId> node_tree_ids;  
   node_tree_ids.reserve(limit);
   nodes_.clear();
   nodes_.reserve(limit);
@@ -308,19 +308,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
       // models converted with an old version of onnxmltools. There weights are ignored.
-      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
+      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");      
       continue;
     }
 
     w.i = target_class_ids[i];
-    w.value = target_class_weights_as_tensor.empty()
-                  ? static_cast<ThresholdType>(target_class_weights[i])
-                  : target_class_weights_as_tensor[i];
+    w.value = target_class_weights_as_tensor.empty() 
+        ? static_cast<ThresholdType>(target_class_weights[i])
+        : target_class_weights_as_tensor[i];
     if (leaf.falsenode_inc_or_n_weights == 0) {
       leaf.truenode_inc_or_first_weight = static_cast<uint32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
     }
-    ++leaf.falsenode_inc_or_n_weights;
+    ++leaf.falsenode_inc_or_n_weights; 
     weights_.push_back(w);
   }
 
@@ -627,22 +627,22 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   }
 }  // namespace detail
 
-#define TREE_FIND_VALUE(CMP)                                    \
-  if (has_missing_tracks_) {                                    \
-    while (root->is_not_leaf()) {                               \
-      val = x_data[root->feature_id];                           \
-      root += (val CMP root->value_or_unique_weight ||          \
-               (root->is_missing_track_true() && _isnan_(val))) \
-                  ? root->truenode_inc_or_first_weight          \
-                  : root->falsenode_inc_or_n_weights;           \
-    }                                                           \
-  } else {                                                      \
-    while (root->is_not_leaf()) {                               \
-      val = x_data[root->feature_id];                           \
-      root += val CMP root->value_or_unique_weight              \
-                  ? root->truenode_inc_or_first_weight          \
-                  : root->falsenode_inc_or_n_weights;           \
-    }                                                           \
+#define TREE_FIND_VALUE(CMP)                                         \
+  if (has_missing_tracks_) {                                         \
+    while (root->is_not_leaf()) {                                    \
+      val = x_data[root->feature_id];                                \
+      root += (val CMP root->value_or_unique_weight ||               \
+              (root->is_missing_track_true() && _isnan_(val)))       \
+                 ? root->truenode_inc_or_first_weight                \
+                 : root->falsenode_inc_or_n_weights;                 \
+    }                                                                \
+  } else {                                                           \
+    while (root->is_not_leaf()) {                                    \
+      val = x_data[root->feature_id];                                \
+      root += val CMP root->value_or_unique_weight                   \
+                ? root->truenode_inc_or_first_weight                 \
+                : root->falsenode_inc_or_n_weights;                  \
+    }                                                                \
   }
 
 inline bool _isnan_(float x) { return std::isnan(x); }

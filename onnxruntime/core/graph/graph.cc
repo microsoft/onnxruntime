@@ -969,7 +969,6 @@ int Node::PruneRemovableAttributes(const InlinedVector<std::string>& removable_a
   return n_removed;
 }
 
-
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {
   // The node refers to a primitive operator.
