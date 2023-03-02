@@ -1,3 +1,11 @@
+---
+title: Stable Diffusion with C#
+description: In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#.
+parent: Stable Diffusion with C#
+grand_parent: Tutorials
+has_children: false
+nav_order: 1
+---
 
 # Inference Stable Diffusion with C# and ONNX Runtime
 {: .no_toc }
