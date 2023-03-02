@@ -6,11 +6,20 @@ import * as path from 'path';
 
 import {OrtWasmModule} from './binding/ort-wasm';
 import {OrtWasmThreadedModule} from './binding/ort-wasm-threaded';
-import ortWasmFactory from './binding/ort-wasm.js';
+import ortWasmFactory from /* webpackChunkName: 'ort-wasm' */ './binding/ort-wasm.js';
+
+const ortWasmFactorySimd: EmscriptenModuleFactory<OrtWasmModule> =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    BUILD_DEFS.USE_LEGACY_LOADER ? ortWasmFactory :
+                                   require(/* webpackChunkName: 'ort-wasm-simd' */ './binding/ort-wasm-simd.js');
 
 const ortWasmFactoryThreaded: EmscriptenModuleFactory<OrtWasmModule> =
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     !BUILD_DEFS.DISABLE_WASM_THREAD ? require('./binding/ort-wasm-threaded.js') : ortWasmFactory;
+
+const ortWasmFactorySimdThreaded: EmscriptenModuleFactory<OrtWasmModule> =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    BUILD_DEFS.USE_LEGACY_LOADER ? ortWasmFactoryThreaded : require('./binding/ort-wasm-simd-threaded.js');
 
 let wasm: OrtWasmModule|undefined;
 let initialized = false;
@@ -116,11 +125,12 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
 
   // promise for module initialization
   tasks.push(new Promise((resolve, reject) => {
-    const factory = useThreads ? ortWasmFactoryThreaded : ortWasmFactory;
+    const factory = useSimd ? (useThreads ? ortWasmFactorySimdThreaded : ortWasmFactorySimd) :
+                              (useThreads ? ortWasmFactoryThreaded : ortWasmFactory);
     const config: Partial<OrtWasmModule> = {
       locateFile: (fileName: string, scriptDirectory: string) => {
-        if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads && fileName.endsWith('.worker.js') &&
-            typeof Blob !== 'undefined') {
+        if (BUILD_DEFS.USE_LEGACY_LOADER && !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads &&
+            fileName.endsWith('.worker.js') && typeof Blob !== 'undefined') {
           return URL.createObjectURL(new Blob(
               [
                 // This require() function is handled by webpack to load file content of the corresponding .worker.js
@@ -139,7 +149,7 @@ export const initializeWebAssembly = async(flags: Env.WebAssemblyFlags): Promise
       }
     };
 
-    if (!BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
+    if (BUILD_DEFS.USE_LEGACY_LOADER && !BUILD_DEFS.DISABLE_WASM_THREAD && useThreads) {
       if (typeof Blob === 'undefined') {
         config.mainScriptUrlOrBlob = path.join(__dirname, 'ort-wasm-threaded.js');
       } else {

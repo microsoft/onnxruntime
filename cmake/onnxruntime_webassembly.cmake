@@ -206,6 +206,7 @@ else()
                         -s EXIT_RUNTIME=0 \
                         -s ALLOW_MEMORY_GROWTH=1 \
                         -s MODULARIZE=1 \
+                        -s EXPORT_ES6=1 \
                         -s EXPORT_ALL=0 \
                         -s LLD_REPORT_UNDEFINED \
                         -s VERBOSE=0 \

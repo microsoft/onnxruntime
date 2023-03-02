@@ -26,6 +26,10 @@ interface BuildDefinitions {
    * defines whether to disable multi-threading feature in WebAssembly backend in the build.
    */
   DISABLE_WASM_THREAD: boolean;
+  /**
+   * defines whether to use the legacy loader (webpack worker-loader plugin)
+   */
+  USE_LEGACY_LOADER: boolean;
 }
 
 declare let BUILD_DEFS: BuildDefinitions;
