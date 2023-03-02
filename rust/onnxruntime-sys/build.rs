@@ -60,20 +60,9 @@ fn main() {
 fn generate_bindings(include_dir: &Path) {
     let clang_args = &[
         format!("-I{}", include_dir.display()),
-        format!(
-            "-I{}",
-            include_dir
-                .join("onnxruntime")
-                .join("core")
-                .join("session")
-                .display()
-        ),
     ];
 
     let path = include_dir
-        .join("onnxruntime")
-        .join("core")
-        .join("session")
         .join("onnxruntime_c_api.h");
 
     // The bindgen::Builder is the main entry point
@@ -354,12 +343,12 @@ fn prebuilt_archive_url() -> (PathBuf, String) {
     let prebuilt_archive = format!(
         "onnxruntime-{}-{}.{}",
         triplet.as_onnx_str(),
-        ORT_VERSION,
+        ORT_VERSION.trim(),
         triplet.os.archive_extension()
     );
     let prebuilt_url = format!(
         "{}/v{}/{}",
-        ORT_RELEASE_BASE_URL, ORT_VERSION, prebuilt_archive
+        ORT_RELEASE_BASE_URL, ORT_VERSION.trim(), prebuilt_archive
     );
 
     (PathBuf::from(prebuilt_archive), prebuilt_url)
