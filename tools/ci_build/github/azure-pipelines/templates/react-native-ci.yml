@@ -230,21 +230,39 @@ jobs:
 
   - template: android-dump-logs-from-steps.yml
     parameters:
-     steps:
-     - task: Gradle@3
-       inputs:
-         gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-         options: '--stacktrace'
-         tasks: ':app:connectedDebugAndroidTest'
-         publishJUnitResults: true
-         testResultsFiles: '**/TEST-*.xml'
-         testRunTitle: 'React Native Android e2e Test results'
-         javaHomeOption: 'path'
-         jdkDirectory: '$(JAVA_HOME_11_X64)'
-         sonarQubeRunAnalysis: false
-         spotBugsAnalysis: false
-       displayName: Run React Native Android e2e Tests
+      steps:
+      # - task: Gradle@3
+      #   inputs:
+      #     gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+      #     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+      #     options: '--stacktrace'
+      #     tasks: ':app:connectedDebugAndroidTest'
+      #     publishJUnitResults: true
+      #     testResultsFiles: '**/TEST-*.xml'
+      #     testRunTitle: 'React Native Android e2e Test results'
+      #     javaHomeOption: 'path'
+      #     jdkDirectory: '$(JAVA_HOME_11_X64)'
+      #     sonarQubeRunAnalysis: false
+      #     spotBugsAnalysis: false
+      #   displayName: Run React Native Android e2e Tests
+
+      - script: |
+          NUM_ITERATIONS=10
+          NUM_FAILURES=0
+          for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
+          do
+            echo "*** test iteration $i"
+            ./gradlew :app:connectedDebugAndroidTest
+            TEST_RESULT=$?
+            if [[ "$TEST_RESULT" -ne 0 ]]; then
+              echo "*** failure at test iteration $i"
+              ((NUM_FAILURES++))
+            fi
+          done
+          echo "*** failed iterations: ${NUM_FAILURES} / ${NUM_ITERATIONS}"
+          exit $NUM_FAILURES
+        workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+        displayName: Run React Native Android e2e Tests
 
   # - script: |
   #     export FORCE_BUNDLING=1
