@@ -17,8 +17,8 @@ For the below example sentence the [CLIP model](https://huggingface.co/docs/tran
 ```text
 "make a picture of green tree with flowers around it and a red sky" 
 ```
-| Latent Seed Image | Resulting image |
-|:----------------------------------------------------------------------------------|:-----------------------------------------------------------------------------------|
+
+|----------------------|----------------------|
 | <img src="../../../images/latents-noise-example.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> | <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
 
 
