@@ -84,13 +84,6 @@ struct AllocPlanPerValue {
 
 using NotificationIndex = size_t;
 
-  enum ExecutionStepType {
-    LAUNCH = 1,
-    BARRIER = 2,
-    WAIT = 3,
-    ACTIVATENOTIFICATION = 4,
-    TRIGGERDOWNSTREAM = 5,
-  };
 // SequentialExecutionPlan: This is the data that is produced by a static
 // planner for a sequential execution, to be used by a SequentialExecutor.
 struct SequentialExecutionPlan : public ExecutionPlanBase {
@@ -116,6 +109,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // 3. Wait on a notificaiton
   class ExecutionStep {
    public:
+    ExecutionStep(NodeIndex node_index) : node_index_(node_index) {}
     virtual ~ExecutionStep() {}
     virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
@@ -123,9 +117,9 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            const bool& terminate_flag,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
-#ifdef ENABLE_TRAINING
-    ExecutionStepType type_;
-#endif
+    inline NodeIndex GetNodeIndex() { return node_index_; }
+  protected:
+    NodeIndex node_index_;
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
   // The steps within a sequence are executed in order, and happened on the same device.

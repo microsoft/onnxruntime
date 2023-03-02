@@ -11,7 +11,7 @@ class SessionScope;
 
 class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  BarrierStep(size_t id);
+  BarrierStep(size_t id, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
@@ -26,7 +26,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
 
 class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx);
+  WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
@@ -52,16 +52,11 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
-
-  NodeIndex GetNodeIndex() { return node_index_; }
-
- private:
-  NodeIndex node_index_{0};
 };
 
 class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  ActivateNotificationStep(NotificationIndex notification_index);
+  ActivateNotificationStep(NotificationIndex notification_index, NodeIndex node_index);
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
@@ -77,7 +72,7 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
 
 class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  public:
-  TriggerDownstreamStep(size_t trigger_point_index);
+  TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index);
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
                  SessionScope& session_scope,
@@ -89,14 +84,4 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
  private:
   size_t trigger_point_index_;
 };
-#ifdef ENABLE_TRAINING
-/// <summary>
-/// Retrieve Region start and end from Program Counter's start and end.
-/// The returned start_region and end_region are the index of the argument steps within start_pc and end_pc
-/// which is the topological order index of the nodes.
-/// </summary>
-void RetrieveRegionBoundaryFromProgramCounter(std::vector<std::unique_ptr<SequentialExecutionPlan::ExecutionStep>>& steps,
-  const InlinedHashMap<NodeIndex, size_t>& node_index_2_toposort_index,
-  size_t start_pc, size_t end_pc, size_t& start_region, size_t& end_region);
-#endif
 }  // namespace onnxruntime
