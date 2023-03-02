@@ -82,7 +82,7 @@ stages:
         ORT_EP_NAME: DML
         WITH_CACHE: true
         # DirectML cannot run on T4 GPUs.
-        MachinePool: onnxruntime-Win2019-GPU-dml
+        MachinePool: onnxruntime-Win2019-GPU-dml-A10
 
 - stage: kernelDocumentation
   dependsOn: []
