@@ -37,6 +37,13 @@ jobs:
       artifactName: '${{parameters.artifactName}}'
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
   - template: use-android-ndk.yml
 
   - script: |
