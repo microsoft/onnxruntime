@@ -615,10 +615,8 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
     proto.set_doc_string(description_);
 
   // Checks an attribute was not removed.
-  for (auto name : removable_attributes_) {
-    if (attributes_.find(name) == attributes_.end()) {
-      ORT_THROW("Attribute '", name, "' was removed, conversion to proto cannot complete.");
-    }
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
   }
 
   // Set attributes.
@@ -674,10 +672,8 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto implicit_inputs = GetNodeArgsOrtFormat(definitions_.implicit_input_defs);
 
   // Checks an attribute was not removed.
-  for (auto attribute_name : removable_attributes_) {
-    if (attributes_.find(attribute_name) == attributes_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attribute '", attribute_name, "' was removed, SaveToOrtFormat cannot complete.");
-    }
+  if (!can_be_saved_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Removable attributes were removed before the node is saved.");
   }
 
   // Node attributes
@@ -849,6 +845,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  can_be_saved_ = true;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -959,27 +956,19 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   graph_->SetGraphProtoSyncNeeded();
   return attributes_.erase(attr_name) > 0;
 }
-
-void Node::RegisterRemovableAttribute(const std::string& name) {
-  auto found = GetAttributes().find(name);
-  if (found == GetAttributes().end()) {
-    ORT_THROW("Attribute '", name, "' cannot be found.");
-  }
-  if (removable_attributes_.find(name) != removable_attributes_.end()) {
-    ORT_THROW("Attribute '", name, "' was registered as removable.");
-  }
-  removable_attributes_.emplace(name);
-}
-
-bool Node::ClearRemovableAttribute() {
-  for (auto name : removable_attributes_) {
-    if (!ClearAttribute(name))
-      return false;
-  }
-  return true;
-}
-
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+int Node::PruneRemovableAttributes(const InlinedVector<std::string>& removable_attributes) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  int n_removed = 0;
+  for (auto name : removable_attributes) {
+    n_removed += attributes_.erase(name);
+  }
+  can_be_saved_ = can_be_saved_ && n_removed == 0;
+  return n_removed;
+}
+
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {

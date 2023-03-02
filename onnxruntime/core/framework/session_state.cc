@@ -245,15 +245,21 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
-Status SessionState::PruneRemovableAttributes() {
+int SessionState::PruneRemovableAttributes() {
+  int n_removed = 0;
+  InlinedVector<std::string> removable_attributes;
   for (size_t i = 0; i < session_kernels_.size(); ++i) {
-    // TODO: better design
-    onnxruntime::Node* node = (onnxruntime::Node*)&(session_kernels_[i].get()->Node());
-    if (!node->ClearRemovableAttribute()) {
-      return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Unable to remove removable attributes.");
+    auto status = session_kernels_[i].get()->RemovableAttributes(removable_attributes);
+    if (!status.IsOK()) {
+      ORT_THROW("Kernel ", i, " failed at retrieving the removable attributes.");
     }
+    if (removable_attributes.empty())
+      continue;
+    auto index = session_kernels_[i].get()->Node().Index();
+    Node* node = graph_.GetNode(index);
+    n_removed += node->PruneRemovableAttributes(removable_attributes);
   }
-  return Status::OK();
+  return n_removed;
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {

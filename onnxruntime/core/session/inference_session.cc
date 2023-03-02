@@ -1528,10 +1528,14 @@ common::Status InferenceSession::Initialize() {
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
-    LOGS(*session_logger_, INFO) << "Session successfully initialized.";
 
     // once the model is saved, we may remove unnecessary attributes for inference
-    ORT_RETURN_IF_ERROR_SESSIONID_(session_state_->PruneRemovableAttributes());
+    int n_removed = session_state_->PruneRemovableAttributes();
+    if (n_removed > 0) {
+      LOGS(*session_logger_, INFO) << n_removed << " removable attributes were removed.";
+    }
+
+    LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {

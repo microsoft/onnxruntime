@@ -47,6 +47,22 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info) : OpKe
   ORT_THROW_IF_ERROR(p_tree_ensemble_->Init(info));
 } 
 
+template <typename T>
+Status TreeEnsembleRegressor<T>::RemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+  removable_attributes.clear();
+  InlinedVector<std::string> names {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                    "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                    "nodes_truenodeids", "nodes_values",
+                                    "target_ids", "target_treeids", "target_nodeids", "target_weights"};
+  removable_attributes.insert(removable_attributes.begin(), names.begin(), names.end());
+#if !defined(ORT_MINIMAL_BUILD)
+  removable_attributes.push_back("base_values_as_tensor");
+  removable_attributes.push_back("nodes_hitrates_as_tensor");
+  removable_attributes.push_back("nodes_values_as_tensor");
+  removable_attributes.push_back("class_weights_as_tensor");
+#endif
+  return Status::OK();
+}
 
 template <typename T>
 common::Status TreeEnsembleRegressor<T>::Compute(OpKernelContext* context) const {

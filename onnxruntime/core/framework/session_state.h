@@ -307,6 +307,10 @@ class SessionState {
     return parent_;
   }
 
+  // Clear all removable attributes if they exists.
+  // Returns the number of pruned attributes.
+  int PruneRemovableAttributes();
+
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;
   }

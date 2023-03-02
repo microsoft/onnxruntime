@@ -42,6 +42,24 @@ TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info) : Op
 }
 
 template <typename T>
+Status TreeEnsembleClassifier<T>::RemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+  InlinedVector<std::string> names {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
+                                    "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
+                                    "nodes_truenodeids", "nodes_values", "class_ids", "class_treeids", "class_nodeids",
+                                    "class_weights", "classlabels_strings", "classlabels_int64s"};
+  removable_attributes.clear();
+  removable_attributes.insert(removable_attributes.begin(), names.begin(), names.end());
+#if !defined(ORT_MINIMAL_BUILD)
+  removable_attributes.push_back("base_values_as_tensor");
+  removable_attributes.push_back("nodes_hitrates_as_tensor");
+  removable_attributes.push_back("nodes_values_as_tensor");
+  removable_attributes.push_back("class_weights_as_tensor");
+#endif
+  return Status::OK();
+}
+
+
+template <typename T>
 common::Status TreeEnsembleClassifier<T>::Compute(OpKernelContext* context) const {
   const Tensor& X = *context->Input<Tensor>(0);
   auto x_dims = X.Shape().GetDims();

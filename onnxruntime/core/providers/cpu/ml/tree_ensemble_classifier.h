@@ -13,6 +13,7 @@ class TreeEnsembleClassifier final : public OpKernel {
  public:
   explicit TreeEnsembleClassifier(const OpKernelInfo& info);
   common::Status Compute(OpKernelContext* context) const override;
+  virtual Status RemovableAttributes(InlinedVector<std::string>& removable_attributes) const;
 
  private:
   // Following pointer holds a pointer on one instance of 
