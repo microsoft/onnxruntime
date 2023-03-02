@@ -174,8 +174,7 @@ void StreamExecutionContext::RecycleNodeInputs(onnxruntime::NodeIndex node_index
   }
 }
 
-void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag,
-              size_t since, bool is_downstream) {
+void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& session_scope, const bool& terminate_flag, size_t since) {
   if (!ctx.TaskStatus().IsOK()) {
     // already in bad status, terminate it
     ctx.CompleteTask();
@@ -190,54 +189,6 @@ void RunSince(size_t stream_idx, StreamExecutionContext& ctx, SessionScope& sess
   auto* range = ctx.GetCurrentRange();
   if (range)
     end = std::min(end, range->stream_pc_range[stream_idx].second);
-#endif
-
-#ifdef ENABLE_TRAINING
-  // this is a special handle for training
-  // with ORTModule, we are partially execute the graph with a shared context.
-  // there is a case that in forward pass we want to trigger downstream which
-  // not in current range. We need to execute one step to consume the Barrier
-  // counter otherwise later in backward the downstream won't execute correctly.
-  // this is ugly, hopefully we won't need to worry about if deprecate ORTModule
-  // by Torch Dynamo.
-  // We only need to do this on a triggered downstream. For example if the barrier is the first step of whole CPU plan,
-  // and the forward part is empty, the normal run of the forward part will not do this extra barrier handling.
-  if (is_downstream && since >= end && since < logic_stream->steps_.size() &&
-      logic_stream->steps_[since]->IsBarrier()) {
-    if (!ctx.TaskStatus().IsOK()) {
-      ctx.CompleteTask();
-      return;
-    }
-    if (terminate_flag) {
-      Status status_made = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exiting due to terminate flag being set to true.");
-      ctx.SetStatus(status_made);
-      ctx.CompleteTask();
-      return;
-    }
-    bool continue_flag = true;
-    Status status;
-    ORT_TRY {
-      status = logic_stream->steps_[since]->Execute(ctx, stream_idx, session_scope, terminate_flag, continue_flag);
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, RUNTIME_EXCEPTION, ex.what());
-      });
-    }
-    if (!status.IsOK()) {
-      // terminate it
-      ctx.SetStatus(status);
-      ctx.CompleteTask();
-      return;
-    }
-    if (continue_flag) {
-      ORT_THROW("Execute the barrier step in backward range passed! this is not expected.");
-    }
-    ctx.CompleteTask();
-    return;
-  }
-#else
-  ORT_UNUSED_PARAMETER(is_downstream);
 #endif
 
   while (since < end) {
@@ -290,7 +241,7 @@ void ScheduleDownstream(StreamExecutionContext& ctx, size_t trigger, bool single
       // increase the task count before schedule down-stream
       ctx.AddTask();
       concurrency::ThreadPool::Schedule(tp, [&ctx, downstream, &terminate_flag, &session_scope]() {
-        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second, true);
+        RunSince(downstream.first, ctx, session_scope, terminate_flag, downstream.second);
       });
     }
   }

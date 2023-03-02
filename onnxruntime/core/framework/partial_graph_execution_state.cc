@@ -7,6 +7,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/execution_frame.h"
+#include "core/framework/execution_steps.h"
 
 namespace onnxruntime {
 
@@ -28,13 +29,13 @@ ProgramRegion& PartialGraphExecutionState::GetProgramRegions(const SessionState&
   new_region.stream_pc_range.reserve(plan->execution_plan.size());
   for (auto& stream : plan->execution_plan) {
     size_t cur = 0;
-    while (cur < stream->step_pc.size() &&
-           stream->step_pc[cur] < new_region.start_pc) {
+    while (cur < stream->steps_.size() &&
+           plan->node_index_2_toposort_index.at(stream->steps_[cur]->GetNodeIndex()) < new_region.start_pc) {
       cur++;
     }
     size_t start = cur;
-    while (cur < stream->step_pc.size() &&
-           stream->step_pc[cur] < new_region.end_pc) {
+    while (cur < stream->steps_.size() &&
+           plan->node_index_2_toposort_index.at(stream->steps_[cur]->GetNodeIndex()) < new_region.end_pc) {
       cur++;
     }
     new_region.stream_pc_range.push_back({start, cur});
