@@ -963,7 +963,7 @@ int Node::PruneRemovableAttributes(const InlinedVector<std::string>& removable_a
   graph_->SetGraphProtoSyncNeeded();
   int n_removed = 0;
   for (auto name : removable_attributes) {
-    n_removed += attributes_.erase(name);
+    n_removed += static_cast<int>(attributes_.erase(name));
   }
   can_be_saved_ = can_be_saved_ && n_removed == 0;
   return n_removed;
