@@ -1,7 +1,7 @@
 ---
 title: Stable Diffusion with C#
 description: In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#.
-parent: Stable Diffusion with C#
+parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
 nav_order: 1
@@ -12,7 +12,7 @@ nav_order: 1
 
 In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#. Stable Diffusion models denoise a static image to create an image that represents the text prompt given by the user.
 
-For example the sentence "make a picture of green tree with flowers around it and a red sky" is created as a text embedding from the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that "understand" text and image relationship. A random noise image based on the seed number is created and then denoised to create an image that represents the text prompt.
+For example the sentence "make a picture of green tree with flowers around it and a red sky" is created as a text embedding from the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that "understands" text and image relationship. A random noise image based on the seed number is created and then denoised to create an image that represents the text prompt.
 
 ```text
 "make a picture of green tree with flowers around it and a red sky" 
