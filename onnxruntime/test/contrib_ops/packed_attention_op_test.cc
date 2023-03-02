@@ -206,7 +206,6 @@ TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
       4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
       -1.8799558877944946f, 0.32488855719566345f, 4.25f, 5.6499996185302734f};
 
-
   RunPackedAttentionTest(
       input_data,
       weight_data,
@@ -218,10 +217,9 @@ TEST(PackedAttentionTest, NoPackWithRelativePositionBias) {
       sequence_length,
       hidden_size,
       number_of_heads,
-      batch_size * sequence_length, 
+      batch_size * sequence_length,
       {},
-      relative_position_bias
-      );
+      relative_position_bias);
 }
 
 TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
@@ -259,8 +257,7 @@ TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
       0.2f, -0.1f, 0.f, 0.f, 0.4f, 2.5f, 0.f, 0.f,
       1.6f, -1.1f, 0.f, 0.f, 0.4f, -2.5f, 0.f, 0.f,
       0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f,
-  };
+      0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
 
   std::vector<float> output_data = {
       4.066014289855957f, 0.068997815251350403f, 4.25f, 5.6499996185302734f,
@@ -279,10 +276,9 @@ TEST(PackedAttentionTest, PackedWithRelativePositionBias) {
       sequence_length,
       hidden_size,
       number_of_heads,
-      4, 
+      4,
       {},
-      relative_position_bias
-      );
+      relative_position_bias);
 }
 
 TEST(PackedAttentionTest, PackedBatch) {
@@ -343,7 +339,7 @@ TEST(PackedAttentionTest, PackedBatchWithQKV) {
       0.8f, -0.5f, 0.0f, 1.f,
       0.5f, 0.2f, 0.3f, -0.6f};
 
-  std::vector<int32_t> qkv_sizes = { 6, 6, 4 };
+  std::vector<int32_t> qkv_sizes = {6, 6, 4};
 
   std::vector<float> weight_data = {
       0.1f, -0.2f, 0.3f, 1.0f, 1.1f, 0.3f, 0.5f, 0.2f, 0.3f, -0.6f, 1.5f, 2.0f,
@@ -469,18 +465,18 @@ static void RunModelWithRandomInput(
 TEST(PackedAttentionTest, test_on_random_data) {
   std::string onnx_model = "testdata/packed_attention_fp32.onnx";
   std::string onnx_model_fp16 = "testdata/packed_attention_fp16.onnx";
-  for(int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})){
-    for(int sequence_length : std::vector<int>({32, 48, 64, 95, 128})){
+  for (int batch_size : std::vector<int>({1, 2, 3, 4, 5, 6, 7, 8})) {
+    for (int sequence_length : std::vector<int>({32, 48, 64, 95, 128})) {
       RunModelWithRandomInput(
-        batch_size,
-        sequence_length,
-        onnx_model,
-        false);
+          batch_size,
+          sequence_length,
+          onnx_model,
+          false);
       RunModelWithRandomInput(
-        batch_size,
-        sequence_length,
-        onnx_model_fp16,
-        true);
+          batch_size,
+          sequence_length,
+          onnx_model_fp16,
+          true);
     }
   }
 }

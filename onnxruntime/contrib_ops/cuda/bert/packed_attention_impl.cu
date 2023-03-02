@@ -491,40 +491,6 @@ Status LaunchTransposeRemovePadding(
 }
 
 template <typename T>
-Status PrepareQkv(PackedAttentionParameters& parameters,
-                  PackedAttentionData<T>& data,
-                  AttentionQkvFormat& qkv_format,
-                  cudaStream_t stream) {
-  const int batch_size = parameters.batch_size;
-  const int sequence_length = parameters.sequence_length;
-  const int num_heads = parameters.num_heads;
-  const int qk_head_size = parameters.head_size;
-  const int v_head_size = parameters.v_head_size;
-  bool use_memory_efficient_attention = data.use_memory_efficient_attention;
-
-  // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
-  // For memory efficient attention, transpose to 3xBxSxNxH (format 3)
-  // For unfused kernel, transpose to 3xBxNxSxH (format 1)
-  // For fused causal kernel, use format 1 since we need have K and V to update present state,
-  //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
-  bool use_fused_kernel = nullptr != data.fused_runner;
-  qkv_format = use_fused_kernel
-                   ? AttentionQkvFormat::QKV_BSN3H
-                   : (use_memory_efficient_attention
-                          ? AttentionQkvFormat::Q_K_V_BSNH
-                          : AttentionQkvFormat::Q_K_V_BNSH);
-
-  // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
-  // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
-  LaunchAddBiasTranspose(data.gemm_buffer, data.bias, data.workspace,
-                         batch_size, sequence_length, num_heads, qk_head_size, v_head_size,
-                         qkv_format, data.token_offset, parameters.token_count, stream);
-
-  CUDA_RETURN_IF_ERROR(cudaGetLastError());
-  return Status::OK();
-}
-
-template<typename T>
 Status FusedScaledDotProductAttention(
     const cudaDeviceProp& device_prop,
     cudaStream_t stream,
@@ -646,7 +612,7 @@ Status UnfusedScaledDotProductAttention(
       scratch2, sequence_length, sequence_length * sequence_length,
       &zero, temp_output, v_head_size, sequence_length * v_head_size, batches, device_prop));
 
-  // Temp_output is BxNxSxH_v, transpose to output BxSxNxH_v
+  // Temp_output is BxNxSxH_v, transpose and remove padding to output token_countxNxH_v
   Status result = LaunchTransposeRemovePadding(
       data.output, temp_output,
       data.token_offset, parameters.token_count,

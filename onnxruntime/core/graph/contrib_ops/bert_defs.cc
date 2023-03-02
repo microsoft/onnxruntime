@@ -305,18 +305,35 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
 constexpr const char* PackingAttention_ver1_doc = R"DOC(
 This is the packed version of Attention.
 
+Sequences in one batch usually don't have same length and they are padded to have same length, 
+e.g., below is a batch with 3 sequences and tokens* are padded.
+  Sequence_0:   0,  1*, 2*,  3*
+  Sequence_1:   4,  5,  6*,  7*
+  Sequence_2:   8,  9,  10,  11
+
+PackedAttention is designed to takes in packed input, i.e., only the real tokens without padding.
+An input as above will be packed into 3 tensors like below:
+ - input ([h0, h4, h5, h8, h9, h10, h11])
+ - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
+ - cumulated_token_count: 0, 1, 1+2, 1+2+4
+
+Input tensors contains the hidden embedding of real tokens.
+Token_offset records the offset of token in the unpacked input.
+cumulated_token_count records cumulated lenght of each sequnces length.
+
+The operator only supports BERT like model with padding on right now.
+
 )DOC";
 
-// Shape inference for Attention and QAttention
+// Shape inference for PackedAttention. Here are the shapes of inputs and output:
+// Input 'input':                      (token_count, input_hidden_size)
+// Input 'weights':                    (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
+// Input 'bias':                       (hidden_size + hidden_size + v_hidden_size)
+// Input 'token_offset':               (batch_size, sequence_length)
+// Input 'cumulative_sequence_length': (batch_size + 1)
+// Input 'relative_position_bias':     (batch_size, num_heads, sequence_length, sequence_length)
+// Output 'output':                    (token_count, v_hidden_size)
 void PackedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
-  // Input 0 has 3D shape (token_count, input_hidden_size)
-  // Input 1 has 2D shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)
-  // Input 2 has 1D shape (hidden_size + hidden_size + v_hidden_size)
-  // Input 3 has 2D shape (batch_size, sequence_length)
-  // Input 4 has 1D shape (batch_size + 1)
-  // Input 5 has 4D shape (batch_size, num_heads, sequence_length, sequence_length)
-  // Output 0 has 3D shape (token_count, v_hidden_size)
-
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
 
@@ -367,10 +384,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
               AttributeProto::INTS,
               OPTIONAL_VALUE)
-        .Attr("mask_filter_value",
-              "The value to be filled in the attention mask. Default value is -10000.0f",
-              AttributeProto::FLOAT,
-              OPTIONAL_VALUE)
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
@@ -389,11 +402,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(3,
                "token_offset",
-               "In packing mode, it specify the offset of each token(batch_size, sequence_length).",
+               "In packing mode, it specifies the offset of each token(batch_size, sequence_length).",
                "M")
         .Input(4,
                "cumulative_sequence_length",
-               "In packing mode, it specify the offset of each token(batch_size + 1). cumulative_sequence_length.",
+               "In packing mode, it specifies the offset of each token(batch_size + 1). cumulative_sequence_length.",
                "M")
         .Input(5,
                "relative_position_bias",

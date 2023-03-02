@@ -49,12 +49,6 @@ PackedAttention<T>::PackedAttention(const OpKernelInfo& info) : CudaKernel(info)
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
-
-#if USE_FLASH_ATTENTION
-  disable_memory_efficient_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
 }
 
 template <typename T>
@@ -207,8 +201,43 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.num_heads = num_heads_;
   parameters.scale = scale_;
   parameters.token_count = static_cast<int32_t>(token_count);
+  parameters.has_relative_position_bias = nullptr != relative_position_bias_dims;
 
   return Status::OK();
+}
+
+template <typename T>
+MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
+  auto& device_prop = GetDeviceProp();
+
+  // Check whether we can use fused kernel
+  int sm = device_prop.major * 10 + device_prop.minor;
+  bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
+                                                              parameters.head_size,
+                                                              parameters.sequence_length,
+                                                              enable_trt_flash_attention_,
+                                                              false);
+  bool use_fused_runner = !disable_fused_runner_ &&
+                          !parameters.has_relative_position_bias &&
+                          parameters.hidden_size == parameters.v_hidden_size &&
+                          is_fMHA_supported;
+
+  MHARunner* fused_runner = nullptr;
+  if (use_fused_runner) {
+    // Assuming that num_heads and head_size do not change.
+    if (nullptr == fused_fp16_runner_.get()) {
+      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
+                                                        enable_trt_flash_attention_, parameters.scale));
+    }
+
+    // In case some kernel not loaded due to shared memory limit, we need to double check here.
+    const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
+    if (fused_fp16_runner_->isValid(S)) {
+      fused_runner = fused_fp16_runner_.get();
+    }
+  }
+
+  return fused_runner;
 }
 
 template <typename T>
@@ -220,7 +249,6 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* cumulative_sequence_length = context->Input<Tensor>(4);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
-  auto& device_prop = GetDeviceProp();
   PackedAttentionParameters parameters;
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
@@ -235,33 +263,11 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector output_shape{parameters.token_count, parameters.v_hidden_size};
   Tensor* output = context->Output(0, output_shape);
 
-  MHARunner* fused_runner = nullptr;
-
-  // Check whether we can use fused kernel
-  int sm = device_prop.major * 10 + device_prop.minor;
-  bool use_fused_runner = !disable_fused_runner_ &&
-                          nullptr == relative_position_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size &&
-                          FusedMHARunnerFP16v2::is_supported(sm, parameters.head_size, sequence_length,
-                                                             enable_trt_flash_attention_, false);
-
-  if (use_fused_runner) {
-    // Assuming that num_heads and head_size do not change.
-    if (nullptr == fused_fp16_runner_.get()) {
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                        enable_trt_flash_attention_, parameters.scale));
-    }
-
-    // In case some kernel not loaded due to shared memory limit, we need to double check here.
-    const int S = fused_fp16_runner_->getSFromMaxSeqLen(sequence_length);
-    if (fused_fp16_runner_->isValid(S)) {
-      fused_runner = fused_fp16_runner_.get();
-    }
-  }
-
-  cublasHandle_t cublas = GetCublasHandle(context);
+  MHARunner* fused_runner = TryGettingFusedRunner(parameters);
 
   typedef typename ToCudaType<T>::MappedType CudaT;
+  CudaT one = ToCudaType<T>::FromFloat(1.0f);
+  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
 
   IAllocatorUniquePtr<T> gemm_buffer;
   int m = parameters.token_count;
@@ -269,8 +275,8 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int k = parameters.input_hidden_size;
   gemm_buffer = GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
 
-  CudaT one = ToCudaType<T>::FromFloat(1.0f);
-  CudaT zero = ToCudaType<T>::FromFloat(0.0f);
+  auto& device_prop = GetDeviceProp();
+  cublasHandle_t cublas = GetCublasHandle(context);
 
   // Gemm, note that CUDA assumes col-major, so result(N, M) = 1 * weights x input + 1 x bias
   // The bias part is not included here since we fuse bias, transpose and output 3 matrice into one cuda kernel.

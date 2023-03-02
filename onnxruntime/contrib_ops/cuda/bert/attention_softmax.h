@@ -36,7 +36,6 @@ namespace cuda {
 
 template <typename T, unsigned TPB>
 __device__ inline void Softmax(const int all_sequence_length,
-                               const int sequence_length,
                                const int valid_end,
                                const int valid_start,
                                const T* add_before_softmax,
@@ -460,7 +459,7 @@ __global__ void SoftmaxKernel(const int all_sequence_length,
                               const T* add_before_softmax,
                               const T* input,
                               T* output) {
-  Softmax<T, TPB>(all_sequence_length, sequence_length, all_sequence_length, 0,
+  Softmax<T, TPB>(all_sequence_length, all_sequence_length, 0,
                   add_before_softmax, input, output);
 }
 
@@ -604,6 +603,22 @@ __global__ void SoftmaxKernelSmallWithCumSeqLen(const T* input, const T* add_bef
 }
 
 template <typename T, unsigned TPB>
+__global__ void SoftmaxKernelWithCumSeqLen(const T* input, const T* add_before_softmax,
+                                           const int* cum_seq_length, const int sequence_length,
+                                           T* output) {
+  __shared__ int end_position;
+
+  if (threadIdx.x == 0) {
+    const int batch = blockIdx.y;
+    end_position = cum_seq_length[batch + 1] - cum_seq_length[batch];
+  }
+  __syncthreads();
+
+  Softmax<T, TPB>(sequence_length, end_position, 0 /*start_position*/,
+                  add_before_softmax, input, output);
+}
+
+template <typename T, unsigned TPB>
 __global__ void MaskedSoftmaxKernel(const int all_sequence_length,
                                     const int sequence_length,
                                     const int* mask_end,
@@ -626,7 +641,7 @@ __global__ void MaskedSoftmaxKernel(const int all_sequence_length,
   }
   __syncthreads();
 
-  Softmax<T, TPB>(all_sequence_length, sequence_length, end_position, start_position,
+  Softmax<T, TPB>(all_sequence_length, end_position, start_position,
                   add_before_softmax, input, output);
 }
 
@@ -694,7 +709,9 @@ Status ComputeSoftmaxWithCumSeqLength(
         <<<grid, blockSize, 0, stream>>>(input, add_before_softmax,
                                          cum_seq_length, sequence_length, output);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Attention CUDA operator does not support total sequence length > 1024.");
+    SoftmaxKernelWithCumSeqLen<T, 1024>
+        <<<grid, 1024, 0, stream>>>(input, add_before_softmax,
+                                    cum_seq_length, sequence_length, output);
   }
 
   return CUDA_CALL(cudaGetLastError());
