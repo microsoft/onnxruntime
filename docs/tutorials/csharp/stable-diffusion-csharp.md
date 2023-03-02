@@ -63,7 +63,7 @@ git clone https://huggingface.co/<contributor>/<model-name>
 Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point, and the current timestep. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt.
 
 ## Main Function
-The main function sets the prompt, number of inference steps, and the guidance scale. It then calls the `RunInference` function to run the inference.
+The main function sets the prompt, number of inference steps, and the guidance scale. It then calls the `UNet.Inference` function to run the inference.
 
 The properties that need to be set are:
  - `prompt` - The text prompt to use for the image
