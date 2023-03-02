@@ -407,7 +407,6 @@ class T5Attention(nn.Module):
             if torch_position_bias is not None:
                 ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
 
-        print(ort_inputs)
         from onnxruntime import InferenceSession, SessionOptions
 
         sess_options = SessionOptions()
@@ -420,7 +419,6 @@ class T5Attention(nn.Module):
         else:
             output = (torch.tensor(ort_output[0]),) + ((torch.tensor(ort_output[1]), torch.tensor(ort_output[2])),)
 
-        print(output)
         return output
 
 
@@ -530,17 +528,17 @@ class TestT5MHAParity(unittest.TestCase):
         self.head_size = 4
         self.kv_sequence_length = 3
 
-    # def test_t5_cross_attention_decoder_init(self):
-    #     self.init_input_shapes()
-    #     test_t5_cross_attention_decoder_init(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_cross_attention_decoder_init(self):
+        self.init_input_shapes()
+        test_t5_cross_attention_decoder_init(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
-    # def test_t5_self_attention_decoder_init(self):
-    #     self.init_input_shapes()
-    #     test_t5_self_attention_decoder_init(
-    #         self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
-    #     )
+    def test_t5_self_attention_decoder_init(self):
+        self.init_input_shapes()
+        test_t5_self_attention_decoder_init(
+            self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
+        )
 
     def test_t5_cross_attention_decoder(self):
         self.init_input_shapes()

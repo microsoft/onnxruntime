@@ -11,7 +11,7 @@ using contrib::AttentionMaskType;
 namespace test {
 
 struct AttentionTestData {
-  bool is_static_kv = 1;
+  bool is_static_kv = true;
   int hidden_size;
   int v_hidden_size;
   int num_heads;
@@ -58,6 +58,9 @@ void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTes
 
 void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);
 void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
+
+void GetCrossAttentionDataWithPast(AttentionTestData& data);
+void GetSelfAttentionDataWithPast(AttentionTestData& data);
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type);
 }  // namespace test
