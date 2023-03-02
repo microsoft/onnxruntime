@@ -17,6 +17,7 @@ import torch
 from torch import nn
 import unittest
 
+torch.manual_seed(0)
 
 def create_t5_mha_graph(
     batch_size,
@@ -310,6 +311,8 @@ class T5Attention(nn.Module):
             position_bias = position_bias[:, :, -hidden_states.size(1) :, :]
 
         if mask is not None:
+            # Adjust onnx mask shape
+            mask = (1 - mask.unsqueeze(1).unsqueeze(2)) * torch.finfo(torch.float32).min
             position_bias = position_bias + mask  # (batch_size, n_heads, seq_length, key_length)
 
         if self.pruned_heads:
@@ -323,7 +326,6 @@ class T5Attention(nn.Module):
         attn_weights = nn.functional.softmax(scores.float(), dim=-1).type_as(
             scores
         )  # (batch_size, n_heads, seq_length, key_length)
-
         attn_output = unshape(torch.matmul(attn_weights, value_states))  # (batch_size, seq_length, dim)
         # attn_output = self.o(attn_output) # ORT places this matmul outside of MHA op
 
@@ -415,7 +417,7 @@ class T5Attention(nn.Module):
 
         output = None
         if past_key_value is not None and self.is_static_kv:
-            output = torch.tensor(ort_output[0])
+            output = torch.tensor(ort_output)
         else:
             output = (torch.tensor(ort_output[0]),) + ((torch.tensor(ort_output[1]), torch.tensor(ort_output[2])),)
 
@@ -522,7 +524,7 @@ def test_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv
 
 class TestT5MHAParity(unittest.TestCase):
     def init_input_shapes(self):
-        self.batch_size = 1
+        self.batch_size = 5
         self.seq_len = 2
         self.num_heads = 2
         self.head_size = 4
