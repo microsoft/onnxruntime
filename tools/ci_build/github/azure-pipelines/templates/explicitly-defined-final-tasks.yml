@@ -21,7 +21,7 @@ steps:
   condition: eq(variables['Agent.OS'], 'Linux')
   continueOnError: true
 
-- script: sudo rm -rf /tmp/*
+- script: rm -rf /tmp/*
   displayName: Clean /tmp
   condition: eq(variables['Agent.OS'], 'Linux')
   continueOnError: true

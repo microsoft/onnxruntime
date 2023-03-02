@@ -39,7 +39,9 @@ def parse_args():
         "--container-registry",
         help="The Azure container registry name. " "If not provided, no container registry will be used.",
     )
-    parser.add_argument("--repository", required=True, help="The image repository name.")
+    parser.add_argument("--repository", help="The image repository name.")
+
+    parser.add_argument("--use_imagecache", action="store_true", help="use cached image in pipeline cache")
 
     parser.add_argument("--docker-path", default="docker", help="Path to docker.")
 
@@ -104,6 +106,25 @@ def main():
             "buildx",
             "build",
             "--push",
+            "--tag",
+            full_image_name,
+            "--cache-from",
+            full_image_name,
+            "--build-arg",
+            "BUILDKIT_INLINE_CACHE=1",
+            *shlex.split(args.docker_build_args),
+            "-f",
+            args.dockerfile,
+            args.context,
+        )
+    elif args.use_imagecache:
+        log.info("Building image with pipeline cache...")
+        run(
+            args.docker_path,
+            "--log-level",
+            "error",
+            "buildx",
+            "build",
             "--tag",
             full_image_name,
             "--cache-from",
