@@ -8,6 +8,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from onnxruntime.training.torchdynamo.register_backend import ort, aot_ort
+from onnxruntime.training.torchdynamo.decompose import wrap_custom_function
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -176,6 +177,29 @@ class TestTorchDynamoOrt(unittest.TestCase):
         # the code is correct with them.
         for _ in range(5):
             run_mnist_model()
+
+    def test_custom_function(self):
+        @torch._dynamo.allow_in_graph
+        @wrap_custom_function
+        def custom_sigmoid(x):
+            return torch.sigmoid(x)
+
+        class CustomModel(torch.nn.Module):
+            def forward(self, tensor_x):
+                tensor_x = tensor_x + tensor_x
+                tensor_x = custom_sigmoid(tensor_x)
+                tensor_x = tensor_x * tensor_x
+                return tensor_x
+
+        # Input.
+        tensor_x = torch.rand((64, 1, 28, 28), dtype=torch.float32)
+        model = CustomModel()
+
+        # Baseline.
+        tensor_y = model(tensor_x)
+        # ORT result.
+        compiled_model = torch._dynamo.optimize(ort)(model)
+        tensor_y_new = compiled_model(tensor_x)
 
 
 if __name__ == "__main__":
