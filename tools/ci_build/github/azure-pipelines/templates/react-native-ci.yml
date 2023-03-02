@@ -198,14 +198,14 @@ jobs:
       ORT_JS_PACK_MODE: e2e
     displayName: Pack NPM packages
 
-  # - script: |
-  #     mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-  #     yarn add --no-lockfile file:./onnxruntime-common.tgz
-  #     mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-  #     yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-  #     yarn
-  #   workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-  #   displayName: Bootstrap Android and iOS e2e tests
+  - script: |
+      mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
+      yarn add --no-lockfile file:./onnxruntime-common.tgz
+      mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
+      yarn add --no-lockfile file:./onnxruntime-react-native.tgz
+      yarn
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: Bootstrap Android and iOS e2e tests
 
   # - script: |
   #     pod install
