@@ -56,6 +56,7 @@ broadcast add is not actually perform the broadcasting, just broadcast the load 
 
 */
 
+#include "core/framework/tensor_shape.h"
 #include "core/providers/rocm/tunable/gemm.h"
 #include "core/providers/rocm/tunable/rocm_tunable.h"
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -68,6 +69,9 @@ broadcast add is not actually perform the broadcasting, just broadcast the load 
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
 #include "ck/library/tensor_operation_instance/gpu/batched_gemm_softmax_gemm_permute.hpp"
 #include "ck/library/tensor_operation_instance/gpu/batched_gemm_bias_softmax_gemm_permute.hpp"
+
+#include <array>
+#include <vector>
 
 namespace blas = onnxruntime::rocm::tunable::blas;
 
@@ -142,7 +146,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
 
   // optional, mask value
   const int* mask_index_buffer{nullptr};
-  gsl::span<const int64_t> mask_index_dims{};
+  TensorShapeVector mask_index_dims{};
 
   // optional, internal
   T* workspace_buffer{nullptr};

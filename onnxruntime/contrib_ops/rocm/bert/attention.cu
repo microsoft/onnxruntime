@@ -161,7 +161,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     if (mask_index != nullptr) {
       params.mask_index_buffer = mask_index->Data<int>();
-      params.mask_index_dims = mask_index->Shape().GetDims();
+      params.mask_index_dims = mask_index->Shape().AsShapeVector();
     }
 
     params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
