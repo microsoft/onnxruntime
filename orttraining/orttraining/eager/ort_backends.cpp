@@ -41,11 +41,11 @@ ORTBackendsManager::ORTBackendsManager(const onnxruntime::logging::Logger& logge
 
 onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const std::string& provider_type,
                                  const ProviderOptions& provider_options){
-  auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type, 
+  auto ep = onnxruntime::python::GetOrCreateExecutionProvider(provider_type,
                                ProviderOptionsMap{{provider_type, provider_options}},
                                SessionOptions{});
 
-  auto invoker = 
+  auto invoker =
   std::make_unique<onnxruntime::ORTInvoker>(
     std::move(ep),
     logger_,
@@ -61,14 +61,14 @@ onnxruntime::Status ORTBackendsManager::set_device(size_t device_index, const st
 OrtDevice ORTBackendsManager::GetOrtDeviceInfo(size_t torch_device_index){
   auto lookup = backends_.find(torch_device_index);
   ORT_ENFORCE(lookup != backends_.end());
-  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = lookup->second->GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault);
   return allocator->Info().device;
 }
 
 size_t ORTBackendsManager::GetOrtDeviceIndex(const OrtMemoryInfo& ort_memory_info){
   for (auto it = backends_.begin(); it != backends_.end(); ++it){
     //eager mode currently only operate on EP's default memory type
-    auto allocator = it->second->GetCurrentExecutionProvider().GetAllocator(0, OrtMemTypeDefault);
+    auto allocator = it->second->GetCurrentExecutionProvider().GetAllocator(OrtMemTypeDefault);
     if (allocator->Info() == ort_memory_info)
       return it->first;
   }

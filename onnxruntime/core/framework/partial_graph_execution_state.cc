@@ -1,6 +1,8 @@
-//// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #ifdef ENABLE_TRAINING
+
 #include "core/framework/partial_graph_execution_state.h"
 #include "core/framework/session_state.h"
 #include "core/framework/stream_execution_context.h"

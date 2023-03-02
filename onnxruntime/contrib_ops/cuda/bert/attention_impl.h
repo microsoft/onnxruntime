@@ -6,17 +6,32 @@
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-size_t GetAttentionScratchSize(
+constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
+
+struct CumulatedSequenceLengthCache {
+  onnxruntime::IAllocatorUniquePtr<void> buffer;
+  int32_t max_batch_size;
+  int32_t sequence_length;
+
+  CumulatedSequenceLengthCache() : max_batch_size(0), sequence_length(0) {}
+  void Initialize(int32_t sequence_length, cudaStream_t stream);
+};
+
+size_t
+GetAttentionScratchSize(
     size_t element_size,
     size_t batch_size,
     size_t num_heads,
     size_t sequence_length,
     size_t all_sequence_length);
+
+size_t GetSequenceOffsetSize(int batch_size, bool has_padding);
 
 size_t GetAttentionWorkspaceSize(
     size_t element_size,
@@ -28,7 +43,8 @@ size_t GetAttentionWorkspaceSize(
     size_t kv_sequence_length,
     size_t total_sequence_length,
     void* fused_runner,
-    bool use_memory_efficient_attention = false);
+    bool use_fused_cross_attention,
+    bool use_memory_efficient_attention);
 
 template <typename T>
 struct AttentionData {
@@ -41,9 +57,11 @@ struct AttentionData {
   const int* mask_index;
   gsl::span<const int64_t> mask_index_dims;
   const T* past;
-  const T* extra_add_qk;
+  const T* relative_position_bias;
 
+  bool has_qkv_workspace;
   T* workspace;
+
   T* output;
   T* present;
 
@@ -51,6 +69,9 @@ struct AttentionData {
   const void* fused_cross_attention_kernel;
 
   bool use_memory_efficient_attention;
+
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache;
+  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache;
 };
 
 template <typename T>

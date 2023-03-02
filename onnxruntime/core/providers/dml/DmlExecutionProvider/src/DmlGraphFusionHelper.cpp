@@ -292,7 +292,8 @@ namespace DmlGraphFusionHelper
     {
         for (size_t i = 0; i < graphDesc.nodes.size(); ++i)
         {
-            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{graphDesc.nodes[i].op.Get()};
+            auto& nodeInfo = graphDesc.nodes[i];
+            dmlOperatorGraphNodes[i] = DML_OPERATOR_GRAPH_NODE_DESC{nodeInfo.op.Get(), nodeInfo.name.data()};
             dmlGraphNodes[i] = DML_GRAPH_NODE_DESC{DML_GRAPH_NODE_TYPE_OPERATOR, &dmlOperatorGraphNodes[i]};
         }
 

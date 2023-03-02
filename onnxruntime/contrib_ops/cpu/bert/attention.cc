@@ -198,7 +198,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(4);
-  const Tensor* extra_add_qk = context->Input<Tensor>(5);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
 
   const TensorShape& weights_shape = (weights ? weights->Shape() : weight_shape_);
 
@@ -208,7 +208,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                   bias->Shape(),
                                   mask_index,
                                   past,
-                                  extra_add_qk,
+                                  relative_position_bias,
                                   &parameters));
 
   const int batch_size = parameters.batch_size;
@@ -331,7 +331,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   return ApplyAttention(Q, K, V, mask_index, past, output,
                         batch_size, sequence_length,
                         parameters.head_size, parameters.v_head_size, parameters.v_hidden_size,
-                        extra_add_qk, context);
+                        relative_position_bias, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime

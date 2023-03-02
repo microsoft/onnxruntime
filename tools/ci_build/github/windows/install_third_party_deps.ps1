@@ -76,7 +76,7 @@ Install-Pybind -cmake_path $cmake_path -src_root $ort_src_root -build_config $bu
 Install-Protobuf -cmake_path $cmake_path -src_root $ort_src_root -build_config $build_config -cmake_extra_args $cmake_extra_args
 
 # TODO: parse it from deps.txt
-$protobuf_version="3.18.3"
+$protobuf_version="3.20.2"
 
 # ONNX doesn't allow us to specify CMake's path
 Install-ONNX -build_config $build_config -src_root $ort_src_root -protobuf_version $protobuf_version

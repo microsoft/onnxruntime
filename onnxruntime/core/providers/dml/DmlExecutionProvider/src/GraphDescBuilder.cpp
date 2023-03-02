@@ -361,6 +361,7 @@ namespace Dml::GraphDescBuilder
 
                     NodeInfo nodeInfo = {};
                     nodeInfo.op = std::move(op);
+                    nodeInfo.name = node.Name();
                     graphNodes.push_back(std::move(nodeInfo));
                 }
             }

@@ -129,7 +129,9 @@ struct GetOrAddValueInConstantStoreDispatcher {
 }  // namespace
 
 Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/,
-                                  const logging::Logger& /*logger*/) const {
+                                  const logging::Logger& logger) const {
+  int shared_count = 0;
+
   // Accumulated map from type/value/rank to initializer:
   // > The key is a string representation of initializer's data type, value and rank.
   // > The value is newly created initializer NodeArg* to be shared.
@@ -138,9 +140,11 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
   InlinedVector<std::string> original_initializer_names;
   original_initializer_names.reserve(initialized_tensor_set.size());
   for (const auto& entry : initialized_tensor_set) {
-    // Ignore if the initializer already handled, or not a constant initializer.
+    // Ignore if the initializer exists in graph output, already handled,
+    // or not a constant initializer (implicitly excludes the graph input).
     if (IsSharedInitializer(entry.first) ||
         !graph_utils::IsConstantInitializer(graph, entry.first) ||
+        graph.IsOutput(graph.GetNodeArg(entry.first)) ||
         excluded_initializers_.find(entry.first) != excluded_initializers_.end()) {
       continue;
     }
@@ -191,6 +195,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
       NodeArg& shared_scalar_initializer_node_arg = graph_utils::AddInitializer(graph,
                                                                                 constant_tensor_proto_as_replacement);
       pattern_key_to_shared_arg_map[pattern_key] = &shared_scalar_initializer_node_arg;
+    } else {
+      shared_count += 1;
     }
 
     ReplaceInputsToUseSharedInitializer(graph, consumer_node_to_input_ports_map, origin_initializer_node_arg,
@@ -198,6 +204,8 @@ Status ConstantSharing::ApplyImpl(Graph& graph, bool& modified, int /*graph_leve
 
     modified = true;
   }
+
+  LOGS(logger, INFO) << "Total shared scalar initializer count: " << shared_count;
 
   return Status::OK();
 }
