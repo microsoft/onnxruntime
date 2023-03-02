@@ -125,7 +125,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Queries the version of the native onnxruntime shared library
+        /// This function returns the onnxruntime version string
         /// </summary>
         /// <returns>version string</returns>
         public string GetVersionString()

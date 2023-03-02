@@ -39,6 +39,7 @@ try:
         enable_telemetry_events,
         get_all_providers,
         get_available_providers,
+        get_version_string,
         get_device,
         set_default_logger_severity,
         set_default_logger_verbosity,

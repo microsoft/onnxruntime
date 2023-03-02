@@ -121,7 +121,7 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 
 /// <summary>
-/// This Api returns the version string from the compiled onnxruntime binary
+/// This function returns the onnxruntime version string
 /// </summary>
 /// <returns>version string major.minor.rev</returns>
 std::string GetVersionString();
