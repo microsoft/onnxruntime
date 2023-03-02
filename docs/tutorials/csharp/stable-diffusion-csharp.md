@@ -18,8 +18,8 @@ For example the sentence "make a picture of green tree with flowers around it an
 "make a picture of green tree with flowers around it and a red sky" 
 ```
 | Latent Seed Image | Resulting image |
-| :--- | :--- |
-<img src="../../../images/latents-noise-example.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> | <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
+|----------------------|----------------------|
+| <img src="../../../images/latents-noise-example.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> | <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
 
 
 ## Contents
