@@ -161,14 +161,7 @@ class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnn
 class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 11, float, MaxPool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, float, MaxPool);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, float, GlobalMaxPool);
-// class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 12, Softmax);
-// class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Softmax);
 
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 10, uint8_t, QLinearConv);
-// class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 10, int8_t, QLinearConv);
-// class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kMSInternalNHWCDomain, 1, QLinearAveragePool);
-// class ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider,
-//                                       kDynamicDomainByCreate, 1, QLinearSoftmax);
 
 std::unique_ptr<KernelRegistry> RegisterKernels() {
   auto kernel_registry = std::make_unique<onnxruntime::KernelRegistry>();
@@ -270,18 +263,6 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
       BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 11, 11, float, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 12, float, MaxPool)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, float, GlobalMaxPool)>,
-      // // layout insensitive, use ONNX-domain directly
-      // BuildKernelCreateInfo<
-      //     ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 13, Softmax)>,
-      // BuildKernelCreateInfo<
-      //     ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kJsExecutionProvider, kOnnxDomain, 1, 12, Softmax)>,
-
-      // //  quantization op
-      // KERNEL_CREATE_INFO_TYPED(10, uint8_t, QLinearConv),
-      // KERNEL_CREATE_INFO_TYPED(10, int8_t, QLinearConv),
-      // KERNEL_CREATE_INFO(1, QLinearAveragePool),
-      // BuildKernelCreateInfo<
-      //     ONNX_OPERATOR_KERNEL_CLASS_NAME(kJsExecutionProvider, kDynamicDomainByCreate, 1, QLinearSoftmax)>,
   };
 
   for (auto& function_table_entry : function_table) {
