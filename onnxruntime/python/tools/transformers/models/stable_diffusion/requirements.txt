@@ -11,6 +11,7 @@ protobuf==3.20.3
 psutil==5.9.4
 sympy==1.11.1
 py3nvml==0.2.7
-#Tested with PyTorch 1.13.1+cu117 (see pytorch.org for more download options).
+xformers==0.0.16
+#For Windows, need install PyTorch 1.13.1+cu117 since torch in pypi is CPU version
 #--extra-index-url https://download.pytorch.org/whl/cu117
 #torch==1.13.1+cu117
