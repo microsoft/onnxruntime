@@ -30,7 +30,16 @@ class FusionT5Attention(FusionAttention):
         attention_mask: AttentionMask,
     ):
         use_multi_head_attention = True
-        super().__init__(model, hidden_size, num_heads, attention_mask, use_multi_head_attention, ["SkipSimplifiedLayerNormalization"])
+        super().__init__(
+            model,
+            hidden_size,
+            num_heads,
+            attention_mask,
+            use_multi_head_attention,
+            ["SkipSimplifiedLayerNormalization", "Add"],
+        )
+        self.static_kv = 1
+        self.use_past = True
 
     def create_attention_node(
         self,
@@ -38,11 +47,14 @@ class FusionT5Attention(FusionAttention):
         key: str,
         value: str,
         mask_index: str,
+        res_pos_bias: str,
         past_key: str,
         past_value: str,
+        output: str,
+        present_key: str,
+        present_value: str,
         num_heads: int,
         hidden_size: int,
-        output: str,
     ) -> Union[NodeProto, None]:
 
         assert num_heads > 0
@@ -54,41 +66,52 @@ class FusionT5Attention(FusionAttention):
         attention_node_name = self.model.create_node_name("MultiHeadAttention")
         attention_inputs = [
             query,
-            "" if key is None else key , # key
-            "" if value is None else value, # value
-            "", # bias
+            "" if key is None else key,  # key
+            "" if value is None else value,  # value
+            "",  # bias
         ]
         if mask_index is not None:
             attention_inputs.append(mask_index)
         else:
             attention_inputs.append("")
 
-        attention_inputs.append("") # relative position bias
+        if res_pos_bias is not None:
+            attention_inputs.append(res_pos_bias)
+        else:
+            attention_inputs.append("")
 
         if past_key is not None:
-            assert(past_value is not None)
+            assert past_value is not None
             attention_inputs.append(past_key)
             attention_inputs.append(past_value)
+
+        attention_outputs = [output]
+        if present_key is not None:
+            assert present_value is not None
+            attention_outputs.append(present_key)
+            attention_outputs.append(present_value)
 
         attention_node = helper.make_node(
             "MultiHeadAttention",
             inputs=attention_inputs,
-            outputs=[output],
+            outputs=attention_outputs,
             name=attention_node_name,
         )
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend([helper.make_attribute("scale", 1.0)])
+        attention_node.attribute.extend([helper.make_attribute("static_kv", 0 if self.static_kv == 0 else 1)])
         if self.mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
         return attention_node
 
-
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
-        if normalize_node.op_type != "SkipSimplifiedLayerNormalization":
+        if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
             return
+
+        print("***************", normalize_node.name, "***************")
 
         qkv_nodes = self.model.match_parent_path(
             normalize_node,
@@ -100,16 +123,53 @@ class FusionT5Attention(FusionAttention):
 
         _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
 
+        print("qkv nodes is done")
+
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
             ["Concat", "Unsqueeze", "Gather", "Shape"],
             [1, 0, 0, 0],
         )
+        if qkv_shape_nodes is None:
+            return
         input_shape_node = qkv_shape_nodes[-1]
 
-        past_value = matmul_qkv.input[1]
-        if past_value in output_name_to_node:
-            return
+        print("qkv shape nodes is done")
+
+        value = None
+        past_value = None
+        present_value = None
+        v_nodes = self.model.match_parent_path(
+            matmul_qkv,
+            ["Concat", "Transpose", "Reshape", "MatMul"],
+            [1, 1, 0, 0],
+        )
+        if v_nodes is None:
+            print("v_nodes is None")
+            past_value = matmul_qkv.input[1]
+            if past_value in output_name_to_node:
+                return
+            if "past_value_cross" not in past_value:
+                return
+            self.static_kv = 1
+        else:
+            print("v_nodes is not None")
+            concat_v, _, reshape_v, _ = v_nodes
+            past_value = concat_v.input[0]
+            if past_value in output_name_to_node:
+                print("past_value in output_name_to_node")
+                return
+            if "past_value_self" not in past_value:
+                print("past_value_self not in past_value")
+                return
+            present_value = concat_v.output[0]
+            if "present_value_self" not in present_value:
+                print("present_value_self not in present_value")
+                return
+            value = reshape_v.input[0]
+            self.static_kv = 0
+
+        print("value etc is done")
 
         qk_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -120,37 +180,103 @@ class FusionT5Attention(FusionAttention):
             return
         _, add_qk, matmul_qk = qk_nodes
 
-        mask_nodes = self.model.match_parent_path(
-            add_qk,
-            ["Add", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
-            [1, 1, 0, 1, 0, 0],
-        )
-        if mask_nodes is None:
-            return
+        print("qk nodes is done")
 
-        mul_node = mask_nodes[1]
-        if mask_nodes[1].op_type != "Mul":
-            return
+        mask_index = None
+        res_pos_bias = None
+        if self.static_kv == 1:
+            print("static_kv == 1")
+            mask_nodes = self.model.match_parent_path(
+                add_qk,
+                ["Add", "Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"],
+                [1, 1, 0, 1, 0, 0],
+            )
+            if mask_nodes is None:
+                return
+            mul_node = mask_nodes[1]
+            if mask_nodes[1].op_type != "Mul":
+                return
 
-        _, mul_val = self.model.get_constant_input(mul_node)
-        if mul_val != -10000:
-            self.mask_filter_value = mul_val
+            _, mul_val = self.model.get_constant_input(mul_node)
+            if mul_val != -10000:
+                self.mask_filter_value = mul_val
 
-        mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+            print("find mask node")
 
-        v_nodes = self.model.match_parent_path(
-            matmul_qk,
-            ["Transpose"],
-            [1],
-        )
-        if v_nodes is None:
-            return
+            mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
+        else:
+            print("static_kv == 0")
+            rpb_nodes = self.model.match_parent_path(
+                add_qk,
+                ["Add", "Slice"],
+                [1, 0],
+            )
+            if rpb_nodes is None:
+                return
+            res_pos_bias = add_qk.input[1]
+            print("find rpb node")
 
-        transpose_v = v_nodes[0]
+        print("mask/res_pos_bias is done")
 
-        past_key = transpose_v.input[0]
-        if past_key in output_name_to_node:
-            return
+        key = None
+        past_key = None
+        present_key = None
+        if self.static_kv == 1:
+            print("static_kv == 1")
+            k_nodes = self.model.match_parent_path(
+                matmul_qk,
+                ["Transpose"],
+                [1],
+            )
+            if k_nodes is None:
+                return
+            print("find k node")
+            transpose_k = k_nodes[0]
+
+            past_key = transpose_k.input[0]
+            if past_key in output_name_to_node:
+                print("past_key in output_name_to_node")
+                return
+            if "past_key_cross" not in past_key:
+                print("past_key_cross not in past_key")
+                return
+        else:
+            print("static_kv == 0")
+            k_nodes = self.model.match_parent_path(
+                matmul_qk,
+                ["Transpose", "Concat", "Reshape", "MatMul"],
+                [1, 0, 1, 0],
+            )
+            if k_nodes is None:
+                return
+            print("find k node")
+            _, concat_k, reshape_k, _ = k_nodes
+            key = reshape_k.input[0]
+            past_key_transpose_node = output_name_to_node[concat_k.input[0]]
+            past_key = past_key_transpose_node.input[0]
+            if past_key in output_name_to_node:
+                print("past_key in output_name_to_node")
+                return
+            if "past_key_self" not in past_key:
+                print("past_key_self not in past_key")
+                return
+            print("past_key is done")
+            present_key_transpose_nodes = input_name_to_nodes[concat_k.output[0]]
+            for present_key_transpose_node in present_key_transpose_nodes:
+                # print("present_key_transpose_node:", present_key_transpose_node)
+                present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
+                # print("present_key_candidate:", present_key_candidate)
+                if present_key_candidate is not None:
+                    present_key = present_key_candidate.name
+                    break
+            if present_key is None:
+                return
+            print("find present_key")
+            if "present_key_self" not in present_key:
+                print("present_key_self not in present_key")
+                return
+
+        print("key etc is done")
 
         q_nodes = self.model.match_parent_path(
             matmul_qk,
@@ -165,34 +291,37 @@ class FusionT5Attention(FusionAttention):
         if matmul_q.input[0] != input_shape_node.input[0]:
             return
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+
         new_node = self.create_attention_node(
             matmul_q.output[0],
-            None,
-            None,
+            key,
+            value,
             mask_index,
+            res_pos_bias,
             past_key,
             past_value,
+            reshape_qkv.output[0],
+            present_key,
+            present_value,
             q_num_heads,
             q_hidden_size,
-            reshape_qkv.output[0],
         )
         if new_node is None:
             return
+
+        print("new node is created")
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
         self.nodes_to_remove.extend(qkv_nodes[1:])
         self.nodes_to_remove.extend(qk_nodes)
-        self.nodes_to_remove.extend(v_nodes)
+        self.nodes_to_remove.extend(k_nodes[:-1])
+        if v_nodes is not None:
+            self.nodes_to_remove.extend(v_nodes[:-1])
         self.nodes_to_remove.extend(q_nodes[:-1])
 
         self.prune_graph = True
-
-
-
-
-
 
 
 class FusionRelativePositionBiasBlock(Fusion):
