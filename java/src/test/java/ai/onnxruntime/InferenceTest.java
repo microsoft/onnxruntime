@@ -73,6 +73,12 @@ public class InferenceTest {
   }
 
   @Test
+  public void testVersion() {
+    String version = env.getVersion();
+    Assertions.assertFalse(version.isEmpty());
+  }
+
+  @Test
   public void createSessionFromPath() throws OrtException {
     String modelPath = TestHelpers.getResourcePath("/squeezenet.onnx").toString();
     try (OrtSession.SessionOptions options = new SessionOptions();

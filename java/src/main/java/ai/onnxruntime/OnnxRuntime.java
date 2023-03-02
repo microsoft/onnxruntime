@@ -84,6 +84,9 @@ final class OnnxRuntime {
   /** The available runtime providers */
   static EnumSet<OrtProvider> providers;
 
+  /** The version string. */
+  private static String version;
+
   private OnnxRuntime() {}
 
   /* Computes and initializes OS_ARCH_STR (such as linux-x64) */
@@ -124,6 +127,7 @@ final class OnnxRuntime {
    * Loads the native C library.
    *
    * @throws IOException If it can't write to disk to copy out the library from the jar file.
+   * @throws IllegalStateException If the native library failed to load.
    */
   static synchronized void init() throws IOException {
     if (loaded) {
@@ -139,7 +143,14 @@ final class OnnxRuntime {
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_11);
+      if (ortApiHandle == 0L) {
+        throw new IllegalStateException("Failed to load native library");
+      }
       providers = initialiseProviders(ortApiHandle);
+      version = initialiseVersion();
+      if (version == null) {
+        throw new IllegalStateException("Failed to load version string from native library");
+      }
       loaded = true;
     } finally {
       if (tempDirectory != null) {
@@ -159,6 +170,15 @@ final class OnnxRuntime {
     }
     logger.log(Level.FINE, "Deleting " + file + " on exit");
     file.deleteOnExit();
+  }
+
+  /**
+   * Gets the native library version string.
+   *
+   * @return The version string.
+   */
+  static String version() {
+    return version;
   }
 
   /**
@@ -433,4 +453,11 @@ final class OnnxRuntime {
    * @return The array of providers
    */
   private static native String[] getAvailableProviders(long ortApiHandle);
+
+  /**
+   * Gets the version string from the native library.
+   *
+   * @return The version string.
+   */
+  private static native String initialiseVersion();
 }

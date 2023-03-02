@@ -271,9 +271,24 @@ public final class OrtEnvironment implements AutoCloseable {
     setTelemetry(OnnxRuntime.ortApiHandle, nativeHandle, sendTelemetry);
   }
 
+  /**
+   * Gets the native library version string.
+   *
+   * @return The version string.
+   */
+  public String getVersion() {
+    return OnnxRuntime.version();
+  }
+
   @Override
   public String toString() {
-    return "OrtEnvironment(name=" + curLoggingName + ",logLevel=" + curLogLevel + ")";
+    return "OrtEnvironment(name="
+        + curLoggingName
+        + ",logLevel="
+        + curLogLevel
+        + ",version="
+        + getVersion()
+        + ")";
   }
 
   /**
