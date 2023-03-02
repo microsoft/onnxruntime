@@ -62,7 +62,7 @@ jobs:
       cd ./android
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --info --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
 
