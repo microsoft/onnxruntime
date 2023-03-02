@@ -352,7 +352,6 @@ def run_torch(
 
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
-    # torch.backends.cuda.matmul.allow_tf32 = True
 
     torch.set_grad_enabled(False)
 
@@ -400,10 +399,11 @@ def parse_arguments():
     parser.add_argument(
         "-v",
         "--version",
-        required=True,
+        required=False,
         type=str,
         choices=list(SD_MODELS.keys()),
-        help="Stable diffusion version like 1.5, 2.0 or 2.1",
+        default="1.5",
+        help="Stable diffusion version like 1.5, 2.0 or 2.1. Default is 1.5.",
     )
 
     parser.add_argument(
@@ -444,8 +444,8 @@ def parse_arguments():
         "--batch_size",
         type=int,
         default=1,
-        choices=[1, 2, 4, 8, 16, 32],
-        help="Number of images per batch",
+        choices=[1, 2, 4, 8, 10, 16, 32],
+        help="Number of images per batch. Default is 1.",
     )
 
     parser.add_argument(
@@ -453,7 +453,7 @@ def parse_arguments():
         required=False,
         type=int,
         default=512,
-        help="Output image height",
+        help="Output image height. Default is 512.",
     )
 
     parser.add_argument(
@@ -461,7 +461,7 @@ def parse_arguments():
         required=False,
         type=int,
         default=512,
-        help="Output image width",
+        help="Output image width. Default is 512.",
     )
 
     parser.add_argument(
@@ -470,7 +470,7 @@ def parse_arguments():
         required=False,
         type=int,
         default=50,
-        help="Number of steps",
+        help="Number of steps. Default is 50.",
     )
 
     parser.add_argument(
@@ -479,7 +479,7 @@ def parse_arguments():
         required=False,
         type=int,
         default=1,
-        help="Number of prompts",
+        help="Number of prompts. Default is 1.",
     )
 
     parser.add_argument(
@@ -488,8 +488,8 @@ def parse_arguments():
         required=False,
         type=int,
         choices=range(1, 11),
-        default=10,
-        help="Number of batches to test",
+        default=5,
+        help="Number of batches to test. Default is 5.",
     )
 
     args = parser.parse_args()
@@ -507,7 +507,7 @@ def main():
     if args.engine == "onnxruntime":
         assert args.pipeline, "--pipeline should be specified for onnxruntime engine"
 
-        provider = "CUDAExecutionProvider"  # TODO: use ["CUDAExecutionProvider", "CPUExecutionProvider"] in diffuers
+        provider = "CUDAExecutionProvider"
         result = run_ort(
             sd_model,
             args.pipeline,
