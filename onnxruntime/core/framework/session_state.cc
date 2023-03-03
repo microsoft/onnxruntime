@@ -246,9 +246,10 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
 }
 
 void SessionState::PruneRemovableAttributes() {
-  int n_removed = 0;
   InlinedVector<std::string> removable_attributes;
   for (size_t i = 0; i < session_kernels_.size(); ++i) {
+    if (session_kernels_[i].get() == nullptr)
+      continue;
     auto status = session_kernels_[i].get()->GetRemovableAttributes(removable_attributes);
     if (!status.IsOK()) {
       const Node& node_const = session_kernels_[i].get()->Node();
@@ -260,10 +261,12 @@ void SessionState::PruneRemovableAttributes() {
       continue;
     auto index = session_kernels_[i].get()->Node().Index();
     Node* node = graph_.GetNode(index);
-    n_removed += node->PruneRemovableAttributes(removable_attributes);
-    LOGS(logger_, INFO) << "femoved removable attributes "
+    int n_removed = node->PruneRemovableAttributes(removable_attributes);
+    if (n_removed == 0)
+      continue;
+    LOGS(logger_, INFO) << "removed " << n_removed << " removable attributes "
                         << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
-                        << "attributes: " << [removable_attributes]() -> std::string{
+                        << "among attributes: " << [removable_attributes]() -> std::string{
                           std::ostringstream os;
                           for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
                             if (it != removable_attributes.cbegin())
