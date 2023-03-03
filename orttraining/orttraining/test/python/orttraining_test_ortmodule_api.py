@@ -4192,7 +4192,8 @@ def test_load_state_dict_for_wrapped_ortmodule():
     x = torch.randn(N, D_in, device=device)
     _ = wrapper_module(x)
 
-    state_dict1 = wrapper_module.state_dict()
+    # Must copy the state_dict or else they are sharing the same memory
+    state_dict1 = copy.deepcopy(wrapper_module.state_dict())
     list(next(iter(state_dict1.items())))[1] += 10
     wrapper_module.load_state_dict(state_dict1)
     state_dict2 = wrapper_module.state_dict()
