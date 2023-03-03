@@ -90,7 +90,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     const auto* nnapi_handle = NnApiImplementation();
     auto flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) ? nnapi::TargetDeviceOption::CPU_DISABLED
                                                          : nnapi::TargetDeviceOption::ALL_DEVICES;
-    return nnapi::GetNNAPIFeatureLevelWithDeviceTag(nnapi_handle, flag);
+    return nnapi::NNAPIGetTargetFeatureLevelWithDeviceTag(nnapi_handle, flag);
 #else
     ORT_UNUSED_PARAMETER(nnapi_flags_);
     return ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;

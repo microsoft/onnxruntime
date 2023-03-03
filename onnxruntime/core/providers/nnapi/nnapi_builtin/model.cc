@@ -90,7 +90,7 @@ size_t Model::GetMappedOutputIdx(const std::string& name) const {
 
 bool Model::SupportsDynamicOutputShape() const {
   // dynamic output shape is only supported on Android API level 29+ (ANEURALNETWORKS_FEATURE_LEVEL_3)
-  return GetNNAPIFeatureLevel(nnapi_,{}) >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
+  return NNAPIGetTargetFeatureLevel(nnapi_, {}) >= ANEURALNETWORKS_FEATURE_LEVEL_3 && dynamic_output_buffer_size_ > 0;
 }
 
 Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
