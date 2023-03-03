@@ -21,6 +21,8 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/thread_utils.h"
+
+#include "onnxruntime_config.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -2122,6 +2124,13 @@ TEST(CApiTest, get_available_providers_cpp) {
   ASSERT_TRUE(std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end());
 #endif
 }
+
+TEST(CApiTest, get_version_string_cpp) {
+  std::string version_string = Ort::GetVersionString();
+  ASSERT_FALSE(version_string.empty());
+  ASSERT_EQ(version_string, ORT_VERSION);
+}
+
 TEST(CApiTest, TestSharedAllocators) {
   OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
