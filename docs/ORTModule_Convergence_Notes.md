@@ -43,7 +43,7 @@ Add few lines of code:
 
 Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_no_randomness_fulllayer` is created in current working directory.
 
-Run command to generate per step summary:
+Run command to generate per step summary at dir orttraining/tools/scripts/
 
 Be noted: here we use the topo order of PyTorch to merge activation summary, to make it easier to compare the result.
 
