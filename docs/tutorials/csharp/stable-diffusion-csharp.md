@@ -57,7 +57,7 @@ git lfs install
 git clone https://huggingface.co/CompVis/stable-diffusion-v1-4 -b onnx
 ```
 
-- Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`.
+- Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`. 
 
 ## Inference with C#
 Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point, and the current timestep. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt.
@@ -240,7 +240,7 @@ var latents = GenerateLatentSample(batchSize, height, width,seed, scheduler.Init
 
 ### Inference Loop
 
-For each inference step the latent image is duplicated to create the tensor shape of (2,4,64,64), it is then scaled and inferenced with the unet model with the embedding and current timestep. The output tensors (2,4,64,64) are split and guidance is applied. The resulting tensor is then sent into the `LMSDiscreteScheduler` step as part of the denoising process and the resulting tensor from the scheduler step is returned and the loop completes again until the `num_inference_steps` is reached. 
+For each inference step the latent image is duplicated to create the tensor shape of (2,4,64,64), it is then scaled and inferenced with the unet model. The output tensors (2,4,64,64) are split and guidance is applied. The resulting tensor is then sent into the `LMSDiscreteScheduler` step as part of the denoising process and the resulting tensor from the scheduler step is returned and the loop completes again until the `num_inference_steps` is reached. 
 
 ```csharp
     // Create Inference Session
