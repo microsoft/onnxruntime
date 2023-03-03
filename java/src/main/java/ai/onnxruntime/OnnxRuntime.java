@@ -148,9 +148,6 @@ final class OnnxRuntime {
       }
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();
-      if (version == null) {
-        throw new IllegalStateException("Failed to load version string from native library");
-      }
       loaded = true;
     } finally {
       if (tempDirectory != null) {

@@ -3,6 +3,7 @@
  * Licensed under the MIT License.
  */
 #include <jni.h>
+#include <assert.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ai_onnxruntime_OnnxRuntime.h"
 #include "OrtJniUtil.h"
@@ -64,9 +65,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion
   (JNIEnv * jniEnv, jclass clazz) {
   (void)clazz;  // required JNI parameter not needed by functions which don't access their host class.
   const char* version = OrtGetApiBase()->GetVersionString();
-  jstring versionStr = NULL;
-  if (version != NULL) {
-    versionStr = (*jniEnv)->NewStringUTF(jniEnv, version);
-  }
+  assert(version != NULL);
+  jstring versionStr = (*jniEnv)->NewStringUTF(jniEnv, version);
   return versionStr;
 }
