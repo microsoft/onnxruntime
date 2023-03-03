@@ -11,10 +11,28 @@
 namespace onnxruntime {
 namespace nnapi {
 
+/**  How feature level works for NNAPI. refer to https://developer.android.com/ndk/reference/group/neural-networks
+ *
+ * NNAPI device feature level is closely related to NNAPI runtime feature level
+    (ANeuralNetworks_getRuntimeFeatureLevel), which indicates an NNAPI runtime feature level
+    (the most advanced NNAPI specification and features that the runtime implements).
+    An NNAPI device feature level is always less than or equal to the runtime feature level.
+ *
+ * On Android devices with API level 30 and older, the Android API level of the Android device
+    must be used for NNAPI runtime feature discovery.
+    Enum values in FeatureLevelCode from feature level 1 to 5 have their
+    corresponding Android API levels listed in their documentation,
+    and each such enum value equals the corresponding API level.
+    This allows using the Android API level as the feature level.
+    This mapping between enum value and Android API level does not exist for
+    feature levels after NNAPI feature level 5 and API levels after S (31).
+
+ */
 int32_t GetNNAPIRuntimeFeatureLevel(const ::NnApi* nnapi) {
   if (!nnapi)
     return 0;
   int32_t runtime_level = static_cast<int32_t>(nnapi->nnapi_runtime_feature_level);
+
 #ifdef __ANDROID__
   int device_api_level = android_get_device_api_level();
   runtime_level = (device_api_level < __ANDROID_API_S__) ? device_api_level : runtime_level;
@@ -22,7 +40,17 @@ int32_t GetNNAPIRuntimeFeatureLevel(const ::NnApi* nnapi) {
   return runtime_level;
 }
 
-int32_t GetDeviceFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNetworksDevice*>& device_handles) {
+/**
+ * Get the max feature level supported by all target devices.
+ *
+ * @param nnapi nnapi-lib handle.
+ * @param device_handles target devices users want to use.
+ *
+ * @return The max feature level support by a set of devices.
+ *
+ * @exception-safe no throw.
+ */
+static int32_t GetDeviceFeatureLevelInternal(const ::NnApi* nnapi, const std::vector<ANeuralNetworksDevice*>& device_handles) {
   if (!nnapi)
     return 0;
 
@@ -36,9 +64,12 @@ int32_t GetDeviceFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNet
       continue;
     }
 
+    // we want to op run on the device with the highest feature level so we can support more ops.
+    // and we don't care which device runs them.
     devices_feature_level = std::max(curr_device_feature_level, devices_feature_level);
   }
 
+  // nnapi-cpu has the feature 1000
   if ((devices_feature_level > 0) && (devices_feature_level < target_feature_level)) {
     LOGS_DEFAULT(INFO) << "Changing NNAPI Feature Level " << target_feature_level
                        << " to supported by target devices: " << devices_feature_level;
@@ -48,8 +79,10 @@ int32_t GetDeviceFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNet
   return target_feature_level;
 }
 
+// get all target devices which satisfy the target_device_option
+// we will always put CPU device at the end if cpu is enabled
 Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_option,
-                                      std::vector<ANeuralNetworksDevice*>& nnapi_target_devices, std::string& nnapi_target_devices_detail) {
+                        std::vector<ANeuralNetworksDevice*>& nnapi_target_devices, std::string& nnapi_target_devices_detail) {
   // GetTargetDevices is only supported on API 29+
   // get runtime_feature_level
   if (GetNNAPIRuntimeFeatureLevel(nnapi) < ANEURALNETWORKS_FEATURE_LEVEL_3)
@@ -94,25 +127,28 @@ Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_o
   return Status::OK();
 }
 
-int32_t GetNNAPIFeatureLevelWithDeviceTag(const ::NnApi* nnapi, TargetDeviceOption target_device_option) {
+// get the max feature level supported by all target devices, If not devices are specified,
+// it will return the runtime feature level
+int32_t NNAPIGetTargetFeatureLevelWithDeviceTag(const ::NnApi* nnapi, TargetDeviceOption target_device_option) {
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices;
   std::string nnapi_target_devices_detail;
   if (!GetTargetDevices(nnapi, target_device_option, nnapi_target_devices, nnapi_target_devices_detail).IsOK()) {
     LOGS_DEFAULT(WARNING) << "GetTargetDevices failed";
   }
   LOGS_DEFAULT(VERBOSE) << "finding devices [" << nnapi_target_devices_detail << "] in NNAPI";
-  return GetDeviceFeatureLevel(nnapi, nnapi_target_devices);
+  return GetDeviceFeatureLevelInternal(nnapi, nnapi_target_devices);
 }
 
-int32_t GetNNAPIFeatureLevel(const ModelBuilder& model_builder) {
-  return GetDeviceFeatureLevel(model_builder.GetNnApi(), model_builder.GetDevices());
+// get the max feature level supported by all target devices, If not devices are specified,
+// it will return the runtime feature level
+int32_t NNAPIGetTargetFeatureLevel(const ModelBuilder& model_builder) {
+  return GetDeviceFeatureLevelInternal(model_builder.GetNnApi(), model_builder.GetDevices());
 }
 
-int32_t GetNNAPIFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNetworksDevice*>& device_handles) {
-  if (!nnapi)
-    return 0;
-
-  return GetDeviceFeatureLevel(nnapi, device_handles);
+// get the max feature level supported by all target devices, If not devices are specified,
+// it will return the runtime feature level
+int32_t NNAPIGetTargetFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNetworksDevice*>& device_handles) {
+  return GetDeviceFeatureLevelInternal(nnapi, device_handles);
 }
 
 }  // namespace nnapi

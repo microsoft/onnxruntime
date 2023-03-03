@@ -35,7 +35,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
   nnapi_reference_device_ = nnapi_target_devices_detail_.find("nnapi-reference") != std::string::npos
                                 ? nnapi_target_devices_.back()
                                 : nullptr;
-  nnapi_feature_level_ = GetNNAPIFeatureLevel(*this);
+  nnapi_target_device_feature_level_ = NNAPIGetTargetFeatureLevel(*this);
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -370,10 +370,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   index = next_index_++;
 
   if (operand_type.channelQuant) {
-    if (nnapi_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    if (nnapi_target_device_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Per-channel quantization is only supported on Android API level 29+,",
-                             " system NNAPI feature level: ", nnapi_feature_level_);
+                             " system NNAPI feature level: ", nnapi_target_device_feature_level_);
     }
 
     RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
@@ -509,7 +509,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
-  if (use_fp16_ && nnapi_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
+  if (use_fp16_ && nnapi_target_device_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_->ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
