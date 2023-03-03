@@ -112,7 +112,7 @@ if( image == null )
 
 The `TextProcessing` class has the functions to tokenize the text prompt and encoded it with the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) text encoder.
 
-The CLIP tokenizer is not available in C# so in order to tokenize the text prompt we will use the [ONNX Runtime Extensions](https://github.com/microsoft/onnxruntime-extensions). The ONNX Runtime Extensions has a `custom_op_cliptok.onnx` file tokenizer that is used to tokenize the text prompt. The tokenizer is a simple tokenizer that splits the text into words and then converts the words into tokens. 
+Instead of reimplementing the CLIP tokenizer in C#, we can leverage the cross-platform CLIP tokenizer implementation in [ONNX Runtime Extensions](https://github.com/microsoft/onnxruntime-extensions). The ONNX Runtime Extensions has a `custom_op_cliptok.onnx` file tokenizer that is used to tokenize the text prompt. The tokenizer is a simple tokenizer that splits the text into words and then converts the words into tokens. 
 
 - Text Prompt: a sentence or phrase that represents the image you want to create.
 ```text
