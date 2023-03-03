@@ -34,11 +34,13 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       DeviceArray& V,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out) {
+    ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
+
     attn_.batch_size = batch;
     attn_.sequence_length = seqlen;
-    attn_.kv_sequence_length = -1;             // NOTE: not used
-    attn_.past_sequence_length = -1;           // NOTE: not used
-    attn_.original_past_sequence_length = -1;  // NOTE: not used
+    attn_.kv_sequence_length = seqlen;        // NOTE: not used
+    attn_.past_sequence_length = 0;           // NOTE: not used
+    attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
     attn_.max_sequence_length = -1;  // TODO: set
     attn_.hidden_size = num_heads * head_size;
@@ -57,11 +59,14 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       attn_.mask_type = contrib::MASK_2D_KEY_PADDING;
     } else if (mask_dim == 3) {
       attn_.mask_type = contrib::MASK_3D_ATTENTION;
-    } else if (mask_dim == 2) {
+    } else if (mask_dim == 4) {
       attn_.mask_type = contrib::MASK_4D_MEGATRON;
+    } else {
+      ORT_ENFORCE(false, "mask type not supported");
     }
 
-    auto device_prop = GetEp()->GetDeviceProp();
+    device_prop = GetEp()->GetDeviceProp();
+
     params_.tuning_ctx = TuningContext();
     params_.stream = Stream();
     params_.handle = rocblas_handle_;
@@ -78,12 +83,17 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
         params_.mask_index_dims = {batch, total_seqlen};
       } else if (mask_dim == 3) {
         params_.mask_index_dims = {batch, seqlen, total_seqlen};
-      } else {
-        int max_seqlen = 1024;  // FIXME:
+      } else if (mask_dim == 4) {
+        int max_seqlen = 1024;  // TODO:
         params_.mask_index_dims = {batch, 1, max_seqlen, max_seqlen};
       }
     }
+    params_.bias_buffer = nullptr;
     params_.out_buffer = reinterpret_cast<T*>(out.ptr());
+  }
+
+  ~IGemmSoftmaxGemmPermuteKernelExplorer() {
+    ROCBLAS_CALL_THROW(rocblas_destroy_handle(rocblas_handle_));
   }
 
   void SetWorkspace(size_t num_bytes) {
@@ -96,15 +106,52 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
  protected:
   using ParamsT = contrib::rocm::GemmSoftmaxGemmPermuteParams<T>;
   rocblas_handle rocblas_handle_;
+  hipDeviceProp_t device_prop;
   contrib::AttentionParameters attn_;
   ParamsT params_;
   std::shared_ptr<void> workspace_;
 };
 
-template <typename T, bool USE_MASK, bool USE_BIAS>
-class CKGemmSoftmaxGemmPermute : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
+// The pipeline composed from rocblas api calls and kernel launches.
+template <typename T>
+class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
  public:
-  CKGemmSoftmaxGemmPermute(
+  GemmSoftmaxGemmPermuteGeneric(
+      int64_t batch,
+      int64_t seqlen,
+      int64_t total_seqlen,
+      int64_t num_heads,
+      int64_t head_size,
+      int64_t mask_dim,
+      double scale,
+      DeviceArray& Q,
+      DeviceArray& K,
+      DeviceArray& V,
+      std::optional<DeviceArray>& attn_mask,
+      DeviceArray& out)
+      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
+                                                 Q, K, V, attn_mask, out) {
+    this->SetWorkspace(GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_));
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"Generic"};
+  }
+
+  bool SelectOp(const std::string&) {
+    return true;
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR(GemmSoftmaxGemmPermuteGenericPipeline<T>::Run(
+        &this->params_, /*use_persistent_softmax=*/false));
+  }
+};
+
+template <typename T, bool USE_MASK, bool USE_BIAS>
+class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
+ public:
+  GemmSoftmaxGemmPermuteCK(
       int64_t batch,
       int64_t seqlen,
       int64_t total_seqlen,
@@ -156,27 +203,78 @@ class CKGemmSoftmaxGemmPermute : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
   size_t selected_op_{};
 };
 
-#define REGISTER_OP(type, mask, bias, mask_bias_suffix)                           \
-  py::class_<CKGemmSoftmaxGemmPermute<type, mask, bias>>(                         \
-      m, "CKGemmSoftmaxGemmPermute" mask_bias_suffix "_" #type)                   \
-      .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,         \
-                    float,                                                        \
-                    DeviceArray&,                                                 \
-                    DeviceArray&,                                                 \
-                    DeviceArray&,                                                 \
-                    std::optional<DeviceArray>&,                                  \
-                    DeviceArray&>())                                              \
-      .def("SetRepeats", &CKGemmSoftmaxGemmPermute<type, mask, bias>::SetRepeats) \
-      .def("Run", &CKGemmSoftmaxGemmPermute<type, mask, bias>::Run)               \
-      .def("Profile", &CKGemmSoftmaxGemmPermute<type, mask, bias>::Profile)       \
-      .def("ListOps", &CKGemmSoftmaxGemmPermute<type, mask, bias>::ListOps)       \
-      .def("SelectOp", &CKGemmSoftmaxGemmPermute<type, mask, bias>::SelectOp);
+// The pipeline composed from rocblas api calls and kernel launches.
+template <typename T>
+class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
+ public:
+  GemmSoftmaxGemmPermuteTunable(
+      int64_t batch,
+      int64_t seqlen,
+      int64_t total_seqlen,
+      int64_t num_heads,
+      int64_t head_size,
+      int64_t mask_dim,
+      double scale,
+      DeviceArray& Q,
+      DeviceArray& K,
+      DeviceArray& V,
+      std::optional<DeviceArray>& attn_mask,
+      DeviceArray& out)
+      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
+                                                 Q, K, V, attn_mask, out) {
+    this->SetWorkspace(std::max(
+        GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
+        GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_)));
+
+    this->params_.TuningContext()->EnableTunableOp();
+  }
+
+  std::vector<std::string> ListOps() const {
+    return {"Tunable"};
+  }
+
+  bool SelectOp(const std::string&) {
+    return true;
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>{}(&this->params_));
+  }
+};
+
+#define REGISTER_COMMON(name, type, ...)                                  \
+  py::class_<type<__VA_ARGS__>>(m, name)                                  \
+      .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, \
+                    float,                                                \
+                    DeviceArray&,                                         \
+                    DeviceArray&,                                         \
+                    DeviceArray&,                                         \
+                    std::optional<DeviceArray>&,                          \
+                    DeviceArray&>())                                      \
+      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                  \
+      .def("Run", &type<__VA_ARGS__>::Run)                                \
+      .def("Profile", &type<__VA_ARGS__>::Profile)                        \
+      .def("ListOps", &type<__VA_ARGS__>::ListOps)                        \
+      .def("SelectOp", &type<__VA_ARGS__>::SelectOp);
+
+#define REGISTER_GENERIC(dtype) \
+  REGISTER_COMMON("GemmSoftmaxGemmPermuteGeneric_" #dtype, GemmSoftmaxGemmPermuteGeneric, dtype)
+
+#define REGISTER_CK(dtype, mask, bias, mask_bias_suffix) \
+  REGISTER_COMMON("GemmSoftmaxGemmPermuteCK" mask_bias_suffix "_" #dtype, GemmSoftmaxGemmPermuteCK, dtype, mask, bias)
+
+#define REGISTER_TUNABLE(dtype) \
+  REGISTER_COMMON("GemmSoftmaxGemmPermuteTunable_" #dtype, GemmSoftmaxGemmPermuteTunable, dtype)
 
 void InitGemmSoftmaxGemmPermute(py::module m) {
-  // REGISTER_OP(half, false, false, "");
-  REGISTER_OP(half, true, false, "Masked");
-  REGISTER_OP(half, false, true, "Biased");
-  // REGISTER_OP(half, true, true, "MaskedBiased");
+  REGISTER_GENERIC(half);
+
+  // REGISTER_CK(half, false, false, "");
+  REGISTER_CK(half, true, false, "Masked");
+  REGISTER_CK(half, false, true, "Biased");
+  // REGISTER_CK(half, true, true, "MaskedBiased");
+
+  REGISTER_TUNABLE(half);
 }
 
 }  // namespace onnxruntime

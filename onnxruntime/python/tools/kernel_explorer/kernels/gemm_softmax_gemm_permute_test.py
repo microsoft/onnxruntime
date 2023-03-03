@@ -34,7 +34,7 @@ def get_ck_binding_name(dtype, masked: bool, biased: bool):
     if biased:
         ck_suffix += "Biased"
     ck_suffix += dtype_suffix
-    return "CKGemmSoftmaxGemmPermute" + ck_suffix
+    return "GemmSoftmaxGemmPermuteCK" + ck_suffix
 
 
 dtypes = ["float16"]
@@ -43,7 +43,7 @@ seqlens = [128, 512]
 total_seqlens = [128, 512]
 num_heads = [8, 12]
 head_sizes = [64]
-mask_dims = [2]
+mask_dims = [2, 3]
 
 
 def _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale):
@@ -106,6 +106,7 @@ def _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, num_h
         batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale, dev_Q, dev_K, dev_V, dev_attn_mask, dev_out
     )
 
+    print()  # write an empty line in case pytest ... -s -v
     failures = {}
     for impl in my_gemm_softmax_gemm_permute.ListOps():
         if not my_gemm_softmax_gemm_permute.SelectOp(impl):
@@ -137,7 +138,20 @@ def _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, num_h
         raise Exception(failures)
 
 
-@pytest.mark.parametrize("mask_dim", [2, 3])
+@pytest.mark.parametrize("mask_dim", mask_dims)
+@pytest.mark.parametrize("head_size", head_sizes)
+@pytest.mark.parametrize("nhead", num_heads)
+@pytest.mark.parametrize("total_seqlen", total_seqlens)
+@pytest.mark.parametrize("seqlen", seqlens)
+@pytest.mark.parametrize("batch", [16])
+@pytest.mark.parametrize("dtype", dtypes)
+def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim):
+    func = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
+    scale = 1.0 / math.sqrt(head_size)
+    _test_gemm_softmax_gemm_permute(func, dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim, scale)
+
+
+@pytest.mark.parametrize("mask_dim", mask_dims)
 @pytest.mark.parametrize("head_size", head_sizes)
 @pytest.mark.parametrize("nhead", num_heads)
 @pytest.mark.parametrize("total_seqlen", total_seqlens)
@@ -146,6 +160,19 @@ def _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, num_h
 @pytest.mark.parametrize("dtype", dtypes)
 def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim):
     func = getattr(ke, get_ck_binding_name(dtype, mask_dim != 0, False))
+    scale = 1.0 / math.sqrt(head_size)
+    _test_gemm_softmax_gemm_permute(func, dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim, scale)
+
+
+@pytest.mark.parametrize("mask_dim", [2, 3])
+@pytest.mark.parametrize("head_size", [64])
+@pytest.mark.parametrize("nhead", [8])
+@pytest.mark.parametrize("total_seqlen", [128])
+@pytest.mark.parametrize("seqlen", [64])
+@pytest.mark.parametrize("batch", [16])
+@pytest.mark.parametrize("dtype", ["float16"])
+def test_gemm_softmax_gemm_permute_tunable(dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim):
+    func = getattr(ke, "GemmSoftmaxGemmPermuteTunable_" + dtype_to_suffix(dtype))
     scale = 1.0 / math.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(func, dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim, scale)
 
@@ -247,7 +274,13 @@ def profile_with_args(dtype, batch, seqlen, total_seqlen, num_heads, head_size, 
     biased = False
     with ke.benchmark(sort):
         args = (dtype, batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale)
+        profile_gemm_softmax_gemm_permute_func(
+            getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype)), *args
+        )
         profile_gemm_softmax_gemm_permute_func(getattr(ke, get_ck_binding_name(dtype, mask_dim != 0, biased)), *args)
+        profile_gemm_softmax_gemm_permute_func(
+            getattr(ke, "GemmSoftmaxGemmPermuteTunable_" + dtype_to_suffix(dtype)), *args
+        )
 
 
 def profile():
@@ -284,4 +317,5 @@ if __name__ == "__main__":
             args.head_size,
             args.mask_dim,
             args.scale,
+            sort=args.sort,
         )
