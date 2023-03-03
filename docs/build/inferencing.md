@@ -62,7 +62,7 @@ Open Developer Command Prompt for Visual Studio version you are going to use. Th
 ```
 .\build.bat --config RelWithDebInfo --build_shared_lib --parallel
 ```
-The default Windows CMake Generator is Visual Studio 2017, but you can also use the newer Visual Studio 2019 by passing `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`. Visual Studio 2022 should be fine too. We recommend using the latest one.
+The default Windows CMake Generator is Visual Studio 2017. For Visual Studio 2019 pass `--cmake_generator "Visual Studio 16 2019"` to `.\build.bat`. For Visual Studio 2022 pass `--cmake_generator "Visual Studio 17 2022"`. We recommend using the latest one.
 
 #### Linux
 
