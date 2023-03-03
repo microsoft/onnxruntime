@@ -225,10 +225,11 @@ var modelPath = Directory.GetCurrentDirectory().ToString() + ("\\unet\\model.onn
 var scheduler = new LMSDiscreteScheduler();
 var timesteps = scheduler.SetTimesteps(numInferenceSteps);
 ```
+
 ```text
 tensor([999., 888., 777., 666., 555., 444., 333., 222., 111.,   0.])
 ```
-```  
+
 ### Latents
 
 The `latents` is the noisy image tensor that is used in the model input. It is created using the `GenerateLatentSample` function to create a random tensor of shape (1,4,64,64). The `seed` can be set to a random number or a fixed number. If the `seed` is set to a fixed number the same latent tensor will be used each time. This is useful for debugging or if you want to create the same image each time.
