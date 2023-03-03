@@ -123,8 +123,6 @@ class FusionT5Attention(FusionAttention):
 
         _, reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes
 
-        print("qkv nodes is done")
-
         qkv_shape_nodes = self.model.match_parent_path(
             reshape_qkv,
             ["Concat", "Unsqueeze", "Gather", "Shape"],
@@ -133,8 +131,6 @@ class FusionT5Attention(FusionAttention):
         if qkv_shape_nodes is None:
             return
         input_shape_node = qkv_shape_nodes[-1]
-
-        print("qkv shape nodes is done")
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -145,7 +141,6 @@ class FusionT5Attention(FusionAttention):
             return
         _, reshape_v, matmul_v = v_nodes
         # todo: check reshape_v parent nodes
-        print("matmul_v is done")
 
         qk_nodes = self.model.match_parent_path(
             matmul_qkv,
@@ -155,8 +150,6 @@ class FusionT5Attention(FusionAttention):
         if qk_nodes is None:
             return
         _, add_qk, matmul_qk = qk_nodes
-
-        print("qk nodes is done")
 
         mask_index = None
         mask_nodes = self.model.match_parent_path(
@@ -174,7 +167,6 @@ class FusionT5Attention(FusionAttention):
         if mul_val != -10000:
             self.mask_filter_value = mul_val
 
-        print("find mask node")
         mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
 
         res_pos_bias = None
@@ -187,7 +179,6 @@ class FusionT5Attention(FusionAttention):
             return
         rpb_add_node = rpb_nodes[0]
         res_pos_bias = rpb_add_node.input[0]
-        print("find rpb node")
 
         k_nodes = self.model.match_parent_path(
             matmul_qk,
@@ -197,7 +188,6 @@ class FusionT5Attention(FusionAttention):
         if k_nodes is None:
             return
         _, reshape_k, matmul_k = k_nodes
-        print("matmul_k is done")
         # todo: check reshape_k parent nodes
 
         q_nodes = self.model.match_parent_path(
@@ -208,16 +198,13 @@ class FusionT5Attention(FusionAttention):
         if q_nodes is None:
             return
 
-        print("find q nodes")
         transpose_q, reshape_q, matmul_q = q_nodes
         # todo: check reshape_q parent nodes
 
         if matmul_q.input[0] != input_shape_node.input[0]:
-            print("matmul_q.input[0] != input_shape_node.input[0]")
             return
 
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
-        print("get q_num_heads, q_hidden_size")
 
         new_node = self.create_attention_node(
             mask_index,
@@ -236,8 +223,6 @@ class FusionT5Attention(FusionAttention):
         )
         if new_node is None:
             return
-
-        print("new node is created")
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name

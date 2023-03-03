@@ -151,14 +151,14 @@ class T5Helper:
     def auto_mixed_precision(
         onnx_model: OnnxModel,
         op_block_list: List[str] = [
-            "Pow",
-            "ReduceMean",
-            "Add",
-            "Sqrt",
-            "Div",
-            "Mul",
-            "Softmax",
-            "Relu",
+            # "Pow",
+            # "ReduceMean",
+            # "Add",
+            # "Sqrt",
+            # "Div",
+            # "Mul",
+            # "Softmax",
+            # "Relu",
         ],
     ):
         """Convert model to mixed precision.
