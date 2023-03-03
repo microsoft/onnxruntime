@@ -178,7 +178,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         attn->num_heads,
         attn->head_size,
         attn->sequence_length,
-        attn->past_sequence_length);
+        attn->total_sequence_length);
   }
 
   inline static Status Gemm1(const GemmSoftmaxGemmPermuteParams<T>* params) {
