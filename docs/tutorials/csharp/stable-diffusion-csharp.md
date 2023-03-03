@@ -10,14 +10,14 @@ nav_order: 1
 # Inference Stable Diffusion with C# and ONNX Runtime
 {: .no_toc }
 
-In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#. Stable Diffusion models denoise a static image to create an image that represents the text prompt given by the user.
+In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#. Stable Diffusion models take a text prompt and create an image that represents the text. See the example below:
 
 ```text
 "make a picture of green tree with flowers around it and a red sky" 
 ```
-
 |----------------------|----------------------|
-| <img src="../../../images/latents-noise-example.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> | <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
+| <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
+<img src="../../../images/stablediff-example-image.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
 
 
 ## Contents
@@ -238,6 +238,8 @@ The `latents` is the noisy image tensor that is used in the model input. It is c
 var seed = new Random().Next();
 var latents = GenerateLatentSample(batchSize, height, width,seed, scheduler.InitNoiseSigma);
 ```
+
+<img src="../../../images/latents-noise-example.png" width="256" height="256" alt="Image of browser inferencing on sample images."/>
 
 ### Inference Loop
 
