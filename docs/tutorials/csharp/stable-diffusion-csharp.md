@@ -275,7 +275,7 @@ for (int t = 0; t < timesteps.Length; t++)
 }
 ```
 ### Postprocess the `output` with the VAEDecoder
-After the inference loop is complete the resulting tensor is scaled and then sent to the `vae_decoder` model to decode the image. Lastly the decoded image tensor is converted to an image and saved to disc.
+After the inference loop is complete, the resulting tensor is scaled and then sent to the `vae_decoder` model to decode the image. Lastly the decoded image tensor is converted to an image and saved to disc.
 
 ```csharp
 public static Tensor<float> Decoder(List<NamedOnnxValue> input)
@@ -321,10 +321,10 @@ This is a high level overview of how to run Stable Diffusion in C#. It covered t
 
 ## Understanding the model in Python with Diffusers from Hugging Face
 
-When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models in this pipeline. This code is based on the Hugging Face Diffusers Library and Blog. If you want to learn more about how it works [check out this amazing blog post](https://huggingface.co/blog/stable-diffusion) for more details!
+When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models in this pipeline. This code is based on the Hugging Face Diffusers Library and Blog. If you want to learn more about how it works [check out this amazing blog post](https://huggingface.co/blog/stable_diffusion) for more details!
 
 ## Resources
 - [Stable Diffusion C# Sample Source Code](https://github.com/cassiebreviu/StableDiffusion)
 - [C# API Doc](https://onnxruntime.ai/docs/api/csharp/api)
 - [Get Started with C# in ONNX Runtime](https://onnxruntime.ai/docs/get-started/with-csharp.html)
-- [Hugging Face Stable Diffusion Blog](https://huggingface.co/blog/stable-diffusion)
+- [Hugging Face Stable Diffusion Blog](https://huggingface.co/blog/stable_diffusion)
