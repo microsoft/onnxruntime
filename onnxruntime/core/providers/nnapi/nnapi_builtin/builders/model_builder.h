@@ -106,7 +106,7 @@ class ModelBuilder {
 
   const std::vector<ANeuralNetworksDevice*>& GetDevices() const { return nnapi_target_devices_; }
 
-  int32_t GetFeatureLevel() const { return nnapi_feature_level_; }
+  int32_t GetTargetDeviceFeatureLevel() const { return nnapi_target_device_feature_level_; }
  private:
   const NnApi* nnapi_{nullptr};
   const GraphViewer& graph_viewer_;
@@ -154,7 +154,7 @@ class ModelBuilder {
   std::string nnapi_target_devices_detail_;  // Debug info for target devices
 
   // feature_level, to decide if we can run this node on NNAPI
-  int32_t nnapi_feature_level_ = 0;
+  int32_t nnapi_target_device_feature_level_ = 0;
   // The number of nnapi operations in this model
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
