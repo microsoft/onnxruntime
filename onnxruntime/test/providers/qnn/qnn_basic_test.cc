@@ -40,6 +40,8 @@ namespace test {
 // TODO: When we need QNN in a minimal build we should add an ORT format version of the model
 #if !defined(ORT_MINIMAL_BUILD)
 
+// Tests that the QNN EP is registered when added via the public C++ API.
+// Loads a simple ONNX model that adds floats.
 TEST(QnnEP, TestAddEpUsingPublicApi) {
   {
     // C++ API test

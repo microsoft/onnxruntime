@@ -91,6 +91,9 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
   };
 }
 
+// Creates the graph:
+// quantized_input -> DequantizeLinear -> InstanceNormalization -> QuantizeLinear -> quantized_output.
+// Currently used to test QNN EP.
 template <typename QuantType>
 GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_shape, float epsilon) {
   return [input_shape, epsilon](ModelTestBuilder& builder) {

@@ -228,6 +228,7 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProviderWithOptions(const
 #ifdef USE_QNN
   return QNNProviderFactoryCreator::Create(options)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(options);
   return nullptr;
 #endif
 }
