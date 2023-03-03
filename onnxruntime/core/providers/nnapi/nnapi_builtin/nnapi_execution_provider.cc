@@ -90,7 +90,6 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     const auto* nnapi_handle = NnApiImplementation();
     auto flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) ? nnapi::TargetDeviceOption::CPU_DISABLED
                                                          : nnapi::TargetDeviceOption::ALL_DEVICES;
-    flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT) ? nnapi::TargetDeviceOption::CPU_DISABLED_SOFT : flag;
     return nnapi::GetNNAPIFeatureLevelWithDeviceTag(nnapi_handle, flag);
 #else
     ORT_UNUSED_PARAMETER(nnapi_flags_);
@@ -275,7 +274,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
 
     bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
-    bool cpu_disabled_soft = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT;
     bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
     if (cpu_disabled && cpu_only) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
@@ -283,8 +281,6 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
       builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_DISABLED);
     } else if (cpu_only) {
       builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_ONLY);
-    } else if (cpu_disabled_soft) {
-      builder.SetTargetDeviceOption(nnapi::TargetDeviceOption::CPU_DISABLED_SOFT);
     }
 
     std::unique_ptr<nnapi::Model> nnapi_model;

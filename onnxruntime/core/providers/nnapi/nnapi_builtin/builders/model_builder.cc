@@ -538,34 +538,29 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
                                          [](bool is_supported) { return is_supported; });
     // allowing fall back to cpu if it's not strict CPU_DISABLED mode
     if (!all_ops_supported) {
-      if (target_device_option_ != TargetDeviceOption::CPU_DISABLED_SOFT) {
-        // There are some ops not supported by the list of the target devices
-        // Fail the Compile
-        //
-        // TODO, add some logic to not fail for some cases
-        // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
-        // and cpu is not in the target devices list
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The model cannot run using current set of target devices, ",
-                               nnapi_target_devices_detail_);
-      }
+      // There are some ops not supported by the list of the target devices
+      // Fail the Compile
+      //
+      // TODO, add some logic to not fail for some cases
+      // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
+      // and cpu is not in the target devices list
+      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                             "The model cannot run using current set of target devices, ",
+                             nnapi_target_devices_detail_);
+
     } else {
       use_create_for_devices = true;
     }
   }
 
 #ifndef NDEBUG
-  if ((nnapi_reference_device_ && nnapi_target_devices_.size() > 1) ||
-      (target_device_option_ == TargetDeviceOption::CPU_DISABLED_SOFT)) {
+  if ((nnapi_reference_device_ && nnapi_target_devices_.size() > 1)) {
     auto* supported_ops = supported_ops_holder.get();
-
-    if (target_device_option_ != TargetDeviceOption::CPU_DISABLED_SOFT) {
-      RETURN_STATUS_ON_ERROR_WITH_NOTE(
-          nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
-              nnapi_model_->model_, nnapi_target_devices_.data(),
-              static_cast<uint32_t>(nnapi_target_devices_.size() - 1), supported_ops),
-          "on getSupportedOperationsForDevices");
-    }
+    RETURN_STATUS_ON_ERROR_WITH_NOTE(
+        nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices(
+            nnapi_model_->model_, nnapi_target_devices_.data(),
+            static_cast<uint32_t>(nnapi_target_devices_.size() - 1), supported_ops),
+        "on getSupportedOperationsForDevices");
 
     std::unordered_map<std::string, int32_t> optype_support;
     const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
