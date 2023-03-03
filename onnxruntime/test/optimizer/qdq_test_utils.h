@@ -91,6 +91,43 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
   };
 }
 
+template <typename QuantType>
+GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_shape, float epsilon) {
+  return [input_shape, epsilon](ModelTestBuilder& builder) {
+
+    float qdq_scale = 1.0f;
+    QuantType qdq_zp = 0;
+
+    using QuantTypeLimits = std::numeric_limits<QuantType>;
+    QuantType quant_min_value = static_cast<QuantType>(0);
+    QuantType quant_max_value = QuantTypeLimits::max() / 2;
+
+    auto* input_arg = builder.MakeInput<QuantType>(input_shape, quant_min_value, quant_max_value);
+    auto* output_arg = builder.MakeOutput();
+
+    // add input -> DQ
+    auto* dq_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<QuantType>(input_arg, qdq_scale, qdq_zp, dq_output);
+
+    // Add InstanceNormalization
+    std::vector<float> channel_scales(input_shape[1], 1.0f);
+    std::vector<float> channel_biases(input_shape[1], 0.0f);
+
+    auto* scale = builder.Make1DInitializer<float>(channel_scales);
+    auto* bias = builder.Make1DInitializer<float>(channel_biases);
+
+    auto* instance_norm_output = builder.MakeIntermediate();
+    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {dq_output, scale, bias}, {instance_norm_output});
+    inst_norm_node.AddAttribute("epsilon", epsilon);
+
+    // add Q output
+    builder.AddQuantizeLinearNode<QuantType>(instance_norm_output,
+                                             qdq_scale,
+                                             qdq_zp,
+                                             output_arg);
+  };
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {

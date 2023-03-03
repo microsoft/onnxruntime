@@ -224,6 +224,14 @@ std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProviderWithOptions(const ProviderOptions& options) {
+#ifdef USE_QNN
+  return QNNProviderFactoryCreator::Create(options)->CreateProvider();
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #ifdef USE_XNNPACK
   return XnnpackProviderFactoryCreator::Create(ProviderOptions(), nullptr)->CreateProvider();

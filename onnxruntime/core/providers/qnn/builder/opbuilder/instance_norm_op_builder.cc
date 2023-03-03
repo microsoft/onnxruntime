@@ -63,7 +63,6 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0");
   const size_t input_rank = input_shape.size();
 
-  // TODO: Check if HTP backend supports ranks != 4. QNN op documentation may be out-of-date.
   if (input_rank <= 2 || input_rank > 4) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports input ranks of size 3 or 4.");
   }
