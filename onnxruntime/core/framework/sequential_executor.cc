@@ -116,12 +116,12 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
 #if defined(TRACE_EXECUTION)
       const TensorShape& tensor_shape = p_tensor->Shape();
       size_t element_size = p_tensor->DataType()->Size();
-      LOGS(logger, INFO) << node_name << " input[" << i << "]"
-                         << " is_param=" << is_param
-                         << " size=" << tensor_size
-                         << " shape=" << tensor_shape.ToString()
-                         << " element_size=" << element_size
-                         << "\n";
+      std::cout << node_name << " input[" << i << "]"
+                << " is_param=" << is_param
+                << " size=" << tensor_size
+                << " shape=" << tensor_shape.ToString()
+                << " element_size=" << element_size
+                << "\n";
 #endif
       if (is_param) {
         input_parameter_sizes += tensor_size;
