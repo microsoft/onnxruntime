@@ -101,7 +101,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
   std::shared_ptr<void> workspace_;
 };
 
-template <typename T>
+template <typename T, bool USE_MASK, bool USE_BIAS>
 class CKGemmSoftmaxGemmPermute : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
  public:
   CKGemmSoftmaxGemmPermute(
@@ -121,25 +121,10 @@ class CKGemmSoftmaxGemmPermute : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
                                                  Q, K, V, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_));
 
-    // for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/false, /*USE_BIAS=*/false>() ) {
-    //   type_strings_.emplace_back(std::move(ts));
-    //   ops_.emplace_back(std::move(op));
-    // }
-
-    for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/true, /*USE_BIAS=*/false>()) {
+    for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, USE_MASK, USE_BIAS>()) {
       type_strings_.emplace_back(std::move(ts));
       ops_.emplace_back(std::move(op));
     }
-
-    for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/false, /*USE_BIAS=*/true>()) {
-      type_strings_.emplace_back(std::move(ts));
-      ops_.emplace_back(std::move(op));
-    }
-
-    // for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/true, /*USE_BIAS=*/true>() ) {
-    //   type_strings_.emplace_back(std::move(ts));
-    //   ops_.emplace_back(std::move(op));
-    // }
   }
 
   std::vector<std::string> ListOps() const {
@@ -171,24 +156,27 @@ class CKGemmSoftmaxGemmPermute : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
   size_t selected_op_{};
 };
 
-#define REGISTER_OP(type)                                                          \
-  py::class_<CKGemmSoftmaxGemmPermute<type>>(m, "CKGemmSoftmaxGemmPermute_" #type) \
-      .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,          \
-                    float,                                                         \
-                    DeviceArray&,                                                  \
-                    DeviceArray&,                                                  \
-                    DeviceArray&,                                                  \
-                    std::optional<DeviceArray>&,                                   \
-                    DeviceArray&>())                                               \
-      .def("SetRepeats", &CKGemmSoftmaxGemmPermute<type>::SetRepeats)              \
-      .def("Run", &CKGemmSoftmaxGemmPermute<type>::Run)                            \
-      .def("Profile", &CKGemmSoftmaxGemmPermute<type>::Profile)                    \
-      .def("ListOps", &CKGemmSoftmaxGemmPermute<type>::ListOps)                    \
-      .def("SelectOp", &CKGemmSoftmaxGemmPermute<type>::SelectOp);
+#define REGISTER_OP(type, mask, bias, mask_bias_suffix)                           \
+  py::class_<CKGemmSoftmaxGemmPermute<type, mask, bias>>(                         \
+      m, "CKGemmSoftmaxGemmPermute" mask_bias_suffix "_" #type)                   \
+      .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t,         \
+                    float,                                                        \
+                    DeviceArray&,                                                 \
+                    DeviceArray&,                                                 \
+                    DeviceArray&,                                                 \
+                    std::optional<DeviceArray>&,                                  \
+                    DeviceArray&>())                                              \
+      .def("SetRepeats", &CKGemmSoftmaxGemmPermute<type, mask, bias>::SetRepeats) \
+      .def("Run", &CKGemmSoftmaxGemmPermute<type, mask, bias>::Run)               \
+      .def("Profile", &CKGemmSoftmaxGemmPermute<type, mask, bias>::Profile)       \
+      .def("ListOps", &CKGemmSoftmaxGemmPermute<type, mask, bias>::ListOps)       \
+      .def("SelectOp", &CKGemmSoftmaxGemmPermute<type, mask, bias>::SelectOp);
 
 void InitGemmSoftmaxGemmPermute(py::module m) {
-  REGISTER_OP(float)
-  REGISTER_OP(half)
+  // REGISTER_OP(half, false, false, "");
+  REGISTER_OP(half, true, false, "Masked");
+  REGISTER_OP(half, false, true, "Biased");
+  // REGISTER_OP(half, true, true, "MaskedBiased");
 }
 
 }  // namespace onnxruntime

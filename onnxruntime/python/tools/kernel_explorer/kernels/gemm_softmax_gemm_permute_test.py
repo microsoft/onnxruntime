@@ -26,6 +26,17 @@ def multinormal_distribution(num_distribution, num_element_per_dist):
     return np.array(arrays)
 
 
+def get_ck_binding_name(dtype, masked: bool, biased: bool):
+    dtype_suffix = "_" + dtype_to_suffix(dtype)
+    ck_suffix = ""
+    if masked:
+        ck_suffix += "Masked"
+    if biased:
+        ck_suffix += "Biased"
+    ck_suffix += dtype_suffix
+    return "CKGemmSoftmaxGemmPermute" + ck_suffix
+
+
 dtypes = ["float16"]
 batches = [1, 64]
 seqlens = [128, 512]
@@ -126,17 +137,17 @@ def _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, num_h
         raise Exception(failures)
 
 
-@pytest.mark.parametrize("mask_dims", [2, 3])
+@pytest.mark.parametrize("mask_dim", [2, 3])
 @pytest.mark.parametrize("head_size", head_sizes)
 @pytest.mark.parametrize("nhead", num_heads)
 @pytest.mark.parametrize("total_seqlen", total_seqlens)
 @pytest.mark.parametrize("seqlen", seqlens)
 @pytest.mark.parametrize("batch", batches)
 @pytest.mark.parametrize("dtype", dtypes)
-def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dims):
-    func = getattr(ke, "CKGemmSoftmaxGemmPermute_{}".format(dtype_to_suffix(dtype)))
+def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim):
+    func = getattr(ke, get_ck_binding_name(dtype, mask_dim != 0, False))
     scale = 1.0 / math.sqrt(head_size)
-    _test_gemm_softmax_gemm_permute(func, dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dims, scale)
+    _test_gemm_softmax_gemm_permute(func, dtype, batch, seqlen, total_seqlen, nhead, head_size, mask_dim, scale)
 
 
 @dataclass
@@ -233,10 +244,10 @@ def profile_gemm_softmax_gemm_permute_func(
 
 
 def profile_with_args(dtype, batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale, *, sort=False):
-    dtype_suffix = "_" + dtype_to_suffix(dtype)
+    biased = False
     with ke.benchmark(sort):
         args = (dtype, batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale)
-        profile_gemm_softmax_gemm_permute_func(getattr(ke, f"CKGemmSoftmaxGemmPermute" + dtype_suffix), *args)
+        profile_gemm_softmax_gemm_permute_func(getattr(ke, get_ck_binding_name(dtype, mask_dim != 0, biased)), *args)
 
 
 def profile():
