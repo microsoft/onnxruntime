@@ -104,7 +104,7 @@ class OpKernel {
   // All attributes returned by this method will be removed by method
   // PruneRemovableAttributes of they exists.
   // @param removable_attributes set of attributes the session can safely remove.
-  virtual Status RemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+  virtual Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
     removable_attributes.clear();
     return Status::OK();
   }

@@ -42,7 +42,7 @@ TreeEnsembleClassifier<T>::TreeEnsembleClassifier(const OpKernelInfo& info) : Op
 }
 
 template <typename T>
-Status TreeEnsembleClassifier<T>::RemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+Status TreeEnsembleClassifier<T>::GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
   InlinedVector<std::string> names {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
                                     "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",
                                     "nodes_truenodeids", "nodes_values", "class_ids", "class_treeids", "class_nodeids",

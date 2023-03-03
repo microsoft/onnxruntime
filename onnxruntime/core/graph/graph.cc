@@ -958,11 +958,11 @@ bool Node::ClearAttribute(const std::string& attr_name) {
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-int Node::PruneRemovableAttributes(const InlinedVector<std::string>& removable_attributes) {
+int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
   graph_->SetGraphResolveNeeded();
   graph_->SetGraphProtoSyncNeeded();
   int n_removed = 0;
-  for (auto name : removable_attributes) {
+  for (const auto& name : removable_attributes) {
     n_removed += static_cast<int>(attributes_.erase(name));
   }
   can_be_saved_ = can_be_saved_ && n_removed == 0;

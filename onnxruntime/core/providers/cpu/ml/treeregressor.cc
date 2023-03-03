@@ -48,7 +48,7 @@ TreeEnsembleRegressor<T>::TreeEnsembleRegressor(const OpKernelInfo& info) : OpKe
 } 
 
 template <typename T>
-Status TreeEnsembleRegressor<T>::RemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+Status TreeEnsembleRegressor<T>::GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
   removable_attributes.clear();
   InlinedVector<std::string> names {"base_values", "nodes_falsenodeids", "nodes_featureids", "nodes_hitrates",
                                     "nodes_missing_value_tracks_true", "nodes_modes", "nodes_nodeids", "nodes_treeids",

@@ -245,21 +245,34 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
-int SessionState::PruneRemovableAttributes() {
+void SessionState::PruneRemovableAttributes() {
   int n_removed = 0;
   InlinedVector<std::string> removable_attributes;
   for (size_t i = 0; i < session_kernels_.size(); ++i) {
-    auto status = session_kernels_[i].get()->RemovableAttributes(removable_attributes);
+    auto status = session_kernels_[i].get()->GetRemovableAttributes(removable_attributes);
     if (!status.IsOK()) {
-      ORT_THROW("Kernel ", i, " failed at retrieving the removable attributes.");
+      const Node& node_const = session_kernels_[i].get()->Node();
+      LOGS(logger_, WARNING) << "failed at retrieving the removable attributes"
+                             << "for node '" << node_const.Name() << "' ('" << node_const.OpType() << "').";
+      continue;
     }
     if (removable_attributes.empty())
       continue;
     auto index = session_kernels_[i].get()->Node().Index();
     Node* node = graph_.GetNode(index);
     n_removed += node->PruneRemovableAttributes(removable_attributes);
+    LOGS(logger_, INFO) << "femoved removable attributes "
+                        << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
+                        << "attributes: " << [removable_attributes]() -> std::string{
+                          std::ostringstream os;
+                          for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
+                            if (it != removable_attributes.cbegin())
+                              os << ", ";
+                            os << *it;
+                          }
+                          return os.str();
+                        }() << ".";
   }
-  return n_removed;
 }
 
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {

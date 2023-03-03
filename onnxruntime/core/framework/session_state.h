@@ -308,8 +308,8 @@ class SessionState {
   }
 
   // Clear all removable attributes if they exists.
-  // Returns the number of pruned attributes.
-  int PruneRemovableAttributes();
+  // The function logs the list of removable attributes for every node.
+  void PruneRemovableAttributes();
 
   size_t GetNumberOfPrepacksCounter() const {
     return number_of_prepacks_counter_;

@@ -409,9 +409,9 @@ class Node {
 
   /**
   * Clears removable attributes. These are no longer needed after the initialization
-  * of the session.
+  * of the session. The function returns the number of removed attributes.
   */
-  int PruneRemovableAttributes(const InlinedVector<std::string>& removable_attributes);
+  int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /** Gets the Node's mutable attributes. */
