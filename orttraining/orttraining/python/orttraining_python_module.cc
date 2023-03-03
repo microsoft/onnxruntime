@@ -363,12 +363,16 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       },
       "Clean the execution provider instances used in ort training module.");
 
-  // clean the ort training environment when python interpreter exit
-  // otherwise the global var will be de-constrcut after user main.
-  // the order of ort training environment deconstruction and cudart
-  // deconstruction is not stable, which will lead to crash.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
+    // Clean the execution providers map stored in the ort training environment
+    // when python interpreter exit otherwise the global var's execution provider map
+    // will be de-constrcut after user main.
+    // Otherwise, the order of ort training environment deconstruction and cudart
+    // deconstruction is not stable, which will lead to crash:
+    // CUDA failure 4 : driver shutting down
+    // Make sure not to destruct the environment itself yet. Otherwise, the environment may
+    // get destructed before the session and will lead to hangs.
     ort_training_env->ClearExecutionProviderInstances();
 #ifdef ENABLE_EAGER_MODE
     ort_backends_manager_instance = nullptr;
