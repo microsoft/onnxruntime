@@ -15,9 +15,9 @@ In this tutorial we will learn how to do inferencing for the popular Stable Diff
 ```text
 "make a picture of green tree with flowers around it and a red sky" 
 ```
+
 |----------------------|----------------------|
-| <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
-<img src="../../../images/stablediff-example-image.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
+| <img src="../../../images/sample-output-stablediff.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> | <img src="../../../images/stablediff-example-image.png" width="256" height="256" alt="Image of browser inferencing on sample images."/> |
 
 
 ## Contents
