@@ -1552,6 +1552,8 @@ struct KernelInfoImpl : Base<T> {
 
   TypeInfo GetInputTypeInfo(size_t index) const;
   TypeInfo GetOutputTypeInfo(size_t index) const;
+
+  ConstValue GetTensorConstantInput(size_t index, int* is_constant) const;
 };
 
 }  // namespace detail

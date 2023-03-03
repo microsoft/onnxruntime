@@ -10,6 +10,97 @@
 
 using namespace fastertransformer;
 
+#define L_ROOT "transformer.encoder.layer.%d"
+#define ATT_Q "attn.query"
+#define ATT_K "attn.key"
+#define ATT_V "attn.value"
+#define ATT_OUT "attn.out"
+#define ATT_NORM "attention_norm"
+#define FFN_NORM "ffn_norm"
+#define FFN_IN "ffn.fc1"
+#define FFN_OUT "ffn.fc2"
+
+const std::vector<const char*> layer_weight_names = {L_ROOT "." ATT_NORM ".weight",
+                                                     L_ROOT "." ATT_NORM ".bias",
+                                                     L_ROOT "." ATT_Q ".weight",
+                                                     L_ROOT "." ATT_Q ".bias",
+                                                     L_ROOT "." ATT_K ".weight",
+                                                     L_ROOT "." ATT_K ".bias",
+                                                     L_ROOT "." ATT_V ".weight",
+                                                     L_ROOT "." ATT_V ".bias",
+                                                     L_ROOT "." ATT_OUT ".weight",
+                                                     L_ROOT "." ATT_OUT ".bias",
+                                                     L_ROOT "." FFN_NORM ".weight",
+                                                     L_ROOT "." FFN_NORM ".bias",
+                                                     L_ROOT "." FFN_IN ".weight",
+                                                     L_ROOT "." FFN_IN ".bias",
+                                                     L_ROOT "." FFN_OUT ".weight",
+                                                     L_ROOT "." FFN_OUT ".bias",
+                                                     L_ROOT ".amaxList",
+                                                     L_ROOT ".h_amaxList"};
+
+const std::vector<std::string> pre_layer_weight_names  = {"transformer.embeddings.patch_embeddings.weight",
+                                                          "transformer.embeddings.patch_embeddings.bias",
+                                                          "transformer.embeddings.cls_token",
+                                                          "transformer.embeddings.position_embeddings"};
+const std::vector<std::string> post_layer_weight_names = {"transformer.encoder.encoder_norm.weight",
+                                                          "transformer.encoder.encoder_norm.bias"};
+
+template<typename T>
+void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int layer_num, bool with_cls_token = true)
+{
+    Ort::ConstKernelInfo kinfo(info);
+    std::unordered_map<std::string, Ort::ConstValue> weights_map = {};
+
+    // Get weights (constant inputs) from kernel info
+    for (size_t i = 0; i < kinfo.GetInputCount(); i++) {
+        std::string name = kinfo.GetInputName(i);
+        int is_constant = 0;
+        Ort::ConstValue value = kinfo.GetTensorConstantInput(i, &is_constant);
+        if (is_constant) {
+            weights_map[name] = value; 
+        }
+    }
+
+    // Load weights pointer
+    long unsigned int idx = 0;
+    for (auto& name : pre_layer_weight_names) {
+        if (!with_cls_token && name == "transformer.embeddings.cls_token") {
+            continue;
+        }
+
+        auto iter = weights_map.find(name);
+        if (iter != weights_map.end()) {
+            Ort::ConstValue ort_val = iter->second; 
+            w[idx++] = ort_val.GetTensorData<T>();
+        }
+    }
+
+    for (int i = 0; i < layer_num; i++) {
+        for (auto& name : layer_weight_names) {
+            char str_buf[1024];
+            sprintf(str_buf, name, i);
+            std::string string_buf = str_buf;
+
+            auto iter = weights_map.find(string_buf);
+            if (iter != weights_map.end()) {
+                Ort::ConstValue ort_val = iter->second; 
+                w[idx++] = ort_val.GetTensorData<T>();
+            }
+        }
+    }
+
+    for (auto& name : post_layer_weight_names) {
+        auto iter = weights_map.find(name);
+        if (iter != weights_map.end()) {
+            Ort::ConstValue ort_val = iter->second; 
+            w[idx++] = ort_val.GetTensorData<T>();
+        }
+    }
+
+    FT_CHECK(idx == w.size());
+}
+
 FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                              void* compute_stream,
                                              int batch_size,
@@ -21,7 +112,7 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                              int has_cls_token,
                                              int is_fp16,
                                              int int8_mode):
-batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is_fp16)
+batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), layer_num_(layer_num), has_cls_token_(has_cls_token), is_fp16_(is_fp16)
 {
     checkCUDNN(cudnnCreate(&cudnn_handle_));
     checkCUDNN(cudnnSetStream(cudnn_handle_, stream_));
@@ -46,24 +137,30 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
     cublas_wrapper_ = new cublasINT8MMWrapper(
         cublas_handle_, cublaslt_handle_, stream_, cublas_algo_map_, cublas_wrapper_mutex_, use_ORDER_COL32_2R_4R4);
 
-    if (is_fp16) {
+    if (is_fp16_) {
         cublas_wrapper_->setFP16GemmConfig();
     }
     else {
         cublas_wrapper_->setFP32GemmConfig();
     }
 
-    int  max_batch       = batch_size;
+    int  max_batch      = batch_size;
     int  in_chans       = 3;
     int  inter_size     = embed_dim * 4;
     int  head_dim       = embed_dim / head_num;
     bool with_cls_token = has_cls_token > 0;
     int  seq_len        = (img_size / patch_size) * (img_size / patch_size) + (with_cls_token ? 1 : 0);
+    size_t weights_num  = pre_layer_weight_names.size() + post_layer_weight_names.size() + layer_num * layer_weight_names.size();
     seq_len_ = seq_len;
     in_chans_ = in_chans;
 
-    if (is_fp16) {
+    if (is_fp16_) {
         params_fp16_ = ViTINT8Weight<half>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
+        std::vector<const half*> w_fp16;
+        w_fp16.resize(weights_num);
+        loadWeightsPtrINT8<half>(info, w_fp16, layer_num, with_cls_token); 
+        const half* const* pp_buf = &w_fp16[0];
+        params_fp16_.CopyWeightsFromHostBuffers(pp_buf);
         attention_type_ = getAttentionType<half>(head_dim, getSMVersion(), true, seq_len);
         vit_fp16_ = new ViTTransformerINT8<half>(max_batch,
                                             img_size,
@@ -86,6 +183,12 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
     }
     else {
         params_fp32_ = ViTINT8Weight<float>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
+        std::vector<const float*> w_fp32;
+        w_fp32.resize(weights_num);
+        loadWeightsPtrINT8<float>(info, w_fp32, layer_num, with_cls_token); 
+        const float* const* pp_buf = &w_fp32[0];
+        params_fp32_.CopyWeightsFromHostBuffers(pp_buf);
+
         attention_type_ = getAttentionType<float>(head_dim, getSMVersion(), true, seq_len);
         vit_fp32_ = new ViTTransformerINT8<float>(max_batch,
                                              img_size,
@@ -123,6 +226,60 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
                 inter_size,
                 int(attention_type_));
 }
+
+//void FTViTINT8CustomKernel::loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const float*>& w)
+//{
+    //Ort::ConstKernelInfo kinfo(info);
+    //std::unordered_map<std::string, Ort::ConstValue> weights_map = {};
+
+    //// Get weights (constant inputs) from kernel info
+    //for (size_t i = 0; i < kinfo.GetInputCount(); i++) {
+        //std::string name = kinfo.GetInputName(i);
+        //int is_constant = 0;
+        //kinfo.GetTensorConstantInput(i, &is_constant);
+        //if (is_constant) {
+            //weights_map[name] = kinfo.GetTensorConstantInput(i, &is_constant); 
+        //}
+    //}
+
+    //// Load weights pointer
+    //long unsigned int idx = 0;
+    //for (auto& name : pre_layer_weight_names) {
+        //if (!(has_cls_token_ > 0) && name == "transformer.embeddings.cls_token") {
+            //continue;
+        //}
+
+        //auto iter = weights_map.find(name);
+        //if (iter != weights_map.end()) {
+            //Ort::ConstValue ort_val = iter->second; 
+            //w[idx++] = ort_val.GetTensorData<float>();
+        //}
+    //}
+
+    //for (int i = 0; i < layer_num_; i++) {
+        //for (auto& name : layer_weight_names) {
+            //char str_buf[1024];
+            //sprintf(str_buf, name, i);
+            //std::string string_buf = str_buf;
+
+            //auto iter = weights_map.find(string_buf);
+            //if (iter != weights_map.end()) {
+                //Ort::ConstValue ort_val = iter->second; 
+                //w[idx++] = ort_val.GetTensorData<float>();
+            //}
+        //}
+    //}
+
+    //for (auto& name : post_layer_weight_names) {
+        //auto iter = weights_map.find(name);
+        //if (iter != weights_map.end()) {
+            //Ort::ConstValue ort_val = iter->second; 
+            //w[idx++] = ort_val.GetTensorData<float>();
+        //}
+    //}
+
+    //FT_CHECK(idx == w.size());
+//}
 
 void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
     Ort::KernelContext kcontext(context);

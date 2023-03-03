@@ -1542,6 +1542,13 @@ inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocato
   return Value{out};
 }
 
+template <typename T>
+inline ConstValue KernelInfoImpl<T>::GetTensorConstantInput(size_t index, int* is_constant) const {
+  const OrtValue* out = nullptr;
+  ThrowOnError(GetApi().KernelInfoGetConstantInput_tensor(this->p_, index, is_constant, &out));
+  return ConstValue{out};
+}
+
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
   Ort::ThrowOnError(GetApi().KernelInfoGetAttribute_float(p, name, &out));
 }
