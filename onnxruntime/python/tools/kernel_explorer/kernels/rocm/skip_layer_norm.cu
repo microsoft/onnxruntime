@@ -20,8 +20,8 @@ class SkipLayerNormSmall : public IKernelExplorer {
   SkipLayerNormSmall(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
                      DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                      float epsilon, int hidden_size, int element_count)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()), 
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -45,7 +45,7 @@ class SkipLayerNormRegular : public IKernelExplorer {
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -65,11 +65,11 @@ class SkipLayerNormRegular : public IKernelExplorer {
 template <typename T>
 class SkipLayerNormStaticSelection : public IKernelExplorer {
  public:
-  SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, 
+  SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input,
                                DeviceArray& skip, DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                                float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -93,7 +93,7 @@ class SkipLayerNormTunable : public IKernelExplorer {
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {
 
     params_.TuningContext()->EnableTunableOp();
@@ -136,7 +136,16 @@ class SkipLayerNormTunable : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 576)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 640)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 704)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 768)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 832)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 896)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 1024)
 
 #define REGISTER_OP_TYPED(name, type)                                       \
   py::class_<name<type>>(m, #name "_" #type)                                \
