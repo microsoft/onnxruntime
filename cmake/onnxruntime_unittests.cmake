@@ -555,6 +555,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -604,6 +605,13 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_QNN)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -835,7 +843,7 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=1048576 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
@@ -892,6 +900,40 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
       )
   endif()
+
+  if (onnxruntime_USE_QNN)
+    if (NOT QNN_ARCH_ABI)
+      string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
+      if(MSVC)
+          message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
+          if (${GEN_PLATFORM} STREQUAL "arm64")
+            set(QNN_ARCH_ABI aarch64-windows-msvc)
+          else()
+            set(QNN_ARCH_ABI x86_64-windows-msvc)
+          endif()
+      else()
+          if (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+            set(QNN_ARCH_ABI aarch64-android-clang6.0)
+          elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+            if (${GEN_PLATFORM} STREQUAL "x86_64")
+              set(QNN_ARCH_ABI x86_64-linux-clang)
+            else()
+              set(QNN_ARCH_ABI aarch64-android)
+            endif()
+          endif()
+      endif()
+    endif()
+
+    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
+        add_custom_command(
+          TARGET ${test_data_target} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+          )
+    endif()
+  endif()
+
   if (onnxruntime_USE_DNNL)
     if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
       message(FATAL_ERROR "--dnnl_opencl_root required")
