@@ -3962,8 +3962,13 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-#ifdef __cplusplus
-  OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+#if defined(__cplusplus) && defined(_DEBUG)
+  // Delete copy ctor in debug mode to prevent users from accidentally copying the API structure,
+  // as it should always be passed as a pointer.
+  //
+  // As discussed in https://github.com/microsoft/onnxruntime/pull/14901,
+  // this code can not be compiled by certain modern compilers, hence we only do the check in _DEBUG mode.
+  OrtApi(const OrtApi&) = delete;
 #endif
 };
 
