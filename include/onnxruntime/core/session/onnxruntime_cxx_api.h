@@ -121,6 +121,12 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 
 /// <summary>
+/// This function returns the onnxruntime version string
+/// </summary>
+/// <returns>version string major.minor.rev</returns>
+std::string GetVersionString();
+
+/// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
 /// returns a vector of strings representing the available execution providers.
 /// </summary>
