@@ -26,7 +26,17 @@ namespace onnxruntime {
 namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer)
-    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_{graph_viewer} {}
+    : nnapi_(NnApiImplementation()), graph_viewer_(graph_viewer), shaper_{graph_viewer} {
+  if (auto st = GetTargetDevices(nnapi_, target_device_option_, nnapi_target_devices_, nnapi_target_devices_detail_);
+      !st.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "GetTargetDevices failed with reason:" << st.ErrorMessage()
+                          << ", EP will fallback to nnapi-reference, Performance may be not optimal";
+  }
+  nnapi_reference_device_ = nnapi_target_devices_detail_.find("nnapi-reference") != std::string::npos
+                                ? nnapi_target_devices_.back()
+                                : nullptr;
+  nnapi_feature_level_ = GetNNAPIFeatureLevel(*this);
+}
 
 // Scalar operand is copied into the model, no need to persist
 #define DEFINE_ADD_OPERAND_FROM_SCALAR(scalar_type, op_type)                      \
@@ -52,12 +62,7 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 
 Status ModelBuilder::Prepare() {
   RETURN_STATUS_ON_ERROR(nnapi_->ANeuralNetworksModel_create(&nnapi_model_->model_));
-  ORT_RETURN_IF_ERROR(GetTargetDevices(nnapi_, target_device_option_, nnapi_target_devices_,
-                                       nnapi_target_devices_detail_));
-  nnapi_reference_device_ = nnapi_target_devices_detail_.find("nnapi-reference") != std::string::npos
-                                ? nnapi_target_devices_.back()
-                                : nullptr;
-  nnapi_feature_level_ = GetNNAPIFeatureLevel(*this);
+  // uncomment the following line to set the execution preference to [low power, fast single answer, low latency]
   // SetExecutePreference(android::nn::wrapper::ExecutePreference::PREFER_SUSTAINED_SPEED);
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();

@@ -76,7 +76,7 @@ class ModelBuilder {
   void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
 
   // Set NNAPI execution preference
-  // Default preference is PREFER_SUSTAINED_SPEED
+  // Default preference is PREFER_FAST_SINGLE_ANSWER
   void SetExecutePreference(
       android::nn::wrapper::ExecutePreference pref) { exe_pref_ = pref; }
 
