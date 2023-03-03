@@ -50,7 +50,7 @@ enum NNAPIFlags {
   NNAPI_FLAG_CPU_DISABLED_SOFT = 0x010,
   // Keep NNAPI_FLAG_LAST at the end of the enum definition
   // And assign the last NNAPIFlag to it
-  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_ONLY,
+  NNAPI_FLAG_LAST = NNAPI_FLAG_CPU_DISABLED_SOFT,
 };
 
 #ifdef __cplusplus
