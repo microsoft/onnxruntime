@@ -265,7 +265,7 @@ def run_torch_pipeline(
             break
         torch.cuda.synchronize()
         for j in range(batch_count):
-            inference_start = time.time()
+            inference_start = time.perf_counter()
             images = pipe(
                 prompt=prompt,
                 height=height,
@@ -278,7 +278,7 @@ def run_torch_pipeline(
             ).images
 
             torch.cuda.synchronize()
-            inference_end = time.time()
+            inference_end = time.perf_counter()
             latency = inference_end - inference_start
             latency_list.append(latency)
             print(f"Inference took {latency:.3f} seconds")
@@ -314,9 +314,9 @@ def run_ort(
     batch_count,
     start_memory,
 ):
-    load_start = time.time()
+    load_start = time.perf_counter()
     pipe = get_ort_pipeline(model_name, directory, provider, disable_safety_checker)
-    load_end = time.time()
+    load_end = time.perf_counter()
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
@@ -356,9 +356,9 @@ def run_torch(
 
     torch.set_grad_enabled(False)
 
-    load_start = time.time()
+    load_start = time.perf_counter()
     pipe = get_torch_pipeline(model_name, disable_safety_checker, enable_torch_compile, use_xformers)
-    load_end = time.time()
+    load_end = time.perf_counter()
     print(f"Model loading took {load_end - load_start} seconds")
 
     image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker)
@@ -384,6 +384,75 @@ def run_torch(
     return result
 
 
+def run_deep_speed(
+    model_name: str,
+    batch_size: int,
+    disable_safety_checker: bool,
+    enable_torch_compile: bool,
+    use_xformers: bool,
+    height,
+    width,
+    steps,
+    num_prompts,
+    batch_count,
+    start_memory,
+):
+    import mii
+
+    mii_configs = {  # "tensor_parallel": 1,
+        "dtype": "fp16",
+        "hf_auth_token": os.environ["HF_AUTH_TOKEN"],
+        # "port_number": 50050
+    }
+    mii.deploy(task="text-to-image", model=model_name, deployment_name="sd_deploy", mii_config=mii_configs)
+
+    generator = mii.mii_query_handle("sd_deploy")
+    if hasattr(generator, "set_progress_bar_config"):
+        generator.set_progress_bar_config(disable=True)
+
+    def warmup():
+        generator.query({"query": ["warm up"]})
+
+    # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
+    first_run_memory = measure_gpu_memory(warmup, start_memory)
+    second_run_memory = measure_gpu_memory(warmup, start_memory)
+
+    prompts = example_prompts()
+
+    image_filename_prefix = get_image_filename_prefix("deepspeed", model_name, batch_size, disable_safety_checker)
+
+    latency_list = []
+    for i, prompt in enumerate(prompts):
+        if i >= num_prompts:
+            break
+        for j in range(batch_count):
+            torch.cuda.synchronize()
+            inference_start = time.perf_counter()
+            images = generator.query({"query": [prompt] * batch_size}).images
+            torch.cuda.synchronize()
+            inference_end = time.perf_counter()
+            latency = inference_end - inference_start
+            latency_list.append(latency)
+            print(f"Inference took {latency:.3f} seconds")
+            for k, image in enumerate(images):
+                image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
+
+    return {
+        "engine": "deepspeed",
+        "version": mii.__version__,
+        "height": height,
+        "width": width,
+        "steps": steps,
+        "batch_size": batch_size,
+        "batch_count": batch_count,
+        "num_prompts": num_prompts,
+        "average_latency": sum(latency_list) / len(latency_list),
+        "median_latency": statistics.median(latency_list),
+        "first_run_memory_MB": first_run_memory,
+        "second_run_memory_MB": second_run_memory,
+    }
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
 
@@ -393,7 +462,7 @@ def parse_arguments():
         required=False,
         type=str,
         default="onnxruntime",
-        choices=["onnxruntime", "torch"],
+        choices=["onnxruntime", "torch", "deepspeed"],
         help="Engines to benchmark. Default is onnxruntime.",
     )
 
@@ -521,8 +590,22 @@ def main():
             args.batch_count,
             start_memory,
         )
-    else:
+    elif args.engine == "torch":
         result = run_torch(
+            sd_model,
+            args.batch_size,
+            not args.enable_safety_checker,
+            args.enable_torch_compile,
+            args.use_xformers,
+            args.height,
+            args.width,
+            args.steps,
+            args.num_prompts,
+            args.batch_count,
+            start_memory,
+        )
+    else:  # deepspeed
+        result = run_deep_speed(
             sd_model,
             args.batch_size,
             not args.enable_safety_checker,
