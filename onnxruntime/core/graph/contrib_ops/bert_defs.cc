@@ -302,10 +302,27 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
+constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
+Uni-directional attention that supports input sequence length of 1.
+
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+and v_hidden_size is that of V.
+
+The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
+
+Both past and present state need to be provided. They shall be used together, and not allowed to use only one of them.
+The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+
+The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
+For cross attention, query and key might have different lengths.
+)DOC";
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     DecoderMaskedMultiheadAttention, 1,
     OpSchema()
-        .SetDoc(Attention_ver1_doc)
+        .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("qkv_hidden_sizes",
               "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",

@@ -254,7 +254,7 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
         required=False,
         action="store_true",
         help="Uses `DecoderMaskedMultiheadAttention` to optimize the unidirectional decoding Attention computation. "
-        "Must be used with `past_present_share_buffer`",
+        "Must be used with `past_present_share_buffer`. Currently, only Attention head sizes of 64 and 128 are supported.",
     )
     model_group.set_defaults(use_decoder_masked_multihead_attention=False)
 

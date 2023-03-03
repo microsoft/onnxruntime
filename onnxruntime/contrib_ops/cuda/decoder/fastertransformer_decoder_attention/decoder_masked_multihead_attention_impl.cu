@@ -230,15 +230,12 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   const float inv_sqrt_dh = params.scale;
 
-  //int temp_offset = (bi * params.num_heads * params.sequence_length * params.total_sequence_length) + (hi * params.sequence_length * params.total_sequence_length);
-
   // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
   if (tidx == 0) {
     // Normalize qk.
     qk *= inv_sqrt_dh;
     qk_max = qk;
     qk_smem[tlength] = qk;
-    //reinterpret_cast<T*>(params.out)[temp_offset + tlength] = FloatToHalf(qk);
   }
 
   // Make sure the data is in shared memory.
@@ -321,8 +318,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
       qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
-      //reinterpret_cast<T*>(params.out)[temp_offset + ti] = FloatToHalf(qk);
-      ;
     }
   }
 
@@ -374,7 +369,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
     float logit = qk_smem[ti] * inv_sum;
     ConvertFromFloat(logits_smem[ti], logit);
-    //reinterpret_cast<T*>(params.out)[temp_offset + ti] = logits_smem[ti];
   }
 
   // Put Values part below so we leverage __syncthreads

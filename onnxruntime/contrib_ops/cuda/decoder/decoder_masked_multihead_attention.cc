@@ -15,9 +15,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kPastSequenceLengthInputIndex = 6;
-constexpr int kPastInputIndex = 4;
-constexpr int kPresentOutputIndex = 1;
+static constexpr int kPastSequenceLengthInputIndex = 6;
+static constexpr int kPastInputIndex = 4;
+static constexpr int kPresentOutputIndex = 1;
 
 #define REGISTER_KERNEL_TYPED(T1, T2)                                          \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
