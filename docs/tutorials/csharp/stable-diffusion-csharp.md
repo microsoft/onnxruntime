@@ -166,7 +166,7 @@ tensor([[49406,  1078,   320,  1674,   539,  1901,  2677,   593,  4023,  1630,
 ```
 
 
-### Text embedding with the CLIP text encoder model
+## Text embedding with the CLIP text encoder model
 
 The tokens are sent to the text encoder model and converted into a tensor of shape (2, 77, 768) where the first dimension is the batch size, the second dimension is the number of tokens and the third dimension is the embedding size.  The text encoder is a [OpenAI CLIP](https://openai.com/blog/clip/) model that connects text to images.
 
@@ -207,7 +207,7 @@ tensor([[[-0.3884,  0.0229, -0.0522,  ..., -0.4899, -0.3066,  0.0675],
 ```
 
 
-### The Inference Loop: UNet model, Timesteps and LMS Scheduler
+## The Inference Loop: UNet model, Timesteps and LMS Scheduler
 
  
 ### Scheduler
@@ -274,7 +274,7 @@ for (int t = 0; t < timesteps.Length; t++)
     latents = scheduler.Step(noisePred, timesteps[t], latents);
 }
 ```
-### Postprocess the `output` with the VAEDecoder
+## Postprocess the `output` with the VAEDecoder
 After the inference loop is complete, the resulting tensor is scaled and then sent to the `vae_decoder` model to decode the image. Lastly the decoded image tensor is converted to an image and saved to disc.
 
 ```csharp
