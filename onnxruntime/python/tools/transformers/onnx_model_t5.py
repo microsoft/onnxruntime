@@ -108,6 +108,9 @@ class FusionT5Attention(FusionAttention):
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+        self.fuse_t5_decoder(normalize_node, input_name_to_nodes, output_name_to_node)
+
+    def fuse_t5_decoder(self, normalize_node, input_name_to_nodes, output_name_to_node):
         if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
             return
 
@@ -146,12 +149,32 @@ class FusionT5Attention(FusionAttention):
         )
         if v_nodes is None:
             print("v_nodes is None")
-            past_value = matmul_qkv.input[1]
-            if past_value in output_name_to_node:
-                return
-            if "past_value_cross" not in past_value:
-                return
-            self.static_kv = 1
+            v_nodes = self.model.match_parent_path(
+                matmul_qkv,
+                ["Transpose", "Reshape", "MatMul"],
+                [1, 0, 0],
+            )
+            if v_nodes is not None:
+                print("v_nodes is not None")
+                transpose_v, reshape_v, matmul_v = v_nodes
+                value = reshape_v.input[0]
+                present_value = transpose_v.output[0]
+                if "present_value" not in present_value:
+                    print("present_value not in present_value, get: ", present_value)
+                    return
+                if matmul_v.input[0] != input_shape_node.input[0]:
+                    print("self.static_kv = 1")
+                    self.static_kv = 1
+                else:
+                    print("self.static_kv = 0")
+                    self.static_kv = 0
+            else:
+                past_value = matmul_qkv.input[1]
+                if past_value in output_name_to_node:
+                    return
+                if "past_value_cross" not in past_value:
+                    return
+                self.static_kv = 1
         else:
             print("v_nodes is not None")
             concat_v, _, reshape_v, _ = v_nodes
@@ -211,10 +234,19 @@ class FusionT5Attention(FusionAttention):
                 ["Add", "Slice"],
                 [1, 0],
             )
-            if rpb_nodes is None:
-                return
-            res_pos_bias = add_qk.input[1]
-            print("find rpb node")
+            if rpb_nodes is not None:
+                res_pos_bias = add_qk.input[1]
+                print("find rpb node")
+            else:
+                rpb_nodes = self.model.match_parent_path(
+                    add_qk,
+                    ["Add", "Unsqueeze", "Transpose", "Gather"],
+                    [1, 0, 0, 0],
+                )
+                if rpb_nodes is None:
+                    return
+                res_pos_bias = add_qk.input[1]
+                print("find rpb node")
 
         print("mask/res_pos_bias is done")
 
@@ -225,21 +257,43 @@ class FusionT5Attention(FusionAttention):
             print("static_kv == 1")
             k_nodes = self.model.match_parent_path(
                 matmul_qk,
-                ["Transpose"],
-                [1],
+                ["Transpose", "Reshape", "MatMul"],
+                [1, 0, 0],
             )
-            if k_nodes is None:
-                return
-            print("find k node")
-            transpose_k = k_nodes[0]
+            if k_nodes is not None:
+                print("k_nodes is not None")
+                transpose_k, reshape_k, _ = k_nodes
+                key = reshape_k.input[0]
+                present_key_transpose_nodes = input_name_to_nodes[reshape_k.output[0]]
+                for present_key_transpose_node in present_key_transpose_nodes:
+                    present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
+                    if present_key_candidate is not None:
+                        present_key = present_key_candidate.name
+                        break
+                if present_key is None:
+                    return
+                print("find present_key")
+                if "present_key_cross" not in present_key:
+                    print("present_key_cross not in present_key")
+                    return
+            else:
+                k_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Transpose"],
+                    [1],
+                )
+                if k_nodes is None:
+                    return
+                print("find k node")
+                transpose_k = k_nodes[0]
 
-            past_key = transpose_k.input[0]
-            if past_key in output_name_to_node:
-                print("past_key in output_name_to_node")
-                return
-            if "past_key_cross" not in past_key:
-                print("past_key_cross not in past_key")
-                return
+                past_key = transpose_k.input[0]
+                if past_key in output_name_to_node:
+                    print("past_key in output_name_to_node")
+                    return
+                if "past_key_cross" not in past_key:
+                    print("past_key_cross not in past_key")
+                    return
         else:
             print("static_kv == 0")
             k_nodes = self.model.match_parent_path(
@@ -247,34 +301,56 @@ class FusionT5Attention(FusionAttention):
                 ["Transpose", "Concat", "Reshape", "MatMul"],
                 [1, 0, 1, 0],
             )
-            if k_nodes is None:
-                return
-            print("find k node")
-            _, concat_k, reshape_k, _ = k_nodes
-            key = reshape_k.input[0]
-            past_key_transpose_node = output_name_to_node[concat_k.input[0]]
-            past_key = past_key_transpose_node.input[0]
-            if past_key in output_name_to_node:
-                print("past_key in output_name_to_node")
-                return
-            if "past_key_self" not in past_key:
-                print("past_key_self not in past_key")
-                return
-            print("past_key is done")
-            present_key_transpose_nodes = input_name_to_nodes[concat_k.output[0]]
-            for present_key_transpose_node in present_key_transpose_nodes:
-                # print("present_key_transpose_node:", present_key_transpose_node)
-                present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
-                # print("present_key_candidate:", present_key_candidate)
-                if present_key_candidate is not None:
-                    present_key = present_key_candidate.name
-                    break
-            if present_key is None:
-                return
-            print("find present_key")
-            if "present_key_self" not in present_key:
-                print("present_key_self not in present_key")
-                return
+            if k_nodes is not None:
+                print("find k node")
+                _, concat_k, reshape_k, _ = k_nodes
+                key = reshape_k.input[0]
+                past_key_transpose_node = output_name_to_node[concat_k.input[0]]
+                past_key = past_key_transpose_node.input[0]
+                if past_key in output_name_to_node:
+                    print("past_key in output_name_to_node")
+                    return
+                if "past_key_self" not in past_key:
+                    print("past_key_self not in past_key")
+                    return
+                print("past_key is done")
+                present_key_transpose_nodes = input_name_to_nodes[concat_k.output[0]]
+                for present_key_transpose_node in present_key_transpose_nodes:
+                    # print("present_key_transpose_node:", present_key_transpose_node)
+                    present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
+                    # print("present_key_candidate:", present_key_candidate)
+                    if present_key_candidate is not None:
+                        present_key = present_key_candidate.name
+                        break
+                if present_key is None:
+                    return
+                print("find present_key")
+                if "present_key_self" not in present_key:
+                    print("present_key_self not in present_key")
+                    return
+            else:
+                k_nodes = self.model.match_parent_path(
+                    matmul_qk,
+                    ["Transpose", "Reshape", "MatMul"],
+                    [1, 0, 0],
+                )
+                if k_nodes is None:
+                    return
+                print("find k node")
+                _, reshape_k, _ = k_nodes
+                key = reshape_k.input[0]
+                present_key_transpose_nodes = input_name_to_nodes[reshape_k.output[0]]
+                for present_key_transpose_node in present_key_transpose_nodes:
+                    present_key_candidate = self.model.find_graph_output(present_key_transpose_node.output[0])
+                    if present_key_candidate is not None:
+                        present_key = present_key_candidate.name
+                        break
+                if present_key is None:
+                    return
+                print("find present_key")
+                if "present_key_self" not in present_key:
+                    print("present_key_self not in present_key")
+                    return
 
         print("key etc is done")
 
@@ -286,11 +362,16 @@ class FusionT5Attention(FusionAttention):
         if q_nodes is None:
             return
 
+        print("find q nodes")
+
         transpose_q, reshape_q, matmul_q = q_nodes
 
         if matmul_q.input[0] != input_shape_node.input[0]:
+            print("matmul_q.input[0] != input_shape_node.input[0]")
             return
+
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
+        print("get q_num_heads, q_hidden_size")
 
         new_node = self.create_attention_node(
             matmul_q.output[0],
