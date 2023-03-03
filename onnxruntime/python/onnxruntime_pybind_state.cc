@@ -759,6 +759,12 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #ifdef USE_AZURE
     return onnxruntime::AzureProviderFactoryCreator::Create({})->CreateProvider();
 #endif
+  } else if (type == kQnnExecutionProvider) {
+#ifdef USE_QNN
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::QNNProviderFactoryCreator::Create(
+               cit == provider_options_map.end() ? ProviderOptions{} : cit->second)->CreateProvider();
+#endif
   } else {
     // check whether it is a dynamic load EP:
     const auto it = provider_options_map.find(type);

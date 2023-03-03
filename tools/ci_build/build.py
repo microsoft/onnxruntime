@@ -1950,6 +1950,7 @@ def build_python_wheel(
     use_dml,
     use_cann,
     use_azure,
+    use_qnn,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -2010,6 +2011,8 @@ def build_python_wheel(
             args.append("--use_cann")
         elif use_azure:
             args.append("--use_azure")
+        elif use_qnn:
+            args.append("--use_qnn")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2705,6 +2708,7 @@ def main():
                 args.use_dml,
                 args.use_cann,
                 args.use_azure,
+                args.use_qnn,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
