@@ -49,7 +49,7 @@ jobs:
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-32;default;x86_64" \
+        --create-avd --system-image "system-images;android-32;google_apis;x86_64" \
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
@@ -64,7 +64,7 @@ jobs:
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
 
       set +e
-      NUM_ITERATIONS=10
+      NUM_ITERATIONS=20
       NUM_FAILURES=0
       for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
       do
