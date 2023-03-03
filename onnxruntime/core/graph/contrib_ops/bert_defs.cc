@@ -254,7 +254,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "

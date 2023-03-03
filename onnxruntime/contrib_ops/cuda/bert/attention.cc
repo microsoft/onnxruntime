@@ -67,9 +67,11 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
+  std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
+  const TensorShape bias_shape{bias_dims};
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
-                                  bias->Shape(),
+                                  bias != nullptr ? bias->Shape() : bias_shape,
                                   mask_index,
                                   past,
                                   relative_position_bias,
@@ -200,7 +202,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.bias = nullptr == bias ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = nullptr;
   data.key = nullptr;
   data.value = nullptr;
