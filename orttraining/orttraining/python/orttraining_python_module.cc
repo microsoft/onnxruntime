@@ -247,7 +247,7 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
   for (auto& provider_type : provider_types) {
     auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
     if (it == training_env.ext_execution_provider_info_map_.end()) {
-      //nothing changed.
+      // nothing changed.
       if (original_provider_options_map.find(provider_type) != original_provider_options_map.end())
         merged_options.insert({provider_type, original_provider_options_map.at(provider_type)});
     } else {
@@ -357,10 +357,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
 
-  m.def("clear_training_ep_instances", []() -> void {
-    ort_training_env->ClearExecutionProviderInstances();
-  },
-        "Clean the execution provider instances used in ort training module.");
+  m.def(
+      "clear_training_ep_instances", []() -> void {
+        ort_training_env->ClearExecutionProviderInstances();
+      },
+      "Clean the execution provider instances used in ort training module.");
 
   // clean the ort training environment when python interpreter exit
   // otherwise the global var will be de-constrcut after user main.
@@ -368,7 +369,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   // deconstruction is not stable, which will lead to crash.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
-    ort_training_env = nullptr;
+    ort_training_env->ClearExecutionProviderInstances();
 #ifdef ENABLE_EAGER_MODE
     ort_backends_manager_instance = nullptr;
 #endif
