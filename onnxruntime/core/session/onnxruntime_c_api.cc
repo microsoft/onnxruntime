@@ -792,7 +792,8 @@ struct LiteCustomOp : public OrtCustomOp {
     };
 
     OrtCustomOp::GetInputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      //return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     };
 
     OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
@@ -804,7 +805,8 @@ struct LiteCustomOp : public OrtCustomOp {
     };
 
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      //return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     };
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
