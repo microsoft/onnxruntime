@@ -103,7 +103,11 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
 
       transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps));
+#if defined(USE_CUDA) || defined(USE_ROCM)
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, true /* is_for_pretraining*/));
+#else
+      transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps);
+#endif   
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
