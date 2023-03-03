@@ -189,7 +189,7 @@ stages:
       prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
       
 - stage: arm64_test
-  dependsOn: ['arm64']
+  dependsOn: ['arm64_build']
   jobs:
   - template: templates/py-packaging-linux-test.yml
     parameters:
