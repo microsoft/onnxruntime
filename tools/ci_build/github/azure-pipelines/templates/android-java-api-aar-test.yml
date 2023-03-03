@@ -63,6 +63,7 @@ jobs:
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
 
+      set +e
       NUM_ITERATIONS=10
       NUM_FAILURES=0
       for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
