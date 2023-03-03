@@ -193,6 +193,39 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   }
 }
 
+void FlashAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
+  // Output 0 has shape (batch_size*head, sequence_length, v_hidden_size)
+  // or  (batch_size, head, sequence_length, v_hidden_size) as same dim as Q
+
+  // Q, K and V should have same dims
+  //   Input 0 (query) has shape (batch_size*head, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size*head, hidden_size, kv_sequence_length)
+  //   Input 2 (value) has shape (batch_size*head, kv_sequence_length, v_hidden_size)
+
+  // Type inference
+  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+  // Shape inference
+  auto& query_shape = getInputShape(ctx, 0);
+  auto& query_dims = query_shape.dim();
+
+  auto& value_shape = getInputShape(ctx, 2);
+  auto& value_dims = value_shape.dim();
+
+  if (query_dims.size() != value_dims.size()) {
+    fail_shape_inference("Inputs query and value shall have same dimensions");
+  }
+
+  ONNX_NAMESPACE::TensorShapeProto output_shape;
+  for (int i = 0; i < query_dims.size()-1; ++i) {
+    *output_shape.add_dim() = query_dims[i];
+  }
+
+  *output_shape.add_dim() = value_dims[value_dims.size() - 1];
+  
+  updateOutputShape(ctx, 0, output_shape);
+}
+
 constexpr const char* Attention_ver1_doc = R"DOC(
 Multi-Head Attention that can be either unidirectional (like GPT-2) or bidirectional (like BERT).
 
@@ -483,6 +516,46 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           MultiHeadAttentionTypeAndShapeInference(ctx);
+        }));
+
+constexpr const char* FlashAttention_doc = R"DOC(
+Self/Cross Attention.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    FlashAttention, 1,
+    OpSchema()
+        .SetDoc(FlashAttention_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Input(0,
+               "query",
+               "Query with shape (batch_size*head, sequence_length, hidden_size), or (batch_size, head, sequence_length, hidden_size)",
+               "T")
+        .Input(1,
+               "key",
+               "Key with shape (batch_size*head, hidden_size, kv_sequence_length), or (batch_size, head, hidden_size, kv_sequence_length)",
+               "T")
+        .Input(2,
+               "value",
+               "Value with shape (batch_size*head, kv_sequence_length, v_hidden_size) or (batch_size, head, kv_sequence_length, hidden_size)",
+               "T")
+        .Input(3,
+               "attention_mask",
+               "attention mask with shape (batch_size*head, sequence_length, kv_sequence_length) or (batch_size, head, sequence_length, kv_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Input(4,
+               "attention_bias",
+               "attention bias with shape (batch_size*head, sequence_length, kv_sequence_length) or (batch_size, head, sequence_length, kv_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "output tensor with shape (batch_size*head, sequence_length, v_hidden_size) or (batch_size, head, sequence_length, v_hidden_size)",
+                "T")
+        .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          FlashAttentionTypeAndShapeInference(ctx);
         }));
 
 constexpr const char* Longformer_Attention_doc = R"DOC(
