@@ -71,12 +71,13 @@ The main function sets the prompt, number of inference steps, and the guidance s
 
 The properties that need to be set are:
  - `prompt` - The text prompt to use for the image
- - `num_inference_steps` - The number of steps to run inference for
- - `guidance_scale` - The scale for the classifier-free guidance. The higher the number the more it will try to look like the prompt but the image quality may suffer. Check out the [Hugging Face Blog](https://huggingface.co/blog/stable_diffusion) for more details.
+ - `num_inference_steps` - The number of steps to run inference for. The more steps the longer it will take to run the inference loop but the image quality should improve.
+ - `guidance_scale` - The scale for the classifier-free guidance. The higher the number the more it will try to look like the prompt but the image quality may suffer.
  - `batch_size` - The number of images to create
  - `height` - The height of the image. Default is 512 and must be a multiple of 8.
  - `width` - The width of the image. Default is 512 and must be a multiple of 8.
 
+<i>* NOTE: Check out the [Hugging Face Blog](https://huggingface.co/blog/stable_diffusion) for more details.</i>
 
 ```csharp
 //Default args
