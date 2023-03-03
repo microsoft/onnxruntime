@@ -423,6 +423,9 @@ stages:
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
 
+      # Don't remove _PYTHON_HOST_PLATFROM, it's used to generate correct package name
+      # Setting _PYTHON_HOST_PLATFORM overwrites the value return by get_platform()
+      # Ref: https://wiki.debian.org/Python/MultiArch
       - script: |
           set -e -x
           pushd .
@@ -441,8 +444,14 @@ stages:
         displayName: 'Command Line Script'
 
       - script: |
+          set -ex
           python -m pip install --upgrade delocate
           cd '$(Build.BinariesDirectory)/Release/dist'
+          ls
+          for file in *.whl
+          do
+            [[ "$file" == *x86* ]] || ( echo "Mac Silicion package name isn't correct" && exit 1)
+          done
           for file in *.whl
           do
             delocate-listdeps "$file"
