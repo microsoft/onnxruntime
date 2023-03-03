@@ -47,8 +47,6 @@ struct FTViTINT8CustomKernel {
   int img_size_;
   int patch_size_;
   int embed_dim_;
-  int layer_num_;
-  int has_cls_token_;
   int seq_len_;
   int in_chans_;
   int is_fp16_;

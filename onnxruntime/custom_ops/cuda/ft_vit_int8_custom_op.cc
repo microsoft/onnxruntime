@@ -112,7 +112,7 @@ FTViTINT8CustomKernel::FTViTINT8CustomKernel(const OrtKernelInfo* info,
                                              int has_cls_token,
                                              int is_fp16,
                                              int int8_mode):
-batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), layer_num_(layer_num), has_cls_token_(has_cls_token), is_fp16_(is_fp16)
+batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is_fp16)
 {
     checkCUDNN(cudnnCreate(&cudnn_handle_));
     checkCUDNN(cudnnSetStream(cudnn_handle_, stream_));
@@ -226,60 +226,6 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), layer_num_(
                 inter_size,
                 int(attention_type_));
 }
-
-//void FTViTINT8CustomKernel::loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const float*>& w)
-//{
-    //Ort::ConstKernelInfo kinfo(info);
-    //std::unordered_map<std::string, Ort::ConstValue> weights_map = {};
-
-    //// Get weights (constant inputs) from kernel info
-    //for (size_t i = 0; i < kinfo.GetInputCount(); i++) {
-        //std::string name = kinfo.GetInputName(i);
-        //int is_constant = 0;
-        //kinfo.GetTensorConstantInput(i, &is_constant);
-        //if (is_constant) {
-            //weights_map[name] = kinfo.GetTensorConstantInput(i, &is_constant); 
-        //}
-    //}
-
-    //// Load weights pointer
-    //long unsigned int idx = 0;
-    //for (auto& name : pre_layer_weight_names) {
-        //if (!(has_cls_token_ > 0) && name == "transformer.embeddings.cls_token") {
-            //continue;
-        //}
-
-        //auto iter = weights_map.find(name);
-        //if (iter != weights_map.end()) {
-            //Ort::ConstValue ort_val = iter->second; 
-            //w[idx++] = ort_val.GetTensorData<float>();
-        //}
-    //}
-
-    //for (int i = 0; i < layer_num_; i++) {
-        //for (auto& name : layer_weight_names) {
-            //char str_buf[1024];
-            //sprintf(str_buf, name, i);
-            //std::string string_buf = str_buf;
-
-            //auto iter = weights_map.find(string_buf);
-            //if (iter != weights_map.end()) {
-                //Ort::ConstValue ort_val = iter->second; 
-                //w[idx++] = ort_val.GetTensorData<float>();
-            //}
-        //}
-    //}
-
-    //for (auto& name : post_layer_weight_names) {
-        //auto iter = weights_map.find(name);
-        //if (iter != weights_map.end()) {
-            //Ort::ConstValue ort_val = iter->second; 
-            //w[idx++] = ort_val.GetTensorData<float>();
-        //}
-    //}
-
-    //FT_CHECK(idx == w.size());
-//}
 
 void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
     Ort::KernelContext kcontext(context);
