@@ -397,7 +397,7 @@ stages:
           system_profiler SPSoftwareDataType SPHardwareDataType
         displayName: 'Mac machine info'
 
-      # Don't remove _PYTHON_HOST_PLATFROM, it's used to generate correct package name
+      # Don't remove _PYTHON_HOST_PLATFORM, it's used to generate correct package name
       # Setting _PYTHON_HOST_PLATFORM overwrites the value return by get_platform()
       # Ref: https://wiki.debian.org/Python/MultiArch
       - script: |
@@ -424,7 +424,7 @@ stages:
           ls
           for file in *.whl
           do
-            [[ "$file" == *arm64* ]] || ( echo "Mac Silicion package name is NOT correct" && exit 1)
+            [[ "$file" == *arm64* ]] || ( echo "Mac Silicon package name is NOT correct" && exit 1)
           done
           for file in *.whl
           do
