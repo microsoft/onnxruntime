@@ -546,13 +546,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         nnapi_flags |= NNAPI_FLAG_USE_NCHW;
       } else if (key == "NNAPI_FLAG_CPU_DISABLED") {
         nnapi_flags |= NNAPI_FLAG_CPU_DISABLED;
-      } else if (key == "NNAPI_FLAG_CPU_DISABLED_SOFT") {
-        nnapi_flags |= NNAPI_FLAG_CPU_DISABLED_SOFT;
       } else if (key == "NNAPI_FLAG_CPU_ONLY") {
         nnapi_flags |= NNAPI_FLAG_CPU_ONLY;
       } else if (key.empty()) {
       } else {
-        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_DISABLED_SOFT', 'NNAPI_FLAG_CPU_ONLY'] \n");
+        ORT_THROW("[ERROR] [NNAPI] wrong key type entered. Choose from the following runtime key options that are available for NNAPI. ['NNAPI_FLAG_USE_FP16', 'NNAPI_FLAG_USE_NCHW', 'NNAPI_FLAG_CPU_DISABLED', 'NNAPI_FLAG_CPU_ONLY'] \n");
       }
     }
 
@@ -797,10 +795,6 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto allocator = Ort::AllocatorWithDefaultOptions();
       Ort::Value input_tensor = Ort::Value::CreateTensor(allocator, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
-      //static std::string const qq{"Who was Jim Henson?"};
-      //static std::string const aa{"Jim Henson was a nice puppet"};
-      //const char* const input_strings[] = {qq.c_str(), aa.c_str()};
-      //input_tensor.FillStringTensor(input_strings, 1U);
       InitializeTensorWithSeed(seed, input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
     }

@@ -74,8 +74,7 @@ Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_o
     RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi->ANeuralNetworksDevice_getType(device, &device_type),
                                      "Getting " + std::to_string(i) + "th device's type");
     bool device_is_cpu = nnapi_cpu == device_name;
-    if ((target_device_option == TargetDeviceOption::CPU_DISABLED ||
-         target_device_option == TargetDeviceOption::CPU_DISABLED_SOFT) && device_is_cpu) {
+    if ((target_device_option == TargetDeviceOption::CPU_DISABLED) && device_is_cpu) {
       continue;
     }
 
