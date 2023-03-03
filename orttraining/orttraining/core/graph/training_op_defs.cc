@@ -3874,22 +3874,31 @@ Return true if all elements are true and false otherwise.
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
-        size_t rank_count = 0;
-        // Set inferred output types.
-        for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
-
-          // Create symbolic shape.
-          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
-          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
-          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i - 1); ++j) {
-            std::stringstream ss;
-            ss << "PythonOp_unknown_rank_" << rank_count++;
-            rank_only_shape.add_dim()->set_dim_param(ss.str());
+        std::string func_name = getAttribute(ctx, "name", "");
+        if (func_name == "ActivationObserver" || func_name == "ActivationComplete") {
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);
+          // Set inferred output types.
+          for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            propagateElemTypeFromInputToOutput(ctx, i - 1, i);
+            propagateShapeFromInputToOutput(ctx, i - 1, i);
           }
+        } else {
+          size_t rank_count = 0;
+          // Create symbolic shape.
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks")->ints();
+          // Set inferred output types.
+          for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i - 1)));
+            ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+            for (int64_t j = 0; j < output_tensor_ranks.at(i - 1); ++j) {
+              std::stringstream ss;
+              ss << "PythonOp_unknown_rank_" << rank_count++;
+              rank_only_shape.add_dim()->set_dim_param(ss.str());
+            }
 
-          // Assign symbolic shape.
-          updateOutputShape(ctx, i, rank_only_shape);
+            // Assign symbolic shape.
+            updateOutputShape(ctx, i, rank_only_shape);
+          }
         }
       });
 
@@ -3996,20 +4005,33 @@ Return true if all elements are true and false otherwise.
                     "PythonOpGrad's output list and \"output_tensor_types\" attribute should have the same length.");
         // This is a required field.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
-        // Set inferred output types.
-        size_t rank_count = 0;
-        for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-          updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
-          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks");
-          ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
-          for (int64_t j = 0; j < output_tensor_ranks->ints().at(i); ++j) {
-            std::stringstream ss;
-            ss << "PythonOpGrad_unknown_rank_" << rank_count++;
-            rank_only_shape.add_dim()->set_dim_param(ss.str());
-          }
 
-          // Assign symbolic shape.
-          updateOutputShape(ctx, i, rank_only_shape);
+        std::string func_name = getAttribute(ctx, "name", "");
+        if (func_name == "ActivationObserver" || func_name == "ActivationComplete") {
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);
+
+          // Set inferred output types.
+          for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            propagateElemTypeFromInputToOutput(ctx, i + 1, i);
+            propagateShapeFromInputToOutput(ctx, i + 1, i);
+          }
+        } else {
+          // Set inferred output types.
+          size_t rank_count = 0;
+          const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks")->ints();
+          for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
+            updateOutputElemType(ctx, i, static_cast<int32_t>(output_tensor_types_proto->ints().at(i)));
+
+            ONNX_NAMESPACE::TensorShapeProto rank_only_shape;
+            for (int64_t j = 0; j < output_tensor_ranks.at(i); ++j) {
+              std::stringstream ss;
+              ss << "PythonOpGrad_unknown_rank_" << rank_count++;
+              rank_only_shape.add_dim()->set_dim_param(ss.str());
+            }
+
+            // Assign symbolic shape.
+            updateOutputShape(ctx, i, rank_only_shape);
+          }
         }
       });
 

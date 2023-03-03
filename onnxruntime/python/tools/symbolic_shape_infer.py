@@ -2174,16 +2174,24 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-
-        # Outputs after autograd's context are tensors.
-        # We assume their ranks are fixed for different model inputs.
-        for i in range(len(node.output) - 1):
-            # Process the i-th tensor outputs.
-            vi = self.known_vi_[node.output[i + 1]]
-            sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
-            shape = get_shape_from_sympy_shape(sympy_shape)
-            value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
-            vi.CopyFrom(value_info)
+        if get_attribute(node, "name").decode() in ["ActivationObserver", "ActivationComplete"]:
+            assert len(node.output) == len(node.input) + 1
+            for input_index in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[input_index + 1]]
+                shape = self._get_shape(node, input_index)
+                output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+        else:
+            # Outputs after autograd's context are tensors.
+            # We assume their ranks are fixed for different model inputs.
+            for i in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[i + 1]]
+                sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
+                shape = get_shape_from_sympy_shape(sympy_shape)
+                value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
+                vi.CopyFrom(value_info)
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)
