@@ -48,7 +48,7 @@ int32_t GetDeviceFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNet
   return target_feature_level;
 }
 
-[[nodiscard]] Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_option,
+Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_option,
                                       std::vector<ANeuralNetworksDevice*>& nnapi_target_devices, std::string& nnapi_target_devices_detail) {
   // GetTargetDevices is only supported on API 29+
   // get runtime_feature_level
