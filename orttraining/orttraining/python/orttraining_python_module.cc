@@ -9,6 +9,7 @@
 #include "core/common/path_string.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/provider_bridge_ort.h"
+#include "onnxruntime_config.h"
 
 #ifdef ENABLE_EAGER_MODE
 #include "orttraining/python/orttraining_python_module_eager.h"
@@ -353,6 +354,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");
+
+  m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
 
   m.def("clear_training_ep_instances", []() -> void {
     ort_training_env->ClearExecutionProviderInstances();
