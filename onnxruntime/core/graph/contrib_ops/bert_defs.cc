@@ -354,6 +354,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
                "M",
                OpSchema::Optional)
+        .Input(7,
+               "num_beams",
+               "The number of beams that is being used while decoding."
+               "If not provided, the number of beams will be assumed to be 1.",
+               "M",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",

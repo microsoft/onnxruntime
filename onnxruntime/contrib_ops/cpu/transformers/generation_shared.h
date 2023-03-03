@@ -38,6 +38,8 @@ struct IBeamSearchState {
                                        //   temp token: (batch_size * num_beams, 2 * num_beams)
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+
+  Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
 
 struct IBeamSearchCpuState {

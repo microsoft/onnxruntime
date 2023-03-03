@@ -20,6 +20,9 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int vocab_size,
             int sequence_length,
             int max_length,
+            int num_heads,
+            int head_size,
+            int allocate_staging_buffer_for_past_state_reorder,
             bool output_scores,
             bool use_position) {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
@@ -49,6 +52,15 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->scores = AllocateBuffer<float>(allocator, scores_buffer_, elements);
       this->remaining_scores = this->scores;
     }
+
+    // If at all we need to, we only need to re-order past state for CUDA
+    if (allocate_staging_buffer_for_past_state_reorder) {
+      TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), num_heads, max_length, head_size};
+
+      Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
+
+      this->staging_for_past_state_reorder = std::move(temp);
+    }
   }
 
  private:
@@ -61,6 +73,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
+  BufferUniquePtr staging_for_past_state_reorder_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {
@@ -124,7 +137,7 @@ struct BeamSearchCpuState : public IBeamSearchCpuState {
 
 // Base class of beam search implementation that is common for both GPT-2 and T5.
 template <typename T>
-class BeamSearchBase : public GenerateBase  {
+class BeamSearchBase : public GenerateBase {
  public:
   BeamSearchBase(OpKernelContextInternal& context,
                  const SessionState& decoder_session_state,
@@ -136,13 +149,13 @@ class BeamSearchBase : public GenerateBase  {
                  const GenerationDeviceHelper::ProcessLogitsFunc<T>& process_logits_func,
                  const GenerationDeviceHelper::DeviceCopyFunc<float>& device_copy_func,
                  const GenerationDeviceHelper::DeviceCopyFunc<int32_t>& device_copy_int32_func)
-      :  GenerateBase(context,
-                      decoder_session_state,
-                      thread_pool,
-                      ort_stream,
-                      cuda_dumper,
-                      topk_func,
-                      device_copy_func),
+      : GenerateBase(context,
+                     decoder_session_state,
+                     thread_pool,
+                     ort_stream,
+                     cuda_dumper,
+                     topk_func,
+                     device_copy_func),
         parameters_(&params),
         process_logits_func_(process_logits_func),
         device_copy_int32_func_(device_copy_int32_func) {
@@ -188,11 +201,11 @@ Status BeamSearchBase<T>::CheckInputs(const OpKernelContextInternal& context) {
   //   input_ids  : (batch_size, sequence_length)
   //   vocab_mask : (vocab_size) or nullptr
   ORT_RETURN_IF_ERROR(this->CheckInputsImpl(parameters_,
-                                            context.Input<Tensor>(0),     // input_ids
-                                            context.Input<Tensor>(7),     // vocab_mask
-                                            context.Input<Tensor>(8),     // prefix_vocab_mask
-                                            context.Input<Tensor>(9),    // attention_mask
-                                            nullptr));                    // presence_mask
+                                            context.Input<Tensor>(0),  // input_ids
+                                            context.Input<Tensor>(7),  // vocab_mask
+                                            context.Input<Tensor>(8),  // prefix_vocab_mask
+                                            context.Input<Tensor>(9),  // attention_mask
+                                            nullptr));                 // presence_mask
 
   return Status::OK();
 }

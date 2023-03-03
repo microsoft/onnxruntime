@@ -15,21 +15,23 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-constexpr int kPastSequenceLengthInputIndex = 6;
-constexpr int kPastInputIndex = 4;
-constexpr int kPresentOutputIndex = 1;
+static constexpr int kPastSequenceLengthInputIndex = 6;
+static constexpr int kNumBeamsInputIndex = 7;
+static constexpr int kPastInputIndex = 4;
+static constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T1, T2)                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      DecoderMaskedMultiheadAttention,                                         \
-      kMSDomain,                                                               \
-      1,                                                                       \
-      T1,                                                                      \
-      kCudaExecutionProvider,                                                  \
-      (*KernelDefBuilder::Create())                                            \
-          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())              \
-          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
+#define REGISTER_KERNEL_TYPED(T1, T2)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      DecoderMaskedMultiheadAttention,                                        \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T1,                                                                     \
+      kCudaExecutionProvider,                                                 \
+      (*KernelDefBuilder::Create())                                           \
+          .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
+          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
+          .InputMemoryType(OrtMemTypeCPUInput, kNumBeamsInputIndex),          \
       DecoderMaskedMultiheadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
@@ -44,6 +46,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
+  const Tensor* num_beams = context->Input<Tensor>(kNumBeamsInputIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiheadAttentionParams parameters;
@@ -165,6 +168,11 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Mask
   if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
     parameters.mask = mask_index->Data<int32_t>();
+  }
+
+  // Num beams
+  if (num_beams != nullptr) {
+    parameters.beam_width = static_cast<int>(*num_beams->Data<int32_t>());
   }
 
   switch (parameters.head_size) {

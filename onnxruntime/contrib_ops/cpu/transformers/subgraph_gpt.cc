@@ -27,7 +27,8 @@ Status GptSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
     Stream* ort_stream,
-    int max_seq_len_past_present_share_buffer) {
+    int max_seq_len_past_present_share_buffer,
+    bool add_num_beams_to_feed) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   const IExecutionProvider* provider = GetProvider();
@@ -83,20 +84,39 @@ Status GptSubgraph::CreateInitialFeeds(
       feeds.push_back(empty_past);
     }
   } else {
+    // Past state feeds
     int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_past_present_share_buffer, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);
-    // The remaining inputs are past state except the last one
-    for (int i = first_past_input_index_; i < num_subgraph_inputs - 1; ++i) {
+
+    // The remaining inputs are past state except the last one or two (see below for details)
+    // If `add_num_beams_to_feed` is true, then the penultimate one is `past_sequence_length` and the last one
+    // is `num_beams`
+
+    // If `add_num_beams_to_feed` is false, then the last one is `num_beams`
+    auto iter_end = add_num_beams_to_feed ? num_subgraph_inputs - 2 : num_subgraph_inputs - 1;
+    for (int i = first_past_input_index_; i < iter_end; ++i) {
       OrtValue past_tensor;
       Tensor::InitOrtValue(past_type, past_shape, default_allocator, past_tensor);
       feeds.push_back(past_tensor);
     }
+
+    // Past sequence length feed
     int64_t past_seq_len_dims[] = {1};
     TensorShape past_seq_len_shape(&past_seq_len_dims[0], 1);
     OrtValue past_seq_len_tensor_value;
     Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), past_seq_len_shape, cpu_allocator, past_seq_len_tensor_value);
     feeds.push_back(past_seq_len_tensor_value);
     *past_seq_len_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = 0;
+
+    // Num beams feed (optional)
+    if (add_num_beams_to_feed) {
+      int64_t num_beams_dims[] = {1};
+      TensorShape num_beams_shape(&num_beams_dims[0], 1);
+      OrtValue num_beams_tensor_value;
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), num_beams_shape, cpu_allocator, num_beams_tensor_value);
+      feeds.push_back(num_beams_tensor_value);
+      *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beams);
+    }
   }
 
   // Pass in implicit inputs
@@ -112,8 +132,12 @@ Status GptSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_inputs,
   ORT_RETURN_IF(num_subgraph_outputs <= first_present_output_index_,
                 "Invalid GPT-2 subgraph: number of outputs shall be larger than 1 (Need past state in outputs).");
 
-  ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) || (num_subgraph_inputs == num_subgraph_outputs + 3)),
-                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or 3 (if past_present_share_buffer)");
+  ORT_RETURN_IF(!((num_subgraph_inputs == num_subgraph_outputs + 2) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 3) ||
+                  (num_subgraph_inputs == num_subgraph_outputs + 4)),
+                "Invalid GPT-2 subgraph: number of inputs shall be number of outputs plus 2 or "
+                "3 (if past_present_share_buffer) or "
+                "4 (if past_present_share_buffer and use_decoder_masked_multihead_attention for BeamSearch)");
 
   ORT_RETURN_IF(subgraph_inputs[0]->Name() != "input_ids",
                 "subgraph input 0 shall be named as input_ids, got: ", subgraph_inputs[0]->Name());
