@@ -185,9 +185,9 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto& logger = *GetLogger();
 
-  auto rt = qnn_backend_manager_->SetupBackend(&logger);
+  auto rt = qnn_backend_manager_->SetupBackend(logger);
   if (Status::OK() != rt) {
-    LOGS(logger, ERROR) << "QNN SetupBackend failed";
+    LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
   }
 

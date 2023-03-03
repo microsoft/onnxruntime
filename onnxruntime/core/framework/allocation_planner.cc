@@ -83,28 +83,26 @@ std::ostream& operator<<(std::ostream& out, std::pair<const SequentialExecutionP
   const SessionState& session_state = *planinfo.second;
 
   const auto& name_idx_map = session_state.GetOrtValueNameIdxMap();
-  InlinedHashMap<int, std::string_view> index_to_name;
-  index_to_name.reserve(name_idx_map.Size());
+  std::map<int, std::string_view> index_to_name;  // order by Node_Arg index by default
 
   out << "Allocation Plan:\n";
   out << "(ort_value_idx) output_name : <allocation plan>\n";
   auto plan_size = plan.allocation_plan.size();
-
   for (auto& name_index : name_idx_map) {
-    auto index = name_index.second;
-    index_to_name[index] = name_index.first;
-    out << "(" << index << ") " << name_index.first << " : ";
+    index_to_name[name_index.second] = name_index.first;
+  }
+  for (auto it = index_to_name.begin(); it != index_to_name.end(); it++) {
+    int index = it->first;
+    out << "(" << index << ")" << it->second << " : ";
     if (0 <= index && static_cast<size_t>(index) < plan_size) {
       auto& elt_plan = plan.allocation_plan[index];
       out << elt_plan.alloc_kind;
       if (elt_plan.alloc_kind == AllocKind::kReuse) out << " " << elt_plan.reused_buffer;
-
       auto& loc = elt_plan.location;
       out << ", " << loc.ToString();
     } else {
       out << "Index out-of-range!";
     }
-
     out << std::endl;
   }
 
@@ -1788,6 +1786,31 @@ class PlannerImpl {
     // 2. determing following things:
     //    a. which node need to generate notification
     //    b. which node need to trigger downstream
+#ifdef ENABLE_TRAINING
+    // We will leverage the topological order for the training scenario.
+    // The nodes before yieldOp in topo order will be executed in RunForward() and nodes after will be executed in RunBackward()
+    // This partition may not be exactly the same as forward model/gradient model, for example, some nodes in gradient model are
+    // before yieldOp thus will be executed in RunForward()
+    // But the final result is still correct, as long as all the nodes will be executed in either RunForward() or RunBackward()
+    // and no dependency conflict during the execution.
+    const std::vector<NodeIndex>& topo_sort = graph_viewer_.GetNodesInTopologicalOrder(context_->GetExecutionOrder());
+    plan_.node_index_2_toposort_index.reserve(topo_sort.size());
+    size_t yieldOp_index_in_toposort = topo_sort.size();
+    for (size_t i = 0; i < topo_sort.size(); i++) {
+      plan_.node_index_2_toposort_index[topo_sort[i]] = i;
+      const Node* node = graph_viewer_.GetNode(topo_sort[i]);
+      if (node->OpType() == "YieldOp") {
+        ORT_ENFORCE(yieldOp_index_in_toposort == topo_sort.size(), "Two YieldOp in the graph");
+        yieldOp_index_in_toposort = i;
+      }
+    }
+
+    auto AreNodesSeparatedByYield = [&](NodeIndex producer, NodeIndex consumer) {
+      size_t producer_topoindex = plan_.node_index_2_toposort_index[producer];
+      size_t consumer_topoindex = plan_.node_index_2_toposort_index[consumer];
+      return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
+    };
+#endif
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
@@ -1797,7 +1820,13 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
           // if the output node is not in the same stream, generate a trigger point
-          if (node_stream_map_[it->Index()] != i) {
+          if (node_stream_map_[it->Index()] != i
+#ifdef ENABLE_TRAINING
+             // Do not insert Barrier/TriggerDownStream step if the producer and consumer are in different sides of yieldOp
+             // As in this case producer will surely be ready before consumer is running.
+             && !AreNodesSeparatedByYield(node_index, it->Index())
+#endif
+          ) {
             node_to_trigger_points[node_index] = num_trigger_points++;
             break;
           }
@@ -1869,7 +1898,11 @@ class PlannerImpl {
           }
           visited.insert(it->Index());
           //  check whether we need to add barrier
-          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()) {
+          if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
+#ifdef ENABLE_TRAINING
+              && !AreNodesSeparatedByYield(it->Index(), node_index)
+#endif
+          ) {
             // find the trigger_point_id
             auto trigger_point_it = node_to_trigger_points.find(it->Index());
             ORT_ENFORCE(trigger_point_it != node_to_trigger_points.end());
@@ -1878,21 +1911,15 @@ class PlannerImpl {
             size_t barrier_id = plan_.num_barriers++;
             plan_.downstream_map[trigger_point_index].push_back({i,
                                                                  static_cast<int>(execution_plan[i]->steps_.size())});
-            execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id));
-#ifdef ENABLE_TRAINING
-            // keep node index first, will turn it to pc index later
-            execution_plan[i]->step_pc.push_back(node_index);
-#endif
+            execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id, node_index));
           }
         }
 
         auto wait_it = node_to_wait.find(node_index);
         if (wait_it != node_to_wait.end()) {
           for (auto wait_param : wait_it->second) {
-            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second, node_to_notification[wait_param.first]));
-#ifdef ENABLE_TRAINING
-            execution_plan[i]->step_pc.push_back(node_index);
-#endif  // ENABLE_TRAINING
+            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
+              node_to_notification[wait_param.first], node_index));
           }
         }
 
@@ -1902,27 +1929,17 @@ class PlannerImpl {
         }
         // push launch kernel command
         execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
-#ifdef ENABLE_TRAINING
-        execution_plan[i]->step_pc.push_back(node_index);
-#endif
         // check if any notification generated by this node, if yes, push a activate
         auto notification_it = node_to_notification.find(node_index);
         if (notification_it != node_to_notification.end()) {
           NotificationIndex notification_index = notification_it->second;
-          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index));
-#ifdef ENABLE_TRAINING
-          execution_plan[i]->step_pc.push_back(node_index);
-#endif
+          execution_plan[i]->steps_.emplace_back(std::make_unique<ActivateNotificationStep>(notification_index, node_index));
         }
         // check if any trigger point generated by this node, if yes, push a trigger
         auto trigger_point_it = node_to_trigger_points.find(node_index);
         if (trigger_point_it != node_to_trigger_points.end()) {
           // notify downstreams
-          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second));
-#ifdef ENABLE_TRAINING
-          // set the notification step as the triggering part of next node.
-          execution_plan[i]->step_pc.push_back(node_index);
-#endif
+          execution_plan[i]->steps_.emplace_back(std::make_unique<TriggerDownstreamStep>(trigger_point_it->second, node_index));
         }
       }
     }
@@ -2029,14 +2046,6 @@ class PlannerImpl {
       process_stream(i, -1);
     }
     ORT_ENFORCE(plan_.node_execution_order_in_training.size() == num_of_nodes);
-    // 6. turn the step_node_index to step_pc
-    for (auto& stream : plan_.execution_plan) {
-      for (size_t i = 0; i < stream->step_pc.size(); ++i) {
-        auto it = std::find(plan_.node_execution_order_in_training.begin(), plan_.node_execution_order_in_training.end(), stream->step_pc[i]);
-        ORT_ENFORCE(it != plan_.node_execution_order_in_training.end());
-        stream->step_pc[i] = static_cast<int>(std::distance(plan_.node_execution_order_in_training.begin(), it));
-      }
-    }
 #endif
 
     return Status::OK();
