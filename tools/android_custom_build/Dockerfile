@@ -55,9 +55,9 @@ RUN CMAKE_VERSION=3.25.2 && \
 # gradle
 # Note: A system-installed gradle is not required in more recent versions of ORT which use an included gradle wrapper,
 #       but keep it around to support building older versions.
-RUN GRADLE_VERSION=8.0.1 && \
+RUN GRADLE_VERSION=6.8.3 && \
   aria2c -q -d /tmp -o gradle-${GRADLE_VERSION}-bin.zip \
-  --checksum=sha-256=1b6b558be93f29438d3df94b7dfee02e794b94d9aca4611a92cdb79b6b88e909 \
+  --checksum=sha-256=7faa7198769f872826c8ef4f1450f839ec27f0b4d5d1e51bade63667cbccd205 \
   https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip && \
   mkdir /opt/gradle && \
   unzip -d /opt/gradle /tmp/gradle-${GRADLE_VERSION}-bin.zip && \
