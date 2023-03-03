@@ -880,10 +880,6 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
       ,
       "Resize"
 #endif
-#if defined(USE_QNN)
-      ,
-      "InstanceNormalization"
-#endif
     };
 
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
