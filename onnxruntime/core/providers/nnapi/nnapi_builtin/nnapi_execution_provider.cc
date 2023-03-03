@@ -3,7 +3,7 @@
 
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 
-#include "core/common/logging/macros.h"
+#include "core/common/logging/logging.h"
 #include "core/common/string_utils.h"
 #include "core/framework/allocatormgr.h"
 #include "core/framework/compute_capability.h"
