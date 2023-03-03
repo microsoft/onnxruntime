@@ -35,7 +35,7 @@ class FusionT5Attention(FusionAttention):
             num_heads,
             attention_mask,
             use_multi_head_attention=False,
-            search_op_types=["SkipSimplifiedLayerNormalization", "Add"]
+            search_op_types=["SkipSimplifiedLayerNormalization", "Add"],
         )
         self.static_kv = 1
 
@@ -235,7 +235,6 @@ class FusionT5Attention(FusionAttention):
         self.nodes_to_remove.extend(q_nodes[:-1])
 
         self.prune_graph = True
-
 
     def fuse_t5_decoder(self, normalize_node, input_name_to_nodes, output_name_to_node):
         if normalize_node.op_type != "SkipSimplifiedLayerNormalization" and normalize_node.op_type != "Add":
@@ -568,9 +567,6 @@ class FusionRelativePositionBiasBlock(Fusion):
 class FusionSkipSimplifiedLayerNormalization(FusionSkipLayerNormalization):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipSimplifiedLayerNormalization", "SimplifiedLayerNormalization")
-        self.shape_infer_helper = self.model.infer_runtime_shape(
-            {"batch_size": 2, "seq_len": 1, "encode_sequence_length": 8, "past_decode_sequence_length": 4}, update=True
-        )
 
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         super().fuse(node, input_name_to_nodes, output_name_to_node)

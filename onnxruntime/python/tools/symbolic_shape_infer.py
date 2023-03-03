@@ -1514,8 +1514,6 @@ class SymbolicShapeInference:
         new_shape.append(str(self._try_get_value(node, 1)))
         new_shape.append(str(self._try_get_value(node, 2)))
 
-        print(new_shape)
-
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
@@ -2058,7 +2056,7 @@ class SymbolicShapeInference:
         shape_weights = self._get_shape(node, 1)
         shape_bias = self._try_get_shape(node, 2)
         if shape_bias is not None:
-            assert(len(shape_bias) == 1)
+            assert len(shape_bias) == 1
         tripled_hidden_size = shape_bias[0] if shape_bias is not None else shape_weights[1]
         if shape and len(shape) == 3:
             qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
@@ -2139,7 +2137,6 @@ class SymbolicShapeInference:
                 vi = self.known_vi_[node.output[2]]
                 vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
 
-
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
 
@@ -2177,8 +2174,6 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
-        if len(node.output) > 3:
-            self._propagate_shape_and_type(node, 0, 3)
 
         # If the SkipLayerNormalization node contains the optional
         # output for inference, infer the shape and type for it too
@@ -2385,7 +2380,9 @@ class SymbolicShapeInference:
             for i_o in range(len(node.output)):
                 # Special case: We do not care about the training related
                 # outputs of SkipLayerNormalization
-                if node.op_type == "SkipLayerNormalization" and i_o in [1, 2]:
+                if (
+                    node.op_type == "SkipLayerNormalization" or node.op_type == "SkipSimplifiedLayerNormalization"
+                ) and i_o in [1, 2]:
                     continue
 
                 vi = self.known_vi_[node.output[i_o]]
@@ -2545,7 +2542,6 @@ class SymbolicShapeInference:
                         logger.debug("Stopping at incomplete shape inference at " + node.op_type + ": " + node.name)
                         logger.debug("node inputs:")
                         for i in node.input:
-                            print(node.name)
                             logger.debug(self.known_vi_[i])
                         logger.debug("node outputs:")
                         for o in node.output:

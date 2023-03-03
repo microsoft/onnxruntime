@@ -615,7 +615,7 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
             model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
