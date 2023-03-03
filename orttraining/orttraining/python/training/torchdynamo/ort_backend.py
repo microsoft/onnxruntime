@@ -301,6 +301,12 @@ def _fx_to_torchscript(
     fx_module: torch.fx.GraphModule,
 ) -> torch.jit.ScriptModule:
     """Convert torch.fx.Graph to torch.jit.ScriptModule."""
+    from torch.onnx import register_custom_op_symbolic, unregister_custom_op_symbolic
+
+    def _export(g, n, *args, **kwargs):
+        return g.op("com.microsoft::PythonFunction", *args, name_s=kwargs["name"])
+
+    register_custom_op_symbolic("prim::PythonOp", _export, 1)
 
     for node in fx_module.graph.nodes:
         new_kwargs = {}
@@ -314,7 +320,10 @@ def _fx_to_torchscript(
             node.target = node.target.overloadpacket
     fx_module.graph.lint()
     fx_module.recompile()
-    return torch.jit.script(fx_module)  # type: ignore
+
+    ts_graph = torch.jit.script(fx_module)  # type: ignore
+    unregister_custom_op_symbolic("prim::PythonOp", 1)
+    return ts_graph
 
 
 def _decorate_script_module(script_module: torch.jit.ScriptModule, expected_inputs, expected_outputs):

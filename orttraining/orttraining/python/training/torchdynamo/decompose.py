@@ -2,16 +2,14 @@ import inspect
 import operator
 import re
 from contextlib import nullcontext
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, Set, Tuple
 from torch.utils._python_dispatch import TorchDispatchMode, _pop_mode_temporarily, _get_current_dispatch_mode
 
 import torch
 import torch.fx
 from torch._subclasses.fake_tensor import FakeTensorMode
-from torch.fx.experimental.proxy_tensor import make_fx
 from torch.utils._python_dispatch import TorchDispatchMode
 from torch.utils._pytree import tree_flatten, tree_map
-from torch._dispatch.python import enable_python_dispatcher
 
 
 class SymbolicTraceTorchOperatorMode(TorchDispatchMode):
@@ -163,11 +161,23 @@ def maybe_disable_symbolic_trace_mode():
         return nullcontext()
 
 
-def wrap_custom_function(custom_function: Callable):
+_WRAPPED_CUSTOM_FUNCTIONS = set()
+
+
+def wrap_custom_function(custom_function):
+    # TorchScript is the intermediate IR in between FX and ONNX.
+    # FX graph -> torch.jit.script -> TorchScript graph ->
+    # TorchScript-based ONNX exporter -> ONNX graph
+    # Without torch.jit.ignore, the torch.jit.script may trace
+    # into the custom function, which is not what we want.
+    torch.jit.ignore(custom_function)
+    _WRAPPED_CUSTOM_FUNCTIONS.add(custom_function)
+
     def wrapper(*args, **kwargs):
         with maybe_disable_symbolic_trace_mode() as mode:
             result = custom_function(*args, **kwargs)
-            mode.track(custom_function, result, *args, **kwargs)
+            if mode:
+                mode.track(custom_function, result, *args, **kwargs)
             return result
 
     return wrapper
