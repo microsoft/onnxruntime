@@ -311,12 +311,12 @@ and v_hidden_size is that of V.
 
 The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
 
-Both past and present state need to be provided. They shall be used together, and not allowed to use only one of them.
+Both past and present state need to be provided.
+
 The qkv_hidden_sizes is required only when K and V have different hidden sizes.
 
 The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
-For self attention, kv_sequence_length equals to sequence_length (sequence length of Q).
-For cross attention, query and key might have different lengths.
+Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
 )DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
