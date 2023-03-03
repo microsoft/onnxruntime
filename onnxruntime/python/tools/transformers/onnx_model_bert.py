@@ -7,6 +7,7 @@ from logging import getLogger
 from typing import List, Optional
 
 from fusion_attention import AttentionMask, FusionAttention
+from fusion_flashattention import FusionFlashAttention
 from fusion_biasgelu import FusionBiasGelu
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
@@ -54,10 +55,14 @@ class BertOnnxModel(OnnxModel):
 
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.flashattention_fusion = FusionFlashAttention(self, self.hidden_size, self.num_heads)
         self.qordered_attention_fusion = FusionQOrderedAttention(
             self, self.hidden_size, self.num_heads, self.attention_mask
         )
         self.utils = FusionUtils(self)
+
+    def fuse_flashattention(self):
+        self.flashattention_fusion.apply()
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -394,6 +399,9 @@ class BertOnnxModel(OnnxModel):
 
         if (options is None) or options.enable_attention:
             self.fuse_attention()
+
+        if (options is None) or options.enable_flash_attention:
+            self.fuse_flashattention()
 
         # Perform the MatMul fusion after the Attention fusion as we do not
         # want to fuse the MatMuls inside the Attention subgraphs

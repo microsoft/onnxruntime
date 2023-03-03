@@ -26,6 +26,7 @@ class FusionOptions:
         self.enable_gelu = True
         self.enable_layer_norm = True
         self.enable_attention = True
+        self.enable_flash_attention = True
 
         # Use MultiHeadAttention instead of Attention operator. The difference:
         # (1) Attention has merged weights for Q/K/V projection, which might be faster in some cases since 3 MatMul is

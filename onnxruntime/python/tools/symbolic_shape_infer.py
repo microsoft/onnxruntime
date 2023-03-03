@@ -128,6 +128,7 @@ class SymbolicShapeInference:
             "Add": self._infer_symbolic_compute_ops,
             "ArrayFeatureExtractor": self._infer_ArrayFeatureExtractor,
             "AveragePool": self._infer_Pool,
+            "AllReduce": self._pass_on_shape_and_type,
             "BatchNormalization": self._infer_BatchNormalization,
             "Cast": self._infer_Cast,
             "CategoryMapper": self._infer_CategoryMapper,
@@ -191,6 +192,7 @@ class SymbolicShapeInference:
             "Attention": self._infer_Attention,
             "BiasGelu": self._infer_BiasGelu,
             "MultiHeadAttention": self._infer_MultiHeadAttention,
+            "FlashAttention": self._infer_FlashAttention,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "Gelu": self._infer_Gelu,
@@ -442,6 +444,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization",
             "PythonOp",
             "MultiHeadAttention",
+            "FlashAttention",
             "GroupNorm",
             "BiasSplitGelu",
             "BiasAdd",
@@ -2102,6 +2105,34 @@ class SymbolicShapeInference:
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
                 vi = self.known_vi_[node.output[0]]
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+    def _infer_FlashAttention(self, node):
+        '''
+         if Q shape dim==3:
+             Q shape is (batch*head, seq_len, hidden_size)
+             K shape is (batch*head, hidden_size, seq_len) 
+             V shape is (batch*head, seq_len, hidden_size)
+           then Ouptut shape is (batch*head, seq_len, hidden_size)
+         if Q shape dim == 4:
+             Q shape is (batch, head, seq_len, hidden_size)
+             K shape is (batch, head, hidden_size, seq_len)
+             V shape is (batch, head, seq_len, hidden_size)
+           then Output shape is (batch, head, seq_len, hidden_size)
+
+        so the output shape is same as Q shape
+        '''
+
+        query_shape = self._get_shape(node, 0)
+        if query_shape is not None:
+            # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
+            output_shape = query_shape
+            value_shape = self._get_shape(node, 2)
+            if value_shape:
+                output_shape[-1] = value_shape[-1]
+
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
