@@ -126,7 +126,7 @@ make a picture of green tree with flowers aroundit and a red sky
 public static int[] TokenizeText(string text)
 {
     // Create Tokenizer and tokenize the sentence.
-    var tokenizerOnnxPath = @"\StableDiffusion\text_tokenizer\custom_op_cliptok.onnx";
+    var tokenizerOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_tokenizer\\custom_op_cliptok.onnx");
 
     // Create session options for custom op of extensions
     var sessionOptions = new SessionOptions();
@@ -182,7 +182,7 @@ public static DenseTensor<float> TextEncoder(int[] tokenizedInput)
 
     var input = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<int>("input_ids", input_ids) };
 
-    var textEncoderOnnxPath = @"C:\code\StableDiffusion\StableDiffusion\text_encoder\model.onnx";
+    var textEncoderOnnxPath = Directory.GetCurrentDirectory().ToString() + ("\\text_encoder\\model.onnx");
 
     var encodeSession = new InferenceSession(textEncoderOnnxPath);
     // Run inference.
@@ -221,7 +221,7 @@ For this example we have 10 inference steps which calculated the following times
 
 ```csharp
 // Get path to model to create inference session.
-var modelPath = @"C:\code\StableDiffusion\StableDiffusion\unet\model.onnx";
+var modelPath = Directory.GetCurrentDirectory().ToString() + ("\\unet\\model.onnx");
 var scheduler = new LMSDiscreteScheduler();
 var timesteps = scheduler.SetTimesteps(numInferenceSteps);
 ```
@@ -281,7 +281,7 @@ After the inference loop is complete the resulting tensor is scaled and then sen
 public static Tensor<float> Decoder(List<NamedOnnxValue> input)
 {
     // Load the model which will be used to decode the latents into image space. 
-    var vaeDecoderModelPath = @"C:\code\StableDiffusion\StableDiffusion\vae_decoder\model.onnx";
+   var vaeDecoderModelPath = Directory.GetCurrentDirectory().ToString() + ("\\vae_decoder\\model.onnx");
     
     // Create an InferenceSession from the Model Path.
     var vaeDecodeSession = new InferenceSession(vaeDecoderModelPath);
