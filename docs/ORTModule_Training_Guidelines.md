@@ -129,7 +129,22 @@ Before full qualified name can be got from exporter, this environment variables 
 - **Feature Area**: *ORTMODULE/Optimizations*
 - **Description**: By default, this is enabled then some computation can be saved. This env var can be used for disabling
 the optimization to guarantee exactly same compute with baseline (for example PyTorch, when doing convergence parity
-debugging).
+debugging). Disable it with following command:
+
+	```bash
+	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0
+	```
+
+#### ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR
+
+- **Feature Area**: *ORTMODULE/Runtime inspector*
+- **Description**: By default, this is disabled. This env var can be used for enabling the input data sparsity
+inspection. Training users or our dev could leverage this info for improving perf accordingly. Enable it with following
+command:
+
+	```bash
+	export ORTMODULE_ENABLE_INPUT_DENSITY_INSPECTOR=1
+	```
 
 ### 2.2 Memory Optimization
 
