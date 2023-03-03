@@ -60,7 +60,7 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4 -b onnx
 - Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`. 
 
 ## Inference with C#
-Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point, and the current timestep. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt.
+Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt. Lets look at the code.
 
 ## Main Function
 The main function sets the prompt, number of inference steps, and the guidance scale. It then calls the `UNet.Inference` function to run the inference.
@@ -118,7 +118,7 @@ The CLIP tokenizer is not available in C# so in order to tokenize the text promp
 ```text
 make a picture of green tree with flowers aroundit and a red sky
 ```
-- Text Tokenization: The text prompt is tokenized into a list of tokens. Each token id is a number that represents a word in the sentence, then is filled with a blank token to create the `maxLength` of 77 tokens. The token ids are then converted to a tensor of shape (1,77).
+- Text Tokenization: The text prompt is tokenized into a list of tokens. Each token id is a number that represents a word in the sentence, then its filled with a blank token to create the `maxLength` of 77 tokens. The token ids are then converted to a tensor of shape (1,77).
 
 - Below is the code to tokenize the text prompt with ONNX Runtime Extensions.
 
@@ -226,8 +226,8 @@ var scheduler = new LMSDiscreteScheduler();
 var timesteps = scheduler.SetTimesteps(numInferenceSteps);
 ```
 ```text
-tensor([999., 888., 777., 666., 555., 444., 333., 222., 111.,   0.],
-       dtype=torch.float64)
+tensor([999., 888., 777., 666., 555., 444., 333., 222., 111.,   0.])
+```
 ```  
 ### Latents
 
@@ -243,7 +243,7 @@ var latents = GenerateLatentSample(batchSize, height, width,seed, scheduler.Init
 For each inference step the latent image is duplicated to create the tensor shape of (2,4,64,64), it is then scaled and inferenced with the unet model. The output tensors (2,4,64,64) are split and guidance is applied. The resulting tensor is then sent into the `LMSDiscreteScheduler` step as part of the denoising process and the resulting tensor from the scheduler step is returned and the loop completes again until the `num_inference_steps` is reached. 
 
 ```csharp
-    // Create Inference Session
+// Create Inference Session
 var unetSession = new InferenceSession(modelPath, options);
 var input = new List<NamedOnnxValue>();
 
