@@ -59,6 +59,10 @@ git clone https://huggingface.co/CompVis/stable-diffusion-v1-4 -b onnx
 
 - Copy the folders with the ONNX files to the C# project folder `\StableDiffusion\StableDiffusion`. The folders to copy are: `unet`, `vae_decoder`, `text_encoder`, `safety_checker`. 
 
+## Understanding the model in Python with Diffusers from Hugging Face
+
+When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models in this pipeline. This code is based on the Hugging Face Diffusers Library and Blog. If you want to learn more about how it works [check out this amazing blog post](https://huggingface.co/blog/stable_diffusion) for more details!
+
 ## Inference with C#
 Now lets start to breakdown how to inference in C#! The `unet` model takes the text embedding of the user prompt created by the [CLIP model](https://huggingface.co/docs/transformers/model_doc/clip) that connects text and image. The latent noisy image is created as a starting point. The scheduler algorithm and the `unet` model work together to denoise the image to create an image that represents the text prompt. Lets look at the code.
 
@@ -321,10 +325,6 @@ The result image:
 ## Conclusion
 
 This is a high level overview of how to run Stable Diffusion in C#. It covered the main concepts and provided examples on how to implement it. To get the full code, check out the [Stable Diffusion C# Sample](https://github.com/cassiebreviu/StableDiffusion).
-
-## Understanding the model in Python with Diffusers from Hugging Face
-
-When taking a prebuilt model and operationalizing it, its useful to take a moment and understand the models in this pipeline. This code is based on the Hugging Face Diffusers Library and Blog. If you want to learn more about how it works [check out this amazing blog post](https://huggingface.co/blog/stable_diffusion) for more details!
 
 ## Resources
 - [Stable Diffusion C# Sample Source Code](https://github.com/cassiebreviu/StableDiffusion)
