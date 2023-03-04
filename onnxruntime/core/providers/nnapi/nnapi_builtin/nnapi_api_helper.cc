@@ -86,8 +86,7 @@ static int32_t GetDeviceFeatureLevelInternal(const ::NnApi* nnapi, const std::ve
 // we will always put CPU device at the end if cpu is enabled
 Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_option,
                         std::vector<ANeuralNetworksDevice*>& nnapi_target_devices, std::string& nnapi_target_devices_detail) {
-  // GetTargetDevices is only supported on API 29+
-  // get runtime_feature_level
+  // GetTargetDevices is only supported when NNAPI runtime feature level >= ANEURALNETWORKS_FEATURE_LEVEL_3
   if (GetNNAPIRuntimeFeatureLevel(nnapi) < ANEURALNETWORKS_FEATURE_LEVEL_3)
     return Status::OK();
 
