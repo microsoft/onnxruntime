@@ -52,8 +52,7 @@ Status TreeEnsembleClassifier<T>::GetRemovableAttributes(InlinedVector<std::stri
                                     "class_weights_as_tensor"
 #endif
                                     };
-  removable_attributes.clear();
-  removable_attributes.insert(removable_attributes.begin(), names.begin(), names.end());
+  removable_attributes.swap(names);
   return Status::OK();
 }
 
