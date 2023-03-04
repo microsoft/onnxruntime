@@ -27,6 +27,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
 |main|8.5|11.4|
+|1.14|8.5|11.4|
 |1.12-1.13|8.4|11.4|
 |1.11|8.2|11.4|
 |1.10|8.0|11.4|
@@ -42,11 +43,11 @@ For more details on CUDA/cuDNN versions, please see [CUDA EP requirements](./CUD
 
 See [Build instructions](../build/eps.md#tensorrt).
 
-The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.4.
+The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 8.5.
 
 ## Usage
 ### C/C++
-```
+```c++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions sf;
 int device_id = 0;
@@ -57,14 +58,14 @@ Ort::Session session(env, model_path, sf);
 
 The C API details are [here](../get-started/with-c.md).
 
-#### Shape Inference for TensorRT Subgraphs
-If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py).
-
+### Shape Inference for TensorRT Subgraphs
+If some operators in the model are not supported by TensorRT, ONNX Runtime will partition the graph and only send supported subgraphs to TensorRT execution provider. Because TensorRT requires that all inputs of the subgraphs have shape specified, ONNX Runtime will throw error if there is no input shape info. In this case please run shape inference for the entire model first by running script [here](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py) (Check below for sample).
 
 ### Python
-To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the InferenceSession.
-Note that it is recommended you also register CUDAExecutionProvider to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
-```
+To use TensorRT execution provider, you must explicitly register TensorRT execution provider when instantiating the `InferenceSession`.
+Note that it is recommended you also register `CUDAExecutionProvider` to allow Onnx Runtime to assign nodes to CUDA execution provider that TensorRT does not support.
+
+```python
 import onnxruntime as ort
 # set providers to ['TensorrtExecutionProvider', 'CUDAExecutionProvider'] with TensorrtExecutionProvider having the higher priority.
 sess = ort.InferenceSession('model.onnx', providers=['TensorrtExecutionProvider', 'CUDAExecutionProvider'])
@@ -76,105 +77,104 @@ There are two ways to configure TensorRT settings, either by environment variabl
 ### Environment Variables
 Following environment variables can be set for TensorRT execution provider.
 
-* ORT_TENSORRT_MAX_WORKSPACE_SIZE: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
+* `ORT_TENSORRT_MAX_WORKSPACE_SIZE`: maximum workspace size for TensorRT engine. Default value: 1073741824 (1GB).
 
-* ORT_TENSORRT_MAX_PARTITION_ITERATIONS: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU. Default value: 1000.
+* `ORT_TENSORRT_MAX_PARTITION_ITERATIONS`: maximum number of iterations allowed in model partitioning for TensorRT. If target model can't be successfully partitioned when the maximum number of iterations is reached, the whole model will fall back to other execution providers such as CUDA or CPU. Default value: 1000.
 
-* ORT_TENSORRT_MIN_SUBGRAPH_SIZE: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers. Default value: 1.
+* `ORT_TENSORRT_MIN_SUBGRAPH_SIZE`: minimum node size in a subgraph after partitioning. Subgraphs with smaller size will fall back to other execution providers. Default value: 1.
 
-* ORT_TENSORRT_FP16_ENABLE: Enable FP16 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support FP16 precision.
+* `ORT_TENSORRT_FP16_ENABLE`: Enable FP16 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support FP16 precision.
 
-* ORT_TENSORRT_INT8_ENABLE: Enable INT8 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support INT8 precision.
+* `ORT_TENSORRT_INT8_ENABLE`: Enable INT8 mode in TensorRT. 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support INT8 precision.
 
-* ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME: Specify INT8 calibration table file for non-QDQ models in INT8 mode. Note calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
+* `ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME`: Specify INT8 calibration table file for non-QDQ models in INT8 mode. Note calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
 
-* ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE: Select what calibration table is used for non-QDQ models in INT8 mode. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
-**Note: Please copy up-to-date calibration table file to ORT_TENSORRT_CACHE_PATH before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.
+* `ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE`: Select what calibration table is used for non-QDQ models in INT8 mode. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
+* **Note: Please copy up-to-date calibration table file to `ORT_TENSORRT_CACHE_PATH` before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.**
 
-* ORT_TENSORRT_DLA_ENABLE: Enable DLA (Deep Learning Accelerator). 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support DLA. 
+* `ORT_TENSORRT_DLA_ENABLE`: Enable DLA (Deep Learning Accelerator). 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support DLA. 
 
-* ORT_TENSORRT_DLA_CORE: Specify DLA core to execute on. Default value: 0.
- 
-* ORT_TENSORRT_ENGINE_CACHE_ENABLE: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine. Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
-**Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
-  - Model changes (if there are any changes to the model topology, opset version, operators etc.)
-  - ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
-  - TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
-  - Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
+* `ORT_TENSORRT_DLA_CORE`: Specify DLA core to execute on. Default value: 0.
 
-* ORT_TENSORRT_CACHE_PATH: Specify path for TensorRT engine and profile files if ORT_TENSORRT_ENGINE_CACHE_ENABLE is 1, or path for INT8 calibration table file if ORT_TENSORRT_INT8_ENABLE is 1.
+* `ORT_TENSORRT_ENGINE_CACHE_ENABLE`: Enable TensorRT engine caching. The purpose of using engine caching is to save engine build time in the case that TensorRT may take long time to optimize and build engine. Engine will be cached when it's built for the first time so next time when new inference session is created the engine can be loaded directly from cache. In order to validate that the loaded engine is usable for current inference, engine profile is also cached and loaded along with engine. If current input shapes are in the range of the engine profile, the loaded engine can be safely used. Otherwise if input shapes are out of range, profile cache will be updated to cover the new shape and engine will be recreated based on the new profile (and also refreshed in the engine cache). Note each engine is created for specific settings such as model path/name, precision (FP32/FP16/INT8 etc), workspace, profiles etc, and specific GPUs and it's not portable, so it's essential to make sure those settings are not changing, otherwise the engine needs to be rebuilt and cached again. 1: enabled, 0: disabled. Default value: 0.
+    * **Warning: Please clean up any old engine and profile cache files (.engine and .profile) if any of the following changes:**
+        * Model changes (if there are any changes to the model topology, opset version, operators etc.)
+        * ORT version changes (i.e. moving from ORT version 1.8 to 1.9)
+        * TensorRT version changes (i.e. moving from TensorRT 7.0 to 8.0)
+        * Hardware changes. (Engine and profile files are not portable and optimized for specific Nvidia hardware)
 
-* ORT_TENSORRT_DUMP_SUBGRAPHS: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
+* `ORT_TENSORRT_CACHE_PATH`: Specify path for TensorRT engine and profile files if `ORT_TENSORRT_ENGINE_CACHE_ENABLE` is 1, or path for INT8 calibration table file if ORT_TENSORRT_INT8_ENABLE is 1.
 
-* ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD: Sequentially build TensorRT engines across provider instances in multi-GPU environment. 1: enabled, 0: disabled. Default value: 0.
+* `ORT_TENSORRT_DUMP_SUBGRAPHS`: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
 
-One can override default values by setting environment variables ORT_TENSORRT_MAX_WORKSPACE_SIZE, ORT_TENSORRT_MAX_PARTITION_ITERATIONS, ORT_TENSORRT_MIN_SUBGRAPH_SIZE, ORT_TENSORRT_FP16_ENABLE, ORT_TENSORRT_INT8_ENABLE, ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME, ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE, ORT_TENSORRT_ENGINE_CACHE_ENABLE, ORT_TENSORRT_CACHE_PATH and ORT_TENSORRT_DUMP_SUBGRAPHS.
-e.g. on Linux
+* `ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD`: Sequentially build TensorRT engines across provider instances in multi-GPU environment. 1: enabled, 0: disabled. Default value: 0.
 
-#### Override default max workspace size to 2GB
+One can override default values by setting environment variables. e.g. on Linux:
+
+```bash
+# Override default max workspace size to 2GB
 export ORT_TENSORRT_MAX_WORKSPACE_SIZE=2147483648
 
-#### Override default maximum number of iterations to 10 
+# Override default maximum number of iterations to 10 
 export ORT_TENSORRT_MAX_PARTITION_ITERATIONS=10
-        
-#### Override default minimum subgraph node size to 5
+
+# Override default minimum subgraph node size to 5
 export ORT_TENSORRT_MIN_SUBGRAPH_SIZE=5
 
-#### Enable FP16 mode in TensorRT
+# Enable FP16 mode in TensorRT
 export ORT_TENSORRT_FP16_ENABLE=1
 
-#### Enable INT8 mode in TensorRT
+# Enable INT8 mode in TensorRT
 export ORT_TENSORRT_INT8_ENABLE=1
 
-#### Use native TensorRT calibration table
+# Use native TensorRT calibration table
 export ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE=1
 
-#### Enable TensorRT engine caching
+# Enable TensorRT engine caching
 export ORT_TENSORRT_ENGINE_CACHE_ENABLE=1
-* Please Note warning above. This feature is experimental. Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the
-underlying hardware changes. Engine files are not portable across devices.
+# Please Note warning above. This feature is experimental. 
+# Engine cache files must be invalidated if there are any changes to the model, ORT version, TensorRT version or if the underlying hardware changes. Engine files are not portable across devices.
 
-#### Specify TensorRT cache path
+# Specify TensorRT cache path
 export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
 
-#### Dump out subgraphs to run on TensorRT
-export ORT_TENSORRT_DUMP_SUBGRAPHS = 1
+# Dump out subgraphs to run on TensorRT
+export ORT_TENSORRT_DUMP_SUBGRAPHS=1
+```
 
 ### Execution Provider Options
-TensorRT configurations can also be set by execution provider option APIs. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken. There are one-to-one mappings between environment variables and execution provider options shown as below,
 
-ORT_TENSORRT_MAX_WORKSPACE_SIZE <-> trt_max_workspace_size
+TensorRT configurations can also be set by execution provider option APIs. It's useful when each model and inference session have their own configurations. In this case, execution provider option settings will override any environment variable settings. All configurations should be set explicitly, otherwise default value will be taken. 
 
-ORT_TENSORRT_MAX_PARTITION_ITERATIONS <-> trt_max_partition_iterations
+There are one-to-one mappings between **environment variables** and **execution provider options APIs** shown as below:
 
-ORT_TENSORRT_MIN_SUBGRAPH_SIZE <-> trt_min_subgraph_size
+> Note: for bool type options, assign them with **True**/**False** in python, or **1**/**0** in C++. 
 
-ORT_TENSORRT_FP16_ENABLE <-> trt_fp16_enable
+| environment variables                          | execution provider option APIs        | type   |
+| ---------------------------------------------- | ------------------------------------- | ------ |
+| ORT_TENSORRT_MAX_WORKSPACE_SIZE                | trt_max_workspace_size                | int    |
+| ORT_TENSORRT_MAX_PARTITION_ITERATIONS          | trt_max_partition_iterations          | int    |
+| ORT_TENSORRT_MIN_SUBGRAPH_SIZE                 | trt_min_subgraph_size                 | int    |
+| ORT_TENSORRT_FP16_ENABLE                       | trt_fp16_enable                       | bool   |
+| ORT_TENSORRT_INT8_ENABLE                       | trt_int8_enable                       | bool   |
+| ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME       | trt_int8_calibration_table_name       | string |
+| ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE | trt_int8_use_native_calibration_table | bool   |
+| ORT_TENSORRT_DLA_ENABLE                        | trt_dla_enable                        | bool   |
+| ORT_TENSORRT_DLA_CORE                          | trt_dla_core                          | int    |
+| ORT_TENSORRT_ENGINE_CACHE_ENABLE               | trt_engine_cache_enable               | bool   |
+| ORT_TENSORRT_CACHE_PATH                        | trt_engine_cache_path                 | string |
+| ORT_TENSORRT_DUMP_SUBGRAPHS                    | trt_dump_subgraphs                    | bool   |
+| ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | trt_force_sequential_engine_build     | bool   |
 
-ORT_TENSORRT_INT8_ENABLE <-> trt_int8_enable
-
-ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME <-> trt_int8_calibration_table_name
-
-ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE <-> trt_int8_use_native_calibration_table
-
-ORT_TENSORRT_DLA_ENABLE <-> trt_dla_enable
-
-ORT_TENSORRT_DLA_CORE <-> trt_dla_core
-
-ORT_TENSORRT_ENGINE_CACHE_ENABLE <-> trt_engine_cache_enable
-
-ORT_TENSORRT_CACHE_PATH <-> trt_engine_cache_path
-
-ORT_TENSORRT_DUMP_SUBGRAPHS <-> trt_dump_subgraphs
-
-ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD <-> trt_force_sequential_engine_build
-
-Besides, device_id can also be set by execution provider option.
+Besides, `device_id` can also be set by execution provider option.
 
 #### C++ API example
-```
+```c++
+
 Ort::SessionOptions session_options;
 OrtTensorRTProviderOptions trt_options{};
+
+// note: for bool type options in c++ API, set them as 0/1
 trt_options.device_id = 1;
 trt_options.trt_max_workspace_size = 2147483648;
 trt_options.trt_max_partition_iterations = 10;
@@ -189,19 +189,20 @@ session_options.AppendExecutionProvider_TensorRT(trt_options);
 ```
 
 #### Python API example
-```
+```python
 import onnxruntime as ort
 
 model_path = '<path to model>'
 
+# note: for bool type options in python API, set them as False/True
 providers = [
     ('TensorrtExecutionProvider', {
-        'device_id': 1,
+        'device_id': 0,
         'trt_max_workspace_size': 2147483648,
         'trt_fp16_enable': True,
     }),
     ('CUDAExecutionProvider', {
-        'device_id': 1,
+        'device_id': 0,
         'arena_extend_strategy': 'kNextPowerOfTwo',
         'gpu_mem_limit': 2 * 1024 * 1024 * 1024,
         'cudnn_conv_algo_search': 'EXHAUSTIVE',
