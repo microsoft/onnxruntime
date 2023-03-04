@@ -75,7 +75,6 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-#if defined(_WIN32)
 // Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
 // determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.
@@ -153,8 +152,10 @@ class HTPBackendTestsFixture : public ::testing::Test {
   static HTPSupport cached_htp_support_;  // Set by the first test using this fixture.
 };
 
+#if defined(_WIN32)
 HTPSupport HTPBackendTestsFixture::cached_htp_support_ = HTPSupport::HTP_SUPPORT_UNKNOWN;
-
+#else
+HTPSupport HTPBackendTestsFixture::cached_htp_support_ = HTPSupport::HTP_SUPPORTED;
 #endif  // defined(_WIN32)
 
 // Testing helper function that runs a caller-provided QDQ graph (build_test_case) to allow the caller to
