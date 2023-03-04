@@ -98,7 +98,7 @@ enum HTPSupport {
 // if the HTP backend is available.
 // TODO: Remove once HTP can be emulated on Windows ARM64.
 static HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
-  onnxruntime::Model model("Check if HTP is availble", false, logger);
+  onnxruntime::Model model("Check if HTP is available", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
 
