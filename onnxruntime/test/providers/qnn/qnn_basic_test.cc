@@ -1,7 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <random>
 #include <string>
 
 #include "core/common/logging/logging.h"
@@ -120,19 +119,19 @@ static HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
   qnn_ep->SetLogger(&logger);
   auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
 
-  if (result.empty()) {
-    return HTPSupport::HTP_UNSUPPORTED;
-  }
-
-  return HTPSupport::HTP_SUPPORTED;
+  return result.empty() ? HTPSupport::HTP_UNSUPPORTED : HTPSupport::HTP_SUPPORTED;
 }
 
 // Testing fixture class for tests that require the HTP backend. Checks if HTP is available before the test begins.
 // The test is skipped if HTP is unavailable (may occur on Windows ARM64).
 // TODO: Remove once HTP can be emulated on Windows ARM64.
-class HTPBackendTestsFixture : public ::testing::Test {
+class QnnHTPBackendTests : public ::testing::Test {
  protected:
   void SetUp() override {
+    if (cached_htp_support_ == HTPSupport::HTP_SUPPORTED) {
+      return;
+    }
+
     const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     // Determine if HTP backend is supported only if we done so haven't before.
@@ -153,18 +152,16 @@ class HTPBackendTestsFixture : public ::testing::Test {
 };
 
 #if defined(_WIN32)
-HTPSupport HTPBackendTestsFixture::cached_htp_support_ = HTPSupport::HTP_SUPPORT_UNKNOWN;
+HTPSupport QnnHTPBackendTests::cached_htp_support_ = HTPSupport::HTP_SUPPORT_UNKNOWN;
 #else
-HTPSupport HTPBackendTestsFixture::cached_htp_support_ = HTPSupport::HTP_SUPPORTED;
+HTPSupport QnnHTPBackendTests::cached_htp_support_ = HTPSupport::HTP_SUPPORTED;
 #endif  // defined(_WIN32)
 
 // Testing helper function that runs a caller-provided QDQ graph (build_test_case) to allow the caller to
 // 1) test which nodes are assigned to an EP, and 2) check that the inference output matches with the CPU EP.
-static void RunModelTest(
-    const GetQDQTestCaseFn& build_test_case,
-    const char* test_description,
-    const ProviderOptions& provider_options,
-    const EPVerificationParams& params = EPVerificationParams()) {
+static void RunModelTest(const GetQDQTestCaseFn& build_test_case, const char* test_description,
+                         const ProviderOptions& provider_options,
+                         const EPVerificationParams& params = EPVerificationParams()) {
   onnxruntime::Model model(test_description, false, DefaultLoggingManager().DefaultLogger());
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -181,7 +178,7 @@ static void RunModelTest(
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
-TEST_F(HTPBackendTestsFixture, TestQDQConvU8U8) {
+TEST_F(QnnHTPBackendTests, TestQDQConvU8U8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -210,7 +207,7 @@ TEST_F(HTPBackendTestsFixture, TestQDQConvU8U8) {
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 4.
-TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8) {
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -237,7 +234,7 @@ TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8) {
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 3.
-TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank3) {
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank3) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -256,14 +253,14 @@ TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank3) {
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
   RunModelTest(BuildQDQInstanceNormTestCase<uint8_t>(
                    {1, 2, 3} /* input_shape */,
-                   1e-05f /* epsilon */),
+                   1e-05f    /* epsilon */),
                "qnn_qdq_test_graph_instance_norm_u8_rank3",
                provider_options,
                verification_params);
 }
 
 // Check that QNN InstanceNorm operator does not handle inputs with rank > 4.
-TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank5) {
+TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank5) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -277,7 +274,7 @@ TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank5) {
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
   RunModelTest(BuildQDQInstanceNormTestCase<uint8_t>(
                    {1, 2, 3, 3, 3} /* input_shape */,
-                   1e-05f /* epsilon */),
+                   1e-05f          /* epsilon */),
                "qnn_qdq_test_graph_instance_norm_u8_rank5",
                provider_options,
                verification_params);
