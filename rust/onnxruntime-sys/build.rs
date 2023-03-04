@@ -419,19 +419,22 @@ fn prepare_libort_dir() -> PathBuf {
 
 fn prepare_libort_dir_compiled() -> PathBuf {
     let mut config = cmake::Config::new("../../cmake");
-    config.define("CMAKE_SYSTEM_NAME", "iOS");
+    //config.define("CMAKE_SYSTEM_NAME", "iOS"); //for iOS only
+    config.define("CMAKE_SYSTEM_NAME", "Darwin");
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
     //config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
     //config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
     //config.define("PROTOBUF_INCLUDE_DIR", "/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
 
     //config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
-    config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
+    //config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake"); //for iOS
 
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
     config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
-    config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "11.0"); //for iOS
-    config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk");
+    //config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "11.0"); //for iOS
+
+    //config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"); //for iOS, Catalyst uses MacOSX sdk
+    config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk"); //for Catalyst, iOS uses iPhoneOS sdk
 
     config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
     config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
@@ -440,7 +443,10 @@ fn prepare_libort_dir_compiled() -> PathBuf {
     config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
     config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
     config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
-    config.define("onnxruntime_ENABLE_BITCODE", "ON"); 
+
+    //config.define("onnxruntime_ENABLE_BITCODE", "ON"); //for iOS
+    config.define("onnxruntime_ENABLE_BITCODE", "OFF"); //for Catalyst
+    
     // config.define("INCLUDE_DIRECTORIES", "/opt/homebrew/opt/flatbuffers/include");
     config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
     if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
