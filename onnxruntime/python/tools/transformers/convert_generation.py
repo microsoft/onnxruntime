@@ -1361,6 +1361,42 @@ def generate_gpt2_init_decoder(
     OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
     return True
 
+# bugbug
+def make_dim_proto_numeric(model, config):
+    """Make dim_proto numeric.
+
+    Args:
+        model (BartForConditionalGeneration): Bart model.
+        config: Bart config.
+    """
+    sequence_length = str(1)
+    num_heads = str(config.num_heads)
+    hidden_size = str(config.d_model)
+    head_size = str(config.d_kv)
+
+    for tensor in model.graph.output:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
+
+    for tensor in model.graph.input:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
 
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
@@ -1641,6 +1677,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
             # )
             # initializers.extend(moved_initializers)
+
+        make_dim_proto_numeric(encoder_model, config)
+        make_dim_proto_numeric(decoder_model, config)
 
         node.attribute.extend(
             [
