@@ -55,4 +55,4 @@ You can compare the performance of:
 - A fully optimized model run with only the CPU EP enabled
 - A model with saved runtime optimizations run with additional EPs enabled
 
-The [model usability checker](./helpers/model-usability-checker.md) will provide guidance for a particular model.
+The [model usability checker](../tutorials/mobile/helpers/model-usability-checker.md) will provide guidance for a particular model.
