@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "nnapi_api_helper.h"
 
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
