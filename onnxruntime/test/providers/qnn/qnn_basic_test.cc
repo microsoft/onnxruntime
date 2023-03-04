@@ -105,7 +105,7 @@ static void SkipIfHTPUnavailable() {
   // Create QNN EP and call GetCapability().
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
-  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = DefaultQnnExecutionProviderWithOptions(
+  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
       {{"backend_path", "QnnHtp.dll"}});
 
   qnn_ep->SetLogger(&logger);
@@ -135,7 +135,7 @@ static void RunModelTest(
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
   RunAndVerifyOutputsWithEP(model_data, "QnnEP.TestQDQModel",
-                            DefaultQnnExecutionProviderWithOptions(provider_options),
+                            QnnExecutionProviderWithOptions(provider_options),
                             helper.feeds_, params);
 }
 
