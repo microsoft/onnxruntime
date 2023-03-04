@@ -87,11 +87,17 @@ class MockKernelLookup : public onnxruntime::IExecutionProvider::IKernelLookup {
   }
 };
 
+enum HTPSupport {
+  HTP_SUPPORT_UNKNOWN = 0,
+  HTP_UNSUPPORTED,
+  HTP_SUPPORTED,
+  HTP_SUPPORT_ERROR,
+};
+
 // Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
-// if the HTP backend is available. Skips the current test if HTP is not available, which may occur on Windows ARM64.
+// if the HTP backend is available.
 // TODO: Remove once HTP can be emulated on Windows ARM64.
-static void SkipIfHTPUnavailable() {
-  const auto& logger = DefaultLoggingManager().DefaultLogger();
+static HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
   onnxruntime::Model model("Check if HTP is availble", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
@@ -100,7 +106,11 @@ static void SkipIfHTPUnavailable() {
   GetQDQTestCaseFn build_test_case = BuildQDQInstanceNormTestCase<uint8_t>({1, 2, 3, 3}, 1e-05f);
   build_test_case(helper);
   helper.SetGraphOutputs();
-  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  auto status = model.MainGraph().Resolve();
+
+  if (!status.IsOK()) {
+    return HTPSupport::HTP_SUPPORT_ERROR;
+  }
 
   // Create QNN EP and call GetCapability().
   MockKernelLookup kernel_lookup;
@@ -112,13 +122,43 @@ static void SkipIfHTPUnavailable() {
   auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
 
   if (result.empty()) {
-    LOGS(logger, WARNING) << "QNN HTP backend is not available! Skipping test.";
-    GTEST_SKIP();
+    return HTPSupport::HTP_UNSUPPORTED;
   }
+
+  return HTPSupport::HTP_SUPPORTED;
 }
+
+// Testing fixture class for tests that require the HTP backend. Checks if HTP is available before the test begins.
+// The test is skipped if HTP is unavailable (may occur on Windows ARM64).
+// TODO: Remove once HTP can be emulated on Windows ARM64.
+class HTPBackendTestsFixture : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+    // Determine if HTP backend is supported only if we done so haven't before.
+    if (cached_htp_support_ == HTPSupport::HTP_SUPPORT_UNKNOWN) {
+      cached_htp_support_ = GetHTPSupport(logger);
+    }
+
+    if (cached_htp_support_ == HTPSupport::HTP_UNSUPPORTED) {
+      LOGS(logger, WARNING) << "QNN HTP backend is not available! Skipping test.";
+      GTEST_SKIP();
+    } else if (cached_htp_support_ == HTPSupport::HTP_SUPPORT_ERROR) {
+      LOGS(logger, ERROR) << "Failed to check if QNN HTP backend is available.";
+      FAIL();
+    }
+  }
+
+  static HTPSupport cached_htp_support_;  // Set by the first test using this fixture.
+};
+
+HTPSupport HTPBackendTestsFixture::cached_htp_support_ = HTPSupport::HTP_SUPPORT_UNKNOWN;
 
 #endif  // defined(_WIN32)
 
+// Testing helper function that runs a caller-provided QDQ graph (build_test_case) to allow the caller to
+// 1) test which nodes are assigned to an EP, and 2) check that the inference output matches with the CPU EP.
 static void RunModelTest(
     const GetQDQTestCaseFn& build_test_case,
     const char* test_description,
@@ -140,12 +180,9 @@ static void RunModelTest(
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
-TEST(QnnEP, TestQDQConvU8U8) {
+TEST_F(HTPBackendTestsFixture, TestQDQConvU8U8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
-  // TODO: Remove once HTP can be emulated on Windows ARM64.
-  SkipIfHTPUnavailable();
-
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -172,12 +209,9 @@ TEST(QnnEP, TestQDQConvU8U8) {
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 4.
-TEST(QnnEP, TestQDQInstanceNormU8) {
+TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
-  // TODO: Remove once HTP can be emulated on Windows ARM64.
-  SkipIfHTPUnavailable();
-
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -202,12 +236,9 @@ TEST(QnnEP, TestQDQInstanceNormU8) {
 
 // Check that QNN compiles DQ -> InstanceNormalization -> Q as a single unit.
 // Use an input of rank 3.
-TEST(QnnEP, TestQDQInstanceNormU8Rank3) {
+TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank3) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
-  // TODO: Remove once HTP can be emulated on Windows ARM64.
-  SkipIfHTPUnavailable();
-
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -231,12 +262,9 @@ TEST(QnnEP, TestQDQInstanceNormU8Rank3) {
 }
 
 // Check that QNN InstanceNorm operator does not handle inputs with rank > 4.
-TEST(QnnEP, TestQDQInstanceNormU8Rank5) {
+TEST_F(HTPBackendTestsFixture, TestQDQInstanceNormU8Rank5) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
-  // TODO: Remove once HTP can be emulated on Windows ARM64.
-  SkipIfHTPUnavailable();
-
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
