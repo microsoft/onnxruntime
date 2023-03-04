@@ -67,16 +67,7 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm only supports input ranks of size 3 or 4.");
   }
 
-  if (node_unit.Domain() != kMSInternalNHWCDomain) {  // Layout has not been transformed to NHWC, so do it here.
-    const uint32_t chans = input_shape[1];
-    for (size_t i = 1; i < input_rank - 1; ++i) {
-      input_shape[i] = input_shape[i + 1];
-    }
-
-    input_shape[input_rank - 1] = chans;
-  }
-
-  const uint32_t num_channels = input_shape.back();
+  uint32_t num_channels = (node_unit.Domain() == kMSInternalNHWCDomain) ? input_shape.back() : input_shape[1];
 
   std::vector<uint32_t> scale_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, scale_shape), "Cannot get shape of input 1 (scale)");
@@ -88,12 +79,6 @@ Status InstanceNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[2].node_arg, bias_shape), "Cannot get shape of input 2 (bias)");
   if (bias_shape.size() != 1 || bias_shape[0] != num_channels) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm input 2 (bias) must have 1D shape [channel].");
-  }
-
-  NodeAttrHelper node_helper(node_unit);
-  const float epsilon = node_helper.Get("epsilon", 0.0f);
-  if (epsilon <= 0.0f) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN InstanceNorm epsilon must be greater than 0.0");
   }
 
   return Status::OK();
@@ -119,7 +104,6 @@ Status InstanceNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_m
   param_tensor_names.push_back(epsilon_param_wrapper.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(epsilon_param_wrapper));
 
-  output_count_ = 1;
   ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                      std::move(input_names),
                                      std::move(param_tensor_names),
