@@ -122,6 +122,12 @@ const OrtApi* Global<T>::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 inline const OrtApi& GetApi() noexcept { return *Global<void>::api_; }
 
 /// <summary>
+/// This function returns the onnxruntime version string
+/// </summary>
+/// <returns>version string major.minor.rev</returns>
+std::string GetVersionString();
+
+/// <summary>
 /// This is a C++ wrapper for OrtApi::GetAvailableProviders() and
 /// returns a vector of strings representing the available execution providers.
 /// </summary>
@@ -584,7 +590,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
   ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
   SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options);
-  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports SNPE and XNNPACK.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports QNN, SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
 

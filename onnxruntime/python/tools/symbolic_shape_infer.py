@@ -1830,6 +1830,12 @@ class SymbolicShapeInference:
     def _infer_SoftmaxCrossEntropyLoss(self, node):
         vi = self.known_vi_[node.output[0]]
         elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        # If output type is explicit specified in attribute, we use it as output tensor type.
+        specified_output_type = get_attribute(node, "output_type", None)
+        if specified_output_type is not None:
+            elem_type = specified_output_type
+
         vi.type.tensor_type.elem_type = elem_type
         vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
 

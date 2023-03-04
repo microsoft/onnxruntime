@@ -44,10 +44,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"GlobalAveragePool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
+          {"ReduceMin", {}},
           {"Relu", {}},
           {"Sigmoid", {}},
+          {"Slice", {}},
           {"Softmax", {}},
-          {"Sqrt", {}}};
+          {"Sqrt", {}},
+          {"Tanh", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},

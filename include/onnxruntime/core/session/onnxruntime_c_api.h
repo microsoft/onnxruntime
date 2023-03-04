@@ -3500,11 +3500,17 @@ struct OrtApi {
    * \param[in] num_keys - number of keys passed in
    *
    * Currently supported providers:
+   *   QNN
    *   SNPE
    *   XNNPACK
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
+   *
+   * QNN supported keys:
+   *   "backend_path": file path to QNN backend library.
+   *   "profiling_level": QNN profiling level, options: "basic", "detailed".
+   *   "rpc_control_latency": QNN RPC control latency.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

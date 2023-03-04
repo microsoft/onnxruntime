@@ -75,7 +75,7 @@ struct FNVHash {
   void HashConvolutionDescriptor(miopenConvolutionDescriptor_t cdesc) {
     int spatial_dim = 1;
 #if ROCM_VERSION >= 50500
-    miopenGetConvolutionDescriptorSize(cdesc, &spatial_dim);
+    miopenGetConvolutionSpatialDim(cdesc, &spatial_dim);
 #else
     // Previous versions of MIOpen doesn't provide API to probe the dimension of a
     // miopenConvolutionDescriptor_t, so we have to guess.

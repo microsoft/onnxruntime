@@ -190,7 +190,7 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   // Set the pointers.
   params.o_ptr = o_packed_d;
-  params.o_stride_in_bytes = h * d * sizeof(half);
+  params.o_stride_in_bytes = static_cast<int64_t>(h) * d * sizeof(half);
 
   // Set the dimensions.
   params.b = b;
