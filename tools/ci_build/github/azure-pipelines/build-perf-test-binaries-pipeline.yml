@@ -30,6 +30,12 @@ stages:
         publish_executables: '1'
         pool_name: 'Linux-CPU'
 
+    # TODO remove - added for testing
+    - template: templates/android-java-api-aar-test.yml
+      parameters:
+        artifactName: 'onnxruntime-android-full-aar'
+        job_name_suffix: 'Full'
+
 # build Python packages
 # Linux GPU only
 - ${{ if parameters.BuildPythonPackages }}:

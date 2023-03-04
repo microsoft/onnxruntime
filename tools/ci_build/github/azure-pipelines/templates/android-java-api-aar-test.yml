@@ -62,7 +62,24 @@ jobs:
       cd ./android
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+
+      set +e
+      NUM_ITERATIONS=20
+      NUM_FAILURES=0
+      for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
+      do
+        echo "*** test iteration $i"
+
+        $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --info --stacktrace
+
+        TEST_RESULT=$?
+        if [[ "$TEST_RESULT" -ne 0 ]]; then
+          echo "*** failure at test iteration $i"
+          ((NUM_FAILURES++))
+        fi
+      done
+      echo "*** failed iterations: ${NUM_FAILURES} / ${NUM_ITERATIONS}"
+      exit $NUM_FAILURES
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
 
