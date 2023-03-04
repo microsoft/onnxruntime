@@ -5,17 +5,14 @@
 #include <string>
 
 #include "core/common/logging/logging.h"
-#include "core/framework/utils.h"
+#include "core/framework/compute_capability.h"
 #include "core/graph/graph.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/inference_session.h"
 
-#include "test/common/tensor_op_test_utils.h"
-#include "test/framework/test_utils.h"
-#include "test/test_environment.h"
+#include "test/util/include/test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -77,6 +74,51 @@ TEST(QnnEP, TestAddEpUsingPublicApi) {
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_WIN32)
+// Mock IKernelLookup class passed to QNN EP's GetCapability() function in order to
+// determine if the HTP backend is supported on specific platforms (e.g., Windows ARM64).
+// TODO: Remove once HTP can be emulated on Windows ARM64.
+class MockKernelLookup : public onnxruntime::IExecutionProvider::IKernelLookup {
+ public:
+  const KernelCreateInfo* LookUpKernel(const Node& /* node */) const {
+    // Do nothing.
+    return nullptr;
+  }
+};
+
+// Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
+// if the HTP backend is available. Skips the current test if HTP is not available, which may occur on Windows ARM64.
+// TODO: Remove once HTP can be emulated on Windows ARM64.
+static void SkipIfHTPUnavailable() {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  onnxruntime::Model model("Check if HTP is availble", false, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+
+  // Build simple QDQ graph: DQ -> InstanceNormalization -> Q
+  GetQDQTestCaseFn build_test_case = BuildQDQInstanceNormTestCase<uint8_t>({1, 2, 3, 3}, 1e-05f);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Create QNN EP and call GetCapability().
+  MockKernelLookup kernel_lookup;
+  onnxruntime::GraphViewer graph_viewer(graph);
+  std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = DefaultQnnExecutionProviderWithOptions(
+      {{"backend_path", "QnnHtp.dll"}});
+
+  qnn_ep->SetLogger(&logger);
+  auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
+
+  if (result.empty()) {
+    LOGS(logger, WARNING) << "QNN HTP backend is not available! Skipping test.";
+    GTEST_SKIP();
+  }
+}
+
+#endif  // defined(_WIN32)
+
 static void RunModelTest(
     const GetQDQTestCaseFn& build_test_case,
     const char* test_description,
@@ -101,6 +143,9 @@ static void RunModelTest(
 TEST(QnnEP, TestQDQConvU8U8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
+  // TODO: Remove once HTP can be emulated on Windows ARM64.
+  SkipIfHTPUnavailable();
+
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -130,6 +175,9 @@ TEST(QnnEP, TestQDQConvU8U8) {
 TEST(QnnEP, TestQDQInstanceNormU8) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
+  // TODO: Remove once HTP can be emulated on Windows ARM64.
+  SkipIfHTPUnavailable();
+
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -157,6 +205,9 @@ TEST(QnnEP, TestQDQInstanceNormU8) {
 TEST(QnnEP, TestQDQInstanceNormU8Rank3) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
+  // TODO: Remove once HTP can be emulated on Windows ARM64.
+  SkipIfHTPUnavailable();
+
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
@@ -183,6 +234,9 @@ TEST(QnnEP, TestQDQInstanceNormU8Rank3) {
 TEST(QnnEP, TestQDQInstanceNormU8Rank5) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
+  // TODO: Remove once HTP can be emulated on Windows ARM64.
+  SkipIfHTPUnavailable();
+
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
