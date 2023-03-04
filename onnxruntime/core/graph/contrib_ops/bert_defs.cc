@@ -324,10 +324,6 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("qkv_hidden_sizes",
-              "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
-              AttributeProto::INTS,
-              OPTIONAL_VALUE)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",

@@ -1075,7 +1075,7 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     return subg
 
 
-def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
+def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg) -> bool:
     """Update the Attention nodes to DecoderMaskedMultiheadAttention.
 
     Args:
@@ -1084,7 +1084,6 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
     decoder_masked_attention_supported_attr = [
         "past_present_share_buffer",
         "num_heads",
-        "qkv_hidden_sizes",
         "scale",
         "domain",
     ]
@@ -1093,6 +1092,12 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
         if node.op_type == "Attention":
             kwargs = kwargs_of(node)
             for k in kwargs.copy():
+                # Different Q,K,V hidden sizes are currently not supported by DecoderMaskedMultiheadAttention
+                if k == "qkv_hidden_sizes":
+                    qkv_hidden_sizes = kwargs[k]
+                    if (qkv_hidden_sizes[0] != qkv_hidden_sizes[1]) or (qkv_hidden_sizes[0] != qkv_hidden_sizes[2]):
+                        return False
+
                 if k not in decoder_masked_attention_supported_attr:
                     del kwargs[k]
             nis = []
@@ -1101,7 +1106,7 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg):
         new_nodes.extend([node])
     subg.ClearField("node")
     subg.node.extend(new_nodes)
-    return subg
+    return True
 
 
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
@@ -1730,7 +1735,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             if not args.use_gpu:
                 raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
 
-            update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph)
+            if not update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph):
+                raise ValueError("Could not update the decoder subgraph to use DecoderMaskedMultiheadAttention")
 
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
