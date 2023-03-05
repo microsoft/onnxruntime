@@ -126,7 +126,7 @@ class IndexedRocBlasGemmOp {
             params->c, RocBlasDataTypeFor(params->c), params->ldc,
             params->c, RocBlasDataTypeFor(params->c), params->ldc,
             RocBlasComputeTypeFor(params->a),
-            rocblas_gemm_algo_standard,
+            rocblas_gemm_algo_solution_index,
             index_,
             rocblas_gemm_flags_none));
   }
@@ -140,7 +140,7 @@ class IndexedRocBlasGemmOp {
 };
 
 template <typename T>
-class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
+class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
  public:
   RocBlasGemmTunableOp() {
     // Ensure that the default implementation is always present
@@ -163,7 +163,7 @@ class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
     auto id = this->FindFastestImpl(params, candidates);
     // memoize the result
     this->RegisterOp(std::move(candidates[id]));
-    return this->ops_.size() - 1;
+    return this->NumberOfOps() - 1;
   }
 
  private:
@@ -182,7 +182,7 @@ class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         RocBlasComputeTypeFor(params->a),
-        rocblas_gemm_algo_standard,
+        rocblas_gemm_algo_solution_index,
         rocblas_gemm_flags_none,
         NULL,
         &num_solutions));
@@ -201,7 +201,7 @@ class RocBlasGemmTunableOp : public tunable::TunableOp<GemmParams<T>> {
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         params->c, RocBlasDataTypeFor(params->c), params->ldc,
         RocBlasComputeTypeFor(params->a),
-        rocblas_gemm_algo_standard,
+        rocblas_gemm_algo_solution_index,
         rocblas_gemm_flags_none,
         solutions.data(),
         &num_solutions));

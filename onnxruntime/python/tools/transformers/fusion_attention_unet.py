@@ -20,12 +20,19 @@ class FusionAttentionUnet(Fusion):
     """
 
     def __init__(
-        self, model: OnnxModel, hidden_size: int, num_heads: int, is_cross_attention: bool, enable_packed_kv: bool
+        self,
+        model: OnnxModel,
+        hidden_size: int,
+        num_heads: int,
+        is_cross_attention: bool,
+        enable_packed_qkv: bool,
+        enable_packed_kv: bool,
     ):
         super().__init__(model, "MultiHeadAttention" if is_cross_attention else "Attention", ["LayerNormalization"])
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.is_cross_attention = is_cross_attention
+        self.enable_packed_qkv = enable_packed_qkv
         self.enable_packed_kv = enable_packed_kv
 
         # Flags to show warning only once
@@ -92,9 +99,6 @@ class FusionAttentionUnet(Fusion):
             q_matmul (NodeProto): MatMul node in fully connection for Q
             k_matmul (NodeProto): MatMul node in fully connection for K
             v_matmul (NodeProto): MatMul node in fully connection for V
-            q_add (NodeProto): Add bias node in fully connection for Q
-            k_add (NodeProto): Add bias node in fully connection for K
-            v_add (NodeProto): Add bias node in fully connection for V
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             input (str): input name
@@ -150,10 +154,6 @@ class FusionAttentionUnet(Fusion):
                 return None
 
             qw_in_size = qw.shape[0]
-            kw_in_size = kw.shape[0]
-            vw_in_size = vw.shape[0]
-
-            assert qw_in_size == kw_in_size and kw_in_size == vw_in_size
 
             if hidden_size > 0 and hidden_size != qw_in_size:
                 raise ValueError(
@@ -164,21 +164,70 @@ class FusionAttentionUnet(Fusion):
             # All the matrices can have the same shape or q, k matrics can have the same shape with v being different
             # For 2d weights, the shapes would be [in_size, out_size].
             # For 3d weights, shape would be [in_size, a, b] where a*b = out_size
-            qw_out_size = np.prod(qw.shape[1:])
+            qw_out_size = int(np.prod(qw.shape[1:]))
 
-            qkv_weight = np.stack((qw, kw, vw), axis=1)
-            qkv_weight_dim = 3 * qw_out_size
+            if self.enable_packed_qkv:
+                attention_node_name = self.model.create_node_name("MultiHeadAttention")
 
-            attention_node_name = self.model.create_node_name("Attention")
+                c = qw_in_size
+                n = num_heads
+                h = qw_out_size // num_heads
 
-            weight = helper.make_tensor(
-                name=attention_node_name + "_qkv_weight",
-                data_type=TensorProto.FLOAT,
-                dims=[qw_in_size, qkv_weight_dim],
-                vals=qkv_weight.flatten().tolist(),
-            )
+                # Concat and interleave weights so that the output of fused KV GEMM has [B, S_kv, N, 3, H] shape
+                qkv_weight = np.dstack([qw.reshape(c, n, h), kw.reshape(c, n, h), vw.reshape(c, n, h)]).reshape(
+                    c, n * 3 * h
+                )
 
-            self.model.add_initializer(weight, self.this_graph_name)
+                matmul_node_name = self.model.create_node_name("MatMul", name_prefix="MatMul_QKV")
+                weight = helper.make_tensor(
+                    name=matmul_node_name + "_weight",
+                    data_type=TensorProto.FLOAT,
+                    dims=[qkv_weight.shape[0], qkv_weight.shape[1]],
+                    vals=qkv_weight.flatten().tolist(),
+                )
+
+                self.model.add_initializer(weight, self.this_graph_name)
+
+                matmul_node = helper.make_node(
+                    "MatMul",
+                    inputs=[k_matmul.input[0], matmul_node_name + "_weight"],
+                    outputs=[matmul_node_name + "_out"],
+                    name=matmul_node_name,
+                )
+                self.node_name_to_graph_name[matmul_node.name] = self.this_graph_name
+
+                shape_tensor = helper.make_tensor(
+                    name=matmul_node_name + "_reshape_shape",
+                    data_type=TensorProto.INT64,
+                    dims=[5],
+                    vals=[0, 0, n, 3, h],
+                )
+                self.model.add_initializer(shape_tensor, self.this_graph_name)
+
+                reshape_node = helper.make_node(
+                    "Reshape",
+                    inputs=[matmul_node_name + "_out", matmul_node_name + "_reshape_shape"],
+                    outputs=[attention_node_name + "_input"],
+                    name=matmul_node_name + "_reshape",
+                )
+                self.node_name_to_graph_name[reshape_node.name] = self.this_graph_name
+                self.nodes_to_add.extend([matmul_node, reshape_node])
+                self.nodes_to_remove.extend([q_matmul, k_matmul, v_matmul])
+
+            else:
+                qkv_weight = np.stack((qw, kw, vw), axis=1)
+                qkv_weight_dim = 3 * qw_out_size
+
+                attention_node_name = self.model.create_node_name("Attention")
+
+                weight = helper.make_tensor(
+                    name=attention_node_name + "_qkv_weight",
+                    data_type=TensorProto.FLOAT,
+                    dims=[qw_in_size, qkv_weight_dim],
+                    vals=qkv_weight.flatten().tolist(),
+                )
+
+                self.model.add_initializer(weight, self.this_graph_name)
         else:  # cross attention
             attention_node_name = self.model.create_node_name("MultiHeadAttention")
             if self.enable_packed_kv:
@@ -250,11 +299,14 @@ class FusionAttentionUnet(Fusion):
         self.model.add_initializer(bias, self.this_graph_name)
 
         if is_self_attention:
-            attention_inputs = [
-                input,
-                attention_node_name + "_qkv_weight",
-                attention_node_name + "_qkv_bias",
-            ]
+            if not self.enable_packed_qkv:
+                attention_inputs = [
+                    input,
+                    attention_node_name + "_qkv_weight",
+                    attention_node_name + "_qkv_bias",
+                ]
+            else:
+                attention_inputs = [attention_node_name + "_input"]
         else:
             if not self.enable_packed_kv:
                 attention_inputs = [
@@ -270,7 +322,7 @@ class FusionAttentionUnet(Fusion):
                 ]
 
         attention_node = helper.make_node(
-            "Attention" if is_self_attention else "MultiHeadAttention",
+            "Attention" if (is_self_attention and not self.enable_packed_qkv) else "MultiHeadAttention",
             inputs=attention_inputs,
             outputs=[output],
             name=attention_node_name,
@@ -280,9 +332,13 @@ class FusionAttentionUnet(Fusion):
 
         counter_name = (
             "Attention (self attention)"
-            if is_self_attention
+            if is_self_attention and not self.enable_packed_qkv
             else "MultiHeadAttention ({})".format(
-                "cross attention with packed kv" if self.enable_packed_kv else "cross attention"
+                "self attention with packed qkv"
+                if self.enable_packed_qkv
+                else "cross attention with packed kv"
+                if self.enable_packed_kv
+                else "cross attention"
             )
         )
         self.increase_counter(counter_name)

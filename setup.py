@@ -82,6 +82,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     package_name = "onnxruntime-azure"
+elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    package_name = "onnxruntime-qnn"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -481,9 +483,12 @@ packages = [
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.transformers",
+    "onnxruntime.transformers.models.bart",
+    "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.stable_diffusion",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}

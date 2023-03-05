@@ -9,6 +9,7 @@
 
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/test_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "orttraining/training_api/utils.h"
 #include "orttraining/training_api/module.h"
@@ -45,7 +46,7 @@ void GenerateRandomInput(gsl::span<const int64_t> dims, OrtValue& input) {
   TensorShape shape(dims);
   std::vector<float> data(shape.Size());
   GenerateRandomData(data);
-  onnxruntime::training::api::utils::CreateInputOrtValue<float>(dims, data, &input);
+  onnxruntime::test::CreateInputOrtValueOnCPU<float>(dims, data, &input);
 }
 
 void TestModuleExport(const std::vector<std::shared_ptr<IExecutionProvider>>& providers) {
@@ -145,7 +146,7 @@ void TestLRSchduler(const std::basic_string<ORTCHAR_T>& test_file_name, float in
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
 
   /// Load test data for learning rate schedulers.
@@ -239,13 +240,13 @@ TEST(TrainingApiTest, ModuleCopyBufferToParameters) {
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(),
                        {params_size},
                        reinterpret_cast<void*>(expected_param_buffer.data()),
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault)->Info(),
+                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault)->Info(),
                        input_params, 0);
   ASSERT_STATUS_OK(model->CopyBufferToParameters(input_params));
 
   OrtValue output_params;
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), {params_size},
-                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault),
+                       onnxruntime::test::TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
                        output_params);
   ASSERT_STATUS_OK(model->CopyParametersToBuffer(output_params));
 
@@ -272,7 +273,7 @@ TEST(TrainingApiTest, ModuleTrainStep) {
   ASSERT_EQ(model->GetTrainingModelOutputCount(), 1);
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 
@@ -347,7 +348,7 @@ TEST(TrainingApiTest, OptimStep) {
 
   OrtValue input, target;
   GenerateRandomInput(std::array<int64_t, 2>{2, 784}, input);
-  onnxruntime::training::api::utils::CreateInputOrtValue<int32_t>(
+  onnxruntime::test::CreateInputOrtValueOnCPU<int32_t>(
       std::array<int64_t, 1>{2}, std::vector<int32_t>(2, 1), &target);
   auto data_loader = std::vector<std::vector<OrtValue>>(4, std::vector<OrtValue>{input, target});
 

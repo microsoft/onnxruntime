@@ -447,7 +447,7 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(int id, OrtMemType mem_type)>,
+  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
            OrtMemoryInfoLessThanIgnoreNameAndAllocType>
       allocators_;
 

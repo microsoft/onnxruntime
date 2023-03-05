@@ -201,7 +201,7 @@ void RunSession(InferenceSession& session_object,
                 std::vector<float>& values_y) {
   // prepare inputs
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x, &ml_value);
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x, &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value));
 
@@ -317,18 +317,14 @@ TEST(CustomKernelTests, CustomKernelWithOptionalOutput) {
   RunSession(session_object, dims_x, values_x, expected_dims_y, expected_values_y);
 }
 
-// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory
+// Regression test for OnnxRuntimeOpSchemaRegistry::GetSchemaAndHistory needing to reset `version` before 
+// falling through to the ONNX schema lookup.
 //
-// When there was a custom registry that matched the ONNX domain but not the current op, the earliest version from that
-// was being used in the fallthrough search of the ONNX schemas. This results in invalid matching.
-// e.g.
-//   Model with ONNX opset of 12.
-//   Custom op using ONNX domain with version range of 1..1000 (which is what the custom op registration code
-//   available via the ORT API uses by default) and custom op (called 'Foo' in our test).
+// If there is a custom registry that matches the ONNX domain but not the current op, we fall though but need to
+// use the original opset version and ignore any version values found in the custom registry.
 //
-// If the model has another ONNX op (Clip in our test), GetSchemaAndHistory was using the custom registry first,
-// 'version' gets set to 1 and the ONNX schema lookup matches that opset and not the model's opset. This leads to an
-// invalid schema being selected.
+// If we regress we will match Clip(1) which only had one input. The model uses Clip(11) and has two inputs. The ONNX
+// checker will fail if this happens.
 TEST(CustomKernelTests, CustomOnnxKernelSchemaLookup) {
   SessionOptions so;
   so.session_logid = "CustomOnnxKernelSchemaLookup";

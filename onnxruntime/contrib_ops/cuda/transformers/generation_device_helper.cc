@@ -140,7 +140,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
 
   ORT_ENFORCE(total_bytes > 0);
 
-  AllocatorPtr pinned_allocator = provider->GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  AllocatorPtr pinned_allocator = provider->GetAllocator(OrtMemTypeCPU);
   cudaStream_t stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   auto pinned_buffer = IAllocator::MakeUniquePtr<void>(pinned_allocator, total_bytes);
   char* pinned_data = static_cast<char*>(pinned_buffer.get());
@@ -177,7 +177,7 @@ Status AddToFeeds(const IExecutionProvider* execution_provider,
   CUDA_RETURN_IF_ERROR(cudaEventRecord(isCopyDone, stream));
   CUDA_RETURN_IF_ERROR(cudaEventSynchronize(isCopyDone));
   // TODO(tianleiwu): allocate a buffer for subgraph inputs so that we can reuse the buffer in each subgraph call.
-  const OrtMemoryInfo& location = provider->GetAllocator(0, OrtMemTypeDefault)->Info();
+  const OrtMemoryInfo& location = provider->GetAllocator(OrtMemTypeDefault)->Info();
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       const Tensor& tensor = input.Get<Tensor>();
@@ -244,7 +244,7 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
   initStateRange.Begin();
 #endif
 
-  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;             
+  cudaStream_t cuda_stream = ort_stream ? reinterpret_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_token_scores.data(), 0, greedy_state->next_token_scores.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream));
 
@@ -440,12 +440,16 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
     dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
 #endif
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
+                                         beam_state->next_scores.data(),
+                                         beam_state->next_scores.size_bytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
   } else {
     // Apply top-k selection like the following:
     //   next_token_scores = next_token_scores.view(batch_size, num_beams * vocab_size)
     //   next_token_scores, next_tokens = torch.topk(next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True)
-    // int64_t next_token_scores_dims[] = {batch_size, num_beams * vocab_size};
-    int64_t next_token_scores_dims[] = {batch_size * num_beams, vocab_size};
+    int64_t next_token_scores_dims[] = {batch_size, static_cast<int64_t>(num_beams) * static_cast<int64_t>(vocab_size)};
 
     TensorShape next_token_scores_shape(&next_token_scores_dims[0], 2);
     auto element_type = DataTypeImpl::GetType<float>();
@@ -460,31 +464,36 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     constexpr bool sorted = true;  // results returned in sorted order.
 
     std::unique_ptr<Tensor> topk_scores = Tensor::CreateDefault();
-    std::unique_ptr<Tensor> topk_tokens = Tensor::CreateDefault();
+    std::unique_ptr<Tensor> topk_indices = Tensor::CreateDefault();
     ORT_RETURN_IF_ERROR(TopK(&input, axis, top_k, largest, sorted, allocator, ort_stream, thread_pool,
-                             *topk_scores, *topk_tokens));
+                             *topk_scores, *topk_indices));
 
 #ifdef DEBUG_GENERATION
     dumper->Print("topk_scores", *(topk_scores.get()));
-    dumper->Print("topk_tokens", *(topk_tokens.get()));
+    dumper->Print("topk_indices", *(topk_indices.get()));
 #endif
 
-    cuda::LaunchBatchTopKKernel(topk_scores->Data<float>(),
-                                topk_tokens->Data<int64_t>(),
-                                beam_state->next_indices.data(),
-                                beam_state->next_tokens.data(),
-                                beam_state->next_scores.data(),
-                                batch_size,
-                                num_beams,
-                                2 * num_beams,
-                                cuda_stream);
+    // Convert indices in range [0, num_beams * vocab_size) to token ID of range [0, vocab_size) like the following:
+    //   next_indices = (next_tokens / vocab_size).long()
+    //   next_tokens = next_tokens % vocab_size
+    const int64_t* next_token_indices = topk_indices->Data<int64_t>();
+    cuda::LaunchNextTokenKernel(next_token_indices, beam_state->next_indices.data(), beam_state->next_tokens.data(),
+                                batch_size, top_k, vocab_size, cuda_stream);
+
+    const float* data = topk_scores->Data<float>();
+#ifdef DEBUG_GENERATION
+    dumper->Print("next_scores before scorer", data, batch_size, top_k);
+    dumper->Print("next_tokens before scorer", beam_state->next_tokens.data(), batch_size, top_k);
+    dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
+#endif
+
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
+                                         data,
+                                         topk_scores->SizeInBytes(),
+                                         cudaMemcpyDeviceToHost,
+                                         cuda_stream));
   }
 
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
-                                       beam_state->next_scores.data(),
-                                       beam_state->next_scores.size_bytes(),
-                                       cudaMemcpyDeviceToHost,
-                                       cuda_stream));
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
                                        beam_state->next_tokens.data(),
                                        beam_state->next_tokens.size_bytes(),

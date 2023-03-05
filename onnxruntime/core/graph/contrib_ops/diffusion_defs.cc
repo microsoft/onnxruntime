@@ -111,5 +111,32 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             updateOutputShape(ctx, 0, output_shape);
           }
         }));
+
+constexpr const char* BiasAdd_ver1_doc = R"DOC(
+Add input with bias, then add residual inputs.
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    BiasAdd, 1,
+    OpSchema()
+        .SetDoc(BiasAdd_ver1_doc)
+        .Input(0,
+               "X",
+               "Input tensor. Dimensions are (N, S, C), where N is the batch size, S is image size H*W, and C is number of channels",
+               "T")
+        .Input(1,
+               "bias",
+               "Bias tensor. Dimensions are (C)",
+               "T")
+        .Input(2,
+               "skip",
+               "Residual tensor. Dimensions are (N, S, C)",
+               "T")
+        .Output(0,
+                "Y",
+                "The output tensor with dimensions (N, S, C)",
+                "T")
+        .TypeConstraint("T", {"tensor(float16)", "tensor(float)"}, "Constrain input and output types to float tensors.")
+        .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput));
 }  // namespace contrib
 }  // namespace onnxruntime
