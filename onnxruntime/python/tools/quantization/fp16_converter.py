@@ -1,6 +1,8 @@
 import itertools
-
+import logging
 import argparse
+from typing import Dict
+
 import numpy as np
 import onnx
 import packaging.version as pv
@@ -10,13 +12,30 @@ from onnx import (
     GraphProto,
     ModelProto,
     TensorProto,
+    NodeProto,
     helper,
     numpy_helper,
 )
 from onnxruntime.quantization.onnx_model import ONNXModel
 
+logger = logging.getLogger(__name__)
+
 
 # from onnx import onnx_pb as onnx_pb
+
+class InitializerTracker:
+    """Class for keeping track of initializer."""
+
+    def __init__(self, initializer: TensorProto):
+        self.initializer = initializer
+        self.fp32_nodes = []
+        self.fp16_nodes = []
+
+    def add_node(self, node: NodeProto, is_node_blocked):
+        if is_node_blocked:
+            self.fp32_nodes.append(node)
+        else:
+            self.fp16_nodes.append(node)
 
 
 class FP16Converter:
@@ -45,7 +64,7 @@ class FP16Converter:
 
     @staticmethod
     def __convert_np_float_to_float16(
-        np_array: np.ndarray(shape=(), dtype=np.float32),
+            np_array: np.ndarray(shape=(), dtype=np.float32),
     ) -> np.ndarray(shape=(), dtype=np.float16):
         """
         Convert float32 numpy array to float16 without changing sign or finiteness.
@@ -101,10 +120,11 @@ class FP16Converter:
         return tensor
 
     def __convert_model_float_to_float16(
-        self,
-        model: ModelProto,
-        keep_io_types=False,
-        disable_shape_infer=False,
+            self,
+            model: ModelProto,
+            keep_io_types=False,
+            disable_shape_infer=False,
+            force_fp16_initializers=False,
     ) -> ModelProto:
         """
         Convert tensor float type in the ONNX ModelProto input to tensor
@@ -118,17 +138,17 @@ class FP16Converter:
         :return: converted ONNX ModelProto object
 
         """
-        if not isinstance(model, ModelProto):
-            raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
 
         func_infer_shape = None
-        if not disable_shape_infer and pv.Version(onnx.__version__) >= pv.Version("1.2"):
+        if not disable_shape_infer and pv.Version(onnx.__version__) >= pv.Version("1.2.0"):
             try:
                 from onnx.shape_inference import infer_shapes
 
                 func_infer_shape = infer_shapes
             finally:
                 pass
+        if not isinstance(model, ModelProto):
+            raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
 
         # create a queue for BFS
         queue = []
@@ -140,10 +160,21 @@ class FP16Converter:
         queue.append(model)
         name_mapping = {}
         graph_io_to_skip = set()
-        cast_operators = set()
+        io_casts = set()
+        fp32_inputs = [n.name for n in model.graph.input if
+                       n.type.tensor_type.elem_type == TensorProto.FLOAT]
+        fp32_outputs = [n.name for n in model.graph.output if
+                        n.type.tensor_type.elem_type == TensorProto.FLOAT]
+        if isinstance(keep_io_types, list):
+            fp32_inputs = [n for n in fp32_inputs if n in keep_io_types]
+            fp32_outputs = [n for n in fp32_outputs if n in keep_io_types]
+        elif not keep_io_types:
+            fp32_inputs = []
+            fp32_outputs = []
+
         if keep_io_types:
             for i, graph_input in enumerate(model.graph.input):  # checking graph inputs
-                if graph_input.type.tensor_type.elem_type == TensorProto.FLOAT:
+                if graph_input.name in fp32_inputs:
                     output_name = "graph_input_cast_" + str(i)
                     name_mapping[graph_input.name] = output_name
                     graph_io_to_skip.add(graph_input.name)
@@ -165,10 +196,10 @@ class FP16Converter:
                     ]
                     model.graph.node.extend(new_node)
                     value_info_list.append(new_value_info)
-                    cast_operators.add(node_name)
+                    io_casts.add(node_name)
 
             for i, graph_output in enumerate(model.graph.output):
-                if graph_output.type.tensor_type.elem_type == TensorProto.FLOAT:
+                if graph_output.name in fp32_outputs:
                     input_name = "graph_output_cast_" + str(i)
                     name_mapping[graph_output.name] = input_name
                     graph_io_to_skip.add(graph_output.name)
@@ -190,19 +221,24 @@ class FP16Converter:
                     ]
                     model.graph.node.extend(new_node)
                     value_info_list.append(new_value_info)
-                    cast_operators.add(node_name)
-
+                    io_casts.add(node_name)
+        fp32_initializers: Dict[str, InitializerTracker] = {}
         while queue:
+            next_level = []
             for model_ in queue:
                 # if model_ is model, push model_.graph (GraphProto)
                 if isinstance(model_, ModelProto):
-                    queue.append(model_.graph)
+                    next_level.append(model_.graph)
                 # if model_ is model.graph, push model_.node.attribute (AttributeProto)
                 if isinstance(model_, GraphProto):
+                    for initializer in model_.initializer:  # TensorProto type
+                        if initializer.data_type == TensorProto.FLOAT:
+                            assert initializer.name not in fp32_initializers
+                            fp32_initializers[initializer.name] = InitializerTracker(initializer)
                     for node in model_.node:
                         # if node is in the block list (doesn't support float16), no conversion for the node,
                         # and save the node for further processing
-                        if node.name in cast_operators:
+                        if node.name in io_casts:
                             continue
                         for i in range(len(node.input)):
                             if node.input[i] in name_mapping:
@@ -210,24 +246,28 @@ class FP16Converter:
                         for i in range(len(node.output)):
                             if node.output[i] in name_mapping:
                                 node.output[i] = name_mapping[node.output[i]]
-                        # don't push the attr into queue for the node in node_keep_data_type_list
+                        # don't push the attr into queue for the node in node_keep_data_type_list,
                         # so it will not be converted to float16
-                        if node.op_type not in self.allow_list and node.op_type != "Cast":
+                        is_node_blocked = node.op_type not in self.allow_list
+                        for node_input in node.input:
+                            if node_input in fp32_initializers:
+                                fp32_initializers[node_input].add_node(node, is_node_blocked)
+                        if is_node_blocked:
                             node_list.append(node)
-                        elif node.op_type in self.allow_list or node.op_type == "Cast":
+                        else:
                             if node.op_type == "Cast":
                                 for attr in node.attribute:
                                     if attr.name == "to" and attr.i == TensorProto.FLOAT:
                                         attr.i = TensorProto.FLOAT16
                                         break
                             for attr in node.attribute:
-                                queue.append(attr)
+                                next_level.append(attr)
                 # if model_ is model.graph.node.attribute, push model_.g and model_.graphs (GraphProto)
                 # and process node.attribute.t and node.attribute.tensors (TensorProto)
                 if isinstance(model_, AttributeProto):
-                    queue.append(model_.g)
+                    next_level.append(model_.g)
                     for graph in model_.graphs:
-                        queue.append(graph)
+                        next_level.append(graph)
                     model_.t.CopyFrom(self.__convert_tensor_float_to_float16(model_.t))
                     for tensor in model_.tensors:
                         self.__convert_tensor_float_to_float16(tensor)
@@ -245,8 +285,19 @@ class FP16Converter:
                             if val_info.name not in graph_io_to_skip:
                                 val_info.type.tensor_type.elem_type = TensorProto.FLOAT16
                                 value_info_list.append(val_info)
-            queue.pop(0)
+            queue = next_level
+        for key, value in fp32_initializers.items():
+            # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32
+            # nodes.
+            if force_fp16_initializers or value.fp16_nodes:
+                value.initializer = self.__convert_tensor_float_to_float16(value.initializer)
+                value_info_list.append(self.__make_value_info_from_tensor(value.initializer))
+                if value.fp32_nodes and not force_fp16_initializers:
+                    logger.info(
+                        f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:"
+                        f"{value.fp16_nodes}"
 
+                    )
         # process the nodes in block list that doesn't support tensor(float16)
         for node in node_list:
             # if input's name is in the value_info_list meaning input is tensor(float16) type,
@@ -345,7 +396,7 @@ class FP16Converter:
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Graph fp16 conversion tool for ONNX Runtime."
-        "It convert ONNX graph from fp32 to fp16 using --allow_list."
+                    "It convert ONNX graph from fp32 to fp16 using --allow_list."
     )
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
