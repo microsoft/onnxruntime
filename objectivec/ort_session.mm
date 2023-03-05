@@ -290,8 +290,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)registerCustomOpsUsingFunction:(NSString*)registrationFuncName
                                  error:(NSError**)error {
   try {
-      // TODO: SzymonL Fix this
-//    _sessionOptions->RegisterCustomOpsUsingFunction(registrationFuncName.UTF8String);
+    _sessionOptions->RegisterCustomOpsUsingFunction(registrationFuncName.UTF8String);
     return YES;
   }
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error)
