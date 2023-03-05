@@ -770,9 +770,11 @@ struct LiteCustomKernel {
 struct LiteCustomOp : public OrtCustomOp {
   LiteCustomOp(const char* op_name,
                const char* execution_provider,
-               const CustomComputeFn custom_compute_fn) : op_name_(op_name),
-                                                          execution_provider_(execution_provider),
-                                                          custom_compute_fn_(custom_compute_fn) {
+               const CustomComputeFn custom_compute_fn,
+               ONNXTensorElementDataType output_type) : op_name_(op_name),
+                                                        execution_provider_(execution_provider),
+                                                        custom_compute_fn_(custom_compute_fn),
+                                                        output_type_(output_type) {
     OrtCustomOp::version = ORT_API_VERSION;
 
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi* /*api*/, const OrtKernelInfo* /*info*/) {
@@ -792,7 +794,7 @@ struct LiteCustomOp : public OrtCustomOp {
     };
 
     OrtCustomOp::GetInputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
-      //return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
+      // return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     };
 
@@ -804,9 +806,8 @@ struct LiteCustomOp : public OrtCustomOp {
       return (size_t)1;
     };
 
-    OrtCustomOp::GetOutputType = [](const OrtCustomOp* /*this_*/, size_t /*index*/) {
-      //return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
-      return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t /*index*/) {
+      return ((const LiteCustomOp*)this_)->output_type_;
     };
 
     OrtCustomOp::KernelCompute = [](void* op_kernel, OrtKernelContext* context) {
@@ -846,6 +847,7 @@ struct LiteCustomOp : public OrtCustomOp {
   const std::string op_name_;
   const std::string execution_provider_;
   const CustomComputeFn custom_compute_fn_;
+  const ONNXTensorElementDataType output_type_;
 };
 
 //LiteCustomOp dummpy_op;
@@ -857,7 +859,8 @@ ORT_API_STATUS_IMPL(OrtApis::LiteCustomOpResgiter,
                     _In_ const char* domain_name,
                     _In_ const char* op_name,
                     _In_ const char* execution_provider,
-                    _In_ const CustomComputeFn custom_compute_fn) {
+                    _In_ const CustomComputeFn custom_compute_fn,
+                    _In_ const ONNXTensorElementDataType output_type) {
 
   API_IMPL_BEGIN
   auto& domain_map = GetCustomOpDomainMap();
@@ -868,7 +871,7 @@ ORT_API_STATUS_IMPL(OrtApis::LiteCustomOpResgiter,
                       .first;
     domain_iter->second->domain_ = domain_name;
   }
-  custom_op_pool.emplace_back(std::make_unique<LiteCustomOp>(op_name, execution_provider, custom_compute_fn));
+  custom_op_pool.emplace_back(std::make_unique<LiteCustomOp>(op_name, execution_provider, custom_compute_fn, output_type));
   domain_iter->second->custom_ops_.emplace_back(custom_op_pool.back().get());
   return nullptr;
   API_IMPL_END

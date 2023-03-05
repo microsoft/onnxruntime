@@ -3966,7 +3966,8 @@ struct OrtApi {
                   _In_ const char* domain_name,
                   _In_ const char* op_name,
                   _In_ const char* execution_provider,
-                  _In_ const CustomComputeFn custom_compute_fn);
+                  _In_ const CustomComputeFn custom_compute_fn,
+                  _In_ const ONNXTensorElementDataType output_type);
 };
 
 /*
