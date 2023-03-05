@@ -447,6 +447,7 @@ ORT_API_STATUS_IMPL(LiteCustomOpResgiter,
                     _In_ const char* op_name,
                     _In_ const char* execution_provider,
                     _In_ const CustomComputeFn custom_compute_fn,
-                    _In_ const ONNXTensorElementDataType output_type);
+                    _In_ size_t num_outputs,
+                    _In_... /* output types from ONNXTensorElementDataType */);
 
 }  // namespace OrtApis
