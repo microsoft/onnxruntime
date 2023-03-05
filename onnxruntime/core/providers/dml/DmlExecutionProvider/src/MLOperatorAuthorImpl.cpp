@@ -1945,7 +1945,7 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
             if (sequenceIndex >= m_inputTensors[inputIndex].size())
             {
-                opKernelContextWrapper->m_inputTensors[inputIndex].resize(sequenceIndex+1);
+                opKernelContextWrapper->m_inputTensors[inputIndex].resize(static_cast<size_t>(sequenceIndex)+1);
             }
 
             if (m_inputTensors[inputIndex][sequenceIndex] == nullptr)
