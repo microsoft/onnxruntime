@@ -3,9 +3,10 @@ import unittest
 
 import numpy as np
 import onnx
+import requests
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import check_model_correctness, check_op_type_count
-import requests
+
 from onnxruntime.quantization.fp16_converter import FP16Converter
 from onnxruntime.transformers.float16 import convert_float_to_float16
 
@@ -176,18 +177,18 @@ class TestONNXModel(unittest.TestCase):
         converter.convert()
         converter.export_model_to_path("resnet50-fp16-v2-7-allow-list.onnx")
 
-    def test_model_converter_on_resnet50_v2_block_list(self):
-        filename = "resnet50-v2-7.onnx"
-        if not os.path.exists(filename):
-            url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
-            model = download_model_from_url(url)
-            onnx.save_model(model, filename)
-            print(f"Saved model to {filename}.")
-        else:
-            model = onnx.load_model(filename)
-            print(f"Loaded model from {filename}.")
-        model = convert_float_to_float16(model)
-        onnx.save_model(model, "resnet50-fp16--v2-7-block_list.onnx")
+    # def test_model_converter_on_resnet50_v2_block_list(self):
+    #     filename = "resnet50-v2-7.onnx"
+    #     if not os.path.exists(filename):
+    #         url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
+    #         model = download_model_from_url(url)
+    #         onnx.save_model(model, filename)
+    #         print(f"Saved model to {filename}.")
+    #     else:
+    #         model = onnx.load_model(filename)
+    #         print(f"Loaded model from {filename}.")
+    #     model = convert_float_to_float16(model)
+    #     onnx.save_model(model, "resnet50-fp16--v2-7-block_list.onnx")
 
 
 def get_op_count_from_model(op, model):

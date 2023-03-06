@@ -1,27 +1,20 @@
+import argparse
 import itertools
 import logging
-import argparse
 from typing import Dict
 
 import numpy as np
 import onnx
 import packaging.version as pv
-from onnx import (
-    AttributeProto,
-    ValueInfoProto,
-    GraphProto,
-    ModelProto,
-    TensorProto,
-    NodeProto,
-    helper,
-    numpy_helper,
-)
+from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, ValueInfoProto, helper, numpy_helper
+
 from onnxruntime.quantization.onnx_model import ONNXModel
 
 logger = logging.getLogger(__name__)
 
 
 # from onnx import onnx_pb as onnx_pb
+
 
 class InitializerTracker:
     """Class for keeping track of initializer."""
@@ -64,7 +57,7 @@ class FP16Converter:
 
     @staticmethod
     def __convert_np_float_to_float16(
-            np_array: np.ndarray(shape=(), dtype=np.float32),
+        np_array: np.ndarray(shape=(), dtype=np.float32),
     ) -> np.ndarray(shape=(), dtype=np.float16):
         """
         Convert float32 numpy array to float16 without changing sign or finiteness.
@@ -120,11 +113,11 @@ class FP16Converter:
         return tensor
 
     def __convert_model_float_to_float16(
-            self,
-            model: ModelProto,
-            keep_io_types=False,
-            disable_shape_infer=False,
-            force_fp16_initializers=False,
+        self,
+        model: ModelProto,
+        keep_io_types=False,
+        disable_shape_infer=False,
+        force_fp16_initializers=False,
     ) -> ModelProto:
         """
         Convert tensor float type in the ONNX ModelProto input to tensor
@@ -161,10 +154,8 @@ class FP16Converter:
         name_mapping = {}
         graph_io_to_skip = set()
         io_casts = set()
-        fp32_inputs = [n.name for n in model.graph.input if
-                       n.type.tensor_type.elem_type == TensorProto.FLOAT]
-        fp32_outputs = [n.name for n in model.graph.output if
-                        n.type.tensor_type.elem_type == TensorProto.FLOAT]
+        fp32_inputs = [n.name for n in model.graph.input if n.type.tensor_type.elem_type == TensorProto.FLOAT]
+        fp32_outputs = [n.name for n in model.graph.output if n.type.tensor_type.elem_type == TensorProto.FLOAT]
         if isinstance(keep_io_types, list):
             fp32_inputs = [n for n in fp32_inputs if n in keep_io_types]
             fp32_outputs = [n for n in fp32_outputs if n in keep_io_types]
@@ -296,7 +287,6 @@ class FP16Converter:
                     logger.info(
                         f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:"
                         f"{value.fp16_nodes}"
-
                     )
         # process the nodes in block list that doesn't support tensor(float16)
         for node in node_list:
@@ -396,7 +386,7 @@ class FP16Converter:
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Graph fp16 conversion tool for ONNX Runtime."
-                    "It convert ONNX graph from fp32 to fp16 using --allow_list."
+        "It convert ONNX graph from fp32 to fp16 using --allow_list."
     )
     parser.add_argument("--input", required=True, type=str, help="input onnx model path")
 
