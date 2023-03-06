@@ -16,7 +16,6 @@
 
 // Providers
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
-#include "onnxruntime/core/providers/dnnl/dnnl_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
 #include "onnxruntime/core/providers/openvino/openvino_provider_factory.h"
@@ -26,6 +25,10 @@
 #include "onnxruntime/core/providers/coreml/coreml_provider_factory.h"
 #ifdef USE_DML
 #include "onnxruntime/core/providers/dml/dml_provider_factory.h"
+#endif
+
+#ifdef USE_DNNL
+#include "core/providers/dnnl/dnnl_provider_options.h"
 #endif
 
 /*
@@ -429,12 +432,15 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnnl
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     (void)jobj;
-  #ifdef USE_DNNL
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*) handle,useArena));
-  #else
-    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when DNNL is defined.
+#ifdef USE_DNNL
+    OrtDnnlProviderOptions dnnl_options;
+    dnnl_options.use_arena = useArena;  // Follow the user command
+    const OrtApi* api = (OrtApi*)apiHandle;
+    checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider_Dnnl((OrtSessionOptions*)handle, &dnnl_options));
+#else
+    (void)apiHandle; (void)handle; (void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
-  #endif
+#endif
 }
 
 /*
