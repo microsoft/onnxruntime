@@ -239,7 +239,11 @@ const NnApi LoadNnApi() {
 }
 }  // namespace
 
+namespace onnxruntime {
+namespace nnapi {
 const NnApi* NnApiImplementation() {
   static const NnApi nnapi = LoadNnApi();
   return &nnapi;
 }
+}  // namespace nnapi
+}  // namespace onnxruntime

@@ -23,6 +23,8 @@ limitations under the License.
 
 #include "NeuralNetworksTypes.h"
 
+namespace onnxruntime {
+namespace nnapi {
 struct NnApi {
   bool nnapi_exists;
   int32_t android_sdk_version;
@@ -2114,3 +2116,5 @@ struct NnApi {
 const NnApi* NnApiImplementation();
 
 #endif  // TENSORFLOW_LITE_NNAPI_NNAPI_IMPLEMENTATION_H_
+}  // namespace nnapi
+}  // namespace onnxruntime

@@ -5,10 +5,12 @@
 
 #include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
 namespace onnxruntime {
 namespace nnapi {
+struct NnApi;
 class Model;
 }
 
@@ -40,5 +42,8 @@ class NnapiExecutionProvider : public IExecutionProvider {
   const std::unordered_set<std::string> partitioning_stop_ops_;
 
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
+
+  // nnapi handle for either Android NNAPI or x86 hooker.
+  const nnapi::NnApi* nnapi_handle_ = nullptr;
 };
 }  // namespace onnxruntime
