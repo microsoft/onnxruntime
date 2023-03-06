@@ -26,10 +26,12 @@ using namespace android::nn::wrapper;
 namespace onnxruntime {
 namespace nnapi {
 
-ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle)
-    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer} {
-  ORT_THROW_IF_ERROR(
-      GetTargetDevices(nnapi_, target_device_option_, nnapi_target_devices_, nnapi_target_devices_detail_));
+ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
+                           const std::vector<ANeuralNetworksDevice*>& nnapi_target_devices,
+                           const std::string& nnapi_target_devices_detail)
+    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer},
+      nnapi_target_devices_(nnapi_target_devices), nnapi_target_devices_detail_(nnapi_target_devices_detail) {
+
   nnapi_reference_device_ = nnapi_target_devices_detail_.find(nnapi_cpu) != std::string::npos
                                 ? nnapi_target_devices_.back()
                                 : nullptr;
@@ -44,7 +46,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_h
     OperandType operandType(Type::op_type, InlinedVector<uint32_t>{});            \
     ORT_RETURN_IF_ERROR(AddNewNNAPIOperand(operandType, index));                  \
     RETURN_STATUS_ON_ERROR_WITH_NOTE(                                             \
-        nnapi_.ANeuralNetworksModel_setOperandValue(                             \
+        nnapi_.ANeuralNetworksModel_setOperandValue(                              \
             nnapi_model_->model_, index, &value, sizeof(value)),                  \
         "value: " + std::to_string(value));                                       \
     return Status::OK();                                                          \
@@ -589,7 +591,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
                           << nm_op_alloc_detail << "] are running in accelerators.";
   }
 #endif
-
+  // When calling ANeuralNetworksCompilation_createForDevices,
+  // the CPU implementation is not used to handle the failure cases for model compilation and execution.
   if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksCompilation_createForDevices(
