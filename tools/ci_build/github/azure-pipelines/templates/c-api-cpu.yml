@@ -764,7 +764,7 @@ jobs:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-11
+    AgentPool : macOS-12
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
