@@ -142,7 +142,9 @@ struct KernelCreateInfo {
   KernelCreateInfo(std::unique_ptr<KernelDef> definition,
                    KernelCreateFn create_func)
       : kernel_def(std::move(definition)),
-        kernel_create_func(create_func) {}
+        kernel_create_func(create_func) {
+    assert(kernel_def != nullptr);
+  }
 
   KernelCreateInfo(KernelCreateInfo&& other) noexcept
       : kernel_def(std::move(other.kernel_def)),

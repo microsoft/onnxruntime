@@ -69,6 +69,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kRknpuExecutionProvider ||
          provider_type == onnxruntime::kCoreMLExecutionProvider ||
          provider_type == onnxruntime::kSnpeExecutionProvider ||
+         provider_type == onnxruntime::kQnnExecutionProvider ||
          provider_type == onnxruntime::kXnnpackExecutionProvider ||
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
@@ -822,6 +823,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                        const logging::Logger& logger, PartialGraphExecutionState& state,
                                        const OrtValueCachePtr& cache, const bool& terminate_flag,
                                        DeviceStreamCollection* device_stream_collection,
+                                       int32_t partial_graph_index,
                                        Stream* parent_stream) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
@@ -846,7 +848,8 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               // single thread mode
                                               single_thread_mode,
                                               state,
-                                              cache));
+                                              cache,
+                                              partial_graph_index));
   } else {
     auto p_feeds = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -907,7 +910,8 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               // single thread mode
                                               single_thread_mode,
                                               state,
-                                              cache));
+                                              cache,
+                                              partial_graph_index));
 
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
@@ -936,13 +940,12 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache, const bool& terminate_flag,
-                                   // TODO: handle the partial_graph_index
-                                   int32_t /*partial_graph_index*/,
+                                   int32_t partial_graph_index,
                                    Stream* parent_stream) {
   DeviceStreamCollection* device_stream_collection = state.GetDeviceStreamCollection(session_state);
   auto retval = ExecutePartialGraphImpl(session_state, feeds_fetches_manager, feeds, fetches,
                                         logger, state, cache, terminate_flag, device_stream_collection,
-                                        parent_stream);
+                                        partial_graph_index, parent_stream);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
   return retval;

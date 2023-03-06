@@ -1909,9 +1909,8 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
 
             auto opKernelContextWrapper = const_cast<OpKernelContextWrapper*>(this);
-            if (m_inputTensors[inputIndex][0]->GetInterface() == nullptr)
+            if (m_inputTensors[inputIndex][0] == nullptr)
             {
-                assert(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorType());
                 auto inputTensor = m_impl->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(inputIndex));
                 if (inputTensor != nullptr)
                 {
@@ -1946,12 +1945,11 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(inputIndex < m_inputTensors.size());
             if (sequenceIndex >= m_inputTensors[inputIndex].size())
             {
-                opKernelContextWrapper->m_inputTensors[inputIndex].resize(sequenceIndex+1);
+                opKernelContextWrapper->m_inputTensors[inputIndex].resize(static_cast<size_t>(sequenceIndex)+1);
             }
 
-            if (m_inputTensors[inputIndex][sequenceIndex]->GetInterface() == nullptr)
+            if (m_inputTensors[inputIndex][sequenceIndex] == nullptr)
             {
-                assert(m_impl->InputType(gsl::narrow_cast<int>(inputIndex))->IsTensorSequenceType());
                 auto inputTensorSeq = m_impl->Input<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(inputIndex));
                 ML_CHECK_BOOL(inputTensorSeq != nullptr);
 
@@ -2000,7 +1998,7 @@ namespace Windows::AI::MachineLearning::Adapter
             }
 
             // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
-            if (m_outputTensors[outputIndex][sequenceIndex]->GetInterface() == nullptr)
+            if (m_outputTensors[outputIndex][sequenceIndex] == nullptr)
             {
                 auto outputTensorSeq = m_impl->Output<onnxruntime::TensorSeq>(gsl::narrow_cast<int>(outputIndex));
                 ML_CHECK_BOOL(outputTensorSeq != nullptr);
@@ -2108,7 +2106,7 @@ namespace Windows::AI::MachineLearning::Adapter
             ML_CHECK_BOOL(outputIndex < m_outputTensors.size());
 
             // Verify that the provided shape matches the shape determined using the kernel's shape inference function.
-            if (m_outputTensors[outputIndex][0]->GetInterface() == nullptr)
+            if (m_outputTensors[outputIndex][0] == nullptr)
             {
                 if (m_outputShapes)
                 {

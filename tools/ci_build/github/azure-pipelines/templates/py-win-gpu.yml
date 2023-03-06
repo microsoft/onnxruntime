@@ -150,10 +150,10 @@ jobs:
         workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
         displayName: 'Run Python Tests'
 
-      - ${{ if eq(parameters.PYTHON_VERSION, '3.7') }}:
+      - ${{ if eq(parameters.PYTHON_VERSION, '3.8') }}:
           - task: DeleteFiles@1
             displayName: 'Delete files from $(Build.BinariesDirectory)\RelWithDebInfo'
-            condition: and (succeeded(), eq(variables['$'], '3.7'))
+            condition: and (succeeded(), eq(variables['$'], '3.8'))
             inputs:
               SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
               Contents: |
