@@ -175,6 +175,16 @@ class Session:
         """
         self._enable_fallback = True
 
+    def _validate_input(self, feed_input_names):
+        # import pdb; pdb.set_trace()
+        missing_input_names = []
+        for input in self._inputs_meta:
+            if input.name not in feed_input_names and not input.type.startswith("optional"):
+                missing_input_names.append(input.name)
+        if missing_input_names:
+            raise ValueError("Required inputs ({}) are missing from input feed ({}).".format(
+                ",".join(missing_input_names), ",".join(feed_input_names)))
+
     def run(self, output_names, input_feed, run_options=None):
         """
         Compute the predictions.
@@ -189,11 +199,7 @@ class Session:
 
             sess.run([output_name], {input_name: x})
         """
-        num_required_inputs = len(self._inputs_meta)
-        num_inputs = len(input_feed)
-        # the graph may have optional inputs used to override initializers. allow for that.
-        if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+        self._validate_input(list(input_feed.keys()))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
@@ -235,11 +241,7 @@ class Session:
             ort_values = [OrtValue(v) for v in result]
             return ort_values
 
-        num_required_inputs = len(self._inputs_meta)
-        num_inputs = len(input_dict_ort_values)
-        # the graph may have optional inputs used to override initializers. allow for that.
-        if num_inputs < num_required_inputs:
-            raise ValueError("Model requires {} inputs. Input Feed contains {}".format(num_required_inputs, num_inputs))
+        self._validate_input(list(input_dict_ort_values.keys()))
         if not output_names:
             output_names = [output.name for output in self._outputs_meta]
         try:
