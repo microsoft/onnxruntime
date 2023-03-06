@@ -32,6 +32,9 @@ let package = Package(
         
         .testTarget(name: "onnxTests",
                     dependencies: ["OnnxWrapper"],
-                    path: "swift/onnxTests"),
+                    path: "swift/onnxTests",
+                    resources: [
+                        .copy("Resources/single_add.basic.ort")
+                    ]),
     ]
 )

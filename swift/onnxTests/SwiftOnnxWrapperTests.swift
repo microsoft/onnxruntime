@@ -6,20 +6,48 @@ import Foundation
 @testable import OnnxWrapper
 
 final class SwiftOnnxWrapperTests: XCTestCase {
+    let modelPath: String = Bundle.module.url(forResource: "single_add.basic", withExtension: "ort")!.path
+    
     func testExample() throws {
-        let modelPath: String = ""
-        let threadCount: Int32 = 1
-
         do {
             let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
             let options = try ORTSessionOptions()
             try options.setLogSeverityLevel(ORTLoggingLevel.verbose)
-            try options.setIntraOpNumThreads(threadCount)
+            try options.setIntraOpNumThreads(1)
             // Create the ORTSession
             _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: options)
-            XCTFail("Missing model, session should throw")
-        } catch {
-            XCTAssertEqual(error.localizedDescription, "Load model from  failed:Load model  failed. File doesn't exist")
+        } catch let error {
+            XCTFail(error.localizedDescription)
+        }
+    }
+    
+    func testAppendCoreMLEP() throws {
+        do {
+            let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
+            let sessionOptions: ORTSessionOptions = try ORTSessionOptions()
+            let coreMLOptions: ORTCoreMLExecutionProviderOptions = ORTCoreMLExecutionProviderOptions()
+            coreMLOptions.enableOnSubgraphs = true
+            try sessionOptions.appendCoreMLExecutionProvider(with: coreMLOptions)
+            
+            XCTAssertTrue(ORTIsCoreMLExecutionProviderAvailable())
+            _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: sessionOptions)
+        } catch let error {
+            XCTFail(error.localizedDescription)
+        }
+    }
+    
+    func testAppendXnnpackEP() throws {
+        do {
+            let env = try ORTEnv(loggingLevel: ORTLoggingLevel.verbose)
+            let sessionOptions: ORTSessionOptions = try ORTSessionOptions()
+            let XnnpackOptions: ORTXnnpackExecutionProviderOptions = ORTXnnpackExecutionProviderOptions()
+            XnnpackOptions.intra_op_num_threads = 2
+            try sessionOptions.appendXnnpackExecutionProvider(with: XnnpackOptions)
+            
+            XCTAssertTrue(ORTIsCoreMLExecutionProviderAvailable())
+            _ = try ORTSession(env: env, modelPath: modelPath, sessionOptions: sessionOptions)
+        } catch let error {
+            XCTFail(error.localizedDescription)
         }
     }
 }
