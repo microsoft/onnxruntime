@@ -153,14 +153,17 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
     size_t weights_num  = pre_layer_weight_names.size() + post_layer_weight_names.size() + layer_num * layer_weight_names.size();
     seq_len_ = seq_len;
     in_chans_ = in_chans;
+    weights_num_ = weights_num;
 
     if (is_fp16_) {
         params_fp16_ = ViTINT8Weight<half>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
+#ifdef FT_ENABLE_WEIGHTS_COPY 
         std::vector<const half*> w_fp16;
         w_fp16.resize(weights_num);
         loadWeightsPtrINT8<half>(info, w_fp16, layer_num, with_cls_token); 
         const half* const* pp_buf = &w_fp16[0];
         params_fp16_.CopyWeightsFromHostBuffers(pp_buf);
+#endif
         attention_type_ = getAttentionType<half>(head_dim, getSMVersion(), true, seq_len);
         vit_fp16_ = new ViTTransformerINT8<half>(max_batch,
                                             img_size,
@@ -183,12 +186,13 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
     }
     else {
         params_fp32_ = ViTINT8Weight<float>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
+#ifdef FT_ENABLE_WEIGHTS_COPY 
         std::vector<const float*> w_fp32;
         w_fp32.resize(weights_num);
         loadWeightsPtrINT8<float>(info, w_fp32, layer_num, with_cls_token); 
         const float* const* pp_buf = &w_fp32[0];
         params_fp32_.CopyWeightsFromHostBuffers(pp_buf);
-
+#endif
         attention_type_ = getAttentionType<float>(head_dim, getSMVersion(), true, seq_len);
         vit_fp32_ = new ViTTransformerINT8<float>(max_batch,
                                              img_size,
@@ -237,6 +241,18 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
     const void* p_output_data = ort_val_output.GetTensorData<void>();
 
     if (is_fp16_) {
+#ifndef FT_ENABLE_WEIGHTS_COPY 
+        int index = 0;
+        std::vector<const half*> w_fp16;
+        w_fp16.resize(weights_num_);
+        // skip first input, weights start from second input 
+        for (size_t i = 1; i < kcontext.GetInputCount(); i++) {
+            w_fp16[index++] = kcontext.GetInput(i).GetTensorData<half>(); 
+        }
+        const half* const* pp_buf = &w_fp16[0];
+        params_fp16_.AssignWeightsFromDeviceBuffers(pp_buf);
+#endif
+
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<half>(),
@@ -251,6 +267,18 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
         vit_fp16_->forward(&output_tensors, &input_tensors, &params_fp16_);
     }
     else {
+#ifndef FT_ENABLE_WEIGHTS_COPY 
+        int index = 0;
+        std::vector<const float*> w_fp32;
+        w_fp32.resize(weights_num_);
+        // skip first input, weights start from second input 
+        for (size_t i = 1; i < kcontext.GetInputCount(); i++) {
+            w_fp32[index++] = kcontext.GetInput(i).GetTensorData<float>(); 
+        }
+        const float* const* pp_buf = &w_fp32[0];
+        params_fp32_.AssignWeightsFromDeviceBuffers(pp_buf);
+#endif
+
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<float>(),
@@ -269,11 +297,9 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
 FTViTINT8CustomKernel::~FTViTINT8CustomKernel() {
     if (is_fp16_) {
         delete vit_fp16_;
-        //delete &params_fp16_;
     }
     else {
         delete vit_fp32_;
-        //delete &params_fp32_;
     }
     delete cublas_algo_map_;
     delete cublas_wrapper_mutex_;
@@ -341,6 +367,6 @@ void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* in
                                      layer_num,
                                      with_cls_token,
                                      is_fp16,
-                                     int8_mode); 
+                                     int8_mode);
 }
 

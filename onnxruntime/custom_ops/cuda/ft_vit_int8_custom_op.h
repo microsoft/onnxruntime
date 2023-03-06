@@ -50,6 +50,7 @@ struct FTViTINT8CustomKernel {
   int seq_len_;
   int in_chans_;
   int is_fp16_;
+  int weights_num_;
 };
 
 struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel> {

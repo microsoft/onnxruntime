@@ -376,9 +376,6 @@ if (onnxruntime_USE_CUDA)
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
   set(onnxruntime_providers_cuda_src ${onnxruntime_providers_cuda_cc_srcs} ${onnxruntime_providers_cuda_shared_srcs} ${onnxruntime_providers_cuda_cu_srcs})
 
-  include_directories("/home/azureuser/repos/FasterTransformer")
-  set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable")
-
   # disable contrib ops conditionally
   if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
     if (NOT onnxruntime_ENABLE_ATEN)
@@ -489,57 +486,42 @@ if (onnxruntime_USE_CUDA)
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-  set(FT_VIT_LIBS 
-      # vit_example deps
-      /home/azureuser/repos/FasterTransformer/build/lib/libViTINT8.so
-      /home/azureuser/repos/FasterTransformer/build/lib/libtrt_fused_multi_head_attention.a 
-      /home/azureuser/repos/FasterTransformer/build/lib/libvit_kernels.a 
-      /home/azureuser/repos/FasterTransformer/build/lib/libcublasINT8MMWrapper.a 
-      /home/azureuser/repos/FasterTransformer/build/lib/libnvtx_utils.a 
-      /home/azureuser/repos/FasterTransformer/build/lib/libmemory_utils.a
-      /home/azureuser/repos/FasterTransformer/build/lib/libcuda_utils.a
-
-      ## ViTINT8 deps
-      #/home/azureuser/repos/FasterTransformer/build/lib/libUnfusedAttentionLayerINT8.a
-      #/home/azureuser/repos/FasterTransformer/build/lib/libFusedAttentionLayerINT8.a
-      #/home/azureuser/repos/FasterTransformer/build/lib/libFfnLayerINT8.a 
-      #/home/azureuser/repos/FasterTransformer/build/lib/liblayernorm_kernels.a
-      #/home/azureuser/repos/FasterTransformer/build/lib/liblayernorm_int8_kernels.a
-
-      ## Ffnlayer deps
-      #/home/azureuser/repos/FasterTransformer/build/lib/libtensor.a
-      #/home/azureuser/repos/FasterTransformer/build/lib/libmoe_kernels.a
-
-      #/home/azureuser/repos/FasterTransformer/build/lib/libunfused_attention_int8_kernels.a
-  )
-  MESSAGE(STATUS "FT VIT libs: ${FT_VIT_LIBS}")
-
-  file(GLOB_RECURSE onnxruntime_custom_op_ft_wrapper_srcs
+  if (onnxruntime_ENABLE_FT)
+    file(GLOB_RECURSE onnxruntime_custom_op_ft_wrapper_srcs
        "${ONNXRUNTIME_ROOT}/custom_ops/cuda/*.cc"
        "${ONNXRUNTIME_ROOT}/custom_ops/cuda/*.h"
-  )
+    )
+    onnxruntime_add_shared_library_module(custom_op_ft_wrapper_library ${onnxruntime_custom_op_ft_wrapper_srcs})
 
-  #file(GLOB_RECURSE all_ft_static_libs 
-      #"/home/azureuser/repos/FasterTransformer/build/lib/lib*.a"
-  #)
-  #MESSAGE(STATUS "FT VIT libs: ${all_ft_static_libs}")
+    target_include_directories(custom_op_ft_wrapper_library PRIVATE ${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session 
+                                                                    ${onnxruntime_FT_HOME}
+                                                                    ${onnxruntime_CUDNN_HOME}/include
+                                                                    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 
-  onnxruntime_add_shared_library_module(custom_op_ft_wrapper_library ${onnxruntime_custom_op_ft_wrapper_srcs})
-  target_include_directories(custom_op_ft_wrapper_library PRIVATE ${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session 
-                                                                  /home/azureuser/FasterTransformer
-                                                                  ${onnxruntime_CUDNN_HOME}/include
-                                                                  ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    set(FT_VIT_LIBS 
+      ${onnxruntime_FT_HOME}/build/lib/libViTINT8.so
+      ${onnxruntime_FT_HOME}/build/lib/libtrt_fused_multi_head_attention.a 
+      ${onnxruntime_FT_HOME}/build/lib/libvit_kernels.a 
+      ${onnxruntime_FT_HOME}/build/lib/libcublasINT8MMWrapper.a 
+      ${onnxruntime_FT_HOME}/build/lib/libnvtx_utils.a 
+      ${onnxruntime_FT_HOME}/build/lib/libmemory_utils.a
+      ${onnxruntime_FT_HOME}/build/lib/libcuda_utils.a
+    )
+    MESSAGE(STATUS "FT ViT libs: ${FT_VIT_LIBS}")
+    target_link_libraries(custom_op_ft_wrapper_library PRIVATE ${FT_VIT_LIBS} cublas cublasLt cudart cudnn m)
 
-  target_link_libraries(custom_op_ft_wrapper_library PRIVATE ${FT_VIT_LIBS} cublas cublasLt cudart cudnn m)
-  #target_link_libraries(custom_op_ft_wrapper_library PRIVATE ${all_ft_static_libs} cublas cublasLt cudart cudnn m)
+    string(CONCAT ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG
+           "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/custom_ops/cuda/ft_custom_op_lib.lds "
+           "-Xlinker --gc-sections -z noexecstack")
+           #"-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
 
-  string(CONCAT ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG
-         "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/custom_ops/cuda/ft_custom_op_lib.lds "
-         #"-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
-         "-Xlinker --gc-sections -z noexecstack")
-
-  set_property(TARGET custom_op_ft_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS
-               ${ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG})
+    set_property(TARGET custom_op_ft_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG})
+    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable")
+    
+    if (onnxruntime_FT_ENABLE_WEIGHTS_COPY)
+      add_definitions(-DFT_ENABLE_WEIGHTS_COPY=1)
+    endif()
+  endif()
 
   target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
   if(onnxruntime_CUDNN_HOME)
