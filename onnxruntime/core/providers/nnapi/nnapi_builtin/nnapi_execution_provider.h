@@ -45,8 +45,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   // nnapi handle for either Android NNAPI or x86 hooker.
   const nnapi::NnApi* nnapi_handle_ = nullptr;
-  std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
-  std::string nnapi_target_devices_detail_;  // Debug info for target devices
+  std::vector<nnapi::DeviceWrapper> nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
 };
 }  // namespace onnxruntime
