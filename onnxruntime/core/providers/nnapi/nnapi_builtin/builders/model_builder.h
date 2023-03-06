@@ -30,7 +30,9 @@ class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
-  ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle);
+  ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
+               const std::vector<ANeuralNetworksDevice*>& nnapi_target_devices,
+               const std::string& nnapi_target_devices_detail);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -73,8 +75,6 @@ class ModelBuilder {
   // Relax fp32 computation to fp16
   // It is off by default
   void SetUseFp16(bool use_fp16) { use_fp16_ = use_fp16; }
-
-  void SetTargetDeviceOption(TargetDeviceOption option) { target_device_option_ = option; }
 
   // Set NNAPI execution preference
   // Default preference is PREFER_FAST_SINGLE_ANSWER
@@ -145,10 +145,9 @@ class ModelBuilder {
 
   std::unordered_set<std::string> unique_names_;
 
-  TargetDeviceOption target_device_option_{TargetDeviceOption::ALL_DEVICES};
-  std::vector<ANeuralNetworksDevice*> nnapi_target_devices_;
+  const std::vector<ANeuralNetworksDevice*>& nnapi_target_devices_;
   ANeuralNetworksDevice* nnapi_reference_device_{nullptr};
-  std::string nnapi_target_devices_detail_;  // Debug info for target devices
+  const std::string& nnapi_target_devices_detail_;  // Debug info for target devices
 
   // feature_level, to decide if we can run this node on NNAPI
   int32_t nnapi_target_device_feature_level_ = 0;

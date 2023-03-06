@@ -102,7 +102,8 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
 
     RETURN_STATUS_ON_ERROR_WITH_NOTE(nnapi_handle.ANeuralNetworksDevice_getType(device, &device_type),
                                      "Getting " + std::to_string(i) + "th device's type");
-    bool device_is_cpu = nnapi_cpu == device_name;
+    // https://developer.android.com/ndk/reference/group/neural-networks#aneuralnetworksdevice_gettype
+    bool device_is_cpu = device_type == ANEURALNETWORKS_DEVICE_CPU;
     if ((target_device_option == TargetDeviceOption::CPU_DISABLED && device_is_cpu) ||
         (target_device_option == TargetDeviceOption::CPU_ONLY && !device_is_cpu)) {
       continue;
@@ -119,7 +120,7 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
   // put CPU device at the end
   // 1) it's helpful to accelerate nnapi compile, just assuming nnapi-reference has the lowest priority
   // and nnapi internally skip the last device if it has already found one.
-  // 2) we can easily exclude nnapi-reference for mode nnapi_disable_cpu_soft.
+  // 2) we can easily exclude nnapi-reference when not strict excluding CPU.
   // 3) we can easily log the detail of how op was assigned on NNAPI devices which is helpful for debugging.
   if (cpu_index != -1 && cpu_index != static_cast<int32_t>(nnapi_target_devices.size()) - 1) {
     std::swap(nnapi_target_devices[nnapi_target_devices.size() - 1], nnapi_target_devices[cpu_index]);
@@ -128,7 +129,7 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
   return Status::OK();
 }
 
-// we Will get devices set first and then get the max feature level supported by all target devices
+// Get devices-set first and then get the max feature level supported by all target devices
 // return -1 if failed.  It's not necessary to handle the error here, because level=-1 will refuse all ops
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option) {
   std::vector<ANeuralNetworksDevice*> nnapi_target_devices;
