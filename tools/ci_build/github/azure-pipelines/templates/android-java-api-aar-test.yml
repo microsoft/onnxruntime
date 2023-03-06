@@ -20,7 +20,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
   - name: runCodesignValidationInjection
     value: false
