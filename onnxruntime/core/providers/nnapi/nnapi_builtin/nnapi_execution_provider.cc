@@ -66,6 +66,9 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
       });
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
+// it should works for both Android and x86 wrapper
+  nnapi_handle_ = nnapi::NnApiImplementation();
+  ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
@@ -87,10 +90,9 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   // since we cannot get the runtime system API level, we have to specify it using compile definition.
   const int32_t android_feature_level = [this]() {
 #ifdef __ANDROID__
-    const auto* nnapi_handle = NnApiImplementation();
     auto flag = (nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED) ? nnapi::TargetDeviceOption::CPU_DISABLED
                                                          : nnapi::TargetDeviceOption::ALL_DEVICES;
-    return nnapi::NNAPIGetTargetFeatureLevelWithDeviceTag(nnapi_handle, flag);
+    return nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(*nnapi_handle_, flag);
 #else
     ORT_UNUSED_PARAMETER(nnapi_flags_);
     return ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
@@ -269,7 +271,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    nnapi::ModelBuilder builder(graph_viewer);
+    nnapi::ModelBuilder builder(graph_viewer, *nnapi_handle_);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
 

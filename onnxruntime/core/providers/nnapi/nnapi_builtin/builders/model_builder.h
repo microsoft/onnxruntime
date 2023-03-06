@@ -21,6 +21,7 @@ class Node;
 class NodeArg;
 
 namespace nnapi {
+struct NnApi;
 
 class IOpBuilder;
 class IOpSupportChecker;
@@ -29,7 +30,7 @@ class ModelBuilder {
  public:
   using Shape = Shaper::Shape;
 
-  ModelBuilder(const GraphViewer& graph_viewer);
+  ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -102,15 +103,11 @@ class ModelBuilder {
   // the given node must be in the underlying graph_viewer
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
-  const NnApi* GetNnApi() const { return nnapi_; }
-
-  const std::vector<ANeuralNetworksDevice*>& GetDevices() const { return nnapi_target_devices_; }
-
   int32_t GetTargetDeviceFeatureLevel() const { return nnapi_target_device_feature_level_; }
  private:
-  const NnApi* nnapi_{nullptr};
+  const NnApi& nnapi_;
   const GraphViewer& graph_viewer_;
-  std::unique_ptr<Model> nnapi_model_{std::make_unique<Model>()};
+  std::unique_ptr<Model> nnapi_model_;
 
   uint32_t name_token_{0};
 

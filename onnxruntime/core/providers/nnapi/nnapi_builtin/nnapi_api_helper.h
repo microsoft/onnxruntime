@@ -8,11 +8,10 @@
 #include <android/api-level.h>
 #endif
 
-struct NnApi;
 
 namespace onnxruntime {
 namespace nnapi {
-
+struct NnApi;
 class ModelBuilder;
 
 enum class TargetDeviceOption : int8_t {
@@ -27,13 +26,11 @@ enum class TargetDeviceOption : int8_t {
   CPU_ONLY,      // use CPU only
 };
 
-int32_t GetNNAPIRuntimeFeatureLevel(const ::NnApi* nnapi);
+const char* const nnapi_cpu = ("nnapi-reference");
+int32_t GetNNAPIEffectiveFeatureLevel(const NnApi& nnapi_handle, const std::vector<ANeuralNetworksDevice*>& device_handles);
 
-int32_t NNAPIGetTargetFeatureLevel(const ::NnApi* nnapi, const std::vector<ANeuralNetworksDevice*>& device_handles);
-int32_t NNAPIGetTargetFeatureLevel(const ModelBuilder& model_builder);
-
-Status GetTargetDevices(const ::NnApi* nnapi, TargetDeviceOption target_device_option,
+Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
                         std::vector<ANeuralNetworksDevice*>& nnapi_target_devices, std::string& nnapi_target_devices_detail);
-int32_t NNAPIGetTargetFeatureLevelWithDeviceTag(const ::NnApi* nnapi, TargetDeviceOption target_device_option);
+int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option);
 }  // namespace nnapi
 }  // namespace onnxruntime
