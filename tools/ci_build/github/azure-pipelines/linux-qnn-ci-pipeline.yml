@@ -24,10 +24,6 @@ jobs:
         displayName: set QNN_SDK_ROOT
 
       - script: |
-          env | egrep -e QNN
-        displayName: List QNN env variables
-
-      - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
