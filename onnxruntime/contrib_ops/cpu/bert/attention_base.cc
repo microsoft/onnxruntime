@@ -193,6 +193,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
+  bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -206,6 +207,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
                              relative_position_bias_dims[0]);
+    }
+    if (relative_position_bias_dims[0] == 1) {
+      broadcast_res_pos_bias = true;
     }
     if (relative_position_bias_dims[1] != num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -255,6 +259,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
+    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
   }
 
   return Status::OK();

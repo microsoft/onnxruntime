@@ -19,6 +19,7 @@ import unittest
 
 torch.manual_seed(0)
 
+
 def create_t5_mha_graph(
     batch_size,
     seq_len,
@@ -556,4 +557,5 @@ class TestT5MHAParity(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if torch.version.cuda:
+        unittest.main()
