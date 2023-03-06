@@ -202,9 +202,9 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              relative_position_bias_dims.size());
     }
 
-    if (relative_position_bias_dims[0] != batch_size) {
+    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size, got ",
+                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
                              relative_position_bias_dims[0]);
     }
     if (relative_position_bias_dims[1] != num_heads_) {

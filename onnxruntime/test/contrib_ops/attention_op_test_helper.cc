@@ -2908,6 +2908,188 @@ void GetCrossAttentionData_HeadSize16(AttentionTestData& data) {
   }
 }
 
+void GetCrossAttentionDataWithPast(AttentionTestData& data) {
+  data.hidden_size = 8;
+  data.v_hidden_size = 8;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+  data.key_padding_mask_data = {1, 1, 1};
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_Default,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+
+  {
+    data.query_data = {
+      -0.10939738f, -0.11916742f, -0.23157823f, -0.12894472f,
+      -0.02661306f,  0.26251313f,  0.30725253f, -0.34759378f,
+      -0.11695808f, -0.13129434f, -0.17031054f, -0.14986445f,
+      -0.02826184f,  0.2797631f ,  0.27337456f, -0.44312602f
+    };
+  }
+  {
+    data.past_key_data = {
+      0.5967375f , 0.5966938f , 0.48602432f, 0.5341031f,
+      0.55797786f, 0.5663399f , 0.57087725f, 0.6240304f,
+      0.5352563f , 0.5648297f , 0.4972945f , 0.56637144f,
+
+      0.44123724f, 0.35872823f, 0.32176313f, 0.4490301f,
+      0.3643952f , 0.51968557f, 0.50137347f, 0.5743993f,
+      0.3905106f , 0.4741712f , 0.40881708f, 0.47243845f
+    };
+  }
+
+  {
+    data.past_value_data = {
+      0.40251260f, 0.55487730f, 0.49565578f, 0.42683450f,
+      0.44379145f, 0.58945787f, 0.54852820f, 0.43376005f,
+      0.44116694f, 0.44007313f, 0.40293324f, 0.53202707f,
+
+      0.35520583f, 0.47293650f, 0.45417705f, 0.33723440f,
+      0.50175804f, 0.37620395f, 0.24103148f, 0.50958070f,
+      0.56803876f, 0.37866923f, 0.32273075f, 0.44389135f
+    };
+  }
+
+  {
+    data.fp32_output_data = {
+      0.4291f, 0.5275f, 0.4818f, 0.4645f, 0.4770f, 0.4082f, 0.3372f, 0.4319f,
+      0.4291f, 0.5276f, 0.4818f, 0.4645f, 0.4768f, 0.4083f, 0.3377f, 0.4315f
+    };
+  }
+
+  {
+    data.fp16_output_data = data.fp32_output_data;
+  }
+}
+
+void GetSelfAttentionDataWithPast(AttentionTestData& data) {
+  data.hidden_size = 8;
+  data.v_hidden_size = 8;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_NONE;
+  data.is_static_kv = false;
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_Default,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+
+  {
+    data.query_data = {
+      0.00403503,  0.08716156, -0.0358175 , -0.08171791,
+      0.48912194, -0.22679007, -0.09093101, -0.5939322,
+      0.00878838,  0.03355761, -0.08080226, -0.06677517,
+      0.55038965, -0.2720567 , -0.12977877, -0.634123
+    };
+  }
+  {
+    data.key_data = {
+      0.2808786 ,  0.10041683,  0.15880886,  0.45283064,
+      0.39884242,  0.12596075,  0.4198916 , -0.0651141,
+      0.31678027,  0.11010794,  0.21594375,  0.4975329,
+      0.436772  ,  0.20940652,  0.44072092, -0.05601776
+    };
+  }
+
+  {
+    data.value_data = {
+      0.26421773, -0.16541699, -0.0599675 ,  0.27200517,
+      -0.1074627 , -0.4493224 , -0.03694462,  0.17997989,
+      0.27960598, -0.16643806, -0.07019104,  0.29006317,
+      -0.11640988, -0.47876123, -0.01979145,  0.11468418
+    };
+  }
+
+  {
+    data.rel_pos_bias_data = {
+      0.4781123 , 0.82420444, 0.654424  , 0.3995186 , 0.5482078,
+      0.55570245, 0.4216576 , 0.46001542, 0.67183703, 0.41973996,
+
+      0.28494194, 0.60367906, 0.3453173 , 0.44483483, 0.6770777,
+      0.5460559 , 0.31994605, 0.5470492 , 0.5433419 , 0.60349935
+    };
+  }
+
+  {
+    data.past_key_data = {
+      0.34734827, 0.5592256 , 0.5333037 , 0.5122027,
+      0.5940516 , 0.44744077, 0.43128848, 0.55360645,
+      0.57874715, 0.29512063, 0.2780432 , 0.4693917,
+
+      0.4450266 , 0.530704  , 0.3124955 , 0.4273598,
+      0.44368753, 0.5890438 , 0.5054336 , 0.46042535,
+      0.5352153 , 0.5157861 , 0.39744973, 0.5441864
+    };
+  }
+
+  {
+    data.past_value_data = {
+        0.48998538, 0.5493853 , 0.556647  , 0.7011929,
+        0.543909  , 0.5630743 , 0.5087797 , 0.3901024,
+        0.53116417, 0.4086225 , 0.5320247 , 0.5145377,
+
+        0.4086198 , 0.6913348 , 0.50045484, 0.5338214,
+        0.52980417, 0.5243695 , 0.6046111 , 0.53555113,
+        0.44936907, 0.6010697 , 0.38031512, 0.427301
+    };
+  }
+
+  {
+    data.fp32_output_data = {
+      0.4358, 0.2708, 0.3201, 0.4347, 0.1886, 0.0845, 0.2479, 0.3289,
+      0.4157, 0.2247, 0.2826, 0.4321, 0.1874, 0.1021, 0.2427, 0.3305
+    };
+  }
+
+  {
+    data.fp16_output_data = data.fp32_output_data;
+  }
+
+  {
+    data.present_key_data = {
+      0.3473,  0.5592,  0.5333,  0.5122,
+      0.5941,  0.4474,  0.4313,  0.5536,
+      0.5787,  0.2951,  0.2780,  0.4694,
+      0.2809,  0.1004,  0.1588,  0.4528,
+      0.3168,  0.1101,  0.2159,  0.4975,
+
+      0.4450,  0.5307,  0.3125,  0.4274,
+      0.4437,  0.5890,  0.5054,  0.4604,
+      0.5352,  0.5158,  0.3974,  0.5442,
+      0.3988,  0.1260,  0.4199, -0.0651,
+      0.4368,  0.2094,  0.4407, -0.0560
+    };
+  }
+
+  {
+    data.present_value_data = {
+      0.4900,  0.5494,  0.5566,  0.7012,
+      0.5439,  0.5631,  0.5088,  0.3901,
+      0.5312,  0.4086,  0.5320,  0.5145,
+      0.2642, -0.1654, -0.0600,  0.2720,
+      0.2796, -0.1664, -0.0702,  0.2901,
+
+      0.4086,  0.6913,  0.5005,  0.5338,
+      0.5298,  0.5244,  0.6046,  0.5356,
+      0.4494,  0.6011,  0.3803,  0.4273,
+      -0.1075, -0.4493, -0.0369,  0.1800,
+      -0.1164, -0.4788, -0.0198,  0.1147
+    };
+  }
+}
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {
   return std::find(data.skip_kernel_types.begin(), data.skip_kernel_types.end(), kernel_type) != data.skip_kernel_types.end();
 }

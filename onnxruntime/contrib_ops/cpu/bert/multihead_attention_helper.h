@@ -18,12 +18,18 @@ Status CheckInputs(const T* query,
                    const T* bias,
                    const T* key_padding_mask,
                    const T* relative_position_bias,
+                   const T* past_key,
+                   const T* past_value,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
+                   float scale,
+                   bool is_static_kv,
                    int max_threads_per_block) {
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
+  //     past_key                   : (B, N, S*, H)
+  //     past_value                 : (B, N, S*, H)
   // When no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
   //     key              (K)       : (B, L, D)
@@ -51,6 +57,60 @@ Status CheckInputs(const T* query,
   int hidden_size = query_dims.size() == 3 ? static_cast<int>(query_dims[2]) : (num_heads * static_cast<int>(query_dims[4]));
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
+
+  int past_sequence_length = 0;
+  if (past_key != nullptr && past_value != nullptr) {
+    const auto& past_key_dims = past_key->Shape().GetDims();
+    const auto& past_value_dims = past_value->Shape().GetDims();
+
+    if (past_key_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' is expected to have 4 dimensions, got ",
+                             past_key_dims.size());
+    }
+    if (past_value_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' is expected to have 4 dimensions, got ",
+                             past_value_dims.size());
+    }
+
+    if (past_key_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 0 should be batch_size, got ",
+                             past_key_dims[0]);
+    }
+    if (past_value_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 0 should be batch_size, got ",
+                             past_value_dims[0]);
+    }
+
+    if (past_key_dims[1] != num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 1 should be same as number of heads, got ",
+                             past_key_dims[1]);
+    }
+    if (past_value_dims[1] != num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 1 should be same as number of heads, got ",
+                             past_value_dims[1]);
+    }
+    if (past_key_dims[2] != past_value_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+    }
+    if (past_key_dims[3] != head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 3 should be same as head_size, got ",
+                             past_key_dims[3]);
+    }
+    if (past_value_dims[3] != head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 3 should be same as head_size, got ",
+                             past_value_dims[3]);
+    }
+    past_sequence_length = static_cast<int>(past_key_dims[2]);
+  }
 
   if (key != nullptr) {
     if (query_dims.size() != 3) {
@@ -86,7 +146,7 @@ Status CheckInputs(const T* query,
     }
 
     kv_sequence_length = static_cast<int>(key_dims[1]);
-  } else {  // packed QKV
+  } else if (past_key == nullptr){  // packed QKV
     if (query_dims.size() != 5) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 5 dimensions when key is empty, got ",
                              query_dims.size());
@@ -96,6 +156,8 @@ Status CheckInputs(const T* query,
           ONNXRUNTIME, INVALID_ARGUMENT,
           "Expect 'query' shape (batch_size, kv_sequence_length, num_heads, 3, head_size) for packed kv");
     }
+  } else {
+    kv_sequence_length = past_sequence_length;
   }
 
   if (bias != nullptr) {
@@ -148,6 +210,8 @@ Status CheckInputs(const T* query,
     v_hidden_size = static_cast<int>(value_dims[2]);
   }
 
+
+  int total_sequence_length = is_static_kv ? kv_sequence_length : past_sequence_length + kv_sequence_length;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -171,7 +235,7 @@ Status CheckInputs(const T* query,
                              "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
                              relative_position_bias_dims[2]);
     }
-    if (relative_position_bias_dims[3] != kv_sequence_length) {
+    if (relative_position_bias_dims[3] != total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
                              relative_position_bias_dims[3]);
@@ -182,9 +246,9 @@ Status CheckInputs(const T* query,
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = 0;
+    output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->total_sequence_length = kv_sequence_length;
+    output_parameters->total_sequence_length = total_sequence_length;
     output_parameters->max_sequence_length = 0;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
@@ -196,7 +260,7 @@ Status CheckInputs(const T* query,
     output_parameters->past_present_share_buffer = false;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
-    output_parameters->scale = 0.0f;
+    output_parameters->scale = scale;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {

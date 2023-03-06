@@ -57,10 +57,11 @@ __device__ inline void Softmax(const int all_sequence_length,
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
+  const int size_per_batch = gridDim.x * all_sequence_length;
   for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
       const int index = offset + i;
-      float input_at_idx = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index]);
+      float input_at_idx = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index % size_per_batch]); // bugbug: support [B, N, S, S*]
       if (thread_data_max < input_at_idx) {
         thread_data_max = input_at_idx;
       }
@@ -79,7 +80,7 @@ __device__ inline void Softmax(const int all_sequence_length,
   for (int i = threadIdx.x; i < valid_end; i += TPB) {
     if (i >= valid_start) {
       const int index = offset + i;
-      float val = no_add ? input[index] : input[index] + add_before_softmax[index];
+      float val = no_add ? input[index] : input[index] + add_before_softmax[index % size_per_batch];
       thread_data_sum += expf(val - max_block);
     }
   }
@@ -92,7 +93,7 @@ __device__ inline void Softmax(const int all_sequence_length,
 
   for (int i = threadIdx.x; i < all_sequence_length; i += TPB) {
     const int index = offset + i;
-    float input_at_idx = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index]);
+    float input_at_idx = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index % size_per_batch]);
     const float val = (i >= valid_start && i < valid_end) ? expf(input_at_idx - max_block) * sum_reverse_block : 0.f;
     output[index] = T(val);
   }
@@ -140,7 +141,8 @@ __device__ inline void SoftmaxSmall(const int all_sequence_length,
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
   const bool no_add = (add_before_softmax == nullptr);
-  float input_data = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index]);
+  const int size_per_batch = gridDim.x * all_sequence_length;
+  float input_data = no_add ? float(input[index]) : float(input[index] + add_before_softmax[index % size_per_batch]);
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
 
@@ -205,6 +207,7 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   const int offset = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
+  const int size_per_batch = gridDim.x * all_sequence_length;
 
   float thread_data_max = -CUDART_INF_F;
   for (int seq_idx = threadIdx.x; seq_idx < all_sequence_length; seq_idx += TPB) {
@@ -216,8 +219,8 @@ __global__ void SoftmaxLargeKernel(const int all_sequence_length,
     // a math transform as below is leveraged to get a stable softmax:
     // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
     float input_data = is_valid
-                           ? (add_before_softmax ? float(input[index] + add_before_softmax[index]) : float(input[index]))
-                           : float(-CUDART_INF_F);
+                       ? (add_before_softmax ? float(input[index] + add_before_softmax[index % size_per_batch]) : float(input[index]))
+                       : float(-CUDART_INF_F);
     cached_data[seq_idx] = input_data;
     thread_data_max = max(thread_data_max, input_data);
   }
@@ -272,6 +275,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
   __shared__ float max_block;
 
   float max_thread_data = -CUDART_INF_F;
+  const int size_per_batch = gridDim.x * all_sequence_length;
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int base_index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length;
@@ -281,7 +285,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int all_sequence_length,
     if (add_before_softmax == nullptr) {
       thread_data = float(input[index]) * rsqrt_head_size;
     } else {
-      thread_data = float(input[index] + add_before_softmax[index]) * rsqrt_head_size;
+      thread_data = float(input[index] + add_before_softmax[index % size_per_batch]) * rsqrt_head_size;
     }
 
     const int sequence_index = blockIdx.x % sequence_length;
@@ -374,6 +378,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
 
   // Input dimension is BxNxSxS*; blockIdx.y is batch index b; gridDim.x=N*S;  blockIdx.x is index within N*S;
   int index = (blockIdx.y * gridDim.x + blockIdx.x) * all_sequence_length + threadIdx.x;
+  const int size_per_batch = gridDim.x * all_sequence_length;
 
   float thread_data = -CUDART_INF_F;
   if (threadIdx.x < all_sequence_length) {
@@ -410,7 +415,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int all_sequence_length,
     }
 
     if (add_before_softmax != nullptr) {
-      thread_data += float(add_before_softmax[index]);
+      thread_data += float(add_before_softmax[index % size_per_batch]);
     }
   }
 
