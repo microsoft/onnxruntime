@@ -2,17 +2,14 @@
 // Licensed under the MIT License.
 
 #ifdef ENABLE_TRAINING_CORE
-#include <onnx/defs/attr_proto_util.h>
 
+#include <onnx/defs/attr_proto_util.h>
 #include "core/common/safeint.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
@@ -112,12 +109,14 @@ Status UpStreamGraphTransformerBase<T1, T2>::ApplyImpl(Graph& graph, bool& modif
     }
   }
 
-  LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase");
+  LOG_DEBUG_INFO(logger, "Exit UpStreamGraphTransformerBase, reordered " + std::to_string(reordered_node_count) +
+                             " nodes");
   return Status::OK();
 }
 
 template <typename T1, typename T2>
-bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>& queue, Node& current_node, T1& info,
+bool UpStreamGraphTransformerBase<T1, T2>::Upstream(Graph& graph, std::deque<T1>& queue,
+                                                    Node& current_node, T1& info,
                                                     const logging::Logger& logger,
                                                     std::string& entry_node_name) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());

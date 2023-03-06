@@ -9,12 +9,12 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/utils.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/compute_optimizer/shared_utils.h"
+
 #include <initializer_list>
 #include <memory>
 #include <string>
 #include <vector>
-#include "core/graph/graph_utils.h"
-#include "core/optimizer/compute_optimizer/shared_utils.h"
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
@@ -27,7 +27,7 @@ namespace onnxruntime::optimizer::compute_optimizer {
  * Currently, the major optimization is to bring some slice operators ahead as much as possible, to leave more ops
  * operate on sliced input data. Gather and GatherND are the entry operators that trigger the optimization search.
  *
- * T1 defines the operator info type that is used to store the information of the operator.
+ * T1 defines the operator info type that is used to store the information of the operator to propagate.
  * T2 defines the base operator actor type that is used to support the pass through.
  */
 template <typename T1, typename T2>
