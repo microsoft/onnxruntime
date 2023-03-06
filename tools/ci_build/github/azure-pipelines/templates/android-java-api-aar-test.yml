@@ -24,7 +24,7 @@ jobs:
   variables:
   - name: runCodesignValidationInjection
     value: false
-  timeoutInMinutes: 60
+  timeoutInMinutes: 180
   dependsOn:
     - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   steps:
@@ -64,7 +64,7 @@ jobs:
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
 
       set +e
-      NUM_ITERATIONS=20
+      NUM_ITERATIONS=50
       NUM_FAILURES=0
       for (( i = 0 ; i < $NUM_ITERATIONS ; i++ ))
       do
