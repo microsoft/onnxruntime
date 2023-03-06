@@ -6,15 +6,16 @@ BUILD_DIR=build_rocm
 
 ROCM_HOME=/opt/rocm
 RocmVersion='5.4.0'
+#CONFIG='Debug'
+CONFIG='RelWithDebInfo'
 
 python tools/ci_build/build.py \
-  --config RelWithDebInfo \
+  --config ${CONFIG} \
   --enable_training \
   --enable_rocm_profiling \
   --mpi_home /opt/ompi \
   --cmake_extra_defines \
       CMAKE_HIP_COMPILER=${ROCM_HOME}/llvm/bin/clang++ \
-      onnxruntime_BUILD_KERNEL_EXPLORER=ON \
   --use_rocm \
   --enable_nccl \
   --use_mpi \
@@ -29,3 +30,4 @@ python tools/ci_build/build.py \
   --skip_tests \
   --skip_submodule_sync
   #--enable_training_torch_interop \
+      #onnxruntime_BUILD_KERNEL_EXPLORER=ON \
