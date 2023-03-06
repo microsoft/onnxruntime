@@ -66,6 +66,8 @@ Status FlashAttention<T>::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, output_shape);
   ORT_UNUSED_PARAMETER(output);
 
+  LOGS_DEFAULT(WARNING) << "need implementation of FlashAttention";
+
   return Status::OK();
 }
 
