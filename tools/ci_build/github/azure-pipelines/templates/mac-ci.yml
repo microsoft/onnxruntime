@@ -32,7 +32,7 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   timeoutInMinutes:  300
   steps:
     - checkout: self
