@@ -13,6 +13,7 @@ jobs:
     clean: all
   variables:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    IMAGE_CACHE_DIR: $(Agent.TempDirectory)/docker
     # cache docker image
     repository: 'onnxruntimecpubuildaten'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
@@ -36,13 +37,13 @@ jobs:
     displayName: Cache Docker Image Task
     inputs:
       key: '$(TODAY) | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(Pipeline.Workspace)/docker
+      path: $(IMAGE_CACHE_DIR)
       restoreKeys: |
         $(TODAY) | "$(Build.SourceBranch)"
       cacheHitVar: CACHE_RESTORED
 
   - script: |
-      test -f $(Pipeline.Workspace)/docker/cache.tar && docker load -i $(Pipeline.Workspace)/docker/cache.tar
+      test -f $(IMAGE_CACHE_DIR)/cache.tar && docker load -i $(IMAGE_CACHE_DIR)/cache.tar
       docker image ls
     displayName: Docker restore
 
@@ -56,15 +57,15 @@ jobs:
 
   - script: |
       set -ex
-      mkdir -p $(Pipeline.Workspace)/docker
-      docker save -o $(Pipeline.Workspace)/docker/cache.tar ${{variables.repository}}
+      mkdir -p $(IMAGE_CACHE_DIR)
+      docker save -o $(IMAGE_CACHE_DIR)/cache.tar ${{variables.repository}}
       docker image ls
       docker system df
     displayName: Docker save
 
   - script: |
-      echo $(Pipeline.Workspace)/docker
-      ls -lah $(Pipeline.Workspace)/docker
+      echo $(IMAGE_CACHE_DIR)
+      ls -lah $(IMAGE_CACHE_DIR)
     displayName: Display docker dir
 
   - task: Cache@2
