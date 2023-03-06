@@ -16,11 +16,37 @@ template <typename T, int ThreadsPerBlock, int VecSize>
 class FastGelu : public IKernelExplorer {
  public:
   FastGelu(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
-      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {}
 
+  bool IsSupported() {
+    Status status = op_.IsSupported(&params_);
+    return status.IsOK();
+  }
+
   void Run() override {
-    ORT_THROW_IF_ERROR((contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize>(&params_)));
+    ORT_THROW_IF_ERROR(op_(&params_));
+  }
+
+ private:
+  using ParamsT = contrib::rocm::FastGeluParams<T>;
+  ParamsT params_{};
+  contrib::rocm::FastGeluOp<T, ThreadsPerBlock, VecSize> op_{};
+};
+
+template <typename T>
+class FastGeluStaticSelection : public IKernelExplorer {
+ public:
+  FastGeluStaticSelection(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+                static_cast<T*>(output.ptr()), input_length, bias_length) {}
+
+  bool IsSupported() {
+    return true;
+  }
+
+  void Run() override {
+    ORT_THROW_IF_ERROR((contrib::rocm::FastGeluStaticSelection<T>(&params_)));
   }
 
  private:
@@ -32,13 +58,17 @@ template <typename T>
 class FastGeluTunable : public IKernelExplorer {
  public:
   FastGeluTunable(DeviceArray& input, DeviceArray& bias, DeviceArray& output, int input_length, int bias_length)
-      : params_(this->Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
+      : params_(TuningContext(), Stream(), static_cast<T*>(input.ptr()), static_cast<T*>(bias.ptr()),
                 static_cast<T*>(output.ptr()), input_length, bias_length) {
-    op_.EnableTuning();
+    params_.TuningContext()->EnableTunableOp();
   }
 
   void Run() override {
     ORT_THROW_IF_ERROR(op_(&params_));
+  }
+
+  bool IsSupported() {
+    return true;
   }
 
  private:
@@ -47,18 +77,19 @@ class FastGeluTunable : public IKernelExplorer {
   contrib::rocm::FastGeluTunableOp<T> op_{};
 };
 
-#define REGISTER_OP(name, type, threads_per_block, vec_size)                                              \
-  py::class_<name<type, threads_per_block, vec_size>>(m, #name"_"#type"_"#threads_per_block"_"#vec_size)  \
-    .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>())                                  \
-    .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                              \
-    .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                    \
-    .def("Run", &name<type, threads_per_block, vec_size>::Run);
+#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
+  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>())                                     \
+      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
+      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
+      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
+      .def("IsSupported", &name<type, threads_per_block, vec_size>::IsSupported);
 
-#define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block)  \
-  REGISTER_OP(name, type, threads_per_block, 1)                      \
-  REGISTER_OP(name, type, threads_per_block, 2)                      \
-  REGISTER_OP(name, type, threads_per_block, 4)                      \
-  REGISTER_OP(name, type, threads_per_block, 8)                      \
+#define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block) \
+  REGISTER_OP(name, type, threads_per_block, 1)                     \
+  REGISTER_OP(name, type, threads_per_block, 2)                     \
+  REGISTER_OP(name, type, threads_per_block, 4)                     \
+  REGISTER_OP(name, type, threads_per_block, 8)                     \
   REGISTER_OP(name, type, threads_per_block, 16)
 
 #define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type) \
@@ -71,21 +102,26 @@ class FastGeluTunable : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)           \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
 
-#define REGISTER_TUNABLE_OP(type)                                          \
-  py::class_<FastGeluTunable<type>>(m, "FastGelu_" #type "_Tunable")       \
+#define REGISTER_OP_TYPED(name, type)                                      \
+  py::class_<name<type>>(m, #name "_" #type)                               \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>()) \
-      .def("SetRepeats", &FastGeluTunable<type>::SetRepeats)               \
-      .def("Profile", &FastGeluTunable<type>::Profile)                     \
-      .def("Run", &FastGeluTunable<type>::Run);
+      .def("SetRepeats", &name<type>::SetRepeats)                          \
+      .def("Profile", &name<type>::Profile)                                \
+      .def("Run", &name<type>::Run)                                        \
+      .def("IsSupported", &name<type>::IsSupported);
 
 void InitFastGelu(py::module m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);
 
-  REGISTER_TUNABLE_OP(half);
-  REGISTER_TUNABLE_OP(float);
-  REGISTER_TUNABLE_OP(double);
+  REGISTER_OP_TYPED(FastGeluTunable, half);
+  REGISTER_OP_TYPED(FastGeluTunable, float);
+  REGISTER_OP_TYPED(FastGeluTunable, double);
+
+  REGISTER_OP_TYPED(FastGeluStaticSelection, half);
+  REGISTER_OP_TYPED(FastGeluStaticSelection, float);
+  REGISTER_OP_TYPED(FastGeluStaticSelection, double);
 }
 
 }  // namespace onnxruntime

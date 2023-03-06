@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <stddef.h> // needed for size_t on some platforms
+
 namespace onnxruntime {
 
 constexpr const char* kNoOp = "NoOp";
@@ -23,6 +25,10 @@ constexpr const char* kNGraphDomain = "com.intel.ai";
 constexpr const char* kMIGraphXDomain = "";
 constexpr const char* kVitisAIDomain = "com.xilinx";
 
+// This is moved from the OrtApis::GetAvailableProviders implementation
+// where it is enforced
+constexpr size_t kMaxExecutionProviderNameLen = 30;
+
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kCudaExecutionProvider = "CUDAExecutionProvider";
 constexpr const char* kDnnlExecutionProvider = "DnnlExecutionProvider";
@@ -30,6 +36,7 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kVitisAIExecutionProvider = "VitisAIExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kNnapiExecutionProvider = "NnapiExecutionProvider";
+constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kRknpuExecutionProvider = "RknpuExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
@@ -41,6 +48,7 @@ constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
 constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
 constexpr const char* kXnnpackExecutionProvider = "XnnpackExecutionProvider";
 constexpr const char* kCannExecutionProvider = "CANNExecutionProvider";
+constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
 constexpr const char* kExecutionProviderSharedLibraryPath = "shared_lib_path";
 constexpr const char* kExecutionProviderSharedLibraryEntry = "provider_factory_entry_point";

@@ -7,7 +7,7 @@ ONNX Runtime is a performance-focused scoring engine for Open Neural Network Exc
 For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://aka.ms/onnxruntime/>`_
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
-__version__ = "1.14.0"
+__version__ = "1.15.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -40,6 +40,7 @@ try:
         get_all_providers,
         get_available_providers,
         get_device,
+        get_version_string,
         set_default_logger_severity,
         set_default_logger_verbosity,
         set_seed,

@@ -139,6 +139,11 @@ class StaticQuantConfig(QuantConfig):
                         Default is 0.01. Constant smoothing factor to use when computing the moving average of the
                         minimum and maximum values. Effective only when the calibration method selected is MinMax and
                         when CalibMovingAverage is set to True.
+                    QuantizeBias = True/False :
+                        Default is True which quantizes floating-point biases and it solely inserts
+                        a DeQuantizeLinear node. If False, it remains floating-point bias and does not insert
+                        any quantization nodes associated with biases.
+                        This extra option is only effective when quant_format is QuantFormat.QDQ.
             execution_provider : A enum indicates the Execution Provider such as: CPU, TRT, NNAPI, SNE, etc.
         Raises:
             ValueError: Raise ValueError if execution provider is unknown

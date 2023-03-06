@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from onnxruntime.training.torchdynamo.register_backend import aot_ort
+from onnxruntime.training.torchdynamo.register_backend import ort, aot_ort
 
 
 class TestTorchDynamoOrt(unittest.TestCase):
@@ -18,10 +18,11 @@ class TestTorchDynamoOrt(unittest.TestCase):
         torch.manual_seed(42)
 
     def test_elementwise_model(self):
+        torch._dynamo.reset()
         """Test DORT with a pure function."""
 
         def run_elementwise_model():
-            # A function to test.
+            # A function to test DORT.
             def elementwise_model(tensor_x: torch.Tensor):
                 tensor_w = tensor_x.relu()
                 tensor_y = tensor_w * tensor_w + 1.5
@@ -54,7 +55,37 @@ class TestTorchDynamoOrt(unittest.TestCase):
         for _ in range(5):
             run_elementwise_model()
 
+    def test_elementwise_model_for_inference(self):
+        torch._dynamo.reset()
+
+        # A function to test DORT for inference (i.e., the compiled function
+        # doesn't have backward pass).
+        def elementwise_model(tensor_x: torch.Tensor):
+            tensor_w = tensor_x.relu()
+            tensor_y = tensor_w * tensor_w + 1.5
+            tensor_z = tensor_y + tensor_x
+            tensor_p = tensor_z * tensor_x
+            tensor_q = tensor_p.relu()
+            return tensor_q
+
+        @torch._dynamo.optimize(ort)
+        def optimized_elementwise_model(tensor_x: torch.Tensor):
+            return elementwise_model(tensor_x)
+
+        def run(fun, list_x):
+            tensor_x = torch.tensor(list_x, dtype=torch.float32).requires_grad_()
+            tensor_y = fun(tensor_x)
+            return tensor_y
+
+        # Baseline.
+        tensor_y = run(elementwise_model, [-1.0, 2.0])
+        # ORT result.
+        tensor_y_new = run(optimized_elementwise_model, [-1.0, 2.0])
+
+        torch.testing.assert_close(tensor_y, tensor_y_new)
+
     def test_to_copy(self):
+        torch._dynamo.reset()
         """Test DORT with aten::_to_copy."""
 
         def run_to_copy():
@@ -88,6 +119,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
         run_to_copy()
 
     def test_mnist_model(self):
+        torch._dynamo.reset()
         """Test DORT with a simple nn.Module."""
 
         def run_mnist_model():

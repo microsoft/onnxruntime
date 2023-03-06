@@ -6,6 +6,7 @@
 #include "core/providers/cann/cann_call.h"
 #include "core/providers/cann/npu_data_transfer.h"
 #include "core/providers/cann/cann_fence.h"
+#include <iostream>
 
 namespace onnxruntime {
 
@@ -22,7 +23,6 @@ CANNFence::~CANNFence() {
 void CANNFence::BeforeUsingAsInput(onnxruntime::ProviderType provider_type, int async_queue_id) {
   if (provider_type == onnxruntime::kCannExecutionProvider) {
     CANN_CALL_THROW(aclrtStreamWaitEvent(data_transfer_->GetStream(async_queue_id), write_event_));
-    CANN_CALL_THROW(aclrtResetEvent(write_event_, data_transfer_->GetStream(async_queue_id)));
   } else {
     CANN_CALL_THROW(aclrtSynchronizeEvent(write_event_));
   }
@@ -32,9 +32,7 @@ void CANNFence::BeforeUsingAsOutput(onnxruntime::ProviderType provider_type, int
   if (provider_type == onnxruntime::kCannExecutionProvider) {
     aclrtStream stream = data_transfer_->GetStream(queue_id);
     CANN_CALL_THROW(aclrtStreamWaitEvent(stream, read_event_));
-    CANN_CALL_THROW(aclrtResetEvent(read_event_, stream));
     CANN_CALL_THROW(aclrtStreamWaitEvent(stream, write_event_));
-    CANN_CALL_THROW(aclrtResetEvent(write_event_, stream));
   } else {
     CANN_CALL_THROW(aclrtSynchronizeEvent(read_event_));
     CANN_CALL_THROW(aclrtSynchronizeEvent(write_event_));

@@ -7,9 +7,10 @@
 # Example to evaluate raw and optimized model for CUDA in Linux:
 #   pip3 install datasets evaluate optimum transformers onnxruntime-gpu
 #   python3 eval_squad.py -m distilbert-base-cased-distilled-squad
-#   python3 -m onnxruntime.transformers.optimizer --output optimized.onnx --num_heads 12 --hidden_size 768 \
-#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx
-#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --onnx optimized.onnx
+#   python3 -m onnxruntime.transformers.optimizer --output optimized_fp16.onnx --num_heads 12 --hidden_size 768 \
+#           --input /home/$USER/.cache/huggingface/hub/distilbert-base-cased-distilled-squad/model.onnx \
+#           --use_mask_index --float16
+#   python3 eval_squad.py -m distilbert-base-cased-distilled-squad --onnx optimized_fp16.onnx
 
 import argparse
 import csv
@@ -65,7 +66,7 @@ def load_onnx_model(
 
         if provider != "CPUExecutionProvider":
             model.device = torch.device("cuda:0")
-            model.model = ORTModel.load_model(onnx_path, "CUDAExecutionProvider")
+            model.model = ORTModel.load_model(onnx_path, provider)
         else:
             model.device = torch.device("cpu")
             model.model = ORTModel.load_model(onnx_path)
@@ -284,8 +285,8 @@ def parse_arguments(argv=None):
     parser.add_argument(
         "--provider",
         required=False,
-        default="CUDAExcecutionProvider",
-        help="Select which Execution Provider to use for runs.",
+        default="CUDAExecutionProvider",
+        help="Select which Execution Provider to use for runs. Default is CUDAExecutionProvider.",
     )
 
     parser.add_argument("--use_io_binding", required=False, action="store_true", help="Use IO Binding for GPU.")

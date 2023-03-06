@@ -28,9 +28,11 @@ Status Einsum::Compute(OpKernelContext* context) const {
 
 Status Einsum::DeviceCompute(OpKernelContext* context, const std::vector<const Tensor*>& inputs,
                              AllocatorPtr allocator, concurrency::ThreadPool* tp) const {
-  rocblas_handle rocblas_handle = rocm_ep_->PerThreadRocblasHandle();
-
-  EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_);
+  auto* stream = context->GetComputeStream();
+  ORT_RETURN_IF(!stream, "stream is null");
+  auto* rocm_stream = static_cast<RocmStream*>(stream);
+  rocblas_handle rocblas_handle = rocm_stream ? rocm_stream->rocblas_handle_ : nullptr;
+  EinsumOp::EinsumRocmAssets einsum_rocm_assets(rocblas_handle, rocm_ep_, stream);
 
   // EinsumComputePreprocessor section -
   auto einsum_compute_preprocessor = EinsumComputePreprocessor::Create(*einsum_equation_preprocessor_, inputs, allocator,

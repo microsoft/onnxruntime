@@ -13,15 +13,21 @@ jobs:
     clean: all
   variables:
     skipComponentGovernanceDetection: true
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: Linux-CPU-2019
   steps:
+  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+    displayName: 'Clean Agent Directories'
+    condition: always()
+
   - checkout: self
     clean: true
-    submodules: recursive
+    submodules: none
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '12.16.3'
+      versionSpec: '16.x'
 
   - task: UsePythonVersion@0
     inputs:
@@ -35,6 +41,21 @@ jobs:
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
+  - task: Cache@2
+    inputs:
+      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      path: $(CCACHE_DIR)
+      cacheHitVar: CACHE_RESTORED
+      restoreKeys: |
+        "$(TODAY)" | "$(Build.SourceBranch)"
+        "$(TODAY)" |
+    displayName: Cach Task
+
+  - script: |
+      sudo mkdir -p $(Pipeline.Workspace)/ccache
+    condition: ne(variables.CACHE_RESTORED, 'true')
+    displayName: Create Cache Dir
+
   - task: CmdLine@2
     displayName: 'build'
     inputs:
@@ -45,10 +66,15 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+          --volume $(Pipeline.Workspace)/ccache:/cache \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
+          -e CCACHE_DIR=/cache \
           onnxruntimecpubuild \
+          /bin/bash -c "
+            set -ex; \
+            ccache -s; \
             /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build --cmake_generator Ninja \
               --config Debug Release \
@@ -58,7 +84,9 @@ jobs:
               --build_wheel \
               --enable_onnx_tests \
               --enable_transformers_tool_test \
-              --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON
+              --use_cache \
+              --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
+            ccache -s"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -144,7 +172,3 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
-
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

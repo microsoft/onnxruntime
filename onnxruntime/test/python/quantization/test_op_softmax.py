@@ -10,10 +10,11 @@ Softmax quantization test case
 # --------------------------------------------------------------------------
 
 import unittest
+from pathlib import Path
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
+from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
@@ -148,13 +149,33 @@ class TestOpSoftmax(unittest.TestCase):
             weight_type=weight_type,
             extra_options=extra_options,
         )
-        qdqnode_counts = {
-            "Conv": 1,
-            "QuantizeLinear": 3,
-            "DequantizeLinear": 4,
-            "Softmax": 1,
-        }
-        check_op_type_count(self, model_q8_qdq_path, **qdqnode_counts)
+
+        result_model = onnx.load(Path(model_q8_qdq_path))
+        qnode_cnt = 0
+        dqnode_cnt = 0
+        softmax_cnt = 0
+        qnode_zeropoints = []
+        for node in result_model.graph.node:
+            if node.op_type == "QuantizeLinear":
+                qnode_cnt += 1
+                qnode_zeropoints.append(node.input[2])
+            elif node.op_type == "DequantizeLinear":
+                dqnode_cnt += 1
+            elif node.op_type == "Softmax":
+                softmax_cnt += 1
+        self.assertEqual(3, qnode_cnt, "Expected 3 QuantizeLinear nodes, found {}".format(qnode_cnt))
+        self.assertEqual(4, dqnode_cnt, "Expected 4 DequantizeLinear nodes, found {}".format(dqnode_cnt))
+        self.assertEqual(1, softmax_cnt, "Expected 1 Softmax node, found {}".format(softmax_cnt))
+        if extra_options.get("ActivationSymmetric", False):
+            for tensor in result_model.graph.initializer:
+                if tensor.name in qnode_zeropoints:
+                    np_value = numpy_helper.to_array(tensor)
+                    self.assertEqual(
+                        0,
+                        np_value,
+                        "QuantizeLinear node zero point value must be 0, found {} instead!".format(np_value),
+                    )
+
         qnode_io_qtypes = {
             "QuantizeLinear": [
                 ["i", 2, activation_proto_qtype],
@@ -169,6 +190,10 @@ class TestOpSoftmax(unittest.TestCase):
         self.quantize_softmax_test(QuantType.QUInt8, QuantType.QUInt8)
 
     def test_quantize_softmax_s8s8(self):
+        self.quantize_softmax_test(
+            QuantType.QInt8,
+            QuantType.QInt8,
+        )
         self.quantize_softmax_test(
             QuantType.QInt8,
             QuantType.QInt8,

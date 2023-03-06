@@ -55,6 +55,38 @@ Status ComputeQLinearGlobalAvgPool(
   return Status::OK();
 }
 
+// GCC's unexplained behavior:
+// GCC wouldn't generate corresponding symbols versus function instances below when "--disable-exceptions"
+// and "--minimal-build" are combined on linux build.
+// But this two symbols are required by qlinear_pool.cc.
+// The other compilers wouldn't hit it and works fine, and we also didn't see it in the other platforms, such as Android.
+// So we are doing explicit instantiation here for every compilers/platforms happy.
+template Status ComputeQLinearGlobalAvgPool<int8_t>(
+    const int8_t* x,
+    float x_scale,
+    int8_t x_zero_point,
+    int8_t* y,
+    float y_scale,
+    int8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
+template Status ComputeQLinearGlobalAvgPool<uint8_t>(
+    const uint8_t* x,
+    float x_scale,
+    uint8_t x_zero_point,
+    uint8_t* y,
+    float y_scale,
+    uint8_t y_zero_point,
+    int64_t N,
+    int64_t C,
+    int64_t image_size,
+    bool channels_last,
+    concurrency::ThreadPool* tp);
+
 Status QLinearGlobalAveragePool::Compute(OpKernelContext* context) const {
   const auto tensor_x_scale = context->Input<Tensor>(1);
   const auto tensor_x_zero_point = context->Input<Tensor>(2);

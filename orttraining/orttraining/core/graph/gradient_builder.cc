@@ -1233,8 +1233,19 @@ IMPLEMENT_GRADIENT_BUILDER(GetSoftmaxCrossEntropyLossInternalGradient) {
   for (size_t i = 1; i < input_size; i++) {
     input_arg_def.emplace_back(I(i));
   }
+
+  auto src_attrs = SrcNodeAttributes();
+  std::vector<AttributeProto> attrs;
+  for (auto& attr : src_attrs) {
+    if (attr.first == "output_type") {
+      attrs.push_back(MakeAttribute("output_type", static_cast<int64_t>(IElemType(0))));
+      continue;
+    }
+    attrs.push_back(attr.second);
+  }
+
   return std::vector<NodeDef>{
-      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, SrcNodeAttributes())};
+      NodeDef(OpDef{"SoftmaxCrossEntropyLossInternalGrad", kMSDomain, 1}, input_arg_def, {GI(0)}, attrs)};
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetGlobalAveragePoolGradient) {
@@ -1684,7 +1695,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     OpDef op_def(node_def.op_type, node_def.domain);
     std::vector<ArgDef> input_args;
     for (const auto& input : node_def.inputs) {
-      if (input.find("GO(") == 0) {
+      if (input == "") {
+        input_args.emplace_back(ArgDef());
+      } else if (input.find("GO(") == 0) {
         int index = std::stoi(input.substr(3, input.length() - 4));
         input_args.emplace_back(GO(static_cast<size_t>(index)));
       } else if (input.find("I(") == 0) {
@@ -1876,6 +1889,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetScatterElementsGradient) {
                                 {MakeAttribute("axis", axis)}));
   }
   return result;
+}
+
+IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
+  return {NodeDef(OpDef{"FakeQuantGrad", kMSDomain, 1}, {GO(0), O(1)}, {GI(0)})};
 }
 
 }  // namespace training

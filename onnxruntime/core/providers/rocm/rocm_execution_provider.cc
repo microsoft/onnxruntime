@@ -6,16 +6,16 @@
 #include "core/providers/rocm/rocm_execution_provider.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/rocm_allocator.h"
-#include "core/providers/rocm/rocm_fence.h"
 #include "core/providers/rocm/rocm_fwd.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #include "core/providers/rocm/rocm_profiler.h"
+#include "core/providers/rocm/rocm_stream_handle.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/rocm/rocm_contrib_kernels.h"
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
 #include "orttraining/training_ops/rocm/rocm_training_kernels.h"
 #endif
 
@@ -34,13 +34,14 @@ class Memcpy final : public OpKernel {
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       Tensor* Y = ctx->Output(0, X->Shape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output tensor.");
-      return Info().GetDataTransferManager().CopyTensor(*X, *Y, Info().GetKernelDef().ExecQueueId());
+      const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(X->Location().device, Y->Location().device);
+      return gpu_data_transfer->CopyTensorAsync(*X, *Y, *ctx->GetComputeStream());
     } else if (X_type->IsSparseTensorType()) {
       const auto* X = ctx->Input<SparseTensor>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor is nullptr.");
       SparseTensor* Y = ctx->OutputSparse(0, X->DenseShape());
       ORT_ENFORCE(Y != nullptr, "Memcpy: Failed to allocate output sparse tensor.");
-      return X->Copy(Info().GetDataTransferManager(), Info().GetKernelDef().ExecQueueId(), *Y);
+      return X->Copy(Info().GetDataTransferManager(), *Y);
     } else if (X_type->IsTensorSequenceType()) {
       const TensorSeq* X = ctx->Input<TensorSeq>(0);
       ORT_ENFORCE(X != nullptr, "Memcpy: Input tensor sequence is nullptr.");
@@ -55,10 +56,12 @@ class Memcpy final : public OpKernel {
                       "Memcpy rocm: unable to get an allocator.");
       }
       auto X_size = X->Size();
+      Y->Reserve(X_size);
       for (size_t i = 0; i < X_size; ++i) {
         const Tensor& source_tensor = X->Get(i);
         std::unique_ptr<Tensor> target_tensor = Tensor::Create(source_tensor.DataType(), source_tensor.Shape(), alloc);
-        Status retval = Info().GetDataTransferManager().CopyTensor(source_tensor, *target_tensor, Info().GetKernelDef().ExecQueueId());
+        const IDataTransfer* gpu_data_transfer = Info().GetDataTransferManager().GetDataTransfer(source_tensor.Location().device, target_tensor->Location().device);
+        Status retval = gpu_data_transfer->CopyTensorAsync(source_tensor, *target_tensor, *ctx->GetComputeStream());
         if (!retval.IsOK()) {
           return retval;
         }
@@ -78,7 +81,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)
-        .ExecQueueId(kHipStreamCopyIn)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -89,7 +91,6 @@ ONNX_OPERATOR_KERNEL_EX(
     kRocmExecutionProvider,
     (*KernelDefBuilder::Create())
         .OutputMemoryType(OrtMemTypeCPUOutput, 0)
-        .ExecQueueId(kHipStreamCopyOut)
         .TypeConstraint("T", DataTypeImpl::AllFixedSizeTensorAndSequenceTensorTypes()),
     Memcpy);
 
@@ -115,27 +116,27 @@ AllocatorPtr ROCMExecutionProvider::CreateRocmAllocator(OrtDevice::DeviceId devi
         device_id,
         true,
         {default_memory_arena_cfg ? *default_memory_arena_cfg
-                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)});
+                                  : OrtArenaCfg(gpu_mem_limit, static_cast<int>(arena_extend_strategy), -1, -1, -1)},
+        // make it stream aware
+        true,
+        // enable cross stream sharing?
+        false);
 
     // ROCM malloc/free is expensive so always use an arena
     return CreateAllocator(default_memory_info);
   }
 }
 
-ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t gpu_mem_limit,
-                                                          ArenaExtendStrategy arena_extend_strategy, ROCMExecutionProviderExternalAllocatorInfo external_allocator_info,
-                                                          OrtArenaCfg* default_memory_arena_cfg) {
+ROCMExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, hipStream_t stream, size_t /*gpu_mem_limit*/,
+                                                          ArenaExtendStrategy /*arena_extend_strategy*/, ROCMExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
+                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
   HIP_CALL_THROW(hipSetDevice(device_id));
-  stream_ = stream;
 
   ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
   ROCBLAS_CALL_THROW(rocblas_set_stream(rocblas_handle_, stream));
 
   MIOPEN_CALL_THROW(miopenCreate(&miopen_handle_));
   MIOPEN_CALL_THROW(miopenSetStream(miopen_handle_, stream));
-
-  // ROCM malloc/free is expensive so always use an arena
-  allocator_ = CreateRocmAllocator(device_id, gpu_mem_limit, arena_extend_strategy, external_allocator_info, default_memory_arena_cfg);
 }
 
 ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
@@ -166,7 +167,8 @@ void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
 
 ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kRocmExecutionProvider},
-      info_{info} {
+      info_{info},
+      tuning_context_(this, &info_.tunable_op) {
   HIP_CALL_THROW(hipSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise hipGetDeviceProperties might fail
@@ -178,12 +180,14 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 
   if (info.has_user_compute_stream) {
     external_stream_ = true;
+    use_ep_level_unified_stream_ = true;
     stream_ = static_cast<hipStream_t>(info.user_compute_stream);
   } else {
     if (info.external_allocator_info.UseExternalAllocator()) {
+      use_ep_level_unified_stream_ = true;
       stream_ = nullptr;
     } else {
-      HIP_CALL_THROW(hipStreamCreateWithFlags(&stream_, hipStreamNonBlocking));
+      stream_ = nullptr;
     }
   }
 
@@ -195,10 +199,6 @@ ROCMExecutionProvider::ROCMExecutionProvider(const ROCMExecutionProviderInfo& in
 }
 
 ROCMExecutionProvider::~ROCMExecutionProvider() {
-  // Prevent memory leak when people don't call
-  // OnRunStart and OnRunEnd when calling HipKernel's.
-  ORT_IGNORE_RETURN_VALUE(EnqueueDeferredRelease());
-
   // clean up thread local context caches
   {
     std::lock_guard<OrtMutex> lock(context_state_.mutex);
@@ -214,18 +214,8 @@ ROCMExecutionProvider::~ROCMExecutionProvider() {
   }
 }
 
-void ROCMExecutionProvider::EnableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Enable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = true;
-}
-
-void ROCMExecutionProvider::DisableTunableOp() {
-  LOGS_DEFAULT(INFO) << "Disable TunableOp for ROCm Execution Provider";
-  info_.tunable_op.enabled = false;
-}
-
-bool ROCMExecutionProvider::IsTunableOpEnabled() const {
-  return info_.tunable_op.enabled;
+ITuningContext* ROCMExecutionProvider::GetTuningContext() const {
+  return const_cast<rocm::tunable::RocmTuningContext*>(&tuning_context_);
 }
 
 std::unique_ptr<profiling::EpProfiler> ROCMExecutionProvider::GetProfiler() {
@@ -250,7 +240,7 @@ ROCMExecutionProvider::PerThreadContext& ROCMExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, static_cast<hipStream_t>(GetComputeStream()), info_.gpu_mem_limit,
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
                                                    info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
     } else {
       context = context_state_.retired_context_pool.back();
@@ -287,121 +277,19 @@ void ROCMExecutionProvider::ReleasePerThreadContext() const {
   per_thread_context_cache->erase(cached_context_it);
 }
 
-AllocatorPtr ROCMExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
-  // Pinned memory allocator is shared between threads, but ROCM memory allocator is per-thread or it may cause result changes
-  // A hypothesis is that arena allocator is not aligned with ROCM output cache, and data from different kernel writes may
-  // cause cacheline to contain dirty data.
+AllocatorPtr ROCMExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
-    return GetPerThreadContext().GetAllocator();
-  } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    auto rocm_alloc = IExecutionProvider::GetAllocator(mem_type);
+    if (!rocm_alloc) {
+      return CreateRocmAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+                                 info_.external_allocator_info, info_.default_memory_arena_cfg);
+    }
   }
+  return IExecutionProvider::GetAllocator(mem_type);
 }
 
 Status ROCMExecutionProvider::Sync() const {
   HIP_RETURN_IF_ERROR(hipDeviceSynchronize());
-  return Status::OK();
-}
-
-void ROCMExecutionProvider::AddDeferredReleaseCPUPtr(void* p) {
-  // when not running in InferenceSession (e.g. Test)
-  // it's OK to not remember the deferred release ptr
-  // as the actual memory will be cleaned in arena allocator dtor
-
-  // This function should only record pointers returned by
-  // AllocateBufferOnCPUPinned.
-
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  hipStream_t stream = static_cast<hipStream_t>(GetComputeStream());
-  auto it = deferred_release_buffer_pool_.find(stream);
-  if (it != deferred_release_buffer_pool_.end()) {
-    it->second.push_back(p);
-  } else {
-    deferred_release_buffer_pool_[stream] = {p};
-  }
-}
-
-struct CpuBuffersInfo {
-  // This struct stores the information needed
-  // to release CPU buffers allocated for GPU kernels.
-  // It's used to enqueue their release after
-  // associated GPU kernels in a GPU stream.
-
-  // This is a CPU allocator in GPU EP.
-  // It must be the one used to allocate the
-  // following pointers.
-  AllocatorPtr allocator;
-  // buffers[i] is the i-th pointer added by
-  // AddDeferredReleaseCPUPtr for a specific
-  // GPU stream. For example, this fields
-  // should contain all values in
-  // deferred_release_buffer_pool_[my_stream]
-  // when release my_stream's buffers.
-  std::vector<void*> buffers;
-};
-
-void ReleaseCpuBufferCallback(hipStream_t /*stream*/, hipError_t /*status*/, void* raw_info) {
-  // The passed-in raw_info is a unmanaged pointer from
-  // std::unique_ptr<CpuBuffersInfo>.release().
-  // We rewrap raw_info as std::unique_ptr<CpuBuffersInfo> so that
-  // it will be cleaned up automatically at the end of this function.
-  std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-  cpu_buffers_info.reset(reinterpret_cast<CpuBuffersInfo*>(raw_info));
-  for (auto ptr : cpu_buffers_info->buffers) {
-    cpu_buffers_info->allocator->Free(ptr);
-  }
-}
-
-Status ROCMExecutionProvider::EnqueueDeferredRelease(bool actually_defer) {
-  // Release CPU buffers allocated for GPU kernels (type: RocmKernel).
-  // They have to be released outside GPU kernels because they must be alive
-  // during asynchronous GPU computation even after the CPU part (e.g,
-  // RocmKernel::ComputeInternal) already return.
-  std::lock_guard<OrtMutex> lock(deferred_release_mutex_);
-  for (auto it = deferred_release_buffer_pool_.begin(); it != deferred_release_buffer_pool_.end(); ++it) {
-    // it->first: a ROCM stream.
-    // it->second: CPU buffers associated with kernels running on it->first.
-    // This iteration enqueues a callback to release all buffers
-    // in it->second on it->first.
-
-    auto stream = it->first;
-    auto& buffers = it->second;
-    // Allocate a heap object to extend the lifetime of allocator and buffer pointers.
-    std::unique_ptr<CpuBuffersInfo> cpu_buffers_info = std::make_unique<CpuBuffersInfo>();
-    // This allocator must be the same to the allocator
-    // used in AllocateBufferOnCPUPinned.
-    cpu_buffers_info->allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
-    cpu_buffers_info->buffers = buffers;
-    // Release the ownership of cpu_buffers_info so that the underlying
-    // object will keep alive until the end of ReleaseCpuBufferCallback.
-    // TODO(wechi): CUDA deprecates cudaStreamAddCallback and
-    // uses another API, cudaLaunchHostFunc(which can be
-    // captured in CUDA graph). Once AMD adds similar feature,
-    // we should replace the following line with
-    //  hipLaunchHostFunc(stream, ReleaseCpuBufferCallback, cpu_buffers_info);
-    if (cpu_buffers_info->allocator->Info().alloc_type == OrtArenaAllocator) {
-      if (actually_defer) {
-        // Release memory asynchronously to avoid blocking the compute stream.
-        HIP_RETURN_IF_ERROR(hipStreamAddCallback(stream, ReleaseCpuBufferCallback, cpu_buffers_info.release(), 0));
-      } else {
-        ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
-      }
-    } else {
-      // Per
-      // https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#implicit-synchronization
-      // cudaHostFree doesn't block stream, so a synchronitation is needed to make sure no kernels
-      // are using the host memory.
-      HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream));
-      // hipHostFree and all other GPU APIs cannot be called by hipStreamAddCallback per spec.
-      // So we just do synchrous release.
-      ReleaseCpuBufferCallback(nullptr, hipSuccess, cpu_buffers_info.release());
-    }
-  }
-  // All buffers are scheduled for release.
-  // Let's clear releated information so that
-  // those buffers won't be released twice in
-  // the next EnqueueDeferredRelease call.
-  deferred_release_buffer_pool_.clear();
   return Status::OK();
 }
 
@@ -412,14 +300,8 @@ Status ROCMExecutionProvider::OnRunStart() {
 }
 
 Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
-  // Enqueue deferred CPU memory release on related streams.
-  // This will release all deferred-release CPU buffers allocated
-  // before calling OnRunEnd.
-  if (!sync_stream) {
-    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease());
-  } else {
-    ORT_RETURN_IF_ERROR(EnqueueDeferredRelease(/* actually_defer = */ false));
-    HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(GetComputeStream())));
+  if (sync_stream) {
+    HIP_RETURN_IF_ERROR(hipStreamSynchronize(stream_));
   }
 
   // In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
@@ -430,18 +312,6 @@ Status ROCMExecutionProvider::OnRunEnd(bool sync_stream) {
     ReleasePerThreadContext();
   }
 
-  return Status::OK();
-}
-
-Status ROCMExecutionProvider::SetComputeStream(void* stream) {
-  if (stream != stream_) {
-    if (stream_) {
-      HIP_RETURN_IF_ERROR(hipStreamDestroy(stream_));
-    }
-
-    external_stream_ = true;
-    stream_ = static_cast<hipStream_t>(stream);
-  }
   return Status::OK();
 }
 
@@ -1115,7 +985,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, float, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, double, LogSoftmax);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Split);
+class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, 17, Split);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Squeeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Unsqueeze);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Concat);
@@ -1319,6 +1189,9 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain,
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization);
 // class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization);
+
+// Opset 18
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, Split);
 
 template <>
 KernelCreateInfo BuildKernelCreateInfo<void>() {
@@ -2038,7 +1911,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, float, LogSoftmax)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, double, LogSoftmax)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, MLFloat16, LogSoftmax)>,
-      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Split)>,
+      BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, 17, Split)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Squeeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Unsqueeze)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 13, Concat)>,
@@ -2247,6 +2120,9 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, double, LayerNormalization)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, BFloat16, LayerNormalization)>,
       // BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 17, MLFloat16, LayerNormalization)>,
+
+      // Opset 18
+      BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kRocmExecutionProvider, kOnnxDomain, 18, Split)>,
   };
 
   for (auto& function_table_entry : function_table) {
@@ -2260,7 +2136,7 @@ static Status RegisterRocmKernels(KernelRegistry& kernel_registry) {
   ORT_RETURN_IF_ERROR(::onnxruntime::contrib::rocm::RegisterRocmContribKernels(kernel_registry));
 #endif
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_TRAINING_OPS
   ORT_RETURN_IF_ERROR(::onnxruntime::rocm::RegisterRocmTrainingKernels(kernel_registry));
 #endif
 
@@ -2303,7 +2179,7 @@ static bool CastNeedFallbackToCPU(const onnxruntime::Node& node) {
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<onnxruntime::GPUDataTransfer>(static_cast<hipStream_t>(GetComputeStream()), info_.do_copy_in_default_stream);
+  return std::make_unique<onnxruntime::GPUDataTransfer>();
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -2374,7 +2250,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // setup ROCM allocator
   // NOTE: We call IExecutionProvider::GetAllocator as ROCMExecutionProvider::GetAllocator will return
   //       a per-thread allocator for OrtMemTypeDefault.
-  auto rocm_alloc = IExecutionProvider::GetAllocator(gpu_device.Id(), OrtMemTypeDefault);
+  auto rocm_alloc = IExecutionProvider::GetAllocator(OrtMemTypeDefault);
   if (!rocm_alloc) {
     // use shared allocator if available
     rocm_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, gpu_device);
@@ -2393,7 +2269,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   // OrtMemTypeCPUOutput -- allocated by hipHostMalloc, used to copy ROCM device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto rocm_pinned_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUOutput);
   if (!rocm_pinned_alloc) {
     rocm_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -2411,7 +2287,7 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 
   // OrtMemTypeCPUInput -- ROCM op place the input on CPU and will not be accessed by ROCM kernel, no sync issue
-  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto rocm_cpu_alloc = IExecutionProvider::GetAllocator(OrtMemTypeCPUInput);
   if (!rocm_cpu_alloc) {
     rocm_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2436,4 +2312,17 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
+void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+  // This allocator must be the same to the allocator
+  // used in AllocateBufferOnCPUPinned.
+  auto allocator = GetAllocator(OrtMemTypeCPU);
+  RegisterRocmStreamHandles(stream_handle_registry,
+                            OrtDevice::GPU,
+                            allocator,
+                            !IsGraphCaptureEnabled(),
+                            stream_,
+                            use_ep_level_unified_stream_,
+                            GetPerThreadContext().MiopenHandle(),
+                            GetPerThreadContext().RocblasHandle());
+}
 }  // namespace onnxruntime

@@ -68,9 +68,14 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
                                            const char* /*profile_file_prefix*/,
                                            const char* log_id,
                                            size_t log_severity_level,
-                                           size_t log_verbosity_level) {
+                                           size_t log_verbosity_level,
+                                           const char* optimized_model_filepath) {
   OrtSessionOptions* session_options = nullptr;
   RETURN_NULLPTR_IF_ERROR(CreateSessionOptions, &session_options);
+
+  if (optimized_model_filepath) {
+    RETURN_NULLPTR_IF_ERROR(SetOptimizedModelFilePath, session_options, optimized_model_filepath);
+  }
 
   // assume that a graph optimization level is checked and properly set at JavaScript
   RETURN_NULLPTR_IF_ERROR(SetSessionGraphOptimizationLevel,
@@ -84,9 +89,9 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   }
 
   if (enable_mem_pattern) {
-    RETURN_NULLPTR_IF_ERROR(EnableCpuMemArena, session_options);
+    RETURN_NULLPTR_IF_ERROR(EnableMemPattern, session_options);
   } else {
-    RETURN_NULLPTR_IF_ERROR(DisableCpuMemArena, session_options);
+    RETURN_NULLPTR_IF_ERROR(DisableMemPattern, session_options);
   }
 
   // assume that an execution mode is checked and properly set at JavaScript

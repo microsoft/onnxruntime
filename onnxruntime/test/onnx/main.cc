@@ -40,12 +40,19 @@ void usage() {
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', "
-      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'snpe' or 'coreml'. "
+      "'openvino', 'rocm', 'migraphx', 'acl', 'armnn', 'xnnpack', 'nnapi', 'qnn', 'snpe' or 'coreml'. "
       "Default: 'cpu'.\n"
       "\t-p: Pause after launch, can attach debugger and continue\n"
       "\t-x: Use parallel executor, default (without -x): sequential executor.\n"
       "\t-d [device_id]: Specifies the device id for multi-device (e.g. GPU). The value should > 0\n"
+      "\t-t: Specify custom relative tolerance values for output value comparison. default: 1e-5\n"
+      "\t-a: Specify custom absolute tolerance values for output value comparison. default: 1e-5\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
+      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
+      "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
@@ -60,9 +67,13 @@ void usage() {
       OrtGetApiBase()->GetVersionString());
 }
 
-static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino) {
+static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino, bool useCustom, double atol, double rtol) {
   TestTolerances::Map absolute_overrides;
   TestTolerances::Map relative_overrides;
+  if (useCustom)
+  {
+    return TestTolerances(atol, rtol, absolute_overrides, relative_overrides);
+  }
   std::ifstream overrides_ifstream(ConcatPathComponent<ORTCHAR_T>(
       ORT_TSTR("testdata"), ORT_TSTR("onnx_backend_test_series_overrides.jsonc")));
   if (!overrides_ifstream.good()) {
@@ -75,7 +86,12 @@ static TestTolerances LoadTestTolerances(bool enable_cuda, bool enable_openvino)
   }
   const auto overrides_json = nlohmann::json::parse(
       overrides_ifstream,
-      /*cb=*/nullptr, /*allow_exceptions=*/true, /*ignore_comments=*/true);
+      /*cb=*/nullptr, /*allow_exceptions=*/true
+      // Comment support is added in 3.9.0 with breaking change to default behavior.
+      #if NLOHMANN_JSON_VERSION_MAJOR * 1000 + NLOHMANN_JSON_VERSION_MINOR >= 3009
+      , /*ignore_comments=*/true
+      #endif
+    );
   overrides_json["atol_overrides"].get_to(absolute_overrides);
   overrides_json["rtol_overrides"].get_to(relative_overrides);
   return TestTolerances(
@@ -128,6 +144,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_openvino = false;
   bool enable_tensorrt = false;
   bool enable_mem_pattern = true;
+  bool enable_qnn = false;
   bool enable_nnapi = false;
   bool enable_coreml = false;
   bool enable_snpe = false;
@@ -137,6 +154,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_rocm = false;
   bool enable_migraphx = false;
   bool enable_xnnpack = false;
+  bool override_tolerance = false;
+  double atol = 1e-5;
+  double rtol = 1e-5;
   int device_id = 0;
   GraphOptimizationLevel graph_optimization_level = ORT_ENABLE_ALL;
   bool user_graph_optimization_level_set = false;
@@ -149,7 +169,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:xvo:d:i:pz"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:i:pz"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -197,6 +217,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             enable_openvino = true;
           } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
             enable_tensorrt = true;
+          } else if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+            enable_qnn = true;
           } else if (!CompareCString(optarg, ORT_TSTR("nnapi"))) {
             enable_nnapi = true;
           } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
@@ -219,6 +241,14 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 't':
+          override_tolerance = true;
+          rtol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
+          break;
+        case 'a':
+          override_tolerance = true;
+          atol = OrtStrtod<PATH_CHAR_TYPE>(optarg, nullptr);
           break;
         case 'x':
           execution_mode = ExecutionMode::ORT_PARALLEL;
@@ -377,9 +407,60 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_dnnl) {
 #ifdef USE_DNNL
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_Dnnl(sf, enable_cpu_mem_arena ? 1 : 0));
+      // Generate dnnl_options to optimize dnnl performance
+      OrtDnnlProviderOptions dnnl_options;
+      dnnl_options.use_arena = enable_cpu_mem_arena ? 1 : 0;
+      dnnl_options.threadpool_args = nullptr;
+#if defined(DNNL_ORT_THREAD)
+      dnnl_options.threadpool_args = static_cast<void*>(TestEnv::GetDefaultThreadPool(Env::Default()));
+#endif  // defined(DNNL_ORT_THREAD)
+      sf.AppendExecutionProvider_Dnnl(dnnl_options);
 #else
       fprintf(stderr, "DNNL is not supported in this build");
+      return -1;
+#endif
+    }
+    if (enable_qnn) {
+#ifdef USE_QNN
+#ifdef _MSC_VER
+      std::string option_string = ToUTF8String(ep_runtime_config_string);
+#else
+      std::string option_string = ep_runtime_config_string;
+#endif
+      std::istringstream ss(option_string);
+      std::string token;
+      std::unordered_map<std::string, std::string> qnn_options;
+
+      while (ss >> token) {
+        if (token == "") {
+          continue;
+        }
+        auto pos = token.find("|");
+        if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+          ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.");
+        }
+
+        std::string key(token.substr(0, pos));
+        std::string value(token.substr(pos + 1));
+
+        if (key == "backend_path") {
+          if (value.empty()) {
+            ORT_THROW("Please provide the QNN backend path.");
+          } else {
+            qnn_options[key] = value;
+          }
+        } else if (key == "profiling_level") {
+          qnn_options[key] = value;
+        } else if (key == "rpc_control_latency") {
+          qnn_options[key] = value;
+        } else {
+          ORT_THROW(R"(Wrong key type entered. Choose from options:
+['backend_path', 'profiling_level', 'rpc_control_latency'])");
+        }
+      }
+      sf.AppendExecutionProvider("QNN", qnn_options);
+#else
+      fprintf(stderr, "QNN is not supported in this build");
       return -1;
 #endif
     }
@@ -563,7 +644,45 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                      ORT_TSTR("test_resnet101v2"), ORT_TSTR("test_vgg19"), ORT_TSTR("tf_inception_resnet_v2"), ORT_TSTR("tf_inception_v1"), ORT_TSTR("tf_inception_v3"), ORT_TSTR("tf_inception_v4"), ORT_TSTR("tf_mobilenet_v1_1.0_224"),
                                                      ORT_TSTR("tf_mobilenet_v2_1.0_224"), ORT_TSTR("tf_mobilenet_v2_1.4_224"), ORT_TSTR("tf_nasnet_large"), ORT_TSTR("tf_pnasnet_large"), ORT_TSTR("tf_resnet_v1_50"), ORT_TSTR("tf_resnet_v1_101"), ORT_TSTR("tf_resnet_v1_101"),
                                                      ORT_TSTR("tf_resnet_v2_101"), ORT_TSTR("tf_resnet_v2_152"), ORT_TSTR("batchnorm_example_training_mode"), ORT_TSTR("batchnorm_epsilon_training_mode")};
-
+    static const ORTCHAR_T* qnn_disabled_tests[] = {
+        ORT_TSTR("basic_conv_without_padding"),
+        ORT_TSTR("basic_conv_with_padding"),
+        ORT_TSTR("convtranspose"),
+        ORT_TSTR("convtranspose_autopad_same"),
+        ORT_TSTR("convtranspose_dilations"),
+        ORT_TSTR("convtranspose_kernel_shape"),
+        ORT_TSTR("convtranspose_output_shape"),
+        ORT_TSTR("convtranspose_pad"),
+        ORT_TSTR("convtranspose_pads"),
+        ORT_TSTR("convtranspose_with_kernel"),
+        ORT_TSTR("conv_with_autopad_same"),
+        ORT_TSTR("conv_with_strides_and_asymmetric_padding"),
+        ORT_TSTR("conv_with_strides_no_padding"),
+        ORT_TSTR("conv_with_strides_padding"),
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("nllloss_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_none_no_weight_negative_ii_log_prob_expanded"),
+        ORT_TSTR("gather_negative_indices"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_with_weight_reduction_sum_ii"),
+        ORT_TSTR("nllloss_NCd1_weight_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1_ii_expanded"),
+        ORT_TSTR("nllloss_NCd1d2_no_weight_reduction_mean_ii_expanded"),
+        ORT_TSTR("sce_none_weights"),
+        ORT_TSTR("sce_none_weights_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_log_prob_expanded"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii"),
+        ORT_TSTR("sce_NCd1d2d3_sum_weight_high_ii_expanded"),
+        ORT_TSTR("sce_none_weights_log_prob_expanded"),
+        ORT_TSTR("sce_none_weights_expanded")};
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
     if (enable_cuda) {
       all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
@@ -576,6 +695,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       // This will be removed after LRU implementation
       all_disabled_tests.insert(std::begin(dnnl_disabled_tests), std::end(dnnl_disabled_tests));
     }
+    if (enable_qnn) {
+      all_disabled_tests.insert(std::begin(qnn_disabled_tests), std::end(qnn_disabled_tests));
+    }
 #if !defined(__amd64__) && !defined(_M_AMD64)
     // out of memory
     static const ORTCHAR_T* x86_disabled_tests[] = {ORT_TSTR("mlperf_ssd_resnet34_1200"), ORT_TSTR("mask_rcnn_keras"), ORT_TSTR("mask_rcnn"), ORT_TSTR("faster_rcnn"), ORT_TSTR("vgg19"), ORT_TSTR("coreml_VGG16_ImageNet")};
@@ -584,14 +706,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 
     std::vector<ITestCase*> tests;
     LoadTests(data_dirs, whitelisted_test_cases,
-              LoadTestTolerances(enable_cuda, enable_openvino),
+              LoadTestTolerances(enable_cuda, enable_openvino, override_tolerance, atol, rtol),
               all_disabled_tests,
               [&owned_tests, &tests](std::unique_ptr<ITestCase> l) {
                 tests.push_back(l.get());
                 owned_tests.push_back(std::move(l));
               });
 
-    TestEnv test_env(env, sf, TestEnv::GetDefaultThreadPool(Env::Default()), std::move(tests), stat);
+    auto tp = TestEnv::CreateThreadPool(Env::Default());
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());
@@ -679,6 +802,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_scatternd_add", "Opset 16 not supported yet."},
     {"test_scatternd_multiply", "Opset 16 not supported yet."},
     {"test_scatter_elements_with_duplicate_indices", "Opset 16 not supported yet."},
+    {"col2im_pads", "onnx 18 test data error."},
 
 #if defined(DISABLE_OPTIONAL_TYPE)
     {"test_optional_get_element", "Optional type not supported in this build flavor."},
@@ -689,6 +813,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     {"test_loop16_seq_none", "Optional type not supported in this build flavor."},
     {"test_identity_opt", "Optional type not supported in this build flavor."},
 #endif
+
 
   };
 
@@ -960,8 +1085,76 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_expanded", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob", "DML does not support 5D+ tensors"});
     broken_tests.insert({"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_none_no_weight_log_prob_expanded", "DML does not support 5D+ tensors"});
-  }
 
+    // TODO: Remove identity tests when fixed #42638109
+    broken_tests.insert({"identity_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_add_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_extract_shapes_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_1_tensor_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_1_sequence_expanded_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_cpu", "Optional type not yet supported for identity-16."});
+    broken_tests.insert({"sequence_map_identity_2_sequences_expanded_cpu", "Optional type not yet supported for identity-16."});
+  }
+  if (enable_qnn) {
+    broken_tests.insert({"gemm_default_no_bias", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear", "result differs"});
+    broken_tests.insert({"resize_downsample_scales_linear_antialias", "result differs"});
+    broken_tests.insert({"resize_downsample_sizes_linear_antialias", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_NCd1_mean_weight_negative_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean", "result differs"});
+    broken_tests.insert({"sce_mean_3d", "result differs"});
+    broken_tests.insert({"sce_mean_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_no_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight", "result differs"});
+    broken_tests.insert({"sce_mean_weight_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_3d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_4d_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_ii_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob", "result differs"});
+    broken_tests.insert({"sce_mean_weight_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_none", "result differs"});
+    broken_tests.insert({"sce_none_expanded", "result differs"});
+    broken_tests.insert({"sce_none_log_prob", "result differs"});
+    broken_tests.insert({"sce_none_log_prob_expanded", "result differs"});
+    broken_tests.insert({"sce_sum", "result differs"});
+    broken_tests.insert({"sce_sum_expanded", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob", "result differs"});
+    broken_tests.insert({"sce_sum_log_prob_expanded", "result differs"});
+  }
 #if defined(_WIN32) && !defined(_WIN64)
   broken_tests.insert({"vgg19", "failed: bad allocation"});
 #endif

@@ -26,7 +26,6 @@ class Gemm final : public CannKernel {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
-  Status Prepare(OpKernelContext* ctx, CannPreparation& prepare) const;
 
  private:
   bool trans_A_;

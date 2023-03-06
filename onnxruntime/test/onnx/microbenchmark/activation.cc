@@ -27,7 +27,7 @@ class Allocs : public IExecutionProvider {
 
  public:
   Allocs() : IExecutionProvider("fake"){};
-  virtual AllocatorPtr GetAllocator(int, OrtMemType) const {
+  virtual AllocatorPtr GetAllocator(OrtMemType) const {
     return alloc;
   }
 };
@@ -98,7 +98,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     abort();
   }
   AllocatorPtr GetAllocatorImpl(const OrtMemoryInfo& info) const {
-    return a_.GetAllocator(info.id, info.mem_type);
+    return a_.GetAllocator(info.mem_type);
   }
 
   Status CreateNodeOutputMLValueImpl(OrtValue& ort_value, int ort_value_index, const TensorShape* shape, size_t) {
@@ -118,7 +118,7 @@ class MyIExecutionFrame : public IExecutionFrame {
     if (!IAllocator::CalcMemSizeForArrayWithAlignment<0>(static_cast<size_t>(len), sizeof(T), &size)) {
       return Status(ONNXRUNTIME, FAIL, "size overflow");
     }
-    auto alloc = a_.GetAllocator(0, OrtMemTypeDefault);
+    auto alloc = a_.GetAllocator(OrtMemTypeDefault);
     std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<T>(), *shape, alloc);
 
     auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -161,7 +161,7 @@ static void RunSingleNode(const std::string& op_name, const std::string& domain,
   MyIExecutionFrame f(*k.a, feed_mlvalue_idxs, feeds, {}, fetch_mlvalue_idxs, fetches, *k.ort_value_idx_map,
                       node_index_info);
   for (auto _ : state) {
-    OpKernelContext c(&f, k.kernel.get(), tp.get(), *k.test_logger);
+    OpKernelContext c(&f, k.kernel.get(), /*stream*/ nullptr, tp.get(), *k.test_logger);
     Status st = k.kernel->Compute(&c);
     if (!st.IsOK())
       state.SkipWithError(st.ErrorMessage().c_str());

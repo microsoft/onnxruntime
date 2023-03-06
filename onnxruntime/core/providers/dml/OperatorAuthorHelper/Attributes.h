@@ -60,6 +60,7 @@ namespace AttrName
     static constexpr const char* Min = "min";
     static constexpr const char* Mode = "mode";
     static constexpr const char* NearestMode = "nearest_mode";
+    static constexpr const char* NewAxis = "new_axis";
     static constexpr const char* NoopWithEmptyAxes = "noop_with_empty_axes";
     static constexpr const char* NormalizeVariance = "normalize_variance";
     static constexpr const char* P = "p";
@@ -69,6 +70,7 @@ namespace AttrName
     static constexpr const char* OutputWidth = "output_width";
     static constexpr const char* Pads = "pads";
     static constexpr const char* PooledShape = "pooled_shape";
+    static constexpr const char* Reduction = "reduction";
     static constexpr const char* Reverse = "reverse";
     static constexpr const char* SampleSize = "sample_size";
     static constexpr const char* SamplingRatio = "sampling_ratio";

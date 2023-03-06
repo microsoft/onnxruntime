@@ -179,7 +179,7 @@ KernelDefBuilder& KernelDefBuilder::VariadicAlias(int input_offset, int output_o
   return *this;
 }
 
-#ifdef ENABLE_TRAINING
+#ifdef ENABLE_STRIDED_TENSORS
 KernelDefBuilder& KernelDefBuilder::MayStridedInput(int input_index) {
   kernel_def_->may_strided_inputs_.emplace_back(input_index);
   return *this;

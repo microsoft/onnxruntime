@@ -1782,6 +1782,34 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
+def test_aten_upsample_bilinear():
+    class _NeuralNetUpsampleBilinear(torch.nn.Module):
+        def __init__(self):
+            super(_NeuralNetUpsampleBilinear, self).__init__()
+
+        def forward(self, input):
+            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleBilinear().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 4, 6, 8], dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
 def test_gradient_correctness_cast_chain():
     class NeuralNetCast(torch.nn.Module):
         def __init__(self, D):
@@ -4164,7 +4192,8 @@ def test_load_state_dict_for_wrapped_ortmodule():
     x = torch.randn(N, D_in, device=device)
     _ = wrapper_module(x)
 
-    state_dict1 = wrapper_module.state_dict()
+    # Must copy the state_dict or else they are sharing the same memory
+    state_dict1 = copy.deepcopy(wrapper_module.state_dict())
     list(next(iter(state_dict1.items())))[1] += 10
     wrapper_module.load_state_dict(state_dict1)
     state_dict2 = wrapper_module.state_dict()
@@ -4820,9 +4849,14 @@ def test_ortmodule_attribute_name_collision_warning():
     with pytest.warns(UserWarning) as warning_record:
         ort_model = ORTModule(pt_model)
 
-    assert len(warning_record) == 2
-    assert "_torch_module collides with ORTModule's attribute name." in warning_record[0].message.args[0]
-    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    # FutureWarning('The first argument to symbolic functions is deprecated in 1.13 and will be removed in the future.
+    # Please annotate treat the first argument (g) as GraphContext and use context information from the object
+    # instead.')
+    # TODO(bmeswani): Check with the exporter team as to what this might mean for ortmodule.
+    assert len(warning_record) == 3
+
+    assert "_torch_module collides with ORTModule's attribute name." in warning_record[1].message.args[0]
+    assert "load_state_dict collides with ORTModule's attribute name." in warning_record[2].message.args[0]
 
 
 def test_ortmodule_ortmodule_method_attribute_copy():
@@ -5535,3 +5569,149 @@ def test_eval_onnx_models():
     # BatchNormInternal is for training, while BatchNormalization is for inference.
     assert "BatchNormInternal" in [node.op_type for node in training_model.graph.node]
     assert "BatchNormalization" in [node.op_type for node in eval_model.graph.node]
+
+
+def test_kwargs_dict_input():
+    class DictNet(torch.nn.Module):
+        def __init__(self):
+            super(DictNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, *args, **kwargs):
+            batch = kwargs["batch"]
+            a = batch["one_value"]
+            b = batch["two_value"]["three_value"]
+            c = batch["two_value"]["four_value"]
+            d = batch["five_value"]["six_value"]
+            e = batch["five_value"]["seven_value"]["eight_value"]
+            return self.dummy + a + b + c + d + e
+
+    device = "cuda"
+    N, D_in, H, D_out = 64, 784, 500, 10
+    pt_model = DictNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    batch = {
+        "one_value": torch.randn(N, D_in, device=device),
+        "two_value": {
+            "three_value": torch.randn(N, D_in, device=device),
+            "four_value": torch.randn(N, D_in, device=device),
+        },
+        "five_value": {
+            "six_value": torch.randn(N, D_in, device=device),
+            "seven_value": {"eight_value": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch_copy = copy.deepcopy(batch)
+    x_copy = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(pt_model(x, batch=batch), ort_model(x_copy, batch=batch_copy))
+
+
+def test_named_kwargs_dict_input():
+    class DictNet(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, *args, named_kwarg, **kwargs):
+            a = named_kwarg["named_one"]
+            b = named_kwarg["named_two"]["named_three"]
+            c = named_kwarg["named_two"]["named_four"]
+            d = named_kwarg["named_five"]["named_six"]
+            e = named_kwarg["named_five"]["named_seven"]["named_eight"]
+            batch = kwargs["batch"]
+            f = batch["one_value"]
+            g = batch["two_value"]["three_value"]
+            h = batch["two_value"]["four_value"]
+            i = batch["five_value"]["six_value"]
+            j = batch["five_value"]["seven_value"]["eight_value"]
+            return self.dummy + a + b + c + d + e + f + g + h + i + j
+
+    device = "cuda"
+    N, D_in = 64, 784
+    pt_model = DictNet().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    x = torch.randn(N, D_in, device=device)
+    named_kwarg = {
+        "named_one": torch.randn(N, D_in, device=device),
+        "named_two": {
+            "named_three": torch.randn(N, D_in, device=device),
+            "named_four": torch.randn(N, D_in, device=device),
+        },
+        "named_five": {
+            "named_six": torch.randn(N, D_in, device=device),
+            "named_seven": {"named_eight": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch = {
+        "one_value": torch.randn(N, D_in, device=device),
+        "two_value": {
+            "three_value": torch.randn(N, D_in, device=device),
+            "four_value": torch.randn(N, D_in, device=device),
+        },
+        "five_value": {
+            "six_value": torch.randn(N, D_in, device=device),
+            "seven_value": {"eight_value": torch.randn(N, D_in, device=device)},
+        },
+    }
+    batch_copy = copy.deepcopy(batch)
+    x_copy = copy.deepcopy(x)
+
+    _test_helpers.assert_values_are_close(
+        pt_model(x, named_kwarg=named_kwarg, batch=batch), ort_model(x_copy, named_kwarg=named_kwarg, batch=batch_copy)
+    )
+
+
+@pytest.mark.parametrize("training_mode", [False, True])
+def test_non_contiguous_tensors_as_inputs(training_mode):
+    class NonContigousNet(torch.nn.Module):
+        def __init__(self):
+            super(NonContigousNet, self).__init__()
+            self.dummy = torch.nn.Parameter(torch.FloatTensor([0]))
+
+        def forward(self, non_contiguous_tensor):
+            return self.dummy + non_contiguous_tensor
+
+    device = "cuda"
+    pt_model = NonContigousNet().to(device)
+    pt_model.train(training_mode)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+    ort_model.train(training_mode)
+    x = torch.arange(12).view(4, 3).t().to(device)
+    x_copy = copy.deepcopy(x)
+    assert not x.is_contiguous()
+    _test_helpers.assert_values_are_close(pt_model(x), ort_model(x_copy))
+
+
+def test_gradient_correctness_bce_with_logits():
+    class NeuralNetBCEWithLogitsLoss(torch.nn.Module):
+        def __init__(self, input_size, hidden_size):
+            super(NeuralNetBCEWithLogitsLoss, self).__init__()
+            self.linear = torch.nn.Linear(input_size, hidden_size)
+
+        def forward(self, input, target):
+            loss_fct = torch.nn.BCEWithLogitsLoss()
+            return loss_fct(self.linear(input), target)
+
+    N, D, H = 16, 256, 128
+    device = "cuda"
+    pt_model = NeuralNetBCEWithLogitsLoss(D, H).to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input, target):
+        prediction = model(input, target)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction
+
+    for _ in range(10):
+        pt_input = torch.rand((N, D), device=device, requires_grad=True)
+        ort_input = copy.deepcopy(pt_input)
+        pt_target = torch.rand((N, H), device=device)
+        ort_target = copy.deepcopy(pt_target)
+        pt_prediction = run_step(pt_model, pt_input, pt_target)
+        ort_prediction = run_step(ort_model, ort_input, ort_target)
+
+        _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+        _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)

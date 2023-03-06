@@ -59,68 +59,10 @@ jobs:
     OnnxruntimeNodejsBindingArch: 'arm64'
     PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
-- job: MacOS_C_API_Packaging_CPU_x64
-  workspace:
-    clean: all
-  variables:
-    MACOSX_DEPLOYMENT_TARGET: '10.14'
-  pool:
-    vmImage: 'macOS-11'
-  timeoutInMinutes:  300
-  steps:
-    - template: set-version-number-variables-step.yml
-
-    - task: UsePythonVersion@0
-      # Use python 3.8 to avoid build some of the required packages
-      displayName: Use Python 3.8
-      inputs:
-        versionSpec: 3.8
-
-    - script: |
-        set -e
-        pushd .
-        cd $(Build.SourcesDirectory)/cmake/external/protobuf
-        cmake ./cmake -DCMAKE_INSTALL_PREFIX=$(Build.BinariesDirectory)/protobuf -DCMAKE_POSITION_INDEPENDENT_CODE=ON -Dprotobuf_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Relwithdebinfo '-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64'
-        make -j$(getconf _NPROCESSORS_ONLN)
-        make install
-        popd
-        export PATH=$(Build.BinariesDirectory)/protobuf/bin:$PATH
-        export ONNX_ML=1
-        export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-        python3 -m pip install numpy wheel
-        python3 -m pip install $(Build.SourcesDirectory)/cmake/external/onnx
-        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
-      displayName: 'Build and Test MacOS'
-
-    - template: mac-packaging.yml
-      parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-        MacosArch: arm64
-        BuildJava: true
-        BuildNodejs: true
-
-    - template: mac-packaging.yml
-      parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }}  --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-        MacosArch: universal2
-        BuildJava: false
-        BuildNodejs: false
-
-    - template: mac-packaging.yml
-      parameters :
-        AdditionalBuildFlags : ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs  --use_coreml
-        MacosArch: x86_64
-        BuildJava: true
-        BuildNodejs: true
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-osx'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+- template: mac-ci.yml
+  parameters:
+    AllowReleasedOpsetOnly: 1
+    BuildForAllArchs: true
 
 - template: android-java-api-aar.yml
   parameters:
@@ -211,7 +153,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm
     packageName: arm
-    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --arm ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
     runTests: false
     buildJava: false
     buildNodejs: false
@@ -225,7 +167,7 @@ jobs:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
     runTests: false
     buildJava: false
     buildNodejs: true

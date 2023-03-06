@@ -5,6 +5,7 @@
 
 #include "optional_ops.h"
 #include "core/framework/ort_value.h"
+#include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
@@ -20,17 +21,37 @@ ONNX_CPU_OPERATOR_KERNEL(Optional,
                              .Alias(0, 0),
                          Optional);
 
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalHasElement,
+                                   15,
+                                   17,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                                       .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
+                                   OptionalHasElement);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(OptionalGetElement,
+                                   15,
+                                   17,
+                                   KernelDefBuilder()
+                                       .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                                       .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
+                                       // We may be able to re-use the input for the output as is unless the output
+                                       // is a graph output. We provide this hint to the allocation planner
+                                       // to make the re-use call.
+                                       .Alias(0, 0),
+                                   OptionalGetElement);
+
 ONNX_CPU_OPERATOR_KERNEL(OptionalHasElement,
-                         15,
+                         18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>()),
                          OptionalHasElement);
 
 ONNX_CPU_OPERATOR_KERNEL(OptionalGetElement,
-                         15,
+                         18,
                          KernelDefBuilder()
-                             .TypeConstraint("O", DataTypeImpl::AllOptionalTypes())
+                             .TypeConstraint("O", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes())
                              .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes())
                              // We may be able to re-use the input for the output as is unless the output
                              // is a graph output. We provide this hint to the allocation planner
@@ -49,18 +70,15 @@ static void CopySequenceTensor(AllocatorPtr alloc,
   }
 
   tgt->SetType(src->DataType());
-
-  std::vector<Tensor> output_tensors;
-  output_tensors.reserve(src->Size());
+  tgt->Reserve(src->Size());
 
   auto in_tensor = src->begin();
   for (; in_tensor != src->end(); ++in_tensor) {
-    Tensor tmp(in_tensor->DataType(), onnxruntime::TensorShape(in_tensor->Shape()), alloc);
-    CopyCpuTensor(&*in_tensor, &tmp);
-    output_tensors.push_back(std::move(tmp));
+    auto& tensor = in_tensor->Get<Tensor>();
+    Tensor tmp(tensor.DataType(), tensor.Shape(), alloc);
+    CopyCpuTensor(&tensor, &tmp);
+    tgt->Add(std::move(tmp));
   }
-
-  tgt->SetElements(std::move(output_tensors));
 }
 
 static Status PropagateInputOrtValueToFirstOutput(const OrtValue* input_ort_value,
@@ -140,7 +158,10 @@ Status OptionalHasElement::Compute(OpKernelContext* ctx) const {
 
   // Output is a scalar
   auto* output_tensor = ctx->Output(0, {});
-  output_tensor->MutableData<bool>()[0] = input_ort_value->IsAllocated();
+  if (input_ort_value)
+    output_tensor->MutableData<bool>()[0] = input_ort_value->IsAllocated();
+  else
+    output_tensor->MutableData<bool>()[0] = false;
 
   return Status::OK();
 }

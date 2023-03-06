@@ -189,6 +189,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 opt.LogId = "MyLogTag";
                 Assert.Equal("MyLogTag", opt.LogId);
+
+                opt.AddRunConfigEntry("key", "value");
+
+                var ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AddRunConfigEntry("", "missing key"); });
+                Assert.Contains("[ErrorCode:InvalidArgument] Config key is empty", ex.Message);
             }
         }
 
@@ -202,6 +207,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             // may be no-op on certain Windows builds based on build configuration
 
             ortEnvInstance.EnableTelemetryEvents();
+        }
+
+        [Fact(DisplayName = "GetVersionString")]
+        public void GetVersionString()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            string versionString = ortEnvInstance.GetVersionString();
+            Assert.False(versionString.Length == 0);
         }
 
         [Fact(DisplayName = "GetAvailableProviders")]

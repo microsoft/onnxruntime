@@ -51,7 +51,7 @@ Status T5DecoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   ORT_RETURN_IF(first_past_input_index_ != 2 && first_past_input_index_ != 3,
                 "kFirstPastInputIndex currently only supports 2 or 3");
   ORT_RETURN_IF(num_subgraph_inputs < 4 + first_past_input_index_ ||
-                (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
+                    (num_subgraph_inputs - first_past_input_index_) % 4 != 0,
                 "number of outputs expected to be kFirstPastInputIndex + 4 * layers, got:", num_subgraph_inputs);
   ORT_RETURN_IF(num_subgraph_outputs < 3 || (num_subgraph_outputs - first_present_output_index_) % 2 != 0,
                 "number of outputs expected to be 1 + 2 * layers, got:", num_subgraph_outputs);
@@ -133,7 +133,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::ExpandBufferFunc<float>& expand_buffer_float_func,
     const GenerationDeviceHelper::ExpandBufferFunc<MLFloat16>& expand_buffer_float16_func,
     int num_beam,
-    void* stream,
+    Stream* stream,
     bool use_sequence_as_input_ids,
     int cur_len,
     transformers::Sequences& sequences) {
@@ -151,13 +151,13 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
 
-  if (!use_sequence_as_input_ids_){
+  if (!use_sequence_as_input_ids_) {
     ORT_RETURN_IF_ERROR(device_copy_int32_func(
-    input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
-    beam_next_tokens,
-    stream,
-    DeviceCopyDirection::hostToDevice));
-  }else{
+        input_ids.GetMutable<Tensor>()->MutableDataAsSpan<int32_t>(),
+        beam_next_tokens,
+        stream,
+        DeviceCopyDirection::hostToDevice));
+  } else {
     for (int i = 0; i < batch_beam_size; i++) {
       gsl::span<const int32_t> sequence = sequences.GetSequence(i);
       const int32_t* sequence_data = sequence.data();

@@ -691,7 +691,7 @@ void TestGemmEmptyTensor() {
   test.AddOutput<T>("Y", {0, 3},
                     {});
   // TensorRT: doesn't support dynamic shape yet
-  test.ConfigExcludeEps({kTensorrtExecutionProvider, kDnnlExecutionProvider})
+  test.ConfigExcludeEps({kTensorrtExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -718,7 +718,12 @@ static void TestGemmNoBiasOpset11() {
                     {10.0f, 10.0f, 10.0f,
                      -10.0f, -10.0f, -10.0f});
   // tensorRT don't seem to support missing bias
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})
+  std::unordered_set<std::string> excluded_provider_types{kTensorrtExecutionProvider};
+  // QNN Linux result diff 0.011714935302734375 exceed the threshold
+#ifndef _WIN32
+  excluded_provider_types.insert(kQnnExecutionProvider);
+#endif
+  test.ConfigExcludeEps(excluded_provider_types)
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
@@ -750,7 +755,8 @@ TEST(GemmOpTest, GemmWithAlphaOpset11) {
   TestGemmWithAlphaOpset11<double>();
 }
 
-#ifndef ENABLE_TRAINING  // Prepacking is enabled only on non-training builds
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in training builds so no need to test the feature in a training build.
 TEST(GemmOpTest, SharedPrepackedWeights) {
   OpTester test("Gemm");
 
