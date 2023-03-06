@@ -10,6 +10,7 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 
 namespace {
+using onnxruntime::nnapi::NnApi;
 const NnApi LoadNnApi() {
   NnApi nnapi = {};
   nnapi.android_sdk_version = ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;

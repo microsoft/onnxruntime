@@ -31,8 +31,7 @@ class ModelBuilder {
   using Shape = Shaper::Shape;
 
   ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-               const std::vector<ANeuralNetworksDevice*>& nnapi_target_devices,
-               const std::string& nnapi_target_devices_detail);
+               const std::vector<DeviceWrapper>& nnapi_target_devices);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -103,7 +102,7 @@ class ModelBuilder {
   // the given node must be in the underlying graph_viewer
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
-  int32_t GetTargetDeviceFeatureLevel() const { return nnapi_target_device_feature_level_; }
+  int32_t GetEfficientFeatureLevel() const { return nnapi_target_device_feature_level_; }
  private:
   const NnApi& nnapi_;
   const GraphViewer& graph_viewer_;
@@ -145,9 +144,7 @@ class ModelBuilder {
 
   std::unordered_set<std::string> unique_names_;
 
-  const std::vector<ANeuralNetworksDevice*>& nnapi_target_devices_;
-  ANeuralNetworksDevice* nnapi_reference_device_{nullptr};
-  const std::string& nnapi_target_devices_detail_;  // Debug info for target devices
+  const std::vector<DeviceWrapper>& nnapi_target_devices_;
 
   // feature_level, to decide if we can run this node on NNAPI
   int32_t nnapi_target_device_feature_level_ = 0;

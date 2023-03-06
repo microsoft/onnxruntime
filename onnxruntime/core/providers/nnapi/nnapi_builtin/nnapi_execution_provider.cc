@@ -15,6 +15,7 @@
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/op_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
 #include "core/providers/partitioning_utils.h"
 #include "core/providers/shared/node_unit/node_unit.h"
@@ -84,9 +85,9 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
   }
 
   // May we could just mark it as unavailable instead of throwing an error
-  ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_, nnapi_target_devices_detail_));
+  ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_));
 
-  LOGS_DEFAULT(VERBOSE) << "finding devices [" << nnapi_target_devices_detail_ << "] in NNAPI";
+  LOGS_DEFAULT(VERBOSE) << "finding devices [" << nnapi::GetDeviceDescription(nnapi_target_devices_) << "] in NNAPI";
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
@@ -288,7 +289,7 @@ common::Status NnapiExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    nnapi::ModelBuilder builder(graph_viewer, *nnapi_handle_, nnapi_target_devices_, nnapi_target_devices_detail_);
+    nnapi::ModelBuilder builder(graph_viewer, *nnapi_handle_, nnapi_target_devices_);
     builder.SetUseNCHW(nnapi_flags_ & NNAPI_FLAG_USE_NCHW);
     builder.SetUseFp16(nnapi_flags_ & NNAPI_FLAG_USE_FP16);
 
