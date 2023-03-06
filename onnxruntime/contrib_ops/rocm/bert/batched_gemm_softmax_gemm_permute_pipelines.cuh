@@ -149,7 +149,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   TensorShapeVector mask_index_dims{};
 
   // optional, internal
-  T* workspace_buffer{nullptr};
+  void* workspace_buffer{nullptr};
 };
 
 template <typename T>
@@ -165,7 +165,7 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
         params->attention->num_heads,
         params->attention->sequence_length,
         params->attention->total_sequence_length);
-    auto gemm1_out = params->workspace_buffer;
+    auto gemm1_out = reinterpret_cast<T*>(params->workspace_buffer);
     auto softmax_out = gemm1_out + (bytes / sizeof(T));
     auto gemm2_out = softmax_out + (bytes / sizeof(T));
     return {gemm1_out, softmax_out, gemm2_out};
@@ -376,7 +376,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     };
 
     ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->Stream()>>>(
-        params->workspace_buffer,
+        reinterpret_cast<T*>(params->workspace_buffer),
         buffer, lengths, strides,  // mask desc
         cvt);
 
