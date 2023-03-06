@@ -32,7 +32,7 @@ limitations under the License.
 #define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 
 namespace {
-
+using onnxruntime::nnapi::NnApi;
 #ifdef __ANDROID__
 int32_t GetAndroidSdkVersion() {
   const char* sdkProp = "ro.build.version.sdk";
@@ -411,7 +411,11 @@ const NnApi LoadNnApi() {
 
 }  // namespace
 
+namespace onnxruntime {
+namespace nnapi {
 const NnApi* NnApiImplementation() {
   static const NnApi nnapi = LoadNnApi();
   return &nnapi;
 }
+}  // namespace nnapi
+}  // namespace onnxruntime

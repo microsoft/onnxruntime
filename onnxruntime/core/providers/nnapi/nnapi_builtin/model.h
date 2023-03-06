@@ -9,11 +9,9 @@
 #include "core/platform/ort_mutex.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
 
-struct NnApi;
-
 namespace onnxruntime {
 namespace nnapi {
-
+struct NnApi;
 #if defined(__ANDROID__)
 #define USENNAPISHAREDMEM 1
 #endif
@@ -29,7 +27,7 @@ class Model {
   // Use NNAPI shared memory
   class NNMemory {
    public:
-    NNMemory(const NnApi* nnapi, const char* name, size_t size);
+    NNMemory(const NnApi& nnapi, const char* name, size_t size);
     ~NNMemory();
 
     ANeuralNetworksMemory* GetHandle() { return nn_memory_handle_; }
@@ -37,7 +35,7 @@ class Model {
 
    private:
     // NnApi instance to use. Not owned by this object.
-    const NnApi* nnapi_{nullptr};
+    const NnApi& nnapi_;
     int fd_{-1};
     size_t byte_size_{0};
     uint8_t* data_ptr_{nullptr};
@@ -47,7 +45,7 @@ class Model {
   // Use system memory buffer
   class NNMemory {
    public:
-    NNMemory(const NnApi* /*nnapi*/, const char* name, size_t size);
+    NNMemory(const NnApi& nnapi_handle, const char* name, size_t size);
     ~NNMemory() = default;
     uint8_t* GetDataPtr() { return data_.data(); }
 
@@ -57,7 +55,7 @@ class Model {
 #endif
 
  public:
-  Model();
+  Model(const NnApi& nnapi_handle);
   ~Model();
   Model(const Model&) = delete;
   Model& operator=(const Model&) = delete;
@@ -109,8 +107,8 @@ class Model {
   common::Status PrepareForExecution(std::unique_ptr<Execution>& execution);
 
  private:
-  const NnApi* nnapi_{nullptr};
-
+  const NnApi& nnapi_;
+  int32_t nnapi_target_device_feature_level_{0};
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
 
@@ -159,7 +157,7 @@ class Execution {
   };
 
  public:
-  explicit Execution(ANeuralNetworksExecution& execution /* , const Shaper& shaper */);
+  explicit Execution(ANeuralNetworksExecution& execution /* , const Shaper& shaper */, const NnApi& nnapi_handle);
   ~Execution();
   Execution(const Execution&) = delete;
   Execution& operator=(const Execution&) = delete;
@@ -181,7 +179,7 @@ class Execution {
   common::Status SetInputBuffer(const int32_t index, const InputBuffer& input);
   common::Status SetOutputBuffer(const int32_t index, const OutputBuffer& output);
 
-  const NnApi* nnapi_{nullptr};
+  const NnApi& nnapi_;
   ANeuralNetworksExecution* execution_;
   /* Shaper shaper_; */
 };
