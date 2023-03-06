@@ -17,8 +17,6 @@ jobs:
     # cache docker image
     repository: 'onnxruntimecpubuildaten'
     dockerfilePath: 'tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu'
-    tag: '$(Build.BuildId)'
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -36,10 +34,10 @@ jobs:
   - task: Cache@2
     displayName: Cache Docker Image Task
     inputs:
-      key: '$(TODAY) | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+      key: ' $(repository) | "$(Build.SourcesDirectory)/tools/ci_build/linux/docker/"'
       path: $(IMAGE_CACHE_DIR)
       restoreKeys: |
-        $(TODAY) | "$(Build.SourceBranch)"
+        $(repository) | "$(Build.SourcesDirectory)/tools/ci_build/linux/docker/"
       cacheHitVar: CACHE_RESTORED
 
   - script: |
