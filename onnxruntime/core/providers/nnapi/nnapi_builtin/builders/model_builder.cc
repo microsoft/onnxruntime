@@ -28,11 +28,11 @@ namespace onnxruntime {
 namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-                           const std::vector<DeviceWrapper>& nnapi_target_devices)
+                           gsl::span<const DeviceWrapper> nnapi_target_devices)
     : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)},
       shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices),
-      nnapi_target_device_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
-  nnapi_model_->nnapi_target_device_feature_level_ = nnapi_target_device_feature_level_;
+      nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+  nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
 // Scalar operand is copied into the model, no need to persist
@@ -367,10 +367,10 @@ Status ModelBuilder::AddNewNNAPIOperand(const OperandType& operand_type, uint32_
   index = next_index_++;
 
   if (operand_type.channelQuant) {
-    if (nnapi_target_device_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+    if (nnapi_effective_feature_level_ < ANEURALNETWORKS_FEATURE_LEVEL_3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Per-channel quantization is only supported on Android API level 29+,",
-                             " system NNAPI feature level: ", nnapi_target_device_feature_level_);
+                             " system NNAPI feature level: ", nnapi_effective_feature_level_);
     }
 
     RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksModel_setOperandSymmPerChannelQuantParams(
@@ -506,7 +506,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       "on identifyInputsAndOutputs");
 
   // relax fp32tofp16 is only available on API 28+
-  if (use_fp16_ && nnapi_target_device_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
+  if (use_fp16_ && nnapi_effective_feature_level_ > ANEURALNETWORKS_FEATURE_LEVEL_1) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksModel_relaxComputationFloat32toFloat16(
             nnapi_model_->model_, true),
