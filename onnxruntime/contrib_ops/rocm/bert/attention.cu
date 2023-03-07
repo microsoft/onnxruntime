@@ -170,7 +170,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (this->GetTuningContext()->IsTunableOpEnabled() &&
       !use_persistent_softmax) {
     // FIXME: set all buffer to -NaN
-    // HIP_RETURN_IF_ERROR(hipMemsetAsync(workspace.get(), 0xff, workspace_size, gemm_softmax_gemm_permute_params.Stream()));
+    // HIP_RETURN_IF_ERROR(hipMemsetAsync(workspace.get(), 0xff, attention_workspace_bytes, gemm_softmax_gemm_permute_params.Stream()));
     return AttentionTunableOp{}(&gemm_softmax_gemm_permute_params);
   } else {
     return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
