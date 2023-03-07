@@ -528,9 +528,6 @@ class PosixEnv : public Env {
   }
 
   common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols, void** handle) const override {
-#if defined(__wasm__)
-    return common::Status(common::ONNXRUNTIME, common::FAIL, "dlopen() not supported in WebAssembly build");
-#else
     dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
     char* error_str = dlerror();
@@ -539,16 +536,12 @@ class PosixEnv : public Env {
                             "Failed to load library " + library_filename + " with error: " + error_str);
     }
     return common::Status::OK();
-#endif
   }
 
   common::Status UnloadDynamicLibrary(void* handle) const override {
     if (!handle) {
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Got null library handle");
     }
-#if defined(__wasm__)
-    return common::Status(common::ONNXRUNTIME, common::FAIL, "dlclose() not supported in WebAssembly build");
-#else
     dlerror();  // clear any old error_str
     int retval = dlclose(handle);
     char* error_str = dlerror();
@@ -557,13 +550,9 @@ class PosixEnv : public Env {
                             "Failed to unload library with error: " + std::string(error_str));
     }
     return common::Status::OK();
-#endif
   }
 
   common::Status GetSymbolFromLibrary(void* handle, const std::string& symbol_name, void** symbol) const override {
-#if defined(__wasm__)
-    return common::Status(common::ONNXRUNTIME, common::FAIL, "dlsym() not supported in WebAssembly build");
-#else
     dlerror();  // clear any old error str
 
     // search global space if handle is nullptr.
@@ -578,7 +567,6 @@ class PosixEnv : public Env {
     }
     // it's possible to get a NULL symbol in our case when Schemas are not custom.
     return common::Status::OK();
-#endif
   }
 
   std::string FormatLibraryFileName(const std::string& name, const std::string& version) const override {
