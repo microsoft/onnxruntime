@@ -6,7 +6,7 @@
 
 import {execSync, spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
-import * as globby from 'globby';
+import {globbySync} from 'globby';
 import {default as minimatch} from 'minimatch';
 import npmlog from 'npmlog';
 import * as os from 'os';
@@ -327,11 +327,11 @@ function tryLocateModelTestFolder(searchPattern: string): string {
   globbyPattern.push(...DEFAULT_OPSET_VERSIONS.map(
       v => path.join(TEST_DATA_MODEL_NODE_ROOT, `v${v}`, '**', searchPattern).replace(/\\/g, '/')));
 
-  folderCandidates.push(...globby.sync(globbyPattern, {onlyDirectories: true, absolute: true}));
+  folderCandidates.push(...globbySync(globbyPattern, {onlyDirectories: true, absolute: true}));
 
   // pick the first folder that matches the pattern
   for (const folderCandidate of folderCandidates) {
-    const modelCandidates = globby.sync('*.{onnx,ort}', {onlyFiles: true, cwd: folderCandidate});
+    const modelCandidates = globbySync('*.{onnx,ort}', {onlyFiles: true, cwd: folderCandidate});
     if (modelCandidates && modelCandidates.length === 1) {
       return folderCandidate;
     }
@@ -380,7 +380,7 @@ function opTestFromManifest(manifestFile: string, backend: string, skip = false)
 }
 
 function tryLocateOpTestManifest(searchPattern: string): string {
-  for (const manifestCandidate of globby.sync(
+  for (const manifestCandidate of globbySync(
            [
              searchPattern, path.join(TEST_DATA_OP_ROOT, '**', searchPattern).replace(/\\/g, '/'),
              path.join(TEST_DATA_OP_ROOT, '**', searchPattern + '.json').replace(/\\/g, '/'),
