@@ -21,14 +21,14 @@ stages:
   - stage: BuildAndroidBinaries
     dependsOn: []
     jobs:
-    - template: templates/android-java-api-aar.yml
-      parameters:
-        buildConfig: 'Release'
-        buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
-        artifactName: 'onnxruntime-android-full-aar'
-        job_name_suffix: 'Full'
-        publish_executables: '1'
-        pool_name: 'Linux-CPU'
+    # - template: templates/android-java-api-aar.yml
+    #   parameters:
+    #     buildConfig: 'Release'
+    #     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+    #     artifactName: 'onnxruntime-android-full-aar'
+    #     job_name_suffix: 'Full'
+    #     publish_executables: '1'
+    #     pool_name: 'Linux-CPU'
 
     # TODO remove - added for testing
     - template: templates/android-java-api-aar-test.yml
