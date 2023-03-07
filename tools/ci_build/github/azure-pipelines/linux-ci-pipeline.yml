@@ -5,170 +5,194 @@ resources:
     endpoint: Microsoft
     name: pypa/manylinux
     ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
+stages:
+- stage: x64
+  dependsOn: []
+  jobs:
+    - job: Linux_Build
+      timeoutInMinutes: 120
+      workspace:
+        clean: all
+      variables:
+        skipComponentGovernanceDetection: true
+        CCACHE_DIR: $(Pipeline.Workspace)/ccache
+        TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+      pool: Linux-CPU-2019
+      steps:
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
-jobs:
-- job: Linux_Build
-  timeoutInMinutes: 120
-  workspace:
-    clean: all
-  variables:
-    skipComponentGovernanceDetection: true
-    CCACHE_DIR: $(Pipeline.Workspace)/ccache
-    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  pool: Linux-CPU-2019
-  steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
+      - checkout: self
+        clean: true
+        submodules: none
 
-  - checkout: self
-    clean: true
-    submodules: none
+      - task: NodeTool@0
+        inputs:
+          versionSpec: '16.x'
 
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '16.x'
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.8'
+          addToPath: true
 
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.8'
-      addToPath: true
+      - template: templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+          Context: tools/ci_build/github/linux/docker
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecpubuild
 
-  - template: templates/get-docker-image-steps.yml
+      - task: Cache@2
+        inputs:
+          key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
+          path: $(CCACHE_DIR)
+          cacheHitVar: CACHE_RESTORED
+          restoreKeys: |
+            "$(TODAY)" | "$(Build.SourceBranch)"
+            "$(TODAY)" |
+        displayName: Cach Task
+
+      - script: |
+          sudo mkdir -p $(Pipeline.Workspace)/ccache
+        condition: ne(variables.CACHE_RESTORED, 'true')
+        displayName: Create Cache Dir
+
+      - task: CmdLine@2
+        displayName: 'build'
+        inputs:
+          script: |
+            mkdir -p $HOME/.onnx
+            docker run --rm \
+              --volume /data/onnx:/data/onnx:ro \
+              --volume $(Build.SourcesDirectory):/onnxruntime_src \
+              --volume $(Build.BinariesDirectory):/build \
+              --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
+              --volume $(Pipeline.Workspace)/ccache:/cache \
+              -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
+              -e NIGHTLY_BUILD \
+              -e BUILD_BUILDNUMBER \
+              -e CCACHE_DIR=/cache \
+              onnxruntimecpubuild \
+              /bin/bash -c "
+                set -ex; \
+                ccache -s; \
+                /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                  --build_dir /build --cmake_generator Ninja \
+                  --config Debug Release \
+                  --skip_submodule_sync \
+                  --build_shared_lib \
+                  --parallel \
+                  --build_wheel \
+                  --enable_onnx_tests \
+                  --enable_transformers_tool_test \
+                  --use_cache \
+                  --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
+                ccache -s"
+          workingDirectory: $(Build.SourcesDirectory)
+
+      - task: CmdLine@2
+        displayName: 'Install python deps and run java tests'
+        inputs:
+          script: |
+             set -e -x
+             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
+             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
+             # Test ORT with the latest ONNX release.
+             sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
+             python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
+             mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
+             cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
+             python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
+             cd $(Build.SourcesDirectory)/java
+             /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
+
+      - task: CmdLine@2
+        displayName: 'Install Release python package'
+        inputs:
+          script: |
+             rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
+             python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
+
+      - task: PythonScript@0
+        displayName: 'Run Release unit tests'
+        inputs:
+           scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+           workingDirectory: $(Build.BinariesDirectory)/Release
+           arguments: >-
+              --build_dir $(Build.BinariesDirectory)
+              --cmake_generator Ninja
+              --config Release
+              --test
+              --skip_submodule_sync
+              --build_shared_lib
+              --parallel
+              --build_wheel
+              --enable_onnx_tests
+              --enable_transformers_tool_test
+              --build_nodejs
+              --ctest_path ""
+
+      - task: CmdLine@2
+        displayName: 'Install Debug python package'
+        inputs:
+          script: |
+             set -e -x
+             rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
+             python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+             python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
+
+      - task: PythonScript@0
+        displayName: 'Run Debug unit tests'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
+          workingDirectory: $(Build.BinariesDirectory)/Debug
+          arguments: >-
+              --build_dir $(Build.BinariesDirectory)
+              --cmake_generator Ninja
+              --config Debug
+              --test
+              --skip_submodule_sync
+              --build_shared_lib
+              --parallel
+              --build_wheel
+              --enable_onnx_tests
+              --enable_transformers_tool_test
+              --build_nodejs
+              --ctest_path ""
+
+      - task: PythonScript@0
+        displayName: 'Symbolic shape infer'
+        inputs:
+          scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
+          workingDirectory: $(Build.BinariesDirectory)/Release
+
+      - task: PublishTestResults@2
+        displayName: 'Publish unit test results'
+        inputs:
+          testResultsFiles: '**/*.results.xml'
+          searchFolder: '$(Build.BinariesDirectory)'
+          testRunTitle: 'Unit Test Run'
+        condition: succeededOrFailed()
+
+
+- stage: arm64_build
+  dependsOn: []
+  jobs:
+  - template: templates/py-linux.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
-
-  - task: Cache@2
-    inputs:
-      key: '"$(TODAY)" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-      path: $(CCACHE_DIR)
-      cacheHitVar: CACHE_RESTORED
-      restoreKeys: |
-        "$(TODAY)" | "$(Build.SourceBranch)"
-        "$(TODAY)" |
-    displayName: Cach Task
-
-  - script: |
-      sudo mkdir -p $(Pipeline.Workspace)/ccache
-    condition: ne(variables.CACHE_RESTORED, 'true')
-    displayName: Create Cache Dir
-
-  - task: CmdLine@2
-    displayName: 'build'
-    inputs:
-      script: |
-        mkdir -p $HOME/.onnx
-        docker run --rm \
-          --volume /data/onnx:/data/onnx:ro \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-          --volume $(Pipeline.Workspace)/ccache:/cache \
-          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
-          -e NIGHTLY_BUILD \
-          -e BUILD_BUILDNUMBER \
-          -e CCACHE_DIR=/cache \
-          onnxruntimecpubuild \
-          /bin/bash -c "
-            set -ex; \
-            ccache -s; \
-            /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-              --build_dir /build --cmake_generator Ninja \
-              --config Debug Release \
-              --skip_submodule_sync \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --enable_onnx_tests \
-              --enable_transformers_tool_test \
-              --use_cache \
-              --build_java --build_nodejs --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
-            ccache -s"
-      workingDirectory: $(Build.SourcesDirectory)
-
-  - task: CmdLine@2
-    displayName: 'Install python deps and run java tests'
-    inputs:
-      script: |
-         set -e -x
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml onnx -qq
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $(Build.BinariesDirectory)/requirements.txt
-         # Test ORT with the latest ONNX release.
-         sed -i "s/git+http:\/\/github\.com\/onnx\/onnx.*/onnx/" $(Build.BinariesDirectory)/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements.txt
-         mkdir $(Build.BinariesDirectory)/requirements_torch_cpu/
-         cp $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/training/ortmodule/stage1/requirements_torch_cpu/requirements.txt $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
-         cd $(Build.SourcesDirectory)/java
-         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
-
-  - task: CmdLine@2
-    displayName: 'Install Release python package'
-    inputs:
-      script: |
-         rm -rf $(Build.BinariesDirectory)/Release/onnxruntime $(Build.BinariesDirectory)/Release/pybind11
-         python3 -m pip install $(Build.BinariesDirectory)/Release/dist/*.whl
-
-  - task: PythonScript@0
-    displayName: 'Run Release unit tests'
-    inputs:
-       scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-       workingDirectory: $(Build.BinariesDirectory)/Release
-       arguments: >-
-          --build_dir $(Build.BinariesDirectory)
-          --cmake_generator Ninja
-          --config Release
-          --test
-          --skip_submodule_sync
-          --build_shared_lib
-          --parallel
-          --build_wheel
-          --enable_onnx_tests
-          --enable_transformers_tool_test
-          --build_nodejs
-          --ctest_path ""
-
-  - task: CmdLine@2
-    displayName: 'Install Debug python package'
-    inputs:
-      script: |
-         set -e -x
-         rm -rf $(Build.BinariesDirectory)/Debug/onnxruntime $(Build.BinariesDirectory)/Debug/pybind11
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
-         python3 -m pip install $(Build.BinariesDirectory)/Debug/dist/*.whl
-
-  - task: PythonScript@0
-    displayName: 'Run Debug unit tests'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/build.py
-      workingDirectory: $(Build.BinariesDirectory)/Debug
-      arguments: >-
-          --build_dir $(Build.BinariesDirectory)
-          --cmake_generator Ninja
-          --config Debug
-          --test
-          --skip_submodule_sync
-          --build_shared_lib
-          --parallel
-          --build_wheel
-          --enable_onnx_tests
-          --enable_transformers_tool_test
-          --build_nodejs
-          --ctest_path ""
-
-  - task: PythonScript@0
-    displayName: 'Symbolic shape infer'
-    inputs:
-      scriptPath: $(Build.BinariesDirectory)/Release/onnxruntime_test_python_symbolic_shape_infer.py
-      workingDirectory: $(Build.BinariesDirectory)/Release
-
-  - task: PublishTestResults@2
-    displayName: 'Publish unit test results'
-    inputs:
-      testResultsFiles: '**/*.results.xml'
-      searchFolder: '$(Build.BinariesDirectory)'
-      testRunTitle: 'Unit Test Run'
-    condition: succeededOrFailed()
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      base_image: 'arm64v8/centos:7'
+      devtoolset_rootpath: /opt/rh/devtoolset-10/root
+      ld_library_path_arg: /opt/rh/devtoolset-10/root/usr/lib64:/opt/rh/devtoolset-10/root/usr/lib:/opt/rh/devtoolset-10/root/usr/lib64/dyninst:/opt/rh/devtoolset-10/root/usr/lib/dyninst:/usr/local/lib64
+      prepend_path: '/opt/rh/devtoolset-10/root/usr/bin:'
+      
+- stage: arm64_test
+  dependsOn: ['arm64_build']
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      device: 'CPU'
