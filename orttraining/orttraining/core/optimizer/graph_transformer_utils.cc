@@ -56,8 +56,9 @@
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
-#include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/shape_optimizer.h"
+#include "orttraining/core/optimizer/transformer_layer_recompute.h"
 
 namespace onnxruntime {
 namespace training {
@@ -127,6 +128,8 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<ConstantFolding>(
           execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
+      // Put fine-grained optimizers after ReshapeFusion to avoid it breaks the strong patterns it defines.
+      transformers.emplace_back(std::make_unique<ShapeOptimizer>(compatible_eps));
       transformers.emplace_back(std::make_unique<ConcatSliceElimination>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
