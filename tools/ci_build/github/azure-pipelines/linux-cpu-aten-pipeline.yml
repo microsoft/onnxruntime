@@ -14,8 +14,6 @@ jobs:
   variables:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-    # cache docker image
-    repository: 'onnxruntimecpubuildaten'
   pool: Linux-CPU-2019
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -35,8 +33,9 @@ jobs:
       Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_aten_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: '$(repository)'
+      Repository: 'onnxruntimecpubuildaten'
       UseImageCacheContainerRegistry: false
+      UsePipelineCache: true
 
   - task: Cache@2
     inputs:
