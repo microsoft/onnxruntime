@@ -81,6 +81,9 @@ static void RunAllOpsetAllDomainPadTests(
     // TODO try to enable when we move from QEMU to arm64 CI machines
     {true, true},
 #endif
+#if defined(USE_COREML) && defined(__APPLE__)
+    {true, true},
+#endif
   };
   for (const auto& test_params : all_test_params) {
     // opset 10
