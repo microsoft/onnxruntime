@@ -559,9 +559,8 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
     // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
-    // exception here, since pre-training optimization happens without device assignment. is_for_pre_training_ is the
-    // flag to enable only for pre-training optimization, with a risk that fused SimplifiedLayerNorm may not work for
-    // CPU EP training, which is not the major usage case for training.
+    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
+    // flag to disable device check intent only for pre-training optimization.
     // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
     // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
     // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
@@ -570,7 +569,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     bool has_leading_cast = false;
     bool is_gpu_ep = (pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
                       pow_node.GetExecutionProviderType() == kRocmExecutionProvider) ||
-                     is_for_pre_training_;
+                     skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)
