@@ -1092,11 +1092,11 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg) -> bool
         if node.op_type == "Attention":
             kwargs = kwargs_of(node)
             for k in kwargs.copy():
-                # Different Q,K,V hidden sizes are currently not supported by DecoderMaskedMultiheadAttention
+                # The Attention operator does not support different qkv hidden sizes when past/present
+                # input/output exists (GPT2 model). Hence, we should never run into this.
+                # But, if we do, do not go ahead with the optimization.
                 if k == "qkv_hidden_sizes":
-                    qkv_hidden_sizes = kwargs[k]
-                    if (qkv_hidden_sizes[0] != qkv_hidden_sizes[1]) or (qkv_hidden_sizes[0] != qkv_hidden_sizes[2]):
-                        return False
+                    return False
 
                 if k not in decoder_masked_attention_supported_attr:
                     del kwargs[k]
@@ -1961,7 +1961,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     # Use different length sentences to test batching
     if sentences is None:
         sentences = [
-            "The product is released",
+            "The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released ",
             "I enjoy walking in the park",
             "Test best way to invest",
         ]

@@ -213,6 +213,13 @@ For self attention, kv_sequence_length equals to sequence_length (sequence lengt
 For cross attention, query and key might have different lengths.
 )DOC";
 
+// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedMultiheadAttention`
+// if the user requests it. Hence, the schemas of `DecoderMaskedMultiheadAttention` and `Attention` schemas
+// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedMultiheadAttention`
+// and its kernel.
+// TODO(hasesh): Decouple the schema of `DecoderMaskedMultiheadAttention` from the schema of the `Attention` operator
+// by making appropriate tool changes.
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     Attention, 1,
     OpSchema()
