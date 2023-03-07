@@ -372,9 +372,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     std::cout << "OrtTraining pybind11 atexit() is called" << std::endl;
-    // #ifdef ENABLE_EAGER_MODE
-    //     ort_backends_manager_instance = nullptr;
-    // #endif
+    GetTrainingEnv().ClearExecutionProviderInstances();
+#ifdef ENABLE_EAGER_MODE
+    ort_backends_manager_instance = nullptr;
+#endif
   }));
 }
 
