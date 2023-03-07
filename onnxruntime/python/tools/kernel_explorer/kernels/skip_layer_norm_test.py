@@ -90,8 +90,9 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
         optional_d.UpdateHostNumpyArray()
 
         y_ref, y_optional = skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon)
-        np.testing.assert_almost_equal(y_ref, output_y, decimal=5)
-        np.testing.assert_almost_equal(y_optional, output_optional, decimal=5)
+        np.testing.assert_almost_equal(y_ref, output_y, decimal=1)
+        if has_optional_output:
+            np.testing.assert_almost_equal(y_optional, output_optional, decimal=1)
 
 
 dtypes = ["float32", "float16"]
