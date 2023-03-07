@@ -205,7 +205,6 @@ else()
                         -s EXIT_RUNTIME=0 \
                         -s ALLOW_MEMORY_GROWTH=1 \
                         -s MODULARIZE=1 \
-                        -s STRICT=1 \
                         -s EXPORT_ALL=0 \
                         -s VERBOSE=0 \
                         -s FILESYSTEM=0 \
