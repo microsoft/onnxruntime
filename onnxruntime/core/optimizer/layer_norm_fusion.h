@@ -45,7 +45,7 @@ class SimplifiedLayerNormFusion : public GraphTransformer {
  private:
   // A flag indicate whether this optimizer is registered for pre-training.
   // This is introduced to skip some device check, since when optimization passes are running, devices placement is
-  // done yet.
+  // NOT done yet.
   bool is_for_pre_training_;
 };
 
