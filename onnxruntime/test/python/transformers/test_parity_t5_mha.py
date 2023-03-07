@@ -411,14 +411,10 @@ class T5Attention(nn.Module):
             if torch_position_bias is not None:
                 ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
 
-        import onnxruntime
         from onnxruntime import InferenceSession, SessionOptions
 
         sess_options = SessionOptions()
-        cuda_providers = ["CUDAExecutionProvider"]
-        if cuda_providers[0] not in onnxruntime.get_available_providers():
-            return None
-        ort_session = InferenceSession(self.onnx_graph, sess_options, providers=cuda_providers)
+        ort_session = InferenceSession(self.onnx_graph, sess_options, providers=["CUDAExecutionProvider"])
         ort_output = ort_session.run(None, ort_inputs)
 
         output = None
@@ -430,7 +426,7 @@ class T5Attention(nn.Module):
         return output
 
 
-def test_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
+def compare_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -450,11 +446,10 @@ def test_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size, k
         hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cache=False
     )
 
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
 
 
-def test_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
+def compare_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -474,13 +469,12 @@ def test_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head_si
         hidden_states, key_value_states, None, attention_mask, position_bias=None, use_cache=True
     )
 
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
-        assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-        assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+    assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+    assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
-def test_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
+def compare_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -500,13 +494,12 @@ def test_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_siz
         hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
     )
 
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
-        assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-        assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+    assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+    assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
-def test_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
+def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -526,14 +519,13 @@ def test_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv
         hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
     )
 
-    if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
-        assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-        assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+    assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+    assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
+    assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
 class TestT5MHAParity(unittest.TestCase):
-    def init_input_shapes(self):
+    def setUp(self):
         self.batch_size = 5
         self.seq_len = 2
         self.num_heads = 2
@@ -541,30 +533,25 @@ class TestT5MHAParity(unittest.TestCase):
         self.kv_sequence_length = 3
 
     def test_t5_cross_attention_decoder_init(self):
-        self.init_input_shapes()
-        test_t5_cross_attention_decoder_init(
+        compare_t5_cross_attention_decoder_init(
             self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
         )
 
     def test_t5_self_attention_decoder_init(self):
-        self.init_input_shapes()
-        test_t5_self_attention_decoder_init(
+        compare_t5_self_attention_decoder_init(
             self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
         )
 
     def test_t5_cross_attention_decoder(self):
-        self.init_input_shapes()
-        test_t5_cross_attention_decoder(
+        compare_t5_cross_attention_decoder(
             self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
         )
 
     def test_t5_self_attention_decoder(self):
-        self.init_input_shapes()
-        test_t5_self_attention_decoder(
+        compare_t5_self_attention_decoder(
             self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
         )
 
 
 if __name__ == "__main__":
-
     unittest.main()
