@@ -751,7 +751,7 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def prune_graph(self, outputs=None):
+    def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
         Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
         Nodes are not linked (directly or indirectly) to any required output will be removed.
@@ -793,13 +793,14 @@ class OnnxModel:
             self.model.graph.output.remove(output)
 
         # remove inputs not used by any node.
-        input_name_to_nodes = self.input_name_to_nodes()
         input_to_remove = []
-        for input in self.model.graph.input:
-            if input.name not in input_name_to_nodes:
-                input_to_remove.append(input)
-        for input in input_to_remove:
-            self.model.graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            input_name_to_nodes = self.input_name_to_nodes()
+            for input in self.model.graph.input:
+                if input.name not in input_name_to_nodes:
+                    input_to_remove.append(input)
+            for input in input_to_remove:
+                self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
             removed = []
@@ -813,7 +814,7 @@ class OnnxModel:
 
         self.update_graph()
 
-    def update_graph(self, verbose=False):
+    def update_graph(self, verbose=False, allow_remove_graph_inputs=False):
         graph = self.model.graph
 
         remaining_input_names = []
@@ -831,11 +832,12 @@ class OnnxModel:
 
         # remove graph input that is not used
         inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            for input in graph.input:
+                if input.name not in remaining_input_names:
+                    inputs_to_remove.append(input)
+            for input in inputs_to_remove:
+                graph.input.remove(input)
 
         names_to_remove = [input.name for input in inputs_to_remove]
         logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")
