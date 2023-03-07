@@ -496,11 +496,11 @@ TensorrtExecutionProvider::~TensorrtExecutionProvider() {
   }
 }
 
-AllocatorPtr TensorrtExecutionProvider::GetAllocator(int id, OrtMemType mem_type) const {
+AllocatorPtr TensorrtExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeDefault) {
     return allocator_;
   } else {
-    return IExecutionProvider::GetAllocator(id, mem_type);
+    return IExecutionProvider::GetAllocator(mem_type);
   }
 }
 
@@ -530,7 +530,7 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
   // OrtMemTypeCPUOutput -- allocated by cudaMallocHost, used to copy CUDA device memory to CPU
   // Use pinned memory instead of pageable memory make the data transfer faster
   // Used by node MemcpyToHost only
-  auto cuda_pinned_alloc = GetAllocator(pinned_device.Id(), OrtMemTypeCPUOutput);
+  auto cuda_pinned_alloc = GetAllocator(OrtMemTypeCPUOutput);
   if (!cuda_pinned_alloc) {
     cuda_pinned_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUOutput, pinned_device);
 
@@ -548,7 +548,7 @@ void TensorrtExecutionProvider::RegisterAllocator(AllocatorManager& allocator_ma
     InsertAllocator(cuda_pinned_alloc);
   }
 
-  auto cuda_cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeCPUInput);
+  auto cuda_cpu_alloc = GetAllocator(OrtMemTypeCPUInput);
   if (!cuda_cpu_alloc) {
     cuda_cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeCPUInput, cpu_device);
 
@@ -2176,7 +2176,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
 }
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtMemTypeCPU);
+  auto allocator = GetAllocator(OrtMemTypeCPU);
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }
 

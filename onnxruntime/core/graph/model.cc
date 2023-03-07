@@ -29,6 +29,10 @@
 #include "core/graph/function_utils.h"
 #endif
 
+#if defined(__wasm__)
+#include <emscripten.h>
+#endif
+
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime;
 using namespace onnxruntime::common;
@@ -500,6 +504,37 @@ static Status LoadModel(const T& file_path, std::shared_ptr<Model>& p_model,
 
 template <typename T>
 static Status SaveModel(Model& model, const T& file_path) {
+#if defined(__wasm__) && defined(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+  ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
+  auto model_proto = model.ToProto();
+  auto buffer_size = model_proto.ByteSizeLong();
+  void* buffer = malloc(buffer_size);
+  model_proto.SerializeToArray(buffer, buffer_size);
+
+  EM_ASM(({
+           const buffer = $0;
+           const buffer_size = $1;
+           const file_path = UTF8ToString($2);
+           const bytes = new Uint8Array(buffer_size);
+           bytes.set(HEAPU8.subarray(buffer, buffer + buffer_size));
+           if (typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string') {
+             // Node.js
+             require('fs').writeFileSync(file_path, bytes);
+           } else {
+             // Browser
+             const file = new File([bytes], file_path, {type: "application/octet-stream" });
+             const url = URL.createObjectURL(file);
+             window.open(url, '_blank');
+           }
+         }),
+         reinterpret_cast<int32_t>(buffer),
+         static_cast<int32_t>(buffer_size),
+         reinterpret_cast<int32_t>(file_path.c_str()));
+
+  free(buffer);
+  return Status::OK();
+
+#else
   int fd;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
@@ -518,6 +553,7 @@ static Status SaveModel(Model& model, const T& file_path) {
     return status;
   }
   return Env::Default().FileClose(fd);
+#endif
 }
 
 #ifdef _WIN32

@@ -209,6 +209,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             ortEnvInstance.EnableTelemetryEvents();
         }
 
+        [Fact(DisplayName = "GetVersionString")]
+        public void GetVersionString()
+        {
+            var ortEnvInstance = OrtEnv.Instance();
+            string versionString = ortEnvInstance.GetVersionString();
+            Assert.False(versionString.Length == 0);
+        }
+
         [Fact(DisplayName = "GetAvailableProviders")]
         public void GetAvailableProviders()
         {

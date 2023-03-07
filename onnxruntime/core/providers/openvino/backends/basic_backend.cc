@@ -134,7 +134,7 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
 }
 
 void BasicBackend::EnableCaching() {
-  if (global_context_.use_compiled_network == true && global_context_.is_wholly_supported_graph) {
+  if (!global_context_.cache_dir.empty() && global_context_.is_wholly_supported_graph) {
     #if defined (OPENVINO_2022_3)
       #if defined(_WIN32) || defined(WIN32) || defined(__CYGWIN__) || defined(__MINGW32__) || defined(__BORLANDC__)
       _putenv_s("OV_GPU_CACHE_MODEL", "1");
@@ -142,14 +142,8 @@ void BasicBackend::EnableCaching() {
       setenv("OV_GPU_CACHE_MODEL", "1", 1);
       #endif
     #endif
-    std::string cache_dir_path;
-    if (global_context_.blob_dump_path.empty()) {
-      cache_dir_path = "ov_compiled_blobs";
-    } else {
-      cache_dir_path = global_context_.blob_dump_path;
-    }
     LOGS_DEFAULT(INFO) << log_tag << "Enables Caching";
-    global_context_.ie_core.SetCache(cache_dir_path);
+    global_context_.ie_core.SetCache(global_context_.cache_dir);
   }
 }
 

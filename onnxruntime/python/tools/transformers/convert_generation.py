@@ -483,7 +483,7 @@ def t5_to_onnx(args: argparse.Namespace):
         Path(args.output).parent,
         use_gpu=args.use_gpu,
         use_external_data_format=args.use_external_data_format,
-        optimize_onnx=False,
+        optimize_onnx=(args.precision != Precision.FLOAT16),
         precision=args.precision,
         verbose=False,
         use_decoder_start_token=False,
@@ -1850,7 +1850,7 @@ def test_torch_performance(
             num_return_sequences=args.num_return_sequences,
             length_penalty=args.length_penalty,
             repetition_penalty=args.repetition_penalty,
-            bad_words_ids=bad_words_ids,
+            bad_words_ids=bad_words_ids if bad_words_ids else None,
             return_dict_in_generate=True,
             output_scores=args.output_sequences_scores or args.output_token_scores,
         )

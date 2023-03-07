@@ -11,14 +11,14 @@ set(contrib_ops_excluded_files
   "bert/attention_softmax.h"
   "bert/multihead_attention.cc"
   "bert/multihead_attention.h"
-  "bert/embed_layer_norm.cc"
-  "bert/embed_layer_norm.h"
-  "bert/embed_layer_norm_impl.cu"
-  "bert/embed_layer_norm_impl.h"
   "bert/fast_gelu_impl.cu"
   "bert/fast_gelu_impl.h"
   "bert/fast_gelu.cc"
   "bert/fast_gelu.h"
+  "bert/relative_attn_bias.cc"
+  "bert/relative_attn_bias.h"
+  "bert/relative_attn_bias_impl.cu"
+  "bert/relative_attn_bias_impl.h"
   "bert/skip_layer_norm.cc"
   "bert/skip_layer_norm.h"
   "bert/skip_layer_norm_impl.cu"
@@ -27,6 +27,15 @@ set(contrib_ops_excluded_files
   "bert/tensorrt_fused_multihead_attention/*"
   "bert/transformer_common.h"
   "bert/transformer_common.cc"
+  "diffusion/group_norm.h"
+  "diffusion/group_norm.cc"
+  "diffusion/group_norm_impl.cu"
+  "diffusion/group_norm_impl.h"
+  "diffusion/bias_split_gelu_impl.h"
+  "diffusion/bias_split_gelu_impl.cu"
+  "diffusion/bias_split_gelu.h"
+  "diffusion/bias_split_gelu.cc"
+  "diffusion/nhwc_conv.cc"
   "math/complex_mul.cc"
   "math/complex_mul.h"
   "math/complex_mul_impl.cu"
@@ -76,17 +85,8 @@ set(contrib_ops_excluded_files
   "tensor/image_scaler_impl.h"
   "transformers/beam_search.cc"
   "transformers/beam_search.h"
-  "transformers/generation_device_helper.cc"
-  "transformers/generation_device_helper.h"
-  "transformers/generation_cuda_impl.cu"
-  "transformers/generation_cuda_impl.h"
   "transformers/greedy_search.cc"
   "transformers/greedy_search.h"
-  "transformers/sampling.cc"
-  "transformers/sampling.h"
-  "transformers/sampling_cuda_helper.h"
-  "transformers/dump_cuda_tensor.cc"
-  "transformers/dump_cuda_tensor.h"
   "conv_transpose_with_dynamic_pads.cc"
   "conv_transpose_with_dynamic_pads.h"
   "cuda_contrib_kernels.cc"
@@ -94,6 +94,13 @@ set(contrib_ops_excluded_files
   "inverse.cc"
   "fused_conv.cc"
 )
+
+if (NOT onnxruntime_ENABLE_ATEN)
+  list(APPEND contrib_ops_excluded_files "aten_ops/aten_op.cc")
+endif()
+if (NOT onnxruntime_USE_NCCL)
+  list(APPEND contrib_ops_excluded_files "collective/nccl_kernels.cc")
+endif()
 
 set(provider_excluded_files
   "atomic/common.cuh"
@@ -115,7 +122,9 @@ set(provider_excluded_files
   "math/softmax_impl.cu"
   "math/softmax_warpwise_impl.cuh"
   "math/softmax_common.cc"
+  "math/softmax_common.h"
   "math/softmax.cc"
+  "math/softmax.h"
   "nn/conv.cc"
   "nn/conv.h"
   "nn/conv_transpose.cc"

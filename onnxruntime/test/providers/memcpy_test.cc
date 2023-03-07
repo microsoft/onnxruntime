@@ -61,7 +61,7 @@ TEST(MemcpyTest, copy1) {
   ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
 
   AllocatorPtr allocator =
-      execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(0, OrtMemTypeDefault);
+      execution_providers.Get(onnxruntime::kCpuExecutionProvider)->GetAllocator(OrtMemTypeDefault);
   auto* data_type = DataTypeImpl::GetType<float>();
   OrtValue input;
   Tensor::InitOrtValue(data_type, TensorShape({3, 2}), std::move(allocator), input);

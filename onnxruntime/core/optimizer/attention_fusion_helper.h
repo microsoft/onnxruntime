@@ -1543,7 +1543,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       kMSDomain);
   attention_node.AddAttribute("num_heads", num_heads);
   attention_node.AddAttribute("unidirectional", static_cast<int64_t>(unidir_mask_result.is_unidirectional));
-  if (mask_nodes.mask_filter_value != -10000.0f or unidir_mask_result.mask_filter_value != -10000.0f) {
+  if (mask_nodes.mask_filter_value != -10000.0f || unidir_mask_result.mask_filter_value != -10000.0f) {
     float mask_filter_value = mask_nodes.mask_filter_value != -10000.0f ?
                               mask_nodes.mask_filter_value : unidir_mask_result.mask_filter_value;
     attention_node.AddAttribute("mask_filter_value", mask_filter_value);

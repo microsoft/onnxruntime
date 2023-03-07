@@ -92,7 +92,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "c220895fd1163c01f0a8b44229fb9e4fe0ae0958",
+          "commitHash": "0ab19024f08c6673a713e454ef8bd95e174c807f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -112,7 +112,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5a5f8a5935762397aa68429b5493084ff970f774",
+          "commitHash": "9b7bca2a723ff94edcd007d93b5d0cf1838591dc",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -132,7 +132,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "a902b39270841beafc307dfa709610aa1cac2f06",
+          "commitHash": "a20c65f2cd549445fda907f7b83894c8eb7427d6",
           "repositoryUrl": "https://github.com/protocolbuffers/protobuf.git"
         },
         "comments": "git submodule at cmake/external/protobuf"
@@ -302,7 +302,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "1ba785612a79fe749aa1e478336e534743372639",
+          "commitHash": "ad834eb73ee0cd9b6fa9ea892caeed5fa17d7dc0",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
@@ -386,6 +386,66 @@
           "repositoryUrl": "https://github.com/tensorflow/tensorboard.git"
         },
         "comments": "tensorboard"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "66d9cddc832c1cdc2b30a8755274f7f74640cfe6",
+          "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
+        },
+        "comments": "cutlass"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "19cc035b6c6f2283573d29c7ea7f7d675cf750ce",
+          "repositoryUrl": "https://github.com/openssl/openssl.git"
+        },
+        "comments": "openssl"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "f54b0e47a08782a6131cc3d60f94d038fa6e0a51",
+          "repositoryUrl": "https://github.com/Tencent/rapidjson.git"
+        },
+        "comments": "rapidjson"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "da041154c6bac1a4aa98254a7d6819059e8ac0b0",
+          "repositoryUrl": "https://github.com/boostorg/boost.git"
+        },
+        "comments": "boost"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "9a6546658657dbeb23245117b57f4e6cf6cdc3e6",
+          "repositoryUrl": "https://github.com/libb64/libb64.git"
+        },
+        "comments": "b64"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "75a84807a019bf4961faf713df9d748f0fc83b47",
+          "repositoryUrl": "https://github.com/triton-inference-server/server.git"
+        },
+        "comments": "triton"
       }
     }
   ]

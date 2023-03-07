@@ -80,7 +80,7 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 #else
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 #endif
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   // convert to ort by loading the onnx model
@@ -125,7 +125,7 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
 
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
-  Ort::CustomOpDomain custom_op_domain("");
+  Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
   //  load the ORT format model and execute it
@@ -138,6 +138,26 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
   // model adds 1, 2, 3, 4, 5, 6 to the input values
   std::vector<int64_t> expected_dims_y = {3, 2};
   std::vector<float> expected_values_y = {7.0f, 7.0f, 7.0f, 7.0f, 7.0f, 7.0f};
+
+  TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
+}
+
+TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+
+  StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&standalone_op);
+
+  // load the ORT format model and execute it
+  std::vector<Input> inputs(1);
+  Input& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
 
   TestInference(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, custom_op_domain);
 }

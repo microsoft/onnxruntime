@@ -144,7 +144,7 @@ Status ReorderOutput::Compute(OpKernelContext* context) const {
   if (channels_last_) {
     MlasReorderOutputNhwc(Y_shape.data(), x_data, y_data);
   } else {
-    MlasReorderOutputNchw(Y_shape.data(), x_data, y_data);
+    MlasReorderOutputNchw(Y_shape.data(), x_data, y_data, context->GetOperatorThreadPool());
   }
 
   return Status::OK();
