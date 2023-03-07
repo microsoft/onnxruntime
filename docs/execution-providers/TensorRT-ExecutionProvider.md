@@ -26,7 +26,7 @@ Pre-built packages and Docker images are available for Jetpack in the [Jetson Zo
 
 |ONNX Runtime|TensorRT|CUDA|
 |---|---|---|
-|main|8.5|11.4|
+|main|8.5|11.6|
 |1.14|8.5|11.4|
 |1.12-1.13|8.4|11.4|
 |1.11|8.2|11.4|
@@ -90,7 +90,7 @@ Following environment variables can be set for TensorRT execution provider.
 * `ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME`: Specify INT8 calibration table file for non-QDQ models in INT8 mode. Note calibration table should not be provided for QDQ model because TensorRT doesn't allow calibration table to be loded if there is any Q/DQ node in the model. By default the name is empty.
 
 * `ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE`: Select what calibration table is used for non-QDQ models in INT8 mode. If 1, native TensorRT generated calibration table is used; if 0, ONNXRUNTIME tool generated calibration table is used. Default value: 0.
-* **Note: Please copy up-to-date calibration table file to `ORT_TENSORRT_CACHE_PATH` before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.**
+    * **Note: Please copy up-to-date calibration table file to `ORT_TENSORRT_CACHE_PATH` before inference. Calibration table is specific to models and calibration data sets. Whenever new calibration table is generated, old file in the path should be cleaned up or be replaced.**
 
 * `ORT_TENSORRT_DLA_ENABLE`: Enable DLA (Deep Learning Accelerator). 1: enabled, 0: disabled. Default value: 0. Note not all Nvidia GPUs support DLA. 
 
@@ -108,6 +108,8 @@ Following environment variables can be set for TensorRT execution provider.
 * `ORT_TENSORRT_DUMP_SUBGRAPHS`: Dumps the subgraphs that are transformed into TRT engines in onnx format to the filesystem. This can help debugging subgraphs, e.g. by using  `trtexec --onnx my_model.onnx` and check the outputs of the parser. 1: enabled, 0: disabled. Default value: 0.
 
 * `ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD`: Sequentially build TensorRT engines across provider instances in multi-GPU environment. 1: enabled, 0: disabled. Default value: 0.
+
+* `ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE`: Share execution context memory between TensorRT subgraphs. Default 0 = false, nonzero = true.
 
 One can override default values by setting environment variables. e.g. on Linux:
 
@@ -140,6 +142,9 @@ export ORT_TENSORRT_CACHE_PATH="/path/to/cache"
 
 # Dump out subgraphs to run on TensorRT
 export ORT_TENSORRT_DUMP_SUBGRAPHS=1
+
+# Enable context memory sharing between TensorRT subgraphs. Default 0 = false, nonzero = true
+export ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE=1
 ```
 
 ### Execution Provider Options
@@ -165,6 +170,7 @@ There are one-to-one mappings between **environment variables** and **execution 
 | ORT_TENSORRT_CACHE_PATH                        | trt_engine_cache_path                 | string |
 | ORT_TENSORRT_DUMP_SUBGRAPHS                    | trt_dump_subgraphs                    | bool   |
 | ORT_TENSORRT_FORCE_SEQUENTIAL_ENGINE_BUILD     | trt_force_sequential_engine_build     | bool   |
+| ORT_TENSORRT_CONTEXT_MEMORY_SHARING_ENABLE     | trt_context_memory_sharing_enable     | bool   |
 
 Besides, `device_id` can also be set by execution provider option.
 
@@ -217,7 +223,8 @@ sess = ort.InferenceSession(model_path, sess_options=sess_opt, providers=provide
 ## Performance Tuning
 For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
-When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt` 
+When/if using [onnxruntime_perf_test](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/perftest#onnxruntime-performance-test), use the flag `-e tensorrt`. Check below for sample. 
+
 
 ## Samples
 
@@ -226,14 +233,26 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
 1. Download the Faster R-CNN onnx model from the ONNX model zoo [here](https://github.com/onnx/models/tree/master/vision/object_detection_segmentation/faster-rcnn).
 
 2. Infer shapes in the model by running the [shape inference script](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/symbolic_shape_infer.py)
-    ```
+    ```bash
     python symbolic_shape_infer.py --input /path/to/onnx/model/model.onnx --output /path/to/onnx/model/new_model.onnx --auto_merge
     ```
 
 3. Replace the original model with the new model and run the 
     onnx_test_runner tool under ONNX Runtime build directory.
-    ```
+    ```bash
     ./onnx_test_runner -e tensorrt /path/to/onnx/model/
+    ```
+
+4. Run `onnxruntime_perf_test` on your shape-inferred Faster-RCNN model 
+
+   > Download sample test data with model from [model zoo](https://github.com/onnx/models/tree/main/vision/object_detection_segmentation/faster-rcnn), and put test_data_set folder next to your inferred model 
+
+    ```bash
+    # e.g.
+    # -r: set up test repeat time
+    # -e: set up execution provider
+    # -i: set up params for execution provider options
+    ./onnxruntime_perf_test -r 1 -e tensorrt -i "trt_fp16_enable|true" /path/to/onnx/your_inferred_model.onnx
     ```
 
 Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/docs/python/inference/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
