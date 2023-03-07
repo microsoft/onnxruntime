@@ -1961,7 +1961,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     # Use different length sentences to test batching
     if sentences is None:
         sentences = [
-            "The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released The product is released ",
+            "The product is released",
             "I enjoy walking in the park",
             "Test best way to invest",
         ]
