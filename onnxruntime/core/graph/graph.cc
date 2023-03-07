@@ -614,6 +614,11 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
   if (!description_.empty())
     proto.set_doc_string(description_);
 
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    ORT_THROW("Removable attributes were removed before the conversion is started.");
+  }
+
   // Set attributes.
   proto.clear_attribute();
   for (const auto& attribute : attributes_) {
@@ -665,6 +670,11 @@ Status Node::SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
   auto outputs = GetNodeArgsOrtFormat(definitions_.output_defs);
   auto input_arg_counts = builder.CreateVector(definitions_.input_arg_count);
   auto implicit_inputs = GetNodeArgsOrtFormat(definitions_.implicit_input_defs);
+
+  // Checks an attribute was not removed.
+  if (!can_be_saved_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Removable attributes were removed before the node is saved.");
+  }
 
   // Node attributes
   std::vector<flatbuffers::Offset<fbs::Attribute>> attributes_vec;
@@ -835,6 +845,7 @@ void Node::Init(const std::string& name,
   definitions_.input_defs = input_args;
   definitions_.output_defs = output_args;
   domain_ = domain;
+  can_be_saved_ = true;
   priority_ = 0;
   if (kOnnxDomainAlias == domain_) {
     domain_ = kOnnxDomain;
@@ -946,6 +957,17 @@ bool Node::ClearAttribute(const std::string& attr_name) {
   return attributes_.erase(attr_name) > 0;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+int Node::PruneRemovableAttributes(gsl::span<const std::string> removable_attributes) {
+  graph_->SetGraphResolveNeeded();
+  graph_->SetGraphProtoSyncNeeded();
+  int n_removed = 0;
+  for (const auto& name : removable_attributes) {
+    n_removed += static_cast<int>(attributes_.erase(name));
+  }
+  can_be_saved_ = can_be_saved_ && n_removed == 0;
+  return n_removed;
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status Node::UpdateInputArgCount() {

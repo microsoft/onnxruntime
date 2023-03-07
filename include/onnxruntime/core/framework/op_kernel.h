@@ -98,6 +98,17 @@ class OpKernel {
     return Status::OK();
   }
 
+  // Override this function to return a list of attributes the session can safely remove
+  // after it is intialized and saved. This option is useful to reduce memory usage
+  // when the kernel does not reuse the operator attributes but copies them.
+  // All attributes returned by this method will be removed by method
+  // PruneRemovableAttributes of they exists.
+  // @param removable_attributes set of attributes the session can safely remove.
+  virtual Status GetRemovableAttributes(InlinedVector<std::string>& removable_attributes) const {
+    removable_attributes.clear();
+    return Status::OK();
+  }
+
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
   //                                 int input_idx,

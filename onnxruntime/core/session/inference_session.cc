@@ -1522,12 +1522,16 @@ common::Status InferenceSession::Initialize() {
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
     }
 
+    // once the model is saved, we may remove unnecessary attributes for inference
+    session_state_->PruneRemovableAttributes();
+
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
   ORT_CATCH(const NotImplementedException& ex) {
