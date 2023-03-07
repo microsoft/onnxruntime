@@ -96,17 +96,18 @@ jsize safecast_int64_to_jsize(int64_t v);
 
 #ifdef _WIN32
 #include <Intsafe.h>
-inline void* allocarray(size_t nmemb, size_t size) {
+static inline void* allocarray(size_t nmemb, size_t size) {
   size_t out;
   HRESULT hr = SIZETMult(nmemb, size, &out);
   if (hr != S_OK) return NULL;
   return malloc(out);
 }
 #else
-inline void* allocarray(size_t nmemb, size_t size) {
+static inline void* allocarray(size_t nmemb, size_t size) {
 #ifdef HAS_REALLOCARRAY
   return reallocarray(NULL, nmemb, size);
 #else
+  //TODO: find a safer way
   return malloc(nmemb * size);
 #endif
 }
