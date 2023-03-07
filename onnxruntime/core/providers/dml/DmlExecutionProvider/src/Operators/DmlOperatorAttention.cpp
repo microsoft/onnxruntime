@@ -16,6 +16,10 @@ Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
      |              /   |     \
      |          Slice  Slice  Slice
   Identity        |     |       |
+     |            |     |       |
+     |      Identity Identity Identity // The identities are used to transpose NCHW -> NHCW while
+     |            |     |       |      // keeping the GEMM strides as NCHW to better target metacommands
+     |            |     |       |
      |             -----        |
      -----------    |           |
                  \  |           |
