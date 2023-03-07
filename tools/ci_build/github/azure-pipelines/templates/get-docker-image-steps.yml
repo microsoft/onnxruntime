@@ -76,11 +76,18 @@ steps:
     condition: eq('${{ parameters.UsePipelineCache }}', 'true')
 
   - script: |
+      if [ ${{ parameters.UsePipelineCache}} ]
+      then
+        use_imagecache="--use_imagecache"
+      else
+        use_imagecache=""
+      fi
       ${{ parameters.ScriptName }} \
         --dockerfile "${{ parameters.Dockerfile }}" \
         --context "${{ parameters.Context }}" \
         --docker-build-args "${{ parameters.DockerBuildArgs }}" \
-        --repository "${{ parameters.Repository }}"
+        --repository "${{ parameters.Repository }}" \
+        $use_imagecache
     displayName: "Get ${{ parameters.Repository }} image for ${{ parameters.Dockerfile }}"
 
   - script: |
