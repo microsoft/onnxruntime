@@ -2699,6 +2699,7 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::ReleaseDnnlProviderOptions,
     &OrtApis::KernelInfo_GetNodeName,
     &OrtApis::KernelInfo_GetLogger,
+    &OrtApis::KernelContext_GetLogger,
     &OrtApis::Logger_LogMessage,
     &OrtApis::Logger_GetLoggingSeverityLevel,
 };

@@ -4013,6 +4013,24 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
 
   /// @}
+  /// \name OrtKernelContext
+  /// Custom operator APIs.
+  /// @{
+
+  /** \brief Get the runtime logger from ::OrtKernelContext.
+   *
+   * Used in the KernelCompute callback of an OrtCustomOp to get a logger that can be used to log
+   * messages during inference.
+   *
+   * \param[in] info An instance of ::OrtKernelContext.
+   * \param[out] logger Pointer set to the kernel context's ::OrtLogger. Owned by ONNX Runtime, so do not free.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.15
+   */
+  ORT_API2_STATUS(KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger);
+
+  /// @}
   /// \name OrtLogger
   /// Custom operator APIs.
   /// @{

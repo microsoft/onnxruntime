@@ -313,6 +313,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger) {
+  API_IMPL_BEGIN
+  const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
+
+  *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
                     _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                     _In_z_ const char* func_name) {

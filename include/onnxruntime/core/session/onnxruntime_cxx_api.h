@@ -1500,25 +1500,6 @@ struct OpAttr : detail::Base<OrtOpAttr> {
   OpAttr(const char* name, const void* data, int len, OrtOpAttrType type);
 };
 
-/// <summary>
-/// This class wraps a raw pointer OrtKernelContext* that is being passed
-/// to the custom kernel Compute() method. Use it to safely access context
-/// attributes, input and output parameters with exception safety guarantees.
-/// See usage example in onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
-/// </summary>
-struct KernelContext {
-  explicit KernelContext(OrtKernelContext* context);
-  size_t GetInputCount() const;
-  size_t GetOutputCount() const;
-  ConstValue GetInput(size_t index) const;
-  UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
-  UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
-  void* GetGPUComputeStream() const;
-
- private:
-  OrtKernelContext* ctx_;
-};
-
 /**
  * Macro that logs a message using the provided logger. Throws an exception if OrtApi::Logger_LogMessage fails.
  * Example: ORT_CXX_LOG(logger, ORT_LOGGING_LEVEL_INFO, "Log a message");
@@ -1669,6 +1650,26 @@ struct Logger {
  private:
   const OrtLogger* logger_{};
   OrtLoggingLevel cached_severity_level_{};
+};
+
+/// <summary>
+/// This class wraps a raw pointer OrtKernelContext* that is being passed
+/// to the custom kernel Compute() method. Use it to safely access context
+/// attributes, input and output parameters with exception safety guarantees.
+/// See usage example in onnxruntime/test/testdata/custom_op_library/custom_op_library.cc
+/// </summary>
+struct KernelContext {
+  explicit KernelContext(OrtKernelContext* context);
+  size_t GetInputCount() const;
+  size_t GetOutputCount() const;
+  ConstValue GetInput(size_t index) const;
+  UnownedValue GetOutput(size_t index, const int64_t* dim_values, size_t dim_count) const;
+  UnownedValue GetOutput(size_t index, const std::vector<int64_t>& dims) const;
+  void* GetGPUComputeStream() const;
+  Logger GetLogger() const;
+
+ private:
+  OrtKernelContext* ctx_;
 };
 
 struct KernelInfo;

@@ -444,6 +444,7 @@ ORT_API(void, ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProviderOptions
 
 ORT_API_STATUS_IMPL(KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out, _Inout_ size_t* size);
 ORT_API_STATUS_IMPL(KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger);
+ORT_API_STATUS_IMPL(KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger);
 
 ORT_API_STATUS_IMPL(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
                     _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,

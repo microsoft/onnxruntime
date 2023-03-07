@@ -1539,6 +1539,12 @@ inline void* KernelContext::GetGPUComputeStream() const {
   return out;
 }
 
+inline Logger KernelContext::GetLogger() const {
+  const OrtLogger* out = nullptr;
+  ThrowOnError(GetApi().KernelContext_GetLogger(this->ctx_, &out));
+  return Logger{out};
+}
+
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
   Ort::ThrowOnError(GetApi().CreateOpAttr(name, data, len, type, &p_));
 }
