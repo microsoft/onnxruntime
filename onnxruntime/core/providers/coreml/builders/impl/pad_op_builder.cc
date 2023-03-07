@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <math.h>
-
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
@@ -15,7 +13,6 @@
 #include "core/providers/coreml/builders/op_builder_factory.h"
 
 #include "base_op_builder.h"
-#include "builder_utils.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -35,6 +32,11 @@ class PadOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
+
+  int GetMinSupportedOpSet(const Node& node) const override {
+    // Note: before Pad-11, inputs `pads` and `constant_value` were attributes
+    return 11;
+  }
 };
 
 // Add operator related
@@ -43,12 +45,6 @@ class PadOpBuilder : public BaseOpBuilder {
 void PadOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  //  pads
   model_builder.AddInitializerToSkip(node.InputDefs()[2]->Name());  //  constant_value
-
-  // Currently we don't support optional `axes` input for Pad.
-  if (node.InputDefs().size() > 3) {
-    model_builder.AddInitializerToSkip(node.InputDefs()[3]->Name());  // axes
-    model_builder.AddInputToSkip(node.InputDefs()[3]->Name());
-  }
 }
 
 Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -72,6 +68,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Initializer pads_initializer_raw_data(pads_tensor);
   auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
 
+  // Add padding
   auto* height_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
   height_border->set_startedgesize(pads_span[0]);
   height_border->set_endedgesize(pads_span[2]);
@@ -121,12 +118,12 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     }
 
     if (input_defs.size() < 3) {
-      LOGS(logger, VERBOSE) << "Input pads and constant_value are required for current support of constant mode Pad op.";
+      LOGS(logger, VERBOSE) << "constant_value input is required for constant mode Pad op support.";
       return false;
     }
   }
 
-  // only support if `pads` input is known and does not contain negative values
+  // only support if `pads` input is known and is of length 4 and does not contain negative values
   {
     const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
     if (pads_initializer_it == initializers.end()) {
