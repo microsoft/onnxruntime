@@ -36,8 +36,8 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
                                                              const ProviderOptionsMap& provider_options_map);
 #endif
 
-void addGlobalMethods(py::module& m, Environment& env);
-void addObjectMethods(py::module& m, Environment& env, ExecutionProviderRegistrationFn ep_registration_fn);
+void addGlobalMethods(py::module& m);
+void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
 void addObjectMethodsForEager(py::module& m);
 #ifdef ENABLE_LAZY_TENSOR
@@ -133,18 +133,13 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-ORTTrainingPythonEnv::ORTTrainingPythonEnv() {
-  OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                std::make_unique<CLogSink>(),
-                                                Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                &SessionObjectInitializer::default_logger_id),
-                                            ort_env_));
-  auto& builtinEPs = GetAvailableExecutionProviderNames();
+ORTTrainingPythonEnv::ORTTrainingPythonEnv() : ort_env_(GetEnv()) {
+  const auto& builtinEPs = GetAvailableExecutionProviderNames();
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
 
-Environment& ORTTrainingPythonEnv::GetORTEnv() {
-  return *ort_env_;
+std::shared_ptr<Environment> ORTTrainingPythonEnv::GetORTEnv() const {
+  return ort_env_;
 }
 
 std::shared_ptr<IExecutionProvider> ORTTrainingPythonEnv::GetExecutionProviderInstance(const std::string& provider_type,
@@ -183,35 +178,40 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
   execution_provider_instances_map_.clear();
 }
 
-static std::unique_ptr<ORTTrainingPythonEnv> ort_training_env;
-
-void InitializeTrainingEnv() {
-  auto initialize = [&]() {
-    static bool initialized = false;
-    if (initialized) {
-      return;
-    }
-    // Initialization of the module
+class TrainingEnvInitialzer {
+ public:
+  TrainingEnvInitialzer() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    ort_training_env = std::make_unique<ORTTrainingPythonEnv>();
-    initialized = true;
-  };
-  initialize();
-}
+    ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
+  }
+
+  ~TrainingEnvInitialzer() {
+    std::cout << "TrainingEnvInitialzer is being destroyed" << std::endl;
+    destroyed = true;
+  }
+
+  ORTTrainingPythonEnv& Get() noexcept {
+    return *ort_training_env_;
+  }
+
+  static bool destroyed;
+
+ private:
+  std::unique_ptr<ORTTrainingPythonEnv> ort_training_env_;
+};
+
+bool TrainingEnvInitialzer::destroyed = false;
 
 ORTTrainingPythonEnv& GetTrainingEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
+  // Guard against attempts to resurrect the singleton
+  if (TrainingEnvInitialzer::destroyed) {
+    ORT_THROW("Detected an attempt to resurrect destroyed Training Env Environment");
   }
-  return *ort_training_env;
-}
 
-Environment& GetTrainingORTEnv() {
-  if (!ort_training_env) {
-    InitializeTrainingEnv();
-  }
-  return ort_training_env->GetORTEnv();
+  static TrainingEnvInitialzer training_env_holder;
+
+  return training_env_holder.Get();
 }
 
 #ifdef ENABLE_EAGER_MODE
@@ -225,8 +225,9 @@ void InitializeBackendsManager() {
       return;
     }
     // Initialization of the module
-    auto& env = onnxruntime::python::GetTrainingORTEnv();
-    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env.GetLoggingManager()->DefaultLogger());
+    auto& training_env = onnxruntime::python::GetTrainingEnv();
+    auto env = training_env.GetORTEnv();
+    ort_backends_manager_instance = std::make_unique<ORTBackendsManager>(env->GetLoggingManager()->DefaultLogger());
     initialized = true;
   };
   initialize();
@@ -247,7 +248,7 @@ void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
   for (auto& provider_type : provider_types) {
     auto it = training_env.ext_execution_provider_info_map_.find(provider_type);
     if (it == training_env.ext_execution_provider_info_map_.end()) {
-      //nothing changed.
+      // nothing changed.
       if (original_provider_options_map.find(provider_type) != original_provider_options_map.end())
         merged_options.insert({provider_type, original_provider_options_map.at(provider_type)});
     } else {
@@ -318,9 +319,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
 
-  Environment& env = GetTrainingORTEnv();
-  addGlobalMethods(m, env);
-  addObjectMethods(m, env, ORTTrainingRegisterExecutionProviders);
+  // Instantiate singletons
+  GetTrainingEnv();
+  addGlobalMethods(m);
+  addObjectMethods(m, ORTTrainingRegisterExecutionProviders);
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
@@ -357,10 +359,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
 
-  m.def("clear_training_ep_instances", []() -> void {
-    ort_training_env->ClearExecutionProviderInstances();
-  },
-        "Clean the execution provider instances used in ort training module.");
+  m.def(
+      "clear_training_ep_instances", []() -> void {
+        GetTrainingEnv().ClearExecutionProviderInstances();
+      },
+      "Clean the execution provider instances used in ort training module.");
 
   // clean the ort training environment when python interpreter exit
   // otherwise the global var will be de-constrcut after user main.
@@ -368,10 +371,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   // deconstruction is not stable, which will lead to crash.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
-    ort_training_env = nullptr;
-#ifdef ENABLE_EAGER_MODE
-    ort_backends_manager_instance = nullptr;
-#endif
+    std::cout << "OrtTraining pybind11 atexit() is called" << std::endl;
+    // #ifdef ENABLE_EAGER_MODE
+    //     ort_backends_manager_instance = nullptr;
+    // #endif
   }));
 }
 
