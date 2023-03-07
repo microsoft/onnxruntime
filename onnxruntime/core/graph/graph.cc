@@ -591,8 +591,11 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      onnx_function_proto = *(op_->GetFunction());
-      return true;
+      auto* function_ptr = op_->GetFunction(SinceVersion(), true);
+      if (function_ptr != nullptr) {
+        onnx_function_proto = *function_ptr;
+        return true;
+      }
     }
   }
   return false;
