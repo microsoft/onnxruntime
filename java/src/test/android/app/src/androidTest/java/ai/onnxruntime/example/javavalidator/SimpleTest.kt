@@ -18,8 +18,8 @@ private const val TAG = "ORTAndroidTest"
 
 @RunWith(AndroidJUnit4::class)
 class SimpleTest {
-    @get:Rule
-    val activityTestRule = ActivityScenarioRule(MainActivity::class.java)
+    //@get:Rule
+    //val activityTestRule = ActivityScenarioRule(MainActivity::class.java)
 
     @get:Rule
     var reportHelper: ReportHelper = Factory.getReportHelper()
