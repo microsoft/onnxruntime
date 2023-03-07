@@ -8,6 +8,8 @@ use std::{
     str::FromStr,
 };
 
+use bindgen::callbacks::ParseCallbacks;
+
 /// ONNX Runtime version
 ///
 /// WARNING: If version is changed, bindings for all platforms will have to be re-generated.
@@ -57,6 +59,15 @@ fn main() {
     generate_bindings(&include_dir);
 }
 
+#[derive(Debug)]
+struct Cb;
+
+impl ParseCallbacks for Cb {
+    fn process_comment(&self, comment: &str) -> Option<String> {
+        Some(doxygen_rs::transform(comment))
+    }
+}
+
 fn generate_bindings(include_dir: &Path) {
     let clang_args = &[
         format!("-I{}", include_dir.display()),
@@ -88,6 +99,7 @@ fn generate_bindings(include_dir: &Path) {
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(Cb))
         .dynamic_library_name("onnxruntime")
         .allowlist_type("Ort.*")
         .allowlist_type("Onnx.*")

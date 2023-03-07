@@ -22,6 +22,7 @@ libloading = "0.7"
 [build-dependencies]
 bindgen = "0.63"
 cmake = "0.1"
+doxygen-rs = "0.3"
 
 # Used on unix
 flate2 = "1.0"
