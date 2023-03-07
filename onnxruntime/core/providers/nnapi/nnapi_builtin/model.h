@@ -108,7 +108,7 @@ class Model {
 
  private:
   const NnApi& nnapi_;
-  int32_t nnapi_target_device_feature_level_{0};
+  int32_t nnapi_effective_feature_level_{0};
   ANeuralNetworksModel* model_{nullptr};
   ANeuralNetworksCompilation* compilation_{nullptr};
 
