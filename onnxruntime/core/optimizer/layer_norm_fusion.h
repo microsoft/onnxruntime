@@ -43,9 +43,9 @@ class SimplifiedLayerNormFusion : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
  private:
-  // A flag indicate whether this optimizer is registered for pre-training.
-  // This is introduced to skip some device check, since when optimization passes are running, devices placement is
-  // NOT done yet.
+  // A flag indicate whether device check is skipped for some cases.
+  // This is introduced for pre-training optimizations, where when optimization passes are running,
+  // devices placement is NOT done yet.
   bool skip_device_check_;
 };
 
