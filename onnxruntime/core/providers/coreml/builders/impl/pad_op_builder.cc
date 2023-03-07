@@ -103,7 +103,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       return false;
     }
 
-    if (std::find(input_shape.begin(), input_shape.end(), uint32_t{0}) != input_shape.end()) {
+    if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
       LOGS_DEFAULT(VERBOSE) << "Pad input with zero elements for dimension is not supported";
       return false;
     }
