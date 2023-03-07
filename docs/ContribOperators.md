@@ -143,14 +143,14 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Whether every token can only attend to previous tokens. Default value is 0.</dd>
 </dl>
 
-#### Inputs (3 - 7)
+#### Inputs (2 - 7)
 
 <dl>
 <dt><tt>input</tt> : T</dt>
 <dd>Input tensor with shape (batch_size, sequence_length, input_hidden_size)</dd>
 <dt><tt>weights</tt> : T</dt>
 <dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
-<dt><tt>bias</tt> : T</dt>
+<dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
 <dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size)</dd>
@@ -2310,9 +2310,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The value to be filled in the attention mask. Default value is -10000.0f</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>static_kv</tt> : int</dt>
+<dd>Whether to use static key and value(Cross-Attention). Default value is 1.</dd>
 </dl>
 
-#### Inputs (1 - 6)
+#### Inputs (1 - 8)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2327,13 +2331,21 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
 <dd>relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length) or (1, num_heads, sequence_length, total_sequence_length)</dd>
+<dt><tt>past_key</tt> (optional) : T</dt>
+<dd>past state for cross key with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
+<dt><tt>past_value</tt> (optional) : T</dt>
+<dd>past state for cross value with shape (batch_size, num_heads, past_sequence_length, head_size)</dd>
 </dl>
 
-#### Outputs
+#### Outputs (1 - 3)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
 <dd>3D output tensor with shape (batch_size, sequence_length, v_hidden_size)</dd>
+<dt><tt>present_key</tt> (optional) : T</dt>
+<dd>present state for cross key with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self key with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
+<dt><tt>present_value</tt> (optional) : T</dt>
+<dd>present state for cross value with shape (batch_size, num_heads, kv_sequence_length, head_size)or present state for self value with shape (batch_size, num_heads, total_sequence_length, head_size)</dd>
 </dl>
 
 #### Type Constraints
