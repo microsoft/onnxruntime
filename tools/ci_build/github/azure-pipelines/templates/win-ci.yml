@@ -187,11 +187,12 @@ jobs:
 
     - task: CmdLine@2
       condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+      displayName: 'Add symbols and notices to Java'
       inputs:
         script: |
           @echo on
           cd $(Build.SourcesDirectory)\java
-          $(Build.SourcesDirectory)\java\gradlew cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
           if %errorlevel% neq 0 exit /b %errorlevel%
           cd $(Build.BinariesDirectory)\RelWithDebInfo
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
@@ -225,8 +226,6 @@ jobs:
           popd
           rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
           dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        displayName: 'Add symbols and notices to Java'
 
     - task: PublishBuildArtifacts@1
       condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
