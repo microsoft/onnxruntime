@@ -6,7 +6,7 @@ version = "0.0.14"
 
 links = "onnxruntime"
 
-description = "Unsafe wrapper around Microsoft's ONNX Runtime"
+description = "low-level wrapper around Microsoft's ONNXRuntime"
 documentation = "https://docs.rs/onnxruntime-sys"
 homepage = "https://github.com/microsoft/onnxruntime"
 license = "MIT OR Apache-2.0"
