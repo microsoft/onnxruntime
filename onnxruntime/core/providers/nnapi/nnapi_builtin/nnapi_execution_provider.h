@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/optional.h"
 #include "core/framework/execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
@@ -45,7 +46,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   // nnapi handle for either Android NNAPI or x86 hooker.
   const nnapi::NnApi* nnapi_handle_ = nullptr;
-  std::vector<nnapi::DeviceWrapper> nnapi_target_devices_;
+  InlinedVector<nnapi::DeviceWrapper> nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
 };
 }  // namespace onnxruntime
