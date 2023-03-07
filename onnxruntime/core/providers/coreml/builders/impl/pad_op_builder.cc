@@ -33,7 +33,7 @@ class PadOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
 
-  int GetMinSupportedOpSet(const Node& node) const override {
+  int GetMinSupportedOpSet(const Node& /* node */) const override {
     // Note: before Pad-11, inputs `pads` and `constant_value` were attributes
     return 11;
   }
