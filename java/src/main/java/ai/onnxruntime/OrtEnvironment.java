@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -271,9 +271,24 @@ public final class OrtEnvironment implements AutoCloseable {
     setTelemetry(OnnxRuntime.ortApiHandle, nativeHandle, sendTelemetry);
   }
 
+  /**
+   * Gets the native library version string.
+   *
+   * @return The version string.
+   */
+  public String getVersion() {
+    return OnnxRuntime.version();
+  }
+
   @Override
   public String toString() {
-    return "OrtEnvironment(name=" + curLoggingName + ",logLevel=" + curLogLevel + ")";
+    return "OrtEnvironment(name="
+        + curLoggingName
+        + ",logLevel="
+        + curLogLevel
+        + ",version="
+        + getVersion()
+        + ")";
   }
 
   /**
