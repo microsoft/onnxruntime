@@ -33,7 +33,7 @@ enum class TargetDeviceOption : int8_t {
   CPU_ONLY,      // use CPU only
 };
 
-const char* const nnapi_cpu = ("nnapi-reference");
+const char* const kNnapiCpuDeviceName = ("nnapi-reference");
 
 /**  How feature level works for NNAPI. refer to https://developer.android.com/ndk/reference/group/neural-networks
  *
