@@ -46,8 +46,6 @@ stages:
 
     - template: "templates/use-android-ndk.yml"
 
-    - template: templates/set-up-gradle-wrapper-step.yml
-
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
         /bin/bash $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_host_protoc.sh \
@@ -129,8 +127,6 @@ stages:
       displayName: Install coreutils and ninja
 
     - template: "templates/use-android-ndk.yml"
-
-    - template: templates/set-up-gradle-wrapper-step.yml
 
     # We build the host protoc to <ORT_ROOT>/protobuf_install
     - script: |
@@ -233,12 +229,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
@@ -305,12 +299,10 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
@@ -387,8 +379,6 @@ stages:
 
       - template: "templates/use-android-ndk.yml"
 
-      - template: templates/set-up-gradle-wrapper-step.yml
-
       # used by Build Minimal ORT
       - script: brew install coreutils ninja
         displayName: Install coreutils and ninja
@@ -404,7 +394,7 @@ stages:
       - script: |
           python3 tools/python/run_android_emulator.py \
           --android-sdk-root ${ANDROID_SDK_ROOT} \
-          --create-avd --system-image "system-images;android-29;google_apis;x86_64" \
+          --create-avd --system-image "system-images;android-31;default;x86_64" \
           --start --emulator-extra-args="-partition-size 4096" \
           --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
         displayName: Start Android emulator
