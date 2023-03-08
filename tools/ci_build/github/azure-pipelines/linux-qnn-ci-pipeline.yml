@@ -24,7 +24,6 @@ jobs:
         displayName: set QNN_SDK_ROOT
 
       - script: |
-          env | egrep -e QNN
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
@@ -33,8 +32,7 @@ jobs:
             --qnn_home $QNN_SDK_ROOT \
             --cmake_generator=Ninja \
             --skip_tests
-          mkdir -p build/Release/testdata/QNN/node_tests
-        displayName: QNN EP, Build
+        displayName: Build QNN EP
 
       - script: |
           python3 tools/ci_build/build.py \
