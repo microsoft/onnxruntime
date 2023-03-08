@@ -92,42 +92,62 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
 }
 
 // Creates the graph:
-// quantized_input -> DequantizeLinear -> InstanceNormalization -> QuantizeLinear -> quantized_output.
+//                                  _______________________
+//         input_f32 -> Q -> DQ -> |                       | -> Q -> DQ -> output_f32
+// scale_u8 (initializer) -> DQ -> | InstanceNormalization |
+// bias_u8 (initializer)  -> DQ -> |_______________________|
+//
 // Currently used to test QNN EP.
-template <typename QuantType>
+template <typename InputQType, typename ScaleQType, typename BiasQType>
 GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_shape, float epsilon) {
   return [input_shape, epsilon](ModelTestBuilder& builder) {
+    const int64_t num_channels = input_shape[1];
 
-    float qdq_scale = 1.0f;
-    QuantType qdq_zp = 0;
+    using InputQLimits = std::numeric_limits<InputQType>;
+    using ScaleQLimits = std::numeric_limits<ScaleQType>;
 
-    using QuantTypeLimits = std::numeric_limits<QuantType>;
-    QuantType quant_min_value = static_cast<QuantType>(0);
-    QuantType quant_max_value = QuantTypeLimits::max() / 2;
+    // Create float inputs ranging from -1.0 to 1.0
+    auto* input_f32 = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+    auto* output_f32 = builder.MakeOutput();  // Floating-point output.
 
-    auto* input_arg = builder.MakeInput<QuantType>(input_shape, quant_min_value, quant_max_value);
-    auto* output_arg = builder.MakeOutput();
+    // Add scale (initializer) -> DQ ->
+    const ScaleQType scaleq_min_value = ScaleQLimits::min();
+    const ScaleQType scaleq_max_value = ScaleQLimits::max();
+    auto* dq_scale_output = builder.MakeIntermediate();
+    auto* scale = builder.MakeInitializer<ScaleQType>({num_channels}, scaleq_min_value, scaleq_max_value);
+    builder.AddDequantizeLinearNode<ScaleQType>(scale, .03f,
+                                                (scaleq_min_value + scaleq_max_value) / 2 + 1,
+                                                dq_scale_output);
 
-    // add input -> DQ
-    auto* dq_output = builder.MakeIntermediate();
-    builder.AddDequantizeLinearNode<QuantType>(input_arg, qdq_scale, qdq_zp, dq_output);
+    // Add bias (initializer) -> DQ ->
+    auto* dq_bias_output = builder.MakeIntermediate();
+    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, static_cast<BiasQType>(0), static_cast<BiasQType>(127));
+    builder.AddDequantizeLinearNode<BiasQType>(bias, .0012f, 0, dq_bias_output);
 
-    // Add InstanceNormalization
-    std::vector<float> channel_scales(input_shape[1], 1.0f);
-    std::vector<float> channel_biases(input_shape[1], 0.0f);
-
-    auto* scale = builder.Make1DInitializer<float>(channel_scales);
-    auto* bias = builder.Make1DInitializer<float>(channel_biases);
-
+    // Add InstanceNormalization ->
+    const InputQType inputq_min_value = InputQLimits::min();
+    const InputQType inputq_max_value = InputQLimits::max();
     auto* instance_norm_output = builder.MakeIntermediate();
-    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {dq_output, scale, bias}, {instance_norm_output});
+    auto* input_qdq_output = AddQDQNodePair<InputQType>(builder, input_f32, .04f,
+                                                        (inputq_min_value + inputq_max_value) / 2 + 1);
+    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {input_qdq_output, dq_scale_output, dq_bias_output},
+                                           {instance_norm_output});
     inst_norm_node.AddAttribute("epsilon", epsilon);
 
-    // add Q output
-    builder.AddQuantizeLinearNode<QuantType>(instance_norm_output,
-                                             qdq_scale,
-                                             qdq_zp,
-                                             output_arg);
+    // Add instance_norm_output -> Q ->
+    const InputQType output_zp = (inputq_min_value + inputq_max_value) / 2 + 1;
+    const float output_scale = 0.39f;
+    auto* inst_norm_q_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<InputQType>(instance_norm_output,
+                                              output_scale,
+                                              output_zp,
+                                              inst_norm_q_output);
+
+    // Add the last DQ -> output_f32
+    builder.AddDequantizeLinearNode<InputQType>(inst_norm_q_output,
+                                                output_scale,
+                                                output_zp,
+                                                output_f32);
   };
 }
 

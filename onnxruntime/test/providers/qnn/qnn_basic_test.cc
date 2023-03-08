@@ -101,7 +101,7 @@ static HTPSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) {
   ModelTestBuilder helper(graph);
 
   // Build simple QDQ graph: DQ -> InstanceNormalization -> Q
-  GetQDQTestCaseFn build_test_case = BuildQDQInstanceNormTestCase<uint8_t>({1, 2, 3, 3}, 1e-05f);
+  GetQDQTestCaseFn build_test_case = BuildQDQInstanceNormTestCase<uint8_t, uint8_t, int32_t>({1, 2, 3, 3}, 1e-05f);
   build_test_case(helper);
   helper.SetGraphOutputs();
   auto status = model.MainGraph().Resolve();
@@ -224,7 +224,7 @@ TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8) {
   verification_params.graph_verifier = &graph_verify;
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t>(
+  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t, uint8_t, int32_t>(
                    {1, 2, 3, 3} /* input_shape */,
                    1e-05f       /* epsilon */),
                "qnn_qdq_test_graph_instance_norm_u8",
@@ -251,7 +251,7 @@ TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank3) {
   verification_params.graph_verifier = &graph_verify;
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t>(
+  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t, uint8_t, int32_t>(
                    {1, 2, 3} /* input_shape */,
                    1e-05f    /* epsilon */),
                "qnn_qdq_test_graph_instance_norm_u8_rank3",
@@ -272,7 +272,7 @@ TEST_F(QnnHTPBackendTests, TestQDQInstanceNormU8Rank5) {
   verification_params.ep_node_assignment = ExpectedEPNodeAssignment::None;  // No graph nodes should be assigned to QNN
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.
-  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t>(
+  RunModelTest(BuildQDQInstanceNormTestCase<uint8_t, uint8_t, int32_t>(
                    {1, 2, 3, 3, 3} /* input_shape */,
                    1e-05f          /* epsilon */),
                "qnn_qdq_test_graph_instance_norm_u8_rank5",

@@ -181,9 +181,8 @@ Status SimpleOpBuilder::HandleSingleTransposeNode(QnnModelWrapper& qnn_model_wra
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape),
                                                      "Cannot get shape for QNN Transpose output");
 
-    Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
     QnnTensorWrapper output_tensorwrapper(output_name,
-                                          tensor_type,
+                                          QNN_TENSOR_TYPE_APP_READ,
                                           qnn_data_type,
                                           quantize_param,
                                           std::move(output_shape));
