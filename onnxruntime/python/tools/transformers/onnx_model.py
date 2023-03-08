@@ -615,7 +615,7 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
             model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
@@ -931,11 +931,51 @@ class OnnxModel:
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
+    @staticmethod
+    def my_graph_topological_sort(graph):
+        deps_set = set()  # dependency set of all node
+        sorted_node_set = set()  # sorted node set
+        sorted_nodes = []  # initialize sorted_nodes
+
+        initializer_names = [init.name for init in graph.initializer]
+        graph_input_names = [input.name for input in graph.input]
+        input_names = initializer_names + graph_input_names
+
+        for input_name in input_names:
+            deps_set.add(input_name)
+
+        while len(sorted_node_set) != len(graph.node):
+            for node_idx, node in enumerate(graph.node):
+                if node_idx in sorted_node_set:
+                    continue
+                input_count = sum(1 for _ in node.input if _)
+                if input_count == 0:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                    continue
+                failed = False
+                for input in node.input:
+                    if input != '' and input not in deps_set:
+                        failed = True
+                if not failed:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                else:
+                    continue
+
+        graph.ClearField("node")
+        graph.node.extend(sorted_nodes)
+
     def topological_sort(self):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph)
+        # OnnxModel.graph_topological_sort(self.model.graph)
+        OnnxModel.my_graph_topological_sort(self.model.graph)
 
     @staticmethod
     def save(

@@ -163,6 +163,7 @@ class SymbolicShapeInference:
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
             "ReduceProd": self._infer_ReduceProd,
+            "RelativePositionBias": self._infer_RelativePositionBias,
             "Reshape": self._infer_Reshape,
             "Resize": self._infer_Resize,
             "Round": self._pass_on_shape_and_type,
@@ -378,6 +379,16 @@ class SymbolicShapeInference:
             assert name in self.initializers_
             return list(self.initializers_[name].dims)
 
+    def _try_get_shape(self, node, idx):
+        name = node.input[idx]
+        if name in self.known_vi_:
+            vi = self.known_vi_[name]
+            return get_shape_from_value_info(vi)
+        else:
+            if name in self.initializers_:
+                return list(self.initializers_[name].dims)
+            return None
+
     def _get_shape_rank(self, node, idx):
         return len(self._get_shape(node, idx))
 
@@ -437,6 +448,7 @@ class SymbolicShapeInference:
             "GemmFastGelu",
             "LayerNormalization",
             "LongformerAttention",
+            "RelativePositionBias",
             "SimplifiedLayerNormalization",
             "SkipLayerNormalization",
             "SkipSimplifiedLayerNormalization",
@@ -1495,6 +1507,17 @@ class SymbolicShapeInference:
             if data is not None:
                 self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
 
+    def _infer_RelativePositionBias(self, node):
+        new_shape = []
+        new_shape.append("1")
+        new_shape.append(str(self._get_sympy_shape(node, 0)[1]))
+        new_shape.append(str(self._try_get_value(node, 1)))
+        new_shape.append(str(self._try_get_value(node, 2)))
+
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
+
     def _infer_Reshape(self, node):
         shape_value = self._try_get_value(node, 1)
         vi = self.known_vi_[node.output[0]]
@@ -2030,14 +2053,18 @@ class SymbolicShapeInference:
 
     def _infer_Attention(self, node):
         shape = self._get_shape(node, 0)
-        shape_bias = self._get_shape(node, 2)
-        if shape and len(shape) == 3 and shape_bias and len(shape_bias) == 1:
+        shape_weights = self._get_shape(node, 1)
+        shape_bias = self._try_get_shape(node, 2)
+        if shape_bias is not None:
+            assert len(shape_bias) == 1
+        tripled_hidden_size = shape_bias[0] if shape_bias is not None else shape_weights[1]
+        if shape and len(shape) == 3:
             qkv_hidden_sizes_attr = get_attribute(node, "qkv_hidden_sizes")
             if qkv_hidden_sizes_attr is not None:
                 assert len(qkv_hidden_sizes_attr) == 3
                 shape[2] = int(qkv_hidden_sizes_attr[2])
-            elif isinstance(shape_bias[0], int):
-                shape[2] = int(shape_bias[0] / 3)
+            elif isinstance(tripled_hidden_size, int):
+                shape[2] = int(tripled_hidden_size / 3)
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi = self.known_vi_[node.output[0]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, shape))
@@ -2082,12 +2109,12 @@ class SymbolicShapeInference:
         query_shape = self._get_shape(node, 0)
         if query_shape is not None:
             if len(query_shape) == 3:
-                key_shape = self._get_shape(node, 1)
+                key_shape = self._try_get_shape(node, 1)
                 # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
                 output_shape = query_shape
-                if key_shape and len(key_shape) == 3:
-                    value_shape = self._get_shape(node, 2)
-                    if value_shape and len(value_shape) == 3:
+                if key_shape is not None and len(key_shape) == 3:
+                    value_shape = self._try_get_shape(node, 2)
+                    if value_shape is not None and len(value_shape) == 3:
                         output_shape[2] = value_shape[2]
 
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
@@ -2102,6 +2129,13 @@ class SymbolicShapeInference:
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
                 vi = self.known_vi_[node.output[0]]
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+            # bugbug
+            if len(node.output) > 1:
+                present_shape = ["batch_size", "8", "total_sequence_length", "64"]
+                vi = self.known_vi_[node.output[1]]
+                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
+                vi = self.known_vi_[node.output[2]]
+                vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
@@ -2140,8 +2174,6 @@ class SymbolicShapeInference:
 
     def _infer_SkipLayerNormalization(self, node):
         self._propagate_shape_and_type(node)
-        if len(node.output) > 3:
-            self._propagate_shape_and_type(node, 0, 3)
 
         # If the SkipLayerNormalization node contains the optional
         # output for inference, infer the shape and type for it too
@@ -2348,7 +2380,9 @@ class SymbolicShapeInference:
             for i_o in range(len(node.output)):
                 # Special case: We do not care about the training related
                 # outputs of SkipLayerNormalization
-                if node.op_type == "SkipLayerNormalization" and i_o in [1, 2]:
+                if (
+                    node.op_type == "SkipLayerNormalization" or node.op_type == "SkipSimplifiedLayerNormalization"
+                ) and i_o in [1, 2]:
                     continue
 
                 vi = self.known_vi_[node.output[i_o]]

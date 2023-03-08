@@ -6,7 +6,7 @@ from enum import Enum
 from logging import getLogger
 from os import name
 from sys import path
-from typing import Tuple, Union
+from typing import List, Tuple, Union
 
 import numpy as np
 from fusion_base import Fusion
@@ -94,9 +94,10 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
+        search_op_types: List[str] = ["SkipLayerNormalization", "LayerNormalization"]
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
-        super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
+        super().__init__(model, attention_op_name, search_op_types)
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.attention_mask = attention_mask
@@ -211,6 +212,7 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
+        scale: float=None,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
@@ -236,20 +238,28 @@ class FusionAttention(Fusion):
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
+        has_bias = True
+        if q_add is None and k_add is None and v_add is None:
+            has_bias = False
+
         q_weight = self.model.get_initializer(q_matmul.input[1])
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
-        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-        k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-        v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+
+        q_bias, k_bias, v_bias = None, None, None
+        if has_bias:
+            q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+
+            if not (k_weight and v_weight and q_bias and k_bias):
+                return None
 
         if q_weight is None:
             print(
                 f"{q_matmul.input[1]} is not an initializer. "
                 "Please set do_constant_folding=True in torch.onnx.export to unblock attention fusion"
             )
-            return None
-        if not (k_weight and v_weight and q_bias and k_bias):
             return None
 
         qw = NumpyHelper.to_array(q_weight)
@@ -290,24 +300,25 @@ class FusionAttention(Fusion):
             qkv_weight = np.stack((qw, kw, vw), axis=1)
             qkv_weight_dim = 3 * qw_out_size
 
-        qb = NumpyHelper.to_array(q_bias)
-        kb = NumpyHelper.to_array(k_bias)
-        vb = NumpyHelper.to_array(v_bias)
+        if has_bias:
+            qb = NumpyHelper.to_array(q_bias)
+            kb = NumpyHelper.to_array(k_bias)
+            vb = NumpyHelper.to_array(v_bias)
 
-        q_bias_shape = np.prod(qb.shape)
-        k_bias_shape = np.prod(kb.shape)
-        v_bias_shape = np.prod(vb.shape)
+            q_bias_shape = np.prod(qb.shape)
+            k_bias_shape = np.prod(kb.shape)
+            v_bias_shape = np.prod(vb.shape)
 
-        assert q_bias_shape == k_bias_shape == qw_out_size
-        assert v_bias_shape == vw_out_size
+            assert q_bias_shape == k_bias_shape == qw_out_size
+            assert v_bias_shape == vw_out_size
 
-        qkv_bias_dim = 0
-        if is_qkv_diff_dims:
-            qkv_bias = np.concatenate((qb, kb, vb), axis=0)
-            qkv_bias_dim = q_bias_shape + k_bias_shape + v_bias_shape
-        else:
-            qkv_bias = np.stack((qb, kb, vb), axis=0)
-            qkv_bias_dim = 3 * q_bias_shape
+            qkv_bias_dim = 0
+            if is_qkv_diff_dims:
+                qkv_bias = np.concatenate((qb, kb, vb), axis=0)
+                qkv_bias_dim = q_bias_shape + k_bias_shape + v_bias_shape
+            else:
+                qkv_bias = np.stack((qb, kb, vb), axis=0)
+                qkv_bias_dim = 3 * q_bias_shape
 
         attention_node_name = self.model.create_node_name("Attention")
 
@@ -324,15 +335,17 @@ class FusionAttention(Fusion):
                 weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
             self.model.add_initializer(weight, self.this_graph_name)
 
-        bias = helper.make_tensor(
-            name=attention_node_name + "_qkv_bias",
-            data_type=TensorProto.FLOAT,
-            dims=[qkv_bias_dim],
-            vals=qkv_bias.flatten().tolist(),
-        )
-        if q_bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
-        self.model.add_initializer(bias, self.this_graph_name)
+        bias = None
+        if has_bias:
+            bias = helper.make_tensor(
+                name=attention_node_name + "_qkv_bias",
+                data_type=TensorProto.FLOAT,
+                dims=[qkv_bias_dim],
+                vals=qkv_bias.flatten().tolist(),
+            )
+            if q_bias.data_type == 10:
+                bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+            self.model.add_initializer(bias, self.this_graph_name)
 
         # For MultiHeadAttention operator, use separated inputs for query, key and value, and no weights.
         if self.use_multi_head_attention:
@@ -359,7 +372,7 @@ class FusionAttention(Fusion):
             attention_inputs = [
                 input,
                 attention_node_name + "_qkv_weight",
-                attention_node_name + "_qkv_bias",
+                attention_node_name + "_qkv_bias" if has_bias else "",
             ]
             if mask_index is not None:
                 attention_inputs.append(mask_index)
@@ -378,6 +391,9 @@ class FusionAttention(Fusion):
             )
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
+
+        if scale is not None:
+            attention_node.attribute.extend([helper.make_attribute("scale", scale)])
 
         if is_qkv_diff_dims:
             attention_node.attribute.extend(
