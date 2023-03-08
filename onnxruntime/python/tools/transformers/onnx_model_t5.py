@@ -17,7 +17,7 @@ from onnx_model_bert import BertOnnxModel
 
 logger = logging.getLogger(__name__)
 
-# TODO: refactor
+
 class FusionT5Attention(FusionAttention):
     """
     Fuse T5 Attention subgraph into one Attention node.
@@ -100,7 +100,6 @@ class FusionT5Attention(FusionAttention):
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
         attention_node.attribute.extend([helper.make_attribute("scale", 1.0)])
-        attention_node.attribute.extend([helper.make_attribute("static_kv", 0 if self.static_kv == 0 else 1)])
         if self.mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
@@ -450,6 +449,12 @@ class FusionT5Attention(FusionAttention):
 
         q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
 
+        if self.static_kv == 1 and past_key is not None:
+            key = past_key
+            value = past_value
+            past_key = None
+            past_value = None
+
         new_node = self.create_mha_node(
             matmul_q.output[0],
             key,
@@ -594,16 +599,14 @@ class T5OnnxModel(BertOnnxModel):
         self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 
     def fuse_attention(self):
-        return
-        # self.attention_fusion.apply()
+        self.attention_fusion.apply()
 
     def fuse_layer_norm(self):
         return
         # self.layer_norm_fusion().apply()
 
     def fuse_skip_layer_norm(self):
-        return
-        # self.skip_layer_norm_fusion.apply()
+        self.skip_layer_norm_fusion.apply()
 
     # Remove get_extended_attention_mask() since it generates all zeros.
     def remove_extended_mask_decoder_init(self):
@@ -679,11 +682,11 @@ class T5OnnxModel(BertOnnxModel):
 
     def preprocess(self):
         self.adjust_reshape_and_expand()
-        # self.rpb_fusion.apply()
+        self.rpb_fusion.apply()
 
     def postprocess(self):
         # remove get_extended_attention_mask() since it generates all zeros.
-        # self.remove_extended_mask_decoder_init()
-        # self.remove_extended_mask_decoder()
+        self.remove_extended_mask_decoder_init()
+        self.remove_extended_mask_decoder()
 
         self.prune_graph()
