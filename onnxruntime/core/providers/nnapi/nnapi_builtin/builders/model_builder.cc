@@ -29,9 +29,7 @@ namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
                            gsl::span<const DeviceWrapper> nnapi_target_devices)
-    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)},
-      shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices),
-      nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
@@ -586,7 +584,8 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       }
     }
 
-    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fb_op_alloc_detail << "] out of " << num_nnapi_ops_ << " are falling-back to nnapi-reference, and ["
+    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fb_op_alloc_detail << "] out of " << num_nnapi_ops_
+                          << " are falling-back to " << kNnapiCpuDeviceName << ", and ["
                           << nm_op_alloc_detail << "] are running in accelerators.";
   }
 #endif
