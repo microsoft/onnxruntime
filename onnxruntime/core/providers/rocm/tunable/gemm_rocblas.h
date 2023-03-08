@@ -104,19 +104,19 @@ constexpr rocblas_datatype RocBlasComputeTypeFor<BFloat16>(const BFloat16*) {
 }
 
 template <typename T>
-auto maybe_cast(const T fp) {
+auto DoCastForHalfOrBfloat16(const T fp) {
   return fp;
 }
 
 template <>
-auto maybe_cast<half>(const half fp) {
+auto DoCastForHalfOrBfloat16<half>(const half fp) {
   // alpha and beta should be the same as compute_type, in half case it is float.
   float h = onnxruntime::math::halfToFloat(*reinterpret_cast<const uint16_t*>(&fp));
   return h;
 }
 
 template <>
-auto maybe_cast<BFloat16>(const BFloat16 fp) {
+auto DoCastForHalfOrBfloat16<BFloat16>(const BFloat16 fp) {
   // alpha and beta should be the same as compute_type, in bfloat16 case it is float.
   float h = fp.ToFloat();
   return h;
@@ -132,8 +132,8 @@ class IndexedRocBlasGemmOp {
 
   Status operator()(const GemmParams<T>* params) {
     RocblasHandleStreamGuard guard(params->handle, params->stream);
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     return ROCBLAS_CALL(
         rocblas_gemm_ex(
             params->handle,
@@ -190,8 +190,8 @@ class RocBlasGemmTunableOp : public TunableOp<GemmParams<T>> {
  private:
   std::vector<int> GetSolutions(const GemmParams<T>* params) {
     int num_solutions = 0;
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     // Get the number of candidate solutions
     ROCBLAS_CALL_THROW(rocblas_gemm_ex_get_solutions(
         params->handle,
@@ -243,8 +243,8 @@ class IndexedRocBlasBatchedGemmOp {
 
   Status operator()(const BatchedGemmParams<T>* params) {
     RocblasHandleStreamGuard guard(params->handle, params->stream);
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     return ROCBLAS_CALL(
         rocblas_gemm_batched_ex(
             params->handle,
@@ -302,8 +302,8 @@ class RocBlasBatchedGemmTunableOp : public TunableOp<BatchedGemmParams<T>> {
  private:
   std::vector<int> GetSolutions(const BatchedGemmParams<T>* params) {
     int num_solutions = 0;
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     // Get the number of candidate solutions
     ROCBLAS_CALL_THROW(rocblas_gemm_batched_ex_get_solutions(
         params->handle,
@@ -357,8 +357,8 @@ class IndexedRocBlasStridedBatchedGemmOp {
 
   Status operator()(const StridedBatchedGemmParams<T>* params) {
     RocblasHandleStreamGuard guard(params->handle, params->stream);
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     return ROCBLAS_CALL(
         rocblas_gemm_strided_batched_ex(
             params->handle,
@@ -416,8 +416,8 @@ class RocBlasStridedBatchedGemmTunableOp : public TunableOp<StridedBatchedGemmPa
  private:
   std::vector<int> GetSolutions(const StridedBatchedGemmParams<T>* params) {
     int num_solutions = 0;
-    auto h_a = maybe_cast(params->alpha);
-    auto h_b = maybe_cast(params->beta);
+    auto h_a = DoCastForHalfOrBfloat16(params->alpha);
+    auto h_b = DoCastForHalfOrBfloat16(params->beta);
     // Get the number of candidate solutions
     ROCBLAS_CALL_THROW(rocblas_gemm_strided_batched_ex_get_solutions(
         params->handle,
