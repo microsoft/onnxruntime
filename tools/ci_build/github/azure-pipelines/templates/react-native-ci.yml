@@ -159,10 +159,10 @@ jobs:
           spotBugsAnalysis: false
         displayName: Run React Native Android Instrumented Tests
 
-  - script: |
-      pod install
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
-    displayName: Pod install for onnxruntime react native ios bridge library
+  # - script: |
+  #     pod install
+  #   workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
+  #   displayName: Pod install for onnxruntime react native ios bridge library
 
   # - task: Xcode@5
   #   inputs:
@@ -220,31 +220,22 @@ jobs:
 
   - task: CopyFiles@2
     inputs:
-      Mobile build:
-       sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
-       contents: onnxruntime-mobile-*.aar
-      sourceFolder: $(Build.BinariesDirectory)/android-full-aar
-      contents: onnxruntime-*.aar
-      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
+      # Mobile build:
+      #  sourceFolder: $(Build.BinariesDirectory)/android-mobile-aar
+      #  contents: onnxruntime-mobile-*.aar
+     sourceFolder: $(Build.BinariesDirectory)/android-full-aar
+     contents: onnxruntime-*.aar
+     targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
   - template: android-dump-logs-from-steps.yml
     parameters:
-     steps:
+    steps:
      - task: Gradle@3
        inputs:
          gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
          workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-         options: '--stacktrace'
-         tasks: ':app:connectedDebugAndroidTest'
-         publishJUnitResults: true
-         testResultsFiles: '**/TEST-*.xml'
-         testRunTitle: 'React Native Android e2e Test results'
-         javaHomeOption: 'path'
-         jdkDirectory: '$(JAVA_HOME_11_X64)'
-         sonarQubeRunAnalysis: false
-         spotBugsAnalysis: false
-       displayName: Run React Native Android e2e Tests
+    displayName: Run React Native Android e2e Tests
 
   # - script: |
   #     export FORCE_BUNDLING=1
@@ -273,11 +264,11 @@ jobs:
     displayName: Stop Android Emulator
     condition: always()
 
-  - script: |
-      xcrun simctl delete iPhoneRNTest
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
-    displayName: Stop iOS Simulator
-    condition: always()
+  # - script: |
+  #     xcrun simctl delete iPhoneRNTest
+  #   workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
+  #   displayName: Stop iOS Simulator
+  #   condition: always()
 
   - script: |
       git restore .
