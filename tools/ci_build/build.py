@@ -1580,7 +1580,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         with contextlib.ExitStack() as context_stack:
             if args.android_run_emulator:
                 avd_name = "ort_android"
-                system_image = "system-images;android-{};google_apis;{}".format(args.android_api, args.android_abi)
+                system_image = "system-images;android-{};default;{}".format(args.android_api, args.android_abi)
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
                 emulator_proc = context_stack.enter_context(
@@ -1603,11 +1603,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             run_adb_shell("{0}/onnxruntime_test_all".format(device_dir))
 
             if args.build_java:
-                gradle_executable = "gradle"
-                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
-                gradlew_path = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
-                if os.path.exists(gradlew_path):
-                    gradle_executable = gradlew_path
+                # use the gradle wrapper under <repo root>/java
+                gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
                 android_test_path = os.path.join(cwd, "java", "androidtest", "android")
                 run_subprocess(
                     [

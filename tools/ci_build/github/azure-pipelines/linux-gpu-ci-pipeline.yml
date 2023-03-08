@@ -133,7 +133,7 @@ jobs:
          # Restore file permissions
          xargs -a $(Build.BinariesDirectory)/Release/perms.txt chmod a+x
          cd $(Build.SourcesDirectory)/java
-         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release" "-DUSE_CUDA=1"
+         $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release" "-DUSE_CUDA=1"
          cd /tmp
          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
               --build_dir $(Build.BinariesDirectory) --cmake_generator Ninja \
