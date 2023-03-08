@@ -2933,7 +2933,7 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
       -0.02826184f,  0.2797631f ,  0.27337456f, -0.44312602f
     };
   }
-
+  // The past key and value data will be passed to the kernel as input 'key' and 'value'.
   {
     data.past_key_data = {
       0.5967375f , 0.5966938f , 0.48602432f, 0.5341031f,
