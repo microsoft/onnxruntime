@@ -11,6 +11,7 @@ using contrib::AttentionMaskType;
 namespace test {
 
 struct AttentionTestData {
+  bool is_static_kv = true;
   int hidden_size;
   int v_hidden_size;
   int num_heads;

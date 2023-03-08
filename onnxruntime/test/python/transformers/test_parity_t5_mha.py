@@ -120,10 +120,14 @@ def create_t5_mha_graph(
         )
     elif is_static_kv and use_past:
         graph_inputs.append(
-            helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size])
+            helper.make_tensor_value_info(
+                "key", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size]
+            )
         )
         graph_inputs.append(
-            helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size])
+            helper.make_tensor_value_info(
+                "value", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size]
+            )
         )
 
     if use_present:

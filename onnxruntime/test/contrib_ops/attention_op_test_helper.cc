@@ -2935,7 +2935,7 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
   }
 
   {
-    data.key_data = {
+    data.past_key_data = {
       0.5967375f , 0.5966938f , 0.48602432f, 0.5341031f,
       0.55797786f, 0.5663399f , 0.57087725f, 0.6240304f,
       0.5352563f , 0.5648297f , 0.4972945f , 0.56637144f,
@@ -2947,7 +2947,7 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
   }
 
   {
-    data.value_data = {
+    data.past_value_data = {
       0.40251260f, 0.55487730f, 0.49565578f, 0.42683450f,
       0.44379145f, 0.58945787f, 0.54852820f, 0.43376005f,
       0.44116694f, 0.44007313f, 0.40293324f, 0.53202707f,
@@ -3088,6 +3088,8 @@ void GetSelfAttentionDataWithPast(AttentionTestData& data) {
       -0.1164f, -0.4788f, -0.0198f,  0.1147f
     };
   }
+
+  data.is_static_kv = false;
 }
 
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {
