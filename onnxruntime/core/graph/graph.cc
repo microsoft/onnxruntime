@@ -591,10 +591,14 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      auto* function_ptr = op_->GetFunction(SinceVersion(), true);
-      if (function_ptr != nullptr) {
-        onnx_function_proto = *function_ptr;
-        return true;
+      auto& map = graph_->DomainToVersionMap();
+      const auto iter = map.find(kOnnxDomain);
+      if (iter != map.end()) {
+        auto* function_ptr = op_->GetFunction(iter->second, true);
+        if (function_ptr != nullptr) {
+          onnx_function_proto = *function_ptr;
+          return true;
+        }
       }
     }
   }
