@@ -572,7 +572,9 @@ bool Node::CanBeInlined() const {
   if (! op_) return false;
   ONNX_NAMESPACE::FunctionProto function_proto;
   return TryGetFunctionProto(function_proto);
-  // TODO: Cache constructed function_proto
+  // Note: We end up doing some redundant work, which can be eliminated if we cache
+  // the constructed FunctionProto. Keeping the changes localized for now. A better
+  // implementation would require some more invasive refactoring.
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
@@ -598,9 +600,14 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
     } else if (op_->HasFunction()) {
       const FunctionProto* function_ptr = nullptr;
       // We need to get a function-body suitable for the ONNX opset used by the model.
-      // We use the following for now due to an issue with the way ONNX handles functions
-      // defined in non-ONNX-domain.
+      // The first-parameter to GetFunction needs to be the ONNX opset used by the model.
+      // Unfortunately, ONNX's function-registration code uses the function's since-version
+      // as the default-version, which is incorrect in the case of functions belonging to
+      // non-onnx domains, like MSDOMAIN.
+
+      // We use the following as a temporary hack.
       function_ptr = op_->GetFunction(SinceVersion(), false);
+
       // TODO: Switch to following, once ONNX issue is fixed.
       // auto& map = graph_->DomainToVersionMap();
       // const auto iter = map.find(kOnnxDomain);
