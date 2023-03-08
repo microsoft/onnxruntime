@@ -17,7 +17,7 @@ static constexpr std::array<std::string_view, 3> supported_data_types{"tensor(fl
 // Default epsilon
 static constexpr float DEFAULT_LAYERNORM_EPSILON = 1e-5f;
 
-static bool IsSupportedDataType(const Node& node, int first_n_inputs=-1) {
+static bool IsSupportedDataType(const Node& node, int first_n_inputs = -1) {
   int input_index = 0;
   for (const auto& input_arg : node.InputDefs()) {
     if (first_n_inputs != -1 && input_index >= first_n_inputs) {
@@ -558,15 +558,18 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // 3. x->Cast(to:fp16)->y : SimplifiedLayerNorm(T:float,V:fp16)
     // 4. x->y : SimplifiedLayerNorm(T:float,V:float)
     // They all work for GPU EP.
-    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. But for #1 and
-    // #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2, we can still
-    // fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y after
-    // Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking if
-    // there is a Cast between x and y. Having Cast between means cannot fuse.
+    // For CPU EP, we have only SimplifiedlayerNorm(T:float,V:float) implementation, so only #4 works. We made an
+    // exception here, since pre-training optimization happens without device assignment. skip_device_check_ is the
+    // flag to disable device check intent only for pre-training optimization.
+    // For #1 and #2, if we treat the entry Cast as a normal node, meaning has_leading_cast is false, then for #2,
+    // we can still fuse it to "Cast(to:float)->SimplifiedlayerNorm(T:float,V:float)" (same as applying #4 to the x->y
+    // after Cast), so the condition for CPU EP to fuse or not is always setting has_leading_cast to false and checking
+    // if there is a Cast between x and y. Having Cast between means cannot fuse.
     const Node* p_pow_input_node = graph_utils::GetInputNode(pow_node, 0);
     bool has_leading_cast = false;
-    bool is_gpu_ep = pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
-                     pow_node.GetExecutionProviderType() == kRocmExecutionProvider;
+    bool is_gpu_ep = (pow_node.GetExecutionProviderType() == kCudaExecutionProvider ||
+                      pow_node.GetExecutionProviderType() == kRocmExecutionProvider) ||
+                     skip_device_check_;
     if (is_gpu_ep && p_pow_input_node) {
       Node& pow_input_node = *graph.GetNode(p_pow_input_node->Index());
       // If input to Pow is a Cast, and the Cast has 2 consumers only (Pow, Div)

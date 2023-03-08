@@ -1,8 +1,9 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
+#include <assert.h>
 #include "onnxruntime/core/session/onnxruntime_c_api.h"
 #include "ai_onnxruntime_OnnxRuntime.h"
 #include "OrtJniUtil.h"
@@ -53,4 +54,18 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OnnxRuntime_getAvailableProvi
     providers = NULL;
   }
   return providerArray;
+}
+
+/*
+ * Class:     ai_onnxruntime_OnnxRuntime
+ * Method:    initialiseVersion
+ * Signature: ()Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseVersion
+  (JNIEnv * jniEnv, jclass clazz) {
+  (void)clazz;  // required JNI parameter not needed by functions which don't access their host class.
+  const char* version = OrtGetApiBase()->GetVersionString();
+  assert(version != NULL);
+  jstring versionStr = (*jniEnv)->NewStringUTF(jniEnv, version);
+  return versionStr;
 }
