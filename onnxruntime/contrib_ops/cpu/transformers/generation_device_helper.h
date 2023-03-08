@@ -32,6 +32,13 @@ enum DeviceCopyDirection {
 };
 
 namespace GenerationDeviceHelper {
+
+using ReorderPastStateFunc = std::function<Status(
+    const void* cuda_device_prop,  // cudaDeviceProp
+    Tensor& past_state,
+    Tensor& past_state_staging,
+    Stream* stream)>;  // cublasHandle_t
+
 using TopkFunc = std::function<Status(
     const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
     AllocatorPtr allocator,
@@ -90,18 +97,18 @@ using ProcessLogitsFunc = std::function<Status(
 
 template <typename T>
 using GreedySearchProcessLogitsFunc = std::function<Status(
-    const OrtValue& logits,                                     // logits output of subgraph
-    transformers::IGreedySearchState<T>* greedy_state,          // state
-    transformers::ISamplingState<T>* sampling_state,    // sampling buffers
-    transformers::ISequences* sequences,                        // sequences
-    AllocatorPtr& allocator,                                    // default allocator
-    onnxruntime::concurrency::ThreadPool* thread_pool,          // thread pool (for CPU only)
-    transformers::ILogitsProcessorList* logits_processors,      // logits processors
-    const transformers::IGenerationParameters* parameters,      // parameters
-    bool do_sampling,                                           // whether to do sampling
-    int step,                                                   // iteration counter
-    Stream* ort_stream,                                         // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper)>;               // tensor dumper
+    const OrtValue& logits,                                 // logits output of subgraph
+    transformers::IGreedySearchState<T>* greedy_state,      // state
+    transformers::ISamplingState<T>* sampling_state,        // sampling buffers
+    transformers::ISequences* sequences,                    // sequences
+    AllocatorPtr& allocator,                                // default allocator
+    onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
+    transformers::ILogitsProcessorList* logits_processors,  // logits processors
+    const transformers::IGenerationParameters* parameters,  // parameters
+    bool do_sampling,                                       // whether to do sampling
+    int step,                                               // iteration counter
+    Stream* ort_stream,                                     // cuda stream (for CUDA only)
+    const transformers::IConsoleDumper* dumper)>;           // tensor dumper
 
 template <typename T>
 using DeviceCopyFunc = std::function<Status(
@@ -213,7 +220,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
-                                 transformers::ISamplingState<T>* sampling_state,    // sampling buffers
+                                 transformers::ISamplingState<T>* sampling_state,        // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
                                  AllocatorPtr& allocator,                                // default allocator
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
