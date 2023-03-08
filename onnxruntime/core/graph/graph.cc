@@ -596,14 +596,23 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      auto& map = graph_->DomainToVersionMap();
-      const auto iter = map.find(kOnnxDomain);
-      if (iter != map.end()) {
-        auto* function_ptr = op_->GetFunction(iter->second, true);
-        if (function_ptr != nullptr) {
-          onnx_function_proto = *function_ptr;
-          return true;
-        }
+      const FunctionProto* function_ptr = nullptr;
+      // We need to get a function-body suitable for the ONNX opset used by the model.
+      // We use the following for now due to an issue with the way ONNX handles functions
+      // defined in non-ONNX-domain.
+      function_ptr = op_->GetFunction(SinceVersion(), false);
+      // TODO: Switch to following, once ONNX issue is fixed.
+      // auto& map = graph_->DomainToVersionMap();
+      // const auto iter = map.find(kOnnxDomain);
+      // if (iter != map.end()) {
+      //   function_ptr = op_->GetFunction(iter->second, true);
+      // } else {
+      //   function_ptr = op_->GetFunction();
+      // }
+
+      if (function_ptr != nullptr) {
+        onnx_function_proto = *function_ptr;
+        return true;
       }
     }
   }
