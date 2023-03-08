@@ -187,7 +187,6 @@ class TrainingEnvInitialzer {
   }
 
   ~TrainingEnvInitialzer() {
-    std::cout << "TrainingEnvInitialzer is being destroyed" << std::endl;
     destroyed = true;
   }
 
@@ -371,9 +370,10 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   // deconstruction is not stable, which will lead to crash.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
-    std::cout << "OrtTraining pybind11 atexit() is called" << std::endl;
     GetTrainingEnv().ClearExecutionProviderInstances();
 #ifdef ENABLE_EAGER_MODE
+    // This singleton should also be re-factored into a function local static
+    // so its lifetime is properly managed.
     ort_backends_manager_instance = nullptr;
 #endif
   }));

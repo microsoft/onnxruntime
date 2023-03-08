@@ -253,7 +253,7 @@ struct PyInferenceSession {
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
-  virtual ~PyInferenceSession() {}
+  virtual ~PyInferenceSession() = default;
 
  protected:
   PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess) 

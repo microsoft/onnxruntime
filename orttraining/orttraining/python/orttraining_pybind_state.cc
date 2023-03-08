@@ -555,6 +555,7 @@ void addObjectMethodsForTraining(py::module& m, ExecutionProviderRegistrationFn 
     PyTrainingSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
         : PyInferenceSession(env, std::make_unique<PipelineTrainingSession>(so.value, *env)) {
     }
+    ~PyTrainingSession() = default;
   };
 
   py::class_<PyTrainingSession, PyInferenceSession> training_session(m, "TrainingSession");

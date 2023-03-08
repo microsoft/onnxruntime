@@ -1598,12 +1598,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         return fetches;
       })
-      .def("run_with_ortvaluevector", [](PyInferenceSession* sess, RunOptions run_options, const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds, const std::vector<std::string>& fetch_names, std::vector<OrtValue>& fetches, const std::vector<OrtDevice>& fetch_devices) -> void {
-        {
+      .def("run_with_ortvaluevector", [](
+        PyInferenceSession* sess,
+        RunOptions run_options,
+        const std::vector<std::string>& feed_names,
+        const std::vector<OrtValue>& feeds,
+        const std::vector<std::string>& fetch_names,
+        std::vector<OrtValue>& fetches,
+        const std::vector<OrtDevice>& fetch_devices) -> void {
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
           OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
-        }
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
@@ -1783,7 +1788,6 @@ class EnvInitializer {
   }
 
   ~EnvInitializer() {
-    std::cout << "EnvInitializer is being destroyed" << std::endl;
     destroyed = true;
   }
 
