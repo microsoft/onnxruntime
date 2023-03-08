@@ -567,7 +567,12 @@ const Path& Node::ModelPath() const noexcept {
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool Node::CanBeInlined() const {
-  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
+  if (func_body_ || func_template_)
+    return true;
+  if (! op_) return false;
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  return TryGetFunctionProto(function_proto);
+  // TODO: Cache constructed function_proto
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
