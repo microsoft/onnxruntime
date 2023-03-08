@@ -59,6 +59,18 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         Ort::ConstValue value = kinfo.GetTensorConstantInput(i, &is_constant);
         if (is_constant) {
             weights_map[name] = value; 
+
+            //// Chi debug ...
+            //if (i == 1) {
+                //std::cout << "in loadWeightsPtrINT8" << std::endl;
+                //std::cout << name << std::endl;
+                //const float* p_value_data = value.GetTensorData<const float>(); 
+                //std::cout << p_value_data[0] << std::endl;
+            //}
+            //std::cout << "in loadWeightsPtrINT8" << std::endl;
+            //std::cout << name << std::endl;
+            //const float* p_value_data = value.GetTensorData<const float>(); 
+            //std::cout << p_value_data << std::endl;
         }
     }
 
@@ -73,6 +85,9 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         if (iter != weights_map.end()) {
             Ort::ConstValue ort_val = iter->second; 
             w[idx++] = ort_val.GetTensorData<T>();
+            std::cout << name << std::endl;
+            std::cout << idx - 1 << std::endl;
+            std::cout << w[idx-1] << std::endl; 
         }
     }
 
@@ -86,6 +101,9 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
             if (iter != weights_map.end()) {
                 Ort::ConstValue ort_val = iter->second; 
                 w[idx++] = ort_val.GetTensorData<T>();
+                std::cout << string_buf << std::endl;
+            std::cout << idx - 1 << std::endl;
+                std::cout << w[idx-1] << std::endl; 
             }
         }
     }
@@ -95,6 +113,9 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         if (iter != weights_map.end()) {
             Ort::ConstValue ort_val = iter->second; 
             w[idx++] = ort_val.GetTensorData<T>();
+            std::cout << name << std::endl;
+            std::cout << idx - 1 << std::endl;
+            std::cout << w[idx-1] << std::endl; 
         }
     }
 
@@ -230,38 +251,42 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
 void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
     Ort::KernelContext kcontext(context);
     Ort::ConstValue ort_val = kcontext.GetInput(0);
-    const void* p_input_data = ort_val.GetTensorData<void>();
 
     std::vector<int64_t> output_shape{(int64_t)batch_size_, (int64_t)seq_len_, (int64_t)embed_dim_};
     Ort::UnownedValue ort_val_output = kcontext.GetOutput(0, output_shape);
-    const void* p_output_data = ort_val_output.GetTensorData<void>();
 
     if (is_fp16_) {
+        const half* p_input_data = ort_val.GetTensorData<half>();
+        half* p_output_data = ort_val_output.GetTensorMutableData<half>();
+
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<half>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans_, (size_t)img_size_, (size_t)img_size_},
-                                      (const half*)p_input_data}};
+                                      p_input_data}};
 
         std::vector<fastertransformer::Tensor> output_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<half>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len_, (size_t)embed_dim_},
-                                      (half*)p_output_data}};
+                                      p_output_data}};
         vit_fp16_->forward(&output_tensors, &input_tensors, &params_fp16_);
     }
     else {
+        const float* p_input_data = ort_val.GetTensorData<float>();
+        float* p_output_data = ort_val_output.GetTensorMutableData<float>();
+
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<float>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)in_chans_, (size_t)img_size_, (size_t)img_size_},
-                                      (const float*)p_input_data}};
+                                      p_input_data}};
 
         std::vector<fastertransformer::Tensor> output_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<float>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len_, (size_t)embed_dim_},
-                                      (float*)p_output_data}};
+                                      p_output_data}};
         vit_fp32_->forward(&output_tensors, &input_tensors, &params_fp32_);
     }
 }
