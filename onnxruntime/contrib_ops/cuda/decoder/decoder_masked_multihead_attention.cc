@@ -16,7 +16,8 @@ namespace contrib {
 namespace cuda {
 
 static constexpr int kPastSequenceLengthInputIndex = 6;
-static constexpr int kNumBeamsInputIndex = 7;
+static constexpr int kBeamWidthInputIndex = 7;
+static constexpr int kCacheIndirectionInputIndex = 8;
 static constexpr int kPastInputIndex = 4;
 static constexpr int kPresentOutputIndex = 1;
 
@@ -31,7 +32,7 @@ static constexpr int kPresentOutputIndex = 1;
           .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
           .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
-          .InputMemoryType(OrtMemTypeCPUInput, kNumBeamsInputIndex),          \
+          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
       DecoderMaskedMultiheadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
@@ -46,7 +47,8 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
-  const Tensor* num_beams = context->Input<Tensor>(kNumBeamsInputIndex);
+  const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
+  const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiheadAttentionParams parameters;
@@ -170,9 +172,20 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.mask = mask_index->Data<int32_t>();
   }
 
-  // Num beams
-  if (num_beams != nullptr) {
-    parameters.beam_width = static_cast<int>(*num_beams->Data<int32_t>());
+  // Beam width (in case we are using this op inside BeamSearch)
+  if (beam_width != nullptr) {
+    parameters.beam_width = static_cast<int>(*beam_width->Data<int32_t>());
+  }
+
+  // Cache indirection (in case we are using this op inside BeamSearch)
+  if (parameters.beam_width > 1) {
+    // If beam width > 1, then cache indirection buffer MUST be present
+    if (cache_indir == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "If beam width is greater than 1, then cache indirection buffer MUST be present");
+    }
+
+    parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
   switch (parameters.head_size) {

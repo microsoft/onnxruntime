@@ -22,7 +22,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int max_length,
             int num_heads,
             int head_size,
-            int allocate_staging_buffer_for_past_state_reorder,
+            int has_decoder_masked_multihead_attention,
             bool output_scores,
             bool use_position) {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
@@ -53,8 +53,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->remaining_scores = this->scores;
     }
 
-    // If at all we need to, we only need to re-order past state for CUDA
-    if (allocate_staging_buffer_for_past_state_reorder) {
+    if (has_decoder_masked_multihead_attention) {
       TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), num_heads, max_length, head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
@@ -73,7 +72,6 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
-  BufferUniquePtr staging_for_past_state_reorder_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {

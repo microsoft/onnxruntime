@@ -874,7 +874,9 @@ Status UpdateGptFeeds(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len) {
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator updateFeedsRange("UpdateGptFeeds", profile::Color::Yellow);
   updateFeedsRange.Begin();
@@ -889,6 +891,8 @@ Status UpdateGptFeeds(
   Tensor::InitOrtValue(element_type, input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   cudaStream_t cuda_stream = ort_stream ? static_cast<cudaStream_t>(ort_stream->GetHandle()) : nullptr;
+
+  // TODO(hasesh): When BeamScorer is implemented on CUDA, figure out a way to avoid this cross-device copy
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                        cudaMemcpyHostToDevice, cuda_stream));
   next_inputs[0] = input_ids;
@@ -914,8 +918,63 @@ Status UpdateGptFeeds(
   next_inputs[2] = attention_mask;
 
   if (past_present_share_buffer) {
-    const int k = (static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
-    *(next_inputs[k].GetMutable<Tensor>()->MutableData<int32_t>()) = past_sequence_len;
+    // Update past sequence length input
+    const int past_sequence_length_idx = (static_cast<int>(last_outputs.size()) - gpt_subgraph_first_present_output_idx) + gpt_subgraph_first_past_input_idx;
+    *(next_inputs[past_sequence_length_idx].GetMutable<Tensor>()->MutableData<int32_t>()) = past_sequence_len;
+
+    // Update beam search specific input for DecoderMaskedMultiheadAttention (cache indirection) if present
+
+    // If the last input is not `past_sequence_length`, then the beam search specific inputs
+    // for `DecoderMaskedMultiheadAttention` is present
+    if (has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+      // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
+      const OrtValue& old_cache_indirection = next_inputs[past_sequence_length_idx + 2];
+
+      // New cache indirection updated for next decoding run
+      OrtValue cache_indirection;
+
+      Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), old_cache_indirection.Get<Tensor>().Shape(), allocator, cache_indirection);
+      const int32_t* src_indir_cache = old_cache_indirection.Get<Tensor>().Data<int32_t>();
+      int32_t* tgt_indir_cache = cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>();
+      cudaMemsetAsync(tgt_indir_cache, 0, old_cache_indirection.Get<Tensor>().SizeInBytes(), cuda_stream);
+
+      // The third index of the past/present tensor is the max_sequence_length
+      int max_sequence_length = static_cast<int>(last_outputs[gpt_subgraph_first_present_output_idx].Get<Tensor>().Shape()[3]);
+      int batch_size = batch_beam_size / num_beams;
+
+      void* temp_buffer;
+      size_t temp_buffer_size = 4 * batch_beam_size;
+      cudaMallocAsync(&temp_buffer, temp_buffer_size, cuda_stream);
+
+      // TODO(hasesh): When BeamScorer is implemented on CUDA, figure out a way to avoid this cross-device copy
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(temp_buffer, beam_indices.data(), beam_indices.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
+
+      cudaStreamSynchronize(cuda_stream);
+
+      std::vector<int32_t> investigate(batch_beam_size, 0);
+      std::memcpy(investigate.data(), beam_indices.data(), beam_indices.size_bytes());
+
+      // Launch kernel to update the cache indirection buffer
+      cuda::UpdateDecoderMaskedMultiheadAttentionCacheIndirection(tgt_indir_cache,
+                                                                  src_indir_cache,
+                                                                  reinterpret_cast<const int32_t*>(temp_buffer),
+                                                                  batch_size,
+                                                                  num_beams,
+                                                                  input_sequence_len,
+                                                                  max_sequence_length,
+                                                                  current_length,
+                                                                  cuda_stream);
+      cudaStreamSynchronize(cuda_stream);
+      std::vector<int32_t> investigate_1(old_cache_indirection.Get<Tensor>().Shape().Size(), 0);
+      cudaMemcpy(investigate_1.data(), src_indir_cache, old_cache_indirection.Get<Tensor>().SizeInBytes(), cudaMemcpyDeviceToHost);
+
+      std::vector<int32_t> investigate_2(cache_indirection.Get<Tensor>().Shape().Size(), 0);
+      cudaMemcpy(investigate_2.data(), tgt_indir_cache, cache_indirection.Get<Tensor>().SizeInBytes(), cudaMemcpyDeviceToHost);
+
+      cudaFreeAsync(temp_buffer, cuda_stream);
+
+      next_inputs[past_sequence_length_idx + 2] = cache_indirection;
+    }
   } else {
     if (num_beams == 1) {
       const int k = gpt_subgraph_first_past_input_idx - gpt_subgraph_first_present_output_idx;
@@ -1119,7 +1178,9 @@ template Status UpdateGptFeeds<float>(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
 
 // Float16
 template void InitBeamState<MLFloat16>(
@@ -1176,7 +1237,9 @@ template Status UpdateGptFeeds<MLFloat16>(
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
