@@ -69,6 +69,7 @@ bool ProviderIsCpuBased(const std::string& provider_type) {
          provider_type == onnxruntime::kRknpuExecutionProvider ||
          provider_type == onnxruntime::kCoreMLExecutionProvider ||
          provider_type == onnxruntime::kSnpeExecutionProvider ||
+         provider_type == onnxruntime::kQnnExecutionProvider ||
          provider_type == onnxruntime::kXnnpackExecutionProvider ||
          provider_type == onnxruntime::utils::kInternalTestingExecutionProvider;
 }
@@ -117,14 +118,7 @@ static common::Status AllocateHelper(const AllocatorPtr& allocator,
 #endif
   } else if (source_mlvalue.IsTensorSequence()) {
     const TensorSeq& source_tensor_seq = source_mlvalue.Get<TensorSeq>();
-    auto target_tensor_seq = std::make_unique<TensorSeq>(source_tensor_seq.DataType());
-    std::vector<Tensor> tensors;
-    for (auto iter = source_tensor_seq.begin(); iter != source_tensor_seq.end(); ++iter) {
-      tensors.emplace_back(iter->DataType(), onnxruntime::TensorShape(iter->Shape()), allocator);
-    }
-    target_tensor_seq->SetElements(std::move(tensors));
-    auto ml_tensor_seq = DataTypeImpl::GetType<TensorSeq>();
-    target_mlvalue.Init(target_tensor_seq.release(), ml_tensor_seq, ml_tensor_seq->GetDeleteFunc());
+    TensorSeq::InitOrtValue(source_tensor_seq, allocator, target_mlvalue);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported OrtValue type.");
   }
@@ -207,17 +201,19 @@ static Status BatchOrCopyMLValue(const SessionState& session_state,
       std::unique_ptr<Tensor> target_tensor = std::make_unique<Tensor>(source_tensor.DataType(), source_tensor.Shape(), allocator);
       target_tensor_seq.Add(std::move(*target_tensor));
     }
+    const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
     auto source_iter = source_tensor_seq.begin();
     auto target_iter = target_tensor_seq.begin();
+
     while (source_iter != source_tensor_seq.end() &&
            target_iter != target_tensor_seq.end()) {
       if (copy_tensor_pairs != nullptr) {
-        copy_tensor_pairs->push_back({*source_iter, const_cast<Tensor&>(*target_iter), stream});
+        copy_tensor_pairs->push_back({source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), stream});
       } else {
         if (stream)
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensorAsync(*source_iter, const_cast<Tensor&>(*target_iter), *stream));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensorAsync(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>(), *stream));
         else
-          ORT_RETURN_IF_ERROR(session_state.GetDataTransferMgr().CopyTensor(*source_iter, const_cast<Tensor&>(*target_iter)));
+          ORT_RETURN_IF_ERROR(data_transfer_mgr.CopyTensor(source_iter->Get<Tensor>(), *target_iter->GetMutable<Tensor>()));
       }
       ++source_iter;
       ++target_iter;
@@ -827,6 +823,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                        const logging::Logger& logger, PartialGraphExecutionState& state,
                                        const OrtValueCachePtr& cache, const bool& terminate_flag,
                                        DeviceStreamCollection* device_stream_collection,
+                                       int32_t partial_graph_index,
                                        Stream* parent_stream) {
   // finalize the copy info using the provided feeds and fetches. will update device_copy_checks in the background
   FinalizeFeedFetchCopyInfo(feeds_fetches_manager, feeds, fetches);
@@ -851,7 +848,8 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               // single thread mode
                                               single_thread_mode,
                                               state,
-                                              cache));
+                                              cache,
+                                              partial_graph_index));
   } else {
     auto p_feeds = feeds;
     std::vector<OrtValue>* p_fetches = &fetches;
@@ -912,7 +910,8 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               // single thread mode
                                               single_thread_mode,
                                               state,
-                                              cache));
+                                              cache,
+                                              partial_graph_index));
 
     InlinedVector<Stream*> fetches_streams;
     fetches_streams.reserve(feeds_fetches_info.fetches_mlvalue_idxs.size());
@@ -941,13 +940,12 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
                                    gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache, const bool& terminate_flag,
-                                   // TODO: handle the partial_graph_index
-                                   int32_t /*partial_graph_index*/,
+                                   int32_t partial_graph_index,
                                    Stream* parent_stream) {
   DeviceStreamCollection* device_stream_collection = state.GetDeviceStreamCollection(session_state);
   auto retval = ExecutePartialGraphImpl(session_state, feeds_fetches_manager, feeds, fetches,
                                         logger, state, cache, terminate_flag, device_stream_collection,
-                                        parent_stream);
+                                        partial_graph_index, parent_stream);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
   return retval;

@@ -228,7 +228,7 @@ struct MemoryProfiler {
                     const std::string& group_name, const size_t top_k,
                     const OrtDevice::DeviceType device_t = OrtDevice::GPU);
 
-  const std::vector<std::string>& GetEvents() { return events; }
+  const std::vector<std::string>& GetEvents() { return events_; }
 
   size_t GetAndIncreasePid() {
     size_t val = pid_++;
@@ -272,7 +272,7 @@ struct MemoryProfiler {
       "cq_build_attempt_failed",
   };
 
-  std::vector<std::string> events;
+  std::vector<std::string> events_;
   // Key: the hash function of device+map_type. Value: (key: The time step. value: The allocation information)
   std::unordered_map<size_t, std::unordered_map<size_t, MemoryInfo::AllocationSummary> > summary_;
 

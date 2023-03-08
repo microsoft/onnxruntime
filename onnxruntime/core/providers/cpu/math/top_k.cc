@@ -130,7 +130,7 @@ static void SelectTopK(const Comparator& comparer,
 
   // find the top k (largest or smallest) elements in the data holder - O(n) average. O(n*n) worst case.
   // See https://en.wikipedia.org/wiki/Quickselect
-  nth_element(data_holder.begin(), data_holder.begin() + (k - 1), data_holder.end(), comparer);
+  std::nth_element(data_holder.begin(), data_holder.begin() + (k - 1), data_holder.end(), comparer);
 
   // sort the top k elements if needed - O (k log k)
   if (sort_top_k) {

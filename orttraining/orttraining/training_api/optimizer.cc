@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/framework/execution_provider.h"
+#include "core/framework/TensorSeq.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
@@ -131,7 +132,11 @@ Status Optimizer::ConstructInputs() {
       ORT_ENFORCE(!tensors.empty(), "Tensors vector cannot be empty while building a tensor sequence.");
 
       auto tensor_seq = std::make_unique<TensorSeq>(tensors.front().DataType());
-      tensor_seq->SetElements(std::move(tensors));
+      tensor_seq->Reserve(tensors.size());
+      for (auto& tensor : tensors)
+      {
+        tensor_seq->Add(std::move(tensor));
+      }
       inputs->emplace_back(
           OrtValue(tensor_seq.release(), DataTypeImpl::GetType<TensorSeq>(),
                    DataTypeImpl::GetType<TensorSeq>()->GetDeleteFunc()));

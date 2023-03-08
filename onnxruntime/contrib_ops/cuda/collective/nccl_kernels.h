@@ -66,7 +66,17 @@ class AllGather final : public NcclKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  int64_t group_size_;
+  int64_t group_size_ = -1;
+};
+
+class AllToAll final : public NcclKernel {
+ public:
+  explicit AllToAll(const OpKernelInfo& info);
+
+  Status ComputeInternal(OpKernelContext* context) const override;
+
+ private:
+  int64_t group_size_ = -1;
 };
 
 }  // namespace cuda
