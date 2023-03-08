@@ -22,6 +22,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
+include(CheckFunctionExists)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -542,6 +543,7 @@ else()
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
