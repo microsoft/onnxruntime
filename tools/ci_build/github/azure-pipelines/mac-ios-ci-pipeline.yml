@@ -12,6 +12,7 @@ jobs:
       displayName: Install protobuf
 
     - script: |
+        sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
           --build_dir $(Build.BinariesDirectory)/iOS \
