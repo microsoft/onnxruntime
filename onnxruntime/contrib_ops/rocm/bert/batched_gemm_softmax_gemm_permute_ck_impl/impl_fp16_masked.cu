@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if 0  // Disable due to low perf with int type elementwise op
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_ck_impl/impl.cuh"
 #include "ck/library/tensor_operation_instance/add_device_operation_instance.hpp"
 #include "ck/tensor_operation/gpu/device/impl/device_batched_gemm_softmax_gemm_permute_xdl_cshuffle.hpp"
@@ -35,3 +36,4 @@ GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
 }  // namespace rocm
 }  // namespace contrib
 }  // namespace onnxruntime
+#endif

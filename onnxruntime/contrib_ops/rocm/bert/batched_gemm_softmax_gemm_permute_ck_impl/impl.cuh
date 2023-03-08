@@ -88,6 +88,7 @@ struct PreSoftmaxAttentionScoreOp {
     y = scale_ * x + ck::type_convert<float>(bias);
   }
 
+#if 0  // Disable due to low perf with int type elementwise op
   // non-biased, masked
   __host__ __device__ void operator()(float& y, const float& x, const int32_t& mask) const {
     float filter_value = (mask == 1 ? 0.0f : mask_filter_value_);
@@ -98,6 +99,12 @@ struct PreSoftmaxAttentionScoreOp {
   __host__ __device__ void operator()(float& y, const float& x, const F16& bias, const int32_t& mask) const {
     float filter_value = (mask == 1 ? 0.0f : mask_filter_value_);
     y = scale_ * x + ck::type_convert<float>(bias) + filter_value;
+  }
+#endif
+
+  // biased, converted masked
+  __host__ __device__ void operator()(float& y, const float& x, const F16& bias, const F16& converted_mask) const {
+    y = scale_ * x + ck::type_convert<float>(bias) + ck::type_convert<float>(converted_mask);
   }
 
   float scale_;
@@ -127,16 +134,6 @@ std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
 GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
     F16, ck::Tuple<>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
 
-// fp16, non-biased, masked
-template <>
-std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
-    2, 1, 1, 1, 1,
-    F16, F16, F16, F16, ck::Tuple<int32_t>, ck::Tuple<>,
-    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
-    MaskingSpecialization::MaskDisabled>>>
-GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
-    F16, ck::Tuple<int32_t>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
-
 // fp16, biased, non-masked
 template <>
 std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
@@ -147,6 +144,17 @@ std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
 GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
     F16, ck::Tuple<F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
 
+#if 0  // Disable due to low perf with int32_t elementwise op
+// fp16, non-biased, masked
+template <>
+std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<int32_t>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskDisabled>>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<int32_t>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
+
 // fp16, biased, masked
 template <>
 std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
@@ -156,7 +164,17 @@ std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
     MaskingSpecialization::MaskDisabled>>>
 GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
     F16, ck::Tuple<F16, int32_t>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
+#endif
 
+// fp16, biased, fp16 masked, basically, two bias
+template <>
+std::vector<std::unique_ptr<DeviceBatchedGemmSoftmaxGemmPermute<
+    2, 1, 1, 1, 1,
+    F16, F16, F16, F16, ck::Tuple<F16, F16>, ck::Tuple<>,
+    PassThrough, PassThrough, PreSoftmaxAttentionScoreOp, PassThrough, PassThrough,
+    MaskingSpecialization::MaskDisabled>>>
+GetDeviceBatchedGemmSoftmaxGemmPermuteInstances<
+    F16, ck::Tuple<F16, F16>, F32, PreSoftmaxAttentionScoreOp, MaskingSpecialization::MaskDisabled>();
 
 }  // namespace ck
 }  // namespace rocm
