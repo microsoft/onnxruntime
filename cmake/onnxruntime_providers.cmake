@@ -517,10 +517,6 @@ if (onnxruntime_USE_CUDA)
 
     set_property(TARGET custom_op_ft_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG})
     set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable")
-    
-    if (onnxruntime_FT_ENABLE_WEIGHTS_COPY)
-      add_definitions(-DFT_ENABLE_WEIGHTS_COPY=1)
-    endif()
   endif()
 
   target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
