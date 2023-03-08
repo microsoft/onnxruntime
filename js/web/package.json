@@ -62,9 +62,7 @@
     "minimist": "^1.2.8",
     "mocha": "^10.2.0",
     "numpy-parser": "^1.2.3",
-    "strip-json-comments": "^5.0.0",
-    "terser": "^5.16.5",
-    "webpack-bundle-analyzer": "^4.8.0"
+    "strip-json-comments": "^5.0.0"
   },
   "main": "dist/ort-web.node.js",
   "types": "./types/lib/index.d.ts",
