@@ -106,16 +106,19 @@ GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_
     const float quant_scale = 1.0f;
 
     auto* dq_scale_output = builder.MakeIntermediate();
-    auto* scale = builder.MakeInitializer<ScaleQType>({num_channels}, 0, 255);
+    auto* scale = builder.MakeInitializer<ScaleQType>({num_channels}, static_cast<ScaleQType>(0),
+                                                      static_cast<ScaleQType>(127));
     builder.AddDequantizeLinearNode<ScaleQType>(scale, quant_scale, quant_zero_point, dq_scale_output);
 
     // Add bias (initializer) -> DQ ->
     auto* dq_bias_output = builder.MakeIntermediate();
-    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, static_cast<BiasQType>(0), static_cast<BiasQType>(4));
+    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, static_cast<BiasQType>(0),
+                                                    static_cast<BiasQType>(4));
     builder.AddDequantizeLinearNode<BiasQType>(bias, 1.0f, 0, dq_bias_output);
 
     // Add input_u8 -> DQ ->
-    auto* input_u8 = builder.MakeInput<InputQType>(input_shape, 0, 10);
+    auto* input_u8 = builder.MakeInput<InputQType>(input_shape, static_cast<InputQType>(0),
+                                                   static_cast<InputQType>(10));
     auto* dq_input_output = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode<InputQType>(input_u8, quant_scale, quant_zero_point, dq_input_output);
 

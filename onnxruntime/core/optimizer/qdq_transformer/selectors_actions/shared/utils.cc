@@ -51,7 +51,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Tanh", {}}};
-  }
+}
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
           {"Div", {}},
