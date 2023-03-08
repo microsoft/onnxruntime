@@ -24,7 +24,7 @@ Status QnnBackendManager::LoadBackend() {
   backend_lib_handle_ = LoadLib(backend_path_.c_str(), 
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
                                 error_msg);
-  ORT_RETURN_IF(nullptr == backend_lib_handle_, "Unable to load backend, error:", error_msg);
+  ORT_RETURN_IF(nullptr == backend_lib_handle_, "Unable to load backend, error: ", error_msg, " ", DlError());
 
   // Get QNN Interface
   QnnInterfaceGetProvidersFn_t GetInterfaceProviders{nullptr};
@@ -90,6 +90,59 @@ Status QnnBackendManager::ShutdownBackend() {
   return Status::OK();
 }
 
+bool QnnBackendManager::IsDevicePropertySupported() {
+  if (nullptr != qnn_interface_.propertyHasCapability) {
+    auto rt = qnn_interface_.propertyHasCapability(QNN_PROPERTY_GROUP_DEVICE);
+    if (QNN_PROPERTY_NOT_SUPPORTED == rt || QNN_PROPERTY_ERROR_UNKNOWN_KEY == rt) {
+      LOGS_DEFAULT(INFO) << "Device property not supported or unknown to backend.";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+Status QnnBackendManager::CreateDevice() {
+  if (true == device_created_) {
+    LOGS_DEFAULT(INFO) << "Device intialized already.";
+    return Status::OK();
+  }
+
+  // Create device if its property supported
+  if (!IsDevicePropertySupported()) {
+    LOGS_DEFAULT(INFO) << "Skip to create device.";
+    return Status::OK();
+  }
+
+  LOGS_DEFAULT(INFO) << "Create device.";
+  if (nullptr != qnn_interface_.deviceCreate) {
+    auto result = qnn_interface_.deviceCreate(log_handle_, nullptr, &device_handle_);
+    if (QNN_SUCCESS != result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", result);
+    }
+  }
+  device_created_ = true;
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::ReleaseDevice() {
+  if (false == device_created_) {
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.deviceFree) {
+    auto result = qnn_interface_.deviceFree(device_handle_);
+    if (QNN_SUCCESS != result) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", result);
+    }
+  }
+
+  device_created_ = false;
+
+  return Status::OK();
+}
+
 Status QnnBackendManager::InitializeProfiling() {
   if (ProfilingLevel::OFF == profiling_level_ || ProfilingLevel::INVALID == profiling_level_) {
     LOGS_DEFAULT(INFO) << "Profiling turned off.";
@@ -125,7 +178,10 @@ Status QnnBackendManager::CreateContext() {
     return Status::OK();
   }
 
-  auto result = qnn_interface_.contextCreate(backend_handle_, device_handle_, (const QnnContext_Config_t**)&context_config_, &context_);
+  auto result = qnn_interface_.contextCreate(backend_handle_,
+                                             device_handle_,
+                                             (const QnnContext_Config_t**)&context_config_,
+                                             &context_);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context.");
 
@@ -145,29 +201,32 @@ Status QnnBackendManager::ReleaseContext() {
   return Status::OK();
 }
 
-Status QnnBackendManager::SetupBackend(const logging::Logger* logger) {
+Status QnnBackendManager::SetupBackend(const logging::Logger& logger) {
   if (backend_setup_completed_) {
-    LOGS(*logger, VERBOSE) << "Backend setup already!";
+    LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
   }
 
   ORT_RETURN_IF_ERROR(LoadBackend());
-  LOGS(*logger, VERBOSE) << "LoadBackend succeed.";
+  LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
-  LOGS(*logger, VERBOSE) << "Backend build version: "
+  LOGS(logger, VERBOSE) << "Backend build version: "
                          << GetBackendBuildId();
 
-  SetLogger(logger);
-  LOGS(*logger, VERBOSE) << "SetLogger succeed.";
+  SetLogger(&logger);
+  LOGS(logger, VERBOSE) << "SetLogger succeed.";
 
   ORT_RETURN_IF_ERROR(InitializeBackend());
-  LOGS(*logger, VERBOSE) << "InitializeBackend succeed.";
+  LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+
+  ORT_RETURN_IF_ERROR(CreateDevice());
+  LOGS(logger, VERBOSE) << "CreateDevice succeed.";
 
   ORT_RETURN_IF_ERROR(InitializeProfiling());
-  LOGS(*logger, VERBOSE) << "InitializeProfiling succeed.";
+  LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
 
   ORT_RETURN_IF_ERROR(CreateContext());
-  LOGS(*logger, VERBOSE) << "CreateContext succeed.";
+  LOGS(logger, VERBOSE) << "CreateContext succeed.";
 
   // TODO: failed to createPowerConfigId with Qnn v2, need future investigation
   // Disable it for now since it doen't impact any existing feature
@@ -177,7 +236,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger* logger) {
   //  LOGS(*logger, VERBOSE) << "SetDspPowerConfig succeed.";
   //}
 
-  LOGS(*logger, VERBOSE) << "QNN SetupBackend succeed";
+  LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
 
   backend_setup_completed_ = true;
 
@@ -267,6 +326,11 @@ void QnnBackendManager::ReleaseResources() {
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
     ORT_THROW("Failed to ReleaseProfilehandle.");
+  }
+
+  result = ReleaseDevice();
+  if (Status::OK() != result) {
+    ORT_THROW("Failed to ReleaseDevice.");
   }
 
   result = ShutdownBackend();

@@ -41,6 +41,19 @@ class ORTBertPretrainTest(unittest.TestCase):
         )
         return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
 
+    def _create_alltoall_ut_model(self, shape):
+        X = helper.make_tensor_value_info("X", TensorProto.FLOAT, shape)
+        Y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, shape)
+        _, size = self._get_rank_size()
+        node_def = helper.make_node("AllToAll", ["X"], ["Y"], domain="com.microsoft", group_size=size)
+        graph_def = helper.make_graph(
+            [node_def],
+            "",
+            [X],
+            [Y],
+        )
+        return helper.make_model(graph_def, producer_name="ort-distributed-inference-unittest")
+
     def test_all_reduce(self):
         model = self._create_allreduce_ut_model((128, 128))
         rank, size = self._get_rank_size()
@@ -69,6 +82,26 @@ class ORTBertPretrainTest(unittest.TestCase):
         expected_output = np.zeros((128, 128), dtype=np.float32)
         for _ in range(size - 1):
             expected_output = np.concatenate((expected_output, np.ones((128, 128), dtype=np.float32) * (_ + 1)))
+
+        assert np.allclose(outputs[0], expected_output)
+
+    def test_all_to_all(self):
+        model = self._create_alltoall_ut_model((128, 128))
+        rank, size = self._get_rank_size()
+        ort_sess = ort.InferenceSession(
+            model.SerializeToString(),
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            provider_options=[{"device_id": str(rank)}, {}],
+        )
+
+        input = np.ones((128, 128), dtype=np.float32) * rank
+        outputs = ort_sess.run(None, {"X": input})
+
+        expected_output = np.zeros((int(128 / size), 128), dtype=np.float32)
+        for _ in range(size - 1):
+            expected_output = np.concatenate(
+                (expected_output, np.ones((int(128 / size), 128), dtype=np.float32) * (_ + 1))
+            )
 
         assert np.allclose(outputs[0], expected_output)
 

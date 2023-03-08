@@ -17,6 +17,7 @@
 #include "contrib_ops/cpu/transformers/subgraph_gpt.h"
 #include "contrib_ops/cuda/transformers/beam_search_topk.h"
 #include "contrib_ops/cuda/transformers/greedy_search_top_one.h"
+#include "core/providers/cuda/tensor/transpose.h"
 
 // the includes would be dummy for ROCm, we will ignore them for now
 #ifdef ENABLE_NVTX_PROFILE
@@ -30,8 +31,8 @@
 #include <iostream>
 #endif
 
-using onnxruntime::cuda::ToCudaType;
 using onnxruntime::cuda::TArray;
+using onnxruntime::cuda::ToCudaType;
 using onnxruntime::cuda::TopKImpl;
 
 namespace onnxruntime {
@@ -45,6 +46,47 @@ class ThreadPool;
 namespace onnxruntime {
 namespace contrib {
 namespace GenerationCudaDeviceHelper {
+
+Status ReorderPastState(
+    const void* cuda_device_prop,
+    Tensor& past_state,
+    Tensor& past_state_staging,
+    Stream* stream) {
+  ORT_ENFORCE(stream);
+  cudaStream_t cuda_stream = reinterpret_cast<cudaStream_t>(stream->GetHandle());
+  cublasHandle_t cublas_handle = static_cast<CudaStream*>(stream)->cublas_handle_;
+
+  const auto& past_state_shape = past_state.Shape();
+
+  // Copy the 'K' values into the temp staging buffer
+  void* past_state_staging_buffer = past_state_staging.MutableDataRaw();
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(past_state_staging_buffer, past_state.DataRaw(), past_state.SizeInBytes() / 2,
+                                       cudaMemcpyDeviceToDevice, cuda_stream));
+
+  // Now consider the original 'K' values to be of shape [B, N, max_length, head_size / x, x] and transpose it into
+  // [B, N, head_size / x, max_length, x], where x = 16 / sizeof(T)
+  int64_t chunk_size = static_cast<int64_t>(16 / past_state.DataType()->Size());
+
+  std::vector<size_t> permutation_vector = {0, 1, 3, 2, 4};
+  gsl::span<size_t> permutation(permutation_vector.data(), 5);
+
+  // "Fake" the shapes of the input and output tensors of the Transpose operation to suit our need
+
+  TensorShape transpose_input_shape_override = {past_state_shape[1],
+                                                past_state_shape[2],
+                                                past_state_shape[3],
+                                                past_state_shape[4] / chunk_size,
+                                                chunk_size};
+
+  TensorShape transpose_output_shape_override = {past_state_shape[1], past_state_shape[2], past_state_shape[4] / chunk_size, past_state_shape[3], chunk_size};
+
+  // TODO(hasesh): Explore perf tuning for this Transpose operation
+  return onnxruntime::cuda::Transpose::DoTranspose(*static_cast<const cudaDeviceProp*>(cuda_device_prop), cuda_stream,
+                                                   cublas_handle, permutation,
+                                                   past_state_staging, past_state,
+                                                   &transpose_input_shape_override,
+                                                   &transpose_output_shape_override);
+}
 
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
@@ -219,7 +261,6 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   CUDA_CALL_THROW(cudaMemsetAsync(beam_state->next_scores.data(), 0, beam_state->next_scores.size_bytes(), cuda_stream));
   CUDA_CALL_THROW(cudaMemsetAsync(beam_state->topk_buffer.data(), 0, beam_state->topk_buffer.size_bytes(), cuda_stream));
 
-
   // Initialize score of first beam of each group with 0 and the rest with -1e9.
   cuda::LaunchInitKernel(beam_state->beam_scores.data(), batch_size, num_beams, cuda_stream);
 
@@ -227,7 +268,7 @@ void InitBeamState(transformers::IBeamSearchState<T>* beam_state,
   // since next_positions is only needed to update feeds after subgraph execution, so it is fine to use Async here.
   if (!beam_state->next_positions.empty()) {  // next_positions is empty for T5
     CUDA_CALL_THROW(cudaMemcpyAsync(beam_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
-                    cudaMemcpyHostToDevice, cuda_stream));
+                                    cudaMemcpyHostToDevice, cuda_stream));
   }
 
 #ifdef ENABLE_NVTX_PROFILE
@@ -249,7 +290,7 @@ void InitGreedyState(transformers::IGreedySearchState<T>* greedy_state,
   CUDA_CALL_THROW(cudaMemsetAsync(greedy_state->next_positions.data(), 0, greedy_state->next_positions.size_bytes(), cuda_stream));
 
   CUDA_CALL_THROW(cudaMemcpyAsync(greedy_state->next_positions.data(), sequence_lengths.data(), sequence_lengths.size_bytes(),
-                  cudaMemcpyHostToDevice, cuda_stream));
+                                  cudaMemcpyHostToDevice, cuda_stream));
 
 #ifdef ENABLE_NVTX_PROFILE
   initStateRange.End();

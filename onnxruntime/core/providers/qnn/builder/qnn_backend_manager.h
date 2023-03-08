@@ -30,10 +30,21 @@ class QnnBackendManager {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
   ~QnnBackendManager();
+  char* DlError() {
+#ifdef _WIN32
+    return nullptr;
+#else
+    return ::dlerror();
+#endif
+  }
 
   Status LoadBackend();
 
   Status InitializeBackend();
+
+  Status CreateDevice();
+
+  Status ReleaseDevice();
 
   Status ShutdownBackend();
 
@@ -51,7 +62,7 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status SetupBackend(const logging::Logger* logger);
+  Status SetupBackend(const logging::Logger& logger);
 
   Status SetDspPowerConfig();
 
@@ -140,6 +151,8 @@ class QnnBackendManager {
     return ptr;
   }
 
+  bool IsDevicePropertySupported();
+
  private:
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
@@ -153,6 +166,7 @@ class QnnBackendManager {
   QnnContext_Config_t** context_config_ = nullptr;
   ProfilingLevel profiling_level_;
   bool backend_initialized_ = false;
+  bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
