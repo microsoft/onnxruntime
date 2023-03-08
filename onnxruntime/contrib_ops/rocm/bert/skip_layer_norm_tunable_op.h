@@ -23,7 +23,7 @@ struct SkipLayerNormParams : OpParams {
   SkipLayerNormParams(RocmTuningContext* tuning_ctx, hipStream_t stream, T* output, T* skip_input_bias_add_output, const T* input,
                       const T* skip, const T* gamma, const T* beta,
                       const T* bias, float epsilon, int ld, int element_count)
-      : OpParams(tuning_ctx, stream), output(output), skip_input_bias_add_output(skip_input_bias_add_output), input(input), skip(skip), 
+      : OpParams(tuning_ctx, stream), output(output), skip_input_bias_add_output(skip_input_bias_add_output), input(input), skip(skip),
         gamma(gamma), beta(beta), bias(bias), epsilon(epsilon), ld(ld), element_count(element_count) {}
 
   std::string Signature() const override {
@@ -45,8 +45,10 @@ struct SkipLayerNormParams : OpParams {
 
 template <typename T, int ThreadsPerBlock, int VecSize>
 Status SkipLayerNormSmallOp(const SkipLayerNormParams<T>* params) {
+  // Loosen the hard constraint for ld (hidden_size) to include more possible *Small kernels,
+  // which could offer better performance in some combinations of ThreadsPerBlock and VecSize.
   TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-      !((params->ld <= 6144 && params->ld % VecSize == 0 &&
+      !((params->ld <= 8192 && params->ld % VecSize == 0 &&
          params->ld <= ThreadsPerBlock * VecSize && params->ld > (ThreadsPerBlock - GPU_WARP_SIZE) * VecSize)));
   SkipLayerNormKernelSmall<T, ThreadsPerBlock, VecSize><<<dim3(CeilDiv(params->element_count, params->ld)),
                                                           dim3(ThreadsPerBlock),
