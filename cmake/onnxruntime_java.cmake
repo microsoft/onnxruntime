@@ -1,4 +1,4 @@
-# Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the MIT License.
 
 #set(CMAKE_VERBOSE_MAKEFILE on)
@@ -57,16 +57,17 @@ file(GLOB onnxruntime4j_native_src
     "${JAVA_ROOT}/src/main/native/*.c"
     "${JAVA_ROOT}/src/main/native/*.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/*.h"
+    "${REPO_ROOT}/orttraining/orttraining/training_api/include/onnxruntime_training_c_api.h"
     )
 # Build the JNI library
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
-set_property(TARGET onnxruntime4j_jni PROPERTY CXX_STANDARD 11)
+set_property(TARGET onnxruntime4j_jni PROPERTY C_STANDARD 11)
 
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
 # the JNI headers are generated in the onnxruntime4j target
-target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${JAVA_ROOT}/build/headers ${JNI_INCLUDE_DIRS})
+target_include_directories(onnxruntime4j_jni PRIVATE ${REPO_ROOT}/include ${REPO_ROOT}/orttraining/orttraining/training_api/include ${JAVA_ROOT}/build/headers ${JNI_INCLUDE_DIRS})
 target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 
 set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
@@ -198,7 +199,12 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
   # it is better to not keep a daemon running
   set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
 endif()
+
+# Append relevant native build flags to gradle command
 set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
+if (onnxruntime_ENABLE_TRAINING_APIS)
+    set(GRADLE_ARGS ${GRADLE_ARGS} "-DENABLE_TRAINING=1")
+endif()
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
 add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
