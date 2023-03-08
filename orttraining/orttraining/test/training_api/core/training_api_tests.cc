@@ -118,7 +118,7 @@ constexpr int64_t total_step_count = 100;
 constexpr float initial_lr = 1e-3f;
 constexpr int64_t resume_step = total_step_count / 2;
 
-constexpr void CompareValue(float expected, float output, constexpr float rtol = 1e-4, constexpr float atol = 1e-5) {
+void CompareValue(float expected, float output, float rtol = 1e-4, float atol = 1e-5) {
   ASSERT_NEAR(expected, output, atol);
   ASSERT_NEAR(expected, output, rtol * std::abs(expected));
 }
