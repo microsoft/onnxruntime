@@ -115,8 +115,14 @@ inline std::tuple<const int*, int3, int3> GetRawMaskBufferAddrSizesAndStrides(
 template <typename T>
 struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   std::string Signature() const override {
-    auto [m, n, k, o, batch] = GetGemmsMNKOBatch();
-    return MakeString("M", m, "_N", n, "_K", k, "_O", o, "_B", batch);
+    return MakeString(
+        "B", attention->batch_size,
+        "_S", attention->sequence_length,
+        "_T", attention->total_sequence_length,
+        "_N", attention->num_heads,
+        "_H", attention->head_size,
+        bias_buffer != nullptr ? "_B" : "_NB",
+        "_M", mask_index_dims.size());
   }
 
   std::tuple<int, int, int, int, int> GetGemmsMNKOBatch() const {
@@ -511,7 +517,6 @@ GemmSoftmaxGemmPermuteTunableOp<T>::GemmSoftmaxGemmPermuteTunableOp() {
   for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/false, /*USE_MASK=*/true>()) {
     this->RegisterOp(std::move(op));
   }
-
 
   for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/true, /*USE_MASK=*/true>()) {
     this->RegisterOp(std::move(op));
