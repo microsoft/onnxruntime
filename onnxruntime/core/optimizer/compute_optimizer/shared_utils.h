@@ -11,13 +11,11 @@
 #include <string>
 #include <vector>
 
-// Uncomment for debugging
-#ifndef NEED_LOG_DEBUG_INFO
-#define NEED_LOG_DEBUG_INFO 1
-#endif
+// Uncomment for debugging Compute optimizer (CO).
+// #define CO_NEED_LOG_DEBUG_INFO 1
 
 #ifndef LOG_DEBUG_INFO
-#ifdef NEED_LOG_DEBUG_INFO
+#ifdef CO_NEED_LOG_DEBUG_INFO
 #define LOG_DEBUG_INFO(logger, message) LOGS(logger, WARNING) << message
 #else
 #define LOG_DEBUG_INFO(logger, message) \
