@@ -302,8 +302,8 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
 
   inline static bool IsSupportedMaskType(const AttentionParameters* attn) {
     switch (attn->mask_type) {
-      // case MASK_NONE:      // TODO: enable if client api is ready for non-biased version
-      // case MASK_2D_DUMMY:  // TODO: enable if client api is ready for non-biased version
+      case MASK_NONE:
+      case MASK_2D_DUMMY:
       case MASK_2D_KEY_PADDING:
       case MASK_3D_ATTENTION:
       case MASK_4D_MEGATRON:
@@ -382,10 +382,9 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   }
 };
 
-template <typename T, bool USE_MASK, bool USE_BIAS>
+template <typename T, bool USE_BIAS, bool USE_MASK>
 auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
-  static_assert(!(USE_MASK && USE_BIAS), "TODO: support mask and bias simultaneously is not implemented");
-  constexpr const int kNumBiasBuffer = static_cast<int>(USE_MASK) + static_cast<int>(USE_BIAS);
+  constexpr const int kNumBiasBuffer = static_cast<int>(USE_BIAS) + static_cast<int>(USE_MASK);
 
   using Nop = ck::tensor_operation::element_wise::PassThrough;
   using Acc0ElementOp = internal::PreSoftmaxAttentionScoreOp;
@@ -406,17 +405,17 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
     auto invoker = impl->MakeInvokerPointer();
     auto op = [impl = std::move(impl), invoker = std::move(invoker)](
                   const GemmSoftmaxGemmPermuteParams<T>* params) -> Status {
-      TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
-          !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention));
-      if constexpr (USE_MASK) {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer == nullptr);
-      } else {
-        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer != nullptr);
-      }
       if constexpr (USE_BIAS) {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->bias_buffer == nullptr);
       } else {
         TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->bias_buffer != nullptr);
+      }
+      if constexpr (USE_MASK) {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
+            !GemmSoftmaxGemmPermuteTunableOp<T>::IsSupportedMaskType(params->attention));
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer == nullptr);
+      } else {
+        TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(params->mask_index_buffer != nullptr);
       }
 
       auto attn = params->attention;
@@ -484,7 +483,9 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());
 
-      ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
+      if constexpr (USE_MASK) {
+        ORT_RETURN_IF_ERROR(GemmSoftmaxGemmPermuteTunableOp<T>::LaunchConvertToFilledMaskValue(params));
+      }
       invoker->Run(arg.get(), StreamConfig{params->Stream()});
       return Status::OK();
     };
@@ -499,23 +500,22 @@ GemmSoftmaxGemmPermuteTunableOp<T>::GemmSoftmaxGemmPermuteTunableOp() {
     return GemmSoftmaxGemmPermuteGenericPipeline<T>::Run(params, false);
   });
 
-  // TODO: enable if client api is ready for non-biased version
-  // for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/false, /*USE_BIAS=*/false>()) {
-  //   this->RegisterOp(std::move(op));
-  // }
-
-  for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/true, /*USE_BIAS=*/false>()) {
+  for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/false, /*USE_MASK=*/false>()) {
     this->RegisterOp(std::move(op));
   }
 
-  // for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/false, /*USE_BIAS=*/true>()) {
-  //   this->RegisterOp(std::move(op));
-  // }
+  for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/true, /*USE_MASK=*/false>()) {
+    this->RegisterOp(std::move(op));
+  }
 
-  // TODO: enable if we implement it
-  // for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_MASK=*/true, /*USE_BIAS=*/true>()) {
-  //   this->RegisterOp(std::move(op));
-  // }
+  for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/false, /*USE_MASK=*/true>()) {
+    this->RegisterOp(std::move(op));
+  }
+
+
+  for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/true, /*USE_MASK=*/true>()) {
+    this->RegisterOp(std::move(op));
+  }
 }
 
 }  // namespace rocm

@@ -32,6 +32,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       DeviceArray& Q,
       DeviceArray& K,
       DeviceArray& V,
+      std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out) {
     ROCBLAS_CALL_THROW(rocblas_create_handle(&rocblas_handle_));
@@ -77,6 +78,9 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
     params_.q_buffer = reinterpret_cast<T*>(Q.ptr());
     params_.k_buffer = reinterpret_cast<T*>(K.ptr());
     params_.v_buffer = reinterpret_cast<T*>(V.ptr());
+    if (attn_bias.has_value()) {
+      params_.bias_buffer = reinterpret_cast<T*>(attn_bias->ptr());
+    }
     if (attn_mask.has_value()) {
       params_.mask_index_buffer = reinterpret_cast<int*>(attn_mask->ptr());
       if (mask_dim == 2) {
@@ -88,7 +92,6 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
         params_.mask_index_dims = {batch, 1, max_seqlen, max_seqlen};
       }
     }
-    params_.bias_buffer = nullptr;
     params_.out_buffer = reinterpret_cast<T*>(out.ptr());
   }
 
@@ -127,10 +130,11 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       DeviceArray& Q,
       DeviceArray& K,
       DeviceArray& V,
+      std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
-                                                 Q, K, V, attn_mask, out) {
+                                                 Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_));
   }
 
@@ -148,7 +152,7 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 };
 
-template <typename T, bool USE_MASK, bool USE_BIAS>
+template <typename T, bool USE_BIAS, bool USE_MASK>
 class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
  public:
   GemmSoftmaxGemmPermuteCK(
@@ -162,13 +166,14 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       DeviceArray& Q,
       DeviceArray& K,
       DeviceArray& V,
+      std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
-                                                 Q, K, V, attn_mask, out) {
+                                                 Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_));
 
-    for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, USE_MASK, USE_BIAS>()) {
+    for (auto&& [ts, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, USE_BIAS, USE_MASK>()) {
       type_strings_.emplace_back(std::move(ts));
       ops_.emplace_back(std::move(op));
     }
@@ -182,7 +187,7 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
     for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
         selected_op_ = i;
-        Status status = ops_[i](&this->params_);
+        Status status = ops_[i].IsSupported(&this->params_);
         return status.IsOK();
       }
     }
@@ -218,10 +223,11 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       DeviceArray& Q,
       DeviceArray& K,
       DeviceArray& V,
+      std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
       : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
-                                                 Q, K, V, attn_mask, out) {
+                                                 Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(std::max(
         GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
         GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_)));
@@ -250,6 +256,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
                     DeviceArray&,                                         \
                     DeviceArray&,                                         \
                     std::optional<DeviceArray>&,                          \
+                    std::optional<DeviceArray>&,                          \
                     DeviceArray&>())                                      \
       .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                  \
       .def("Run", &type<__VA_ARGS__>::Run)                                \
@@ -260,8 +267,9 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 #define REGISTER_GENERIC(dtype) \
   REGISTER_COMMON("GemmSoftmaxGemmPermuteGeneric_" #dtype, GemmSoftmaxGemmPermuteGeneric, dtype)
 
-#define REGISTER_CK(dtype, mask, bias, mask_bias_suffix) \
-  REGISTER_COMMON("GemmSoftmaxGemmPermuteCK" mask_bias_suffix "_" #dtype, GemmSoftmaxGemmPermuteCK, dtype, mask, bias)
+#define REGISTER_CK(dtype, biased, masked, mask_bias_suffix) \
+  REGISTER_COMMON(                                           \
+      "GemmSoftmaxGemmPermuteCK" mask_bias_suffix "_" #dtype, GemmSoftmaxGemmPermuteCK, dtype, biased, masked)
 
 #define REGISTER_TUNABLE(dtype) \
   REGISTER_COMMON("GemmSoftmaxGemmPermuteTunable_" #dtype, GemmSoftmaxGemmPermuteTunable, dtype)
@@ -269,10 +277,10 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 void InitGemmSoftmaxGemmPermute(py::module m) {
   REGISTER_GENERIC(half);
 
-  // REGISTER_CK(half, false, false, "");
-  REGISTER_CK(half, true, false, "Masked");
-  REGISTER_CK(half, false, true, "Biased");
-  // REGISTER_CK(half, true, true, "MaskedBiased");
+  REGISTER_CK(half, false, false, "");
+  REGISTER_CK(half, true, false, "Biased");
+  REGISTER_CK(half, false, true, "Masked");
+  REGISTER_CK(half, true, true, "BiasedMasked");
 
   REGISTER_TUNABLE(half);
 }
