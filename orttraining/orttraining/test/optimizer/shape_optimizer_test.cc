@@ -652,7 +652,7 @@ TEST(ShapeOptimizerTests, ConstantFoldShape_ConcreteDimUsedBySlice) {
       auto* dropout_input_arg = builder.MakeSymbolicInput<float>(dropout_input_shape);
       auto* dropout_out_arg = builder.MakeIntermediate();
       auto* mask_out_arg = builder.MakeIntermediate();
-      const float ratio = 0.10000000149011612f;
+      constexpr float ratio = 0.10000000149011612f;
       if (opset < 12) {
         builder.AddNode("Dropout", {dropout_input_arg}, {dropout_out_arg, mask_out_arg})
             .AddAttribute("ratio", ratio);

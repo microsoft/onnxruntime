@@ -31,7 +31,7 @@ namespace onnxruntime {
 // Put utilities into anonymous namespace.
 namespace {
 
-int64_t NormalizeIndex(int64_t initial_index_value, int64_t rank) {
+constexpr int64_t NormalizeIndex(int64_t initial_index_value, int64_t rank) {
   // Negative handling
   int64_t non_negative_index = initial_index_value < 0 ? initial_index_value + rank : initial_index_value;
 
@@ -162,9 +162,8 @@ bool CanGatherNodeBeReplacedWithConstant(Graph& graph, Node& gather_node, const 
 
   NodeArg* indices_input = gather_node.MutableInputDefs()[1];
   auto indices_shape = indices_input->Shape();
-
   // Indices can be 1D tensor or scalar.
-  if (!(indices_shape || indices_shape->dim_size() == 0) && !IsSingleValue1DShape(indices_shape)) {
+  if (!indices_shape || !(indices_shape->dim_size() == 0 || IsSingleValue1DShape(indices_shape))) {
     // If the indices did not contain one single element, then skip it.
     return false;
   }
