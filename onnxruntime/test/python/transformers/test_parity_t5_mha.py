@@ -54,13 +54,13 @@ def create_t5_mha_graph(
             "MultiHeadAttention",
             [
                 "query",
-                "key" if use_present else "",
-                "value" if use_present else "",
+                "key" if use_present or is_static_kv else "",
+                "value" if use_present or is_static_kv else "",
                 "",  # bias
                 "key_padding_mask" if use_mask else "",
                 "relative_position_bias" if use_rpb else "",
-                "past_key" if use_past else "",
-                "past_value" if use_past else "",
+                "past_key" if use_past and not is_static_kv else "",
+                "past_value" if use_past and not is_static_kv else "",
             ],
             [
                 "output",
@@ -70,7 +70,6 @@ def create_t5_mha_graph(
             "MHA_0",
             num_heads=num_heads,
             mask_filter_value=-10000.0,
-            static_kv=1 if is_static_kv else 0,
             scale=1.0,
             domain="com.microsoft",
         ),
@@ -100,7 +99,7 @@ def create_t5_mha_graph(
             )
         )
 
-    if use_past:
+    if use_past and not is_static_kv:
         graph_inputs.append(
             helper.make_tensor_value_info(
                 "past_key", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size]
@@ -119,6 +118,15 @@ def create_t5_mha_graph(
         graph_inputs.append(
             helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, kv_sequence_length, hidden_size])
         )
+    elif is_static_kv and use_past:
+        graph_inputs.append(
+            helper.make_tensor_value_info("key", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size])
+        )
+        graph_inputs.append(
+            helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length, head_size])
+        )
+
+    if use_present:
         graph_outputs.append(
             helper.make_tensor_value_info(
                 "present_key", TensorProto.FLOAT, [batch_size, num_heads, total_sequence_length, head_size]
@@ -408,10 +416,13 @@ class T5Attention(nn.Module):
             torch_past_value = past_key_value[1]
             ort_inputs = {
                 "query": np.ascontiguousarray(query_states.detach().numpy()),
-                "past_key": np.ascontiguousarray(torch_past_key.detach().numpy()),
-                "past_value": np.ascontiguousarray(torch_past_value.detach().numpy()),
             }
-            if not self.is_static_kv:
+            if self.is_static_kv:
+                ort_inputs["key"] = np.ascontiguousarray(torch_past_key.detach().numpy())
+                ort_inputs["value"] = np.ascontiguousarray(torch_past_value.detach().numpy())
+            else:
+                ort_inputs["past_key"] = np.ascontiguousarray(torch_past_key.detach().numpy())
+                ort_inputs["past_value"] = np.ascontiguousarray(torch_past_value.detach().numpy())
                 ort_inputs["key"] = np.ascontiguousarray(key_states.detach().numpy())
                 ort_inputs["value"] = np.ascontiguousarray(value_states.detach().numpy())
             if torch_key_padding_mask is not None:

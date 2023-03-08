@@ -2933,8 +2933,9 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
       -0.02826184f,  0.2797631f ,  0.27337456f, -0.44312602f
     };
   }
+
   {
-    data.past_key_data = {
+    data.key_data = {
       0.5967375f , 0.5966938f , 0.48602432f, 0.5341031f,
       0.55797786f, 0.5663399f , 0.57087725f, 0.6240304f,
       0.5352563f , 0.5648297f , 0.4972945f , 0.56637144f,
@@ -2946,7 +2947,7 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
   }
 
   {
-    data.past_value_data = {
+    data.value_data = {
       0.40251260f, 0.55487730f, 0.49565578f, 0.42683450f,
       0.44379145f, 0.58945787f, 0.54852820f, 0.43376005f,
       0.44116694f, 0.44007313f, 0.40293324f, 0.53202707f,
@@ -2977,7 +2978,6 @@ void GetSelfAttentionDataWithPast(AttentionTestData& data) {
   data.sequence_length = 2;
   data.kv_sequence_length = 3;
   data.mask_type = AttentionMaskType::MASK_NONE;
-  data.is_static_kv = false;
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFlashAttention,

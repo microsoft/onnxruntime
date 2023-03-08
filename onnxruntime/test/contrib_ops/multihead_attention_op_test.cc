@@ -50,7 +50,6 @@ static void RunMultiHeadAttentionTest(
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
-    tester.AddAttribute<int64_t>("static_kv", static_cast<int64_t>(is_static_kv ? 1 : 0));
 
     std::vector<int64_t> query_dims = {batch_size, sequence_length, hidden_size};
     std::vector<int64_t> key_dims =  {batch_size, is_static_kv ? kv_sequence_length : sequence_length, hidden_size};
@@ -344,7 +343,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-          data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+          data.v_hidden_size, kernel_type, use_float16);
     }
 
 #if USE_FLASH_ATTENTION
@@ -357,7 +356,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
             data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
             data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
             data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-            data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+            data.v_hidden_size, kernel_type, use_float16);
       }
     }
 #endif
@@ -368,7 +367,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
         data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
         data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp32_output_data,
         data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-        data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+        data.v_hidden_size, kernel_type, use_float16);
   }
 
   if (data.fp16_output_data.size() > 0) {
@@ -380,7 +379,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-          data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+          data.v_hidden_size, kernel_type, use_float16);
     }
 
     kernel_type = AttentionKernelType::AttentionKernel_TrtFusedAttention;
@@ -390,7 +389,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-          data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+          data.v_hidden_size, kernel_type, use_float16);
     }
 
 #if USE_FLASH_ATTENTION
@@ -401,7 +400,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
           data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
           data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
           data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-          data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+          data.v_hidden_size, kernel_type, use_float16);
     }
 #endif
 
@@ -411,7 +410,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
         data.rel_pos_bias_data, data.past_key_data, data.past_value_data, data.present_key_data,
         data.present_value_data, data.key_padding_mask_data, data.mask_type, data.fp16_output_data,
         data.num_heads, data.batch_size, data.sequence_length, data.kv_sequence_length, data.hidden_size,
-        data.v_hidden_size, kernel_type, use_float16, data.is_static_kv);
+        data.v_hidden_size, kernel_type, use_float16);
   }
 }
 

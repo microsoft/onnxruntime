@@ -53,6 +53,7 @@ struct AttentionParameters {
   bool past_present_share_buffer;
   bool do_rotary;
   bool broadcast_res_pos_bias;
+  bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
