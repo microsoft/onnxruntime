@@ -1,9 +1,10 @@
 ---
 title: Make dynamic input shape fixed
 descriptions: 
-parent: Helpers
-grand_parent: Mobile
+parent: ORT Mobile Model Export Helpers
+grand_parent: Deploy on Mobile
 nav_order: 2
+
 ---
 
 # Making dynamic input shapes fixed
