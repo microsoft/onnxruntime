@@ -149,12 +149,12 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
 #ifdef DEBUG_GENERATION
   const IConsoleDumper* dumper = this->GetConsoleDumper();
-  for (int i = 0; i < this->encoder_subgraph_.num_subgraph_inputs; i++) {
+  for (int i = 0; i < 3; i++) {
     dumper->Print("encoder_feeds", static_cast<int>(i), true);
     dumper->Print("", encoder_feeds[i]);
   }
 
-  for (int i = 0; i <= encoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
+  for (int i = 0; i < 26; i++) {
     dumper->Print("encoder_fetches", i, true);
     dumper->Print("", encoder_fetches[i]);
   }
@@ -244,7 +244,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPastInputIndex(); i++) {
+    for (int i = 0; i < 26; i++) {
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
@@ -266,7 +266,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     ORT_RETURN_IF_ERROR(status);
 
 #ifdef DEBUG_GENERATION
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPresentOutputIndex(); i++) {
+    for (int i = 0; i < 13; i++) {
       dumper->Print("decoder_fetches", i, true);
       dumper->Print("", decoder_fetches[i]);
     }

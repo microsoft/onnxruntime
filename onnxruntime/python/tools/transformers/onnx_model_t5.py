@@ -9,6 +9,7 @@ import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_base import Fusion
 from fusion_skiplayernorm import FusionSkipLayerNormalization
+from fusion_layernorm import FusionLayerNormalization
 from fusion_utils import NumpyHelper
 from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
@@ -564,6 +565,15 @@ class FusionRelativePositionBiasBlock(Fusion):
         self.node_name_to_graph_name[rpb_node.name] = self.this_graph_name
 
 
+class FusionSimplifiedLayerNormalization(FusionLayerNormalization):
+    def __init__(self, model: OnnxModel):
+        super().__init__(model)
+
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
+        # super().fuse(node, input_name_to_nodes, output_name_to_node)
+        return
+
+
 class FusionSkipSimplifiedLayerNormalization(FusionSkipLayerNormalization):
     def __init__(self, model: OnnxModel):
         super().__init__(model, "SkipSimplifiedLayerNormalization", "SimplifiedLayerNormalization")
@@ -577,16 +587,23 @@ class T5OnnxModel(BertOnnxModel):
         super().__init__(model, num_heads, hidden_size)
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionT5Attention(self, self.hidden_size, self.num_heads, self.attention_mask)
+        self.layer_norm_fusion = FusionSimplifiedLayerNormalization(self)
         self.skip_layer_norm_fusion = FusionSkipSimplifiedLayerNormalization(self)
         # TODO: consider retrive max_distance from model.
         # math.log(max_distance / (num_buckets // 2))
         self.rpb_fusion = FusionRelativePositionBiasBlock(self, 128)
 
     def fuse_attention(self):
-        self.attention_fusion.apply()
+        return
+        # self.attention_fusion.apply()
+
+    def fuse_layer_norm(self):
+        return
+        # self.layer_norm_fusion().apply()
 
     def fuse_skip_layer_norm(self):
-        self.skip_layer_norm_fusion.apply()
+        return
+        # self.skip_layer_norm_fusion.apply()
 
     # Remove get_extended_attention_mask() since it generates all zeros.
     def remove_extended_mask_decoder_init(self):
@@ -662,12 +679,11 @@ class T5OnnxModel(BertOnnxModel):
 
     def preprocess(self):
         self.adjust_reshape_and_expand()
-        self.rpb_fusion.apply()
-        return
+        # self.rpb_fusion.apply()
 
     def postprocess(self):
         # remove get_extended_attention_mask() since it generates all zeros.
-        self.remove_extended_mask_decoder_init()
-        self.remove_extended_mask_decoder()
+        # self.remove_extended_mask_decoder_init()
+        # self.remove_extended_mask_decoder()
 
         self.prune_graph()
