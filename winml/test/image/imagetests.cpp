@@ -529,9 +529,11 @@ TEST_P(BatchTest, BatchSupport) {
                 VideoFrame D3D_video_frame = output_video_frames.GetAt(i);
                 VideoFrame SB_video_frame(BitmapPixelFormat::Bgra8, 720, 720);
                 D3D_video_frame.as<IVideoFrame>().CopyToAsync(SB_video_frame).get();
+                std::cout << "First if " << bm_image_path << std::endl;
                 VerifyResults(SB_video_frame, bm_image_path, L"Bgra8");
             }
             else {
+                std::cout << "Second if " << bm_image_path << std::endl;
                 VerifyResults(output_video_frames.GetAt(i), bm_image_path, L"Bgra8");
             }
         }
