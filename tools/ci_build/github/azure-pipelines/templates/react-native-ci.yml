@@ -98,7 +98,7 @@ jobs:
       project: 'onnxruntime'
       definition: 188
       buildVersionToDownload: 'specific'
-      pipelineId: 899533
+      pipelineId: 911983
       # Mobile build:
       #  artifactName: 'onnxruntime-android-mobile-aar'
       #  targetPath: '$(Build.BinariesDirectory)/android-mobile-aar'
