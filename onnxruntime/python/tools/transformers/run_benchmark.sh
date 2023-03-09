@@ -14,7 +14,7 @@
 use_package=true
 
 # only need once
-run_install=true
+run_install=false
 
 # Engines to test.
 # To run ort_trt, you need to build and install the onnxruntime-gpu-tensorrt package on your own
@@ -49,7 +49,8 @@ layer_number=16
 
 # Batch Sizes and Sequence Lengths
 batch_sizes="1 4"
-sequence_lengths="8 16 32 64 128 256 512 1024"
+sequence_lengths="32 64"
+# 8 16 32 64 128 256 512 1024"
 
 # Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
 # Not that different input count might lead to different performance
@@ -57,7 +58,8 @@ sequence_lengths="8 16 32 64 128 256 512 1024"
 input_counts=1
 
 # Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
-models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
+models_to_test="google/vit-base-patch16-224"
+# bert-base-cased roberta-base distilbert-base-uncased"
 
 # If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1

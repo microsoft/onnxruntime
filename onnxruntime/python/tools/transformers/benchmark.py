@@ -258,7 +258,8 @@ def run_onnxruntime(
                     }
 
                     logger.info(
-                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
+                        # "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
+                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, 3, 224, 224])
                     )
 
                     if disable_ort_io_binding:
@@ -359,7 +360,8 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                # logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, 3, 224, 224]))
                 input_ids = torch.randint(
                     low=0,
                     high=config.vocab_size - 1,

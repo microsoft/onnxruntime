@@ -10,13 +10,23 @@ import sys
 from pathlib import Path
 
 import numpy
+import requests
 import torch
 from affinity_helper import AffinitySetting
 from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_session
 from huggingface_models import MODEL_CLASSES
+from PIL import Image
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
-from transformers import AutoConfig, AutoTokenizer, LxmertConfig, TransfoXLConfig
+from transformers import (
+    AutoConfig,
+    AutoModelForImageClassification,
+    AutoTokenizer,
+    LxmertConfig,
+    TransfoXLConfig,
+    ViTForImageClassification,
+    ViTImageProcessor,
+)
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
 from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState
@@ -49,9 +59,11 @@ def restore_torch_functions():
 
 
 def create_onnxruntime_input(vocab_size, batch_size, sequence_length, input_names, config, data_type=numpy.int64):
-    input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
+    # input_ids = numpy.random.randint(low=0, high=vocab_size - 1, size=(batch_size, sequence_length), dtype=data_type)
+    input_ids = numpy.random.rand(batch_size, 3, 224, 224).astype(numpy.float32)
 
-    inputs = {"input_ids": input_ids}
+    # inputs = {"input_ids": input_ids}
+    inputs = {"pixel_values": input_ids}
 
     if "attention_mask" in input_names:
         attention_mask = numpy.ones([batch_size, sequence_length], dtype=data_type)
@@ -106,6 +118,15 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
                 dynamic_axes[output_name].update({j: "seq_len"})
     return dynamic_axes, output_names
 
+def build_dynamic_axes_vit(example_inputs, outputs_flatten):
+    # dynamic_axes={
+    #     'pixel_values': {0: 'batch_size', 1: 'num_channels', 2: 'height', 3:'width'},
+    #     'logits': {0: 'batch_size', 1: 'sequence_length'}
+    # }
+
+    dynamic_axes = {key: {0: "pixel_values"} for key in example_inputs.keys()}
+    output_names = ["logits"]
+    return dynamic_axes, output_names
 
 def validate_onnx_model(
     onnx_model_path,
@@ -439,7 +460,8 @@ def validate_and_optimize_onnx(
                 model_fusion_statistics,
             )
 
-    return onnx_model_path, is_valid_onnx_model, config.vocab_size
+    # return onnx_model_path, is_valid_onnx_model, config.vocab_size
+    return onnx_model_path, is_valid_onnx_model, config.num_labels
 
 
 def export_onnx_model_from_pt(
@@ -466,6 +488,7 @@ def export_onnx_model_from_pt(
     # config, model = load_pt_model_from_tf(model_name)
     model.cpu()
 
+    """
     tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
     max_input_size = (
         tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
@@ -474,13 +497,25 @@ def export_onnx_model_from_pt(
     example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
+    """
 
+    # url = 'http://images.cocodataset.org/val2017/000000039769.jpg' # Egyptian cats
+    # image = Image.open(requests.get(url, stream=True).raw)
+    # processor = ViTImageProcessor.from_pretrained(model_name)
+    # model = ViTForImageClassification.from_pretrained(model_name)
+    model = AutoModelForImageClassification.from_pretrained(model_name)
+
+    # example_inputs = processor(images=image, return_tensors="pt")
+
+    max_input_size = 1024 # What to use for ViT?
+
+    example_inputs = inputs = { 'pixel_values' : torch.rand(2,3,224,224) }
     example_outputs = model(**example_inputs)
 
-    assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
+    # assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
 
     # Flatten is needed for gpt2 and distilgpt2.
-    example_outputs_flatten = flatten(example_outputs)
+    example_outputs_flatten = flatten(example_outputs['logits'])
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
 
     onnx_model_path = get_onnx_file_path(
@@ -498,7 +533,8 @@ def export_onnx_model_from_pt(
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
+        # dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
+        dynamic_axes, output_names = build_dynamic_axes_vit(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
         torch_onnx_export(
