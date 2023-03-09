@@ -33,33 +33,34 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info,
 }
 
 void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      bool create_arena = info_.create_arena;
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-      // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-      create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-      // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-      create_arena = false;
-#endif
-      AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
-
-      cpu_alloc = CreateAllocator(device_info);
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    InsertAllocator(cpu_alloc);
-  }
+  ORT_UNUSED_PARAMETER(allocator_manager);
+//  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+//  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
+//  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
+//  if (!cpu_alloc) {
+//    // use shared allocator if available
+//    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
+//
+//    if (!cpu_alloc) {
+//      // create our allocator
+//      bool create_arena = info_.create_arena;
+//#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+//      // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+//      create_arena = false;
+//#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+//      // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+//      create_arena = false;
+//#endif
+//      AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+//                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+//
+//      cpu_alloc = CreateAllocator(device_info);
+//      // enable sharing of our allocator
+//      allocator_manager.InsertAllocator(cpu_alloc);
+//    }
+//
+//    InsertAllocator(cpu_alloc);
+//  }
 }
 
 // Forward declarations of op kernels
@@ -2417,6 +2418,25 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
 
 std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
+}
+
+InlinedHashMap<int32_t, AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
+  InlinedHashMap<int32_t, AllocatorPtr> ret;
+  ret.reserve(1);
+
+  bool create_arena = info_.create_arena;
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+  create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
+#endif
+  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+
+  ret[OrtDevice().ToInt32()] = CreateAllocator(device_info);
+  return ret;
 }
 
 }  // namespace onnxruntime

@@ -353,7 +353,7 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
-  void SetupAllocators();
+  //void SetupAllocators();
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
@@ -451,9 +451,10 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
-           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-      allocators_;
+//  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
+//           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
+//      allocators_;
+  std::unordered_map<int32_t, AllocatorPtr> allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;
 

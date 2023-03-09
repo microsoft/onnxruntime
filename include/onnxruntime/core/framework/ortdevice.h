@@ -54,6 +54,10 @@ struct OrtDevice {
     return ostr.str();
   }
 
+  int32_t ToInt32() const {
+    return int32_t(device_id << 16 | device_type << 8 | memory_type);
+  }
+
  private:
   // Device type.
   DeviceType device_type;

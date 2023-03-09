@@ -12,6 +12,7 @@
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/tensor.h"
+#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -78,7 +79,8 @@ class IExecutionProvider {
   /**
    * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
    */
-  virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
+  //virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const;
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -308,6 +310,10 @@ class IExecutionProvider {
     return nullptr;
   }
 
+  virtual InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators();
+
+  inline void SetAllocators(std::unordered_map<int32_t, AllocatorPtr>* allocators) { allocators2_ = allocators; }
+
  private:
   const std::string type_;
 
@@ -317,6 +323,8 @@ class IExecutionProvider {
   // GPU device.
   using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
+
+  std::unordered_map<int32_t, AllocatorPtr>* allocators2_;
 
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;

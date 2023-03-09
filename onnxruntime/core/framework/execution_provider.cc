@@ -22,12 +22,22 @@ AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
   // if mem_type is OrtMemType::OrtMemTypeDefault, it will allocate memory from the current device
   // otherwise (mem_type is OrtMemTypeCpu...) it will allocate memory from Cpu as input/output, thus set the device_id
   // to 0 as there is only 1 CPU in each machine.
-  int device_id = GetDeviceId();
-  if (mem_type != OrtMemType::OrtMemTypeDefault) device_id = 0;
-  auto iter = allocators_.find(MakeKey(device_id, mem_type));
-  if (iter != allocators_.end()) {
-    return iter->second;
-  }
+//  int device_id = GetDeviceId();
+//  if (mem_type != OrtMemType::OrtMemTypeDefault) device_id = 0;
+//  auto iter = allocators_.find(MakeKey(device_id, mem_type));
+//  if (iter != allocators_.end()) {
+//    return iter->second;
+//  }
+//  return nullptr;
+
+  OrtDevice::DeviceType device_type = OrtDevice::CPU;
+  if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") device_type = OrtDevice::GPU;
+
+  OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) memory_type = OrtDevice::MemType::CUDA_PINNED; // TODO: keep only one pinned enum?
+
+  auto it = allocators2_->find(OrtDevice(device_type, memory_type, GetDeviceId()).ToInt32());
+  if (it != allocators2_->end()) return it->second;
   return nullptr;
 }
 
@@ -174,6 +184,12 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
   return metadef_id_generator_->GenerateId(graph_viewer, model_hash);
+}
+
+InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+  //InlinedHashMap<int32_t, AllocatorPtr> ret;
+  //return ret;
+  return InlinedHashMap<int32_t, AllocatorPtr>();
 }
 
 }  // namespace onnxruntime

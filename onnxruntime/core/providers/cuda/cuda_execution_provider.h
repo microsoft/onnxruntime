@@ -27,7 +27,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
+//  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
+  InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators() override;
 
   Status Sync() const override;
 

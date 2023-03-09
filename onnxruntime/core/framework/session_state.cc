@@ -86,44 +86,57 @@ SessionState::SessionState(Graph& graph,
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-  SetupAllocators();
-}
-
-void SessionState::SetupAllocators() {
-  for (const auto& provider : execution_providers_) {
-    for (const auto& allocator : provider->GetAllocators()) {
-      const OrtMemoryInfo& memory_info = allocator->Info();
-      if (allocators_.find(memory_info) != allocators_.end()) {
-        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
-        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-                            << ". Ignoring allocator from " << provider->Type();
-      } else {
-        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
-        // in order to support scenarios such as the CUDA EP's per-thread allocator.
-        allocators_[memory_info] = [&provider](OrtMemType mem_type) {
-          return provider->GetAllocator(mem_type);
-        };
-      }
+//  SetupAllocators();
+  for (auto ep : execution_providers_) {
+    InlinedHashMap<int32_t, AllocatorPtr> preferedAllocators = ep->CreatePreferredAllocators();
+    for (auto it : preferedAllocators) {
+      allocators_[it.first] = it.second;
     }
   }
+  for (auto ep : execution_providers_) {
+    ep->SetAllocators(&allocators_);
+  }
 }
 
-AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
-  AllocatorPtr result;
-  auto entry = allocators_.find(location);
-  if (entry != allocators_.cend()) {
-    result = entry->second(location.mem_type);
-  }
+//void SessionState::SetupAllocators() {
+//  for (const auto& provider : execution_providers_) {
+//    for (const auto& allocator : provider->GetAllocators()) {
+//      const OrtMemoryInfo& memory_info = allocator->Info();
+//      if (allocators_.find(memory_info) != allocators_.end()) {
+//        // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
+//        LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
+//                            << ". Ignoring allocator from " << provider->Type();
+//      } else {
+//        // slightly weird indirection to go back to the provider to get the allocator each time it's needed
+//        // in order to support scenarios such as the CUDA EP's per-thread allocator.
+//        allocators_[memory_info] = [&provider](OrtMemType mem_type) {
+//          return provider->GetAllocator(mem_type);
+//        };
+//      }
+//    }
+//  }
+//}
 
-  return result;
+AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
+//  AllocatorPtr result;
+//  auto entry = allocators_.find(location);
+//  if (entry != allocators_.cend()) {
+//    result = entry->second(location.mem_type);
+//  }
+//
+//  return result;
+  return GetAllocator(location.device);
 }
 
 AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
-  for (const auto& iter : allocators_) {
-    if (iter.first.device == device) {
-      return iter.second(iter.first.mem_type);
-    }
-  }
+//  for (const auto& iter : allocators_) {
+//    if (iter.first.device == device) {
+//      return iter.second(iter.first.mem_type);
+//    }
+//  }
+//  return nullptr;
+  auto it = allocators_.find(device.ToInt32());
+  if (it != allocators_.end()) return it->second;
   return nullptr;
 }
 

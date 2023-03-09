@@ -33,6 +33,7 @@ class CPUExecutionProvider : public IExecutionProvider {
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   CPUExecutionProviderInfo info_;
