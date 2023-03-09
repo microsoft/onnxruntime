@@ -142,7 +142,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
                           (value != nullptr || key == nullptr) &&
-                          (nullptr == past_key && nullptr == past_value) &&
+                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
