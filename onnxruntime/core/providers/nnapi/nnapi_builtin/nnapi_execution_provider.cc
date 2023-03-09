@@ -87,7 +87,7 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
   // May we could just mark it as unavailable instead of throwing an error
   ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_));
 
-  LOGS_DEFAULT(VERBOSE) << "finding devices [" << nnapi::GetDeviceDescription(nnapi_target_devices_) << "] in NNAPI";
+  LOGS_DEFAULT(VERBOSE) << "Found devices [" << nnapi::GetDeviceDescription(nnapi_target_devices_) << "] in NNAPI";
 }
 
 NnapiExecutionProvider::~NnapiExecutionProvider() {}
