@@ -42,6 +42,7 @@ OpKernelContext::OpKernelContext(concurrency::ThreadPool* threadpool,
                                  Stream* stream) : threadpool_(threadpool), logger_(&logger), stream_(stream) {}
 
 Tensor* OpKernelContext::Output(int index, const TensorShape& shape) {
+  printf("OpKernelContext::Output %d shape %s\n", index, shape.ToString().c_str());
   auto p_ml_value = OutputMLValue(index, shape);
   return p_ml_value ? p_ml_value->GetMutable<Tensor>() : nullptr;
 }

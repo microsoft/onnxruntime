@@ -46,6 +46,7 @@ void* CUDAAllocator::Alloc(size_t size) {
   if (size > 0) {
     // BFCArena was updated recently to handle the exception and adjust the request size
     CUDA_CALL_THROW(cudaMalloc((void**)&p, size));
+    printf("cudaMalloc(size=%zu): address=%p\n", size, p);
   }
   return p;
 }
@@ -54,13 +55,14 @@ void CUDAAllocator::Free(void* p) {
   SetDevice(false);
   CheckDevice(false);  // ignore CUDA failure when free
   cudaFree(p);         // do not throw error since it's OK for cudaFree to fail during shutdown
+  printf("cudaFree(address=%p)\n", p);
 }
 
 void* CUDAExternalAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     p = alloc_(size);
-
+    printf("CUDAExternalAllocator::Allo(size=%zu): address=%p\n", size, p);
     // review(codemzs): ORT_ENFORCE does not seem appropiate.
     ORT_ENFORCE(p != nullptr);
   }
@@ -69,6 +71,8 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
 }
 
 void CUDAExternalAllocator::Free(void* p) {
+  printf("CUDAExternalAllocator::Free(address=%p)\n", p);
+
   free_(p);
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_.find(p);
@@ -84,6 +88,7 @@ void* CUDAExternalAllocator::Reserve(size_t size) {
   std::lock_guard<OrtMutex> lock(lock_);
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
+  printf("CUDAExternalAllocator::Reserve(size=%zu): address=%p\n", size, p);
   return p;
 }
 
@@ -91,11 +96,13 @@ void* CUDAPinnedAllocator::Alloc(size_t size) {
   void* p = nullptr;
   if (size > 0) {
     CUDA_CALL_THROW(cudaMallocHost((void**)&p, size));
+    printf("cudaMallocHost(size=%zu): address=%p\n", size, p);
   }
   return p;
 }
 
 void CUDAPinnedAllocator::Free(void* p) {
+  printf("CUDAPinnedAllocator(address=%p)\n", p);
   CUDA_CALL_THROW(cudaFreeHost(p));
 }
 

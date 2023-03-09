@@ -163,6 +163,7 @@ class IAllocator {
 
     // allocate
     T* p = static_cast<T*>(AllocateBufferWithOptions(*allocator, alloc_size, use_reserve, stream, std::move(wait_fn)));
+    printf("AllocateBufferWithOptions(size=%zu) address=%p\n", alloc_size, p);
     return IAllocatorUniquePtr<T>{
         p,
         [allocator = std::move(allocator)](T* p) { allocator->Free(p); }};

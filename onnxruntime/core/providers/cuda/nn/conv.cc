@@ -317,6 +317,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
                                                                       : AlgoSearchWorkspaceSize;
           // Use GetTransientScratchBuffer() so the workspace can be freed instead of cached.
           // Because the benchmarking uses a huge amount of memory, e.g. a few GBs.
+          printf("algo_search_workspace: %zu\n", max_ws_size);
           IAllocatorUniquePtr<void> algo_search_workspace = GetTransientScratchBuffer<void>(max_ws_size);
           CUDNN_RETURN_IF_ERROR(cudnnFindConvolutionForwardAlgorithmEx(
               GetCudnnHandle(context),

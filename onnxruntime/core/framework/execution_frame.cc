@@ -428,6 +428,7 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #endif
               // the memory pattern buffer will leave in the whole execution.
               // alloc it with default stream
+              printf("ExecutionFrame: Allocation of memory pattern buffer (peak_size=%zu)\n", peak_size);
               buffer = alloc->Alloc(peak_size);
               // handle allocator that doesn't throw
               if (buffer == nullptr) {

@@ -261,7 +261,9 @@ size_t BFCArena::RoundedBytes(size_t bytes) {
 }
 
 void* BFCArena::Alloc(size_t size) {
-  return AllocateRawInternal(size, false, nullptr, false, nullptr);
+  void* p = AllocateRawInternal(size, false, nullptr, false, nullptr);
+  printf("BFCArena::Alloc (%zu), address=%p\n", size, p);
+  return p;
 }
 
 void* BFCArena::Reserve(size_t size) {
@@ -281,6 +283,8 @@ void* BFCArena::Reserve(size_t size) {
   stats_.max_alloc_size = std::max<size_t>(static_cast<size_t>(stats_.max_alloc_size), size);
   stats_.max_bytes_in_use = std::max<int64_t>(static_cast<int64_t>(stats_.max_bytes_in_use), stats_.bytes_in_use);
   stats_.total_allocated_bytes += size;
+
+  printf("BFCArena::Reserve (%zu), address=%p\n", size, ptr);
   return ptr;
 }
 
@@ -488,6 +492,8 @@ void BFCArena::Free(void* p) {
   if (p == nullptr) {
     return;
   }
+  printf("BFCArena::Free(%p)\n", p);
+
   std::lock_guard<OrtMutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
@@ -501,6 +507,7 @@ void BFCArena::Free(void* p) {
 }
 
 Status BFCArena::Shrink() {
+  printf("BFCArena::Shrink()\n");
   std::lock_guard<OrtMutex> lock(lock_);
   auto num_regions = region_manager_.regions().size();
   std::vector<void*> region_ptrs;
@@ -578,6 +585,7 @@ void BFCArena::DeallocateRawInternal(void* ptr) {
 // We merge Chunk(h2) into Chunk(h1).
 void BFCArena::Merge(BFCArena::ChunkHandle h1,
                      BFCArena::ChunkHandle h2) {
+
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
   // We can only merge chunks that are not in use.

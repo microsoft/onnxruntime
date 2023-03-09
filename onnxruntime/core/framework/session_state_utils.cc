@@ -122,6 +122,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
       // (may expand it if there isn't a chunk that can be allotted to the memory request).
       // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
+      printf("DeserializeTensorProto: shape: %s\n", tensor_shape.ToString().c_str());
       p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
     }
   }

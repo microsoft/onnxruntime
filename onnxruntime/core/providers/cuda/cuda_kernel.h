@@ -41,6 +41,7 @@ class CudaKernel : public OpKernel {
 
   template <typename T>
   inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t count_or_bytes, onnxruntime::Stream* stream) const {
+    printf("CudaKernel::GetScratchBuffer count_or_bytes=%zu\n", count_or_bytes);
     return provider_->GetScratchBuffer<T>(count_or_bytes, stream, WaitCudaNotificationOnDevice);
   }
 
@@ -50,6 +51,7 @@ class CudaKernel : public OpKernel {
   // logic (or similar for different allocator) that may be housed in the Alloc() implementation.
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t count_or_bytes) const {
+    printf("CudaKernel::GetTransientScratchBuffer count_or_bytes=%zu\n", count_or_bytes);
     return provider_->GetTransientScratchBuffer<T>(count_or_bytes);
   }
 
