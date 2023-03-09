@@ -13,10 +13,7 @@ from logger import get_logger
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
-
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
-
-
 from util import run  # noqa: E402
 
 log = get_logger("get_docker_image")
@@ -74,7 +71,7 @@ def main():
     # The docker file may provide a special deps.txt in its docker context dir and uses that one.
     # Otherwise, copy a generic one from this repo's cmake dir.
     if not dst_deps_file.exists():
-        log.info("Copy deps.txt to : {}".format(str(dst_deps_file)))
+        log.info(f"Copy deps.txt to : {dst_deps_file}")
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
 
     if use_container_registry:

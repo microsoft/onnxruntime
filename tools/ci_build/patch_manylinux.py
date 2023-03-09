@@ -12,10 +12,7 @@ from logger import get_logger
 
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
 REPO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", ".."))
-
 sys.path.append(os.path.join(REPO_DIR, "tools", "python"))
-
-
 from util import run  # noqa: E402
 
 log = get_logger("patch_manylinux")
@@ -38,17 +35,13 @@ def parse_args():
 def main():
     args = parse_args()
 
-    log.debug(
-        "Dockerfile: {}, context: {}".format(
-            args.dockerfile, args.context
-        )
-    )
+    log.debug(f"Dockerfile: {args.dockerfile}, context: {args.context}")
 
     if "manylinux" in args.dockerfile:
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info("Deleting: {}".format(str(dest)))
+            log.info(f"Deleting: {str(dest)}")
             shutil.rmtree(str(dest))
 
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
