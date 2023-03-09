@@ -44,7 +44,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
 
-  // nnapi handle for either Android NNAPI or x86 hooker.
+  // nnapi handle for either Android NNAPI or stub implementation.
   const nnapi::NnApi* nnapi_handle_ = nullptr;
   InlinedVector<nnapi::DeviceWrapper> nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
