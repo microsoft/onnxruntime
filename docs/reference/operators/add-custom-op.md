@@ -94,7 +94,7 @@ Ort::SessionOptions session_options;
 session_options.Add(domain);  // Add the domain to the session options.
 
 // Create a session.
-Ort::Session session(env, "my_model_with_custom_ops.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("my_model_with_custom_ops.onnx"), session_options);
 ```
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
@@ -183,9 +183,9 @@ Once compiled, the custom operator shared library can then be registered with an
 Ort::Env env;
 Ort::SessionOptions session_options;
 
-session_options.RegisterCustomOpsLibrary(L"my_custom_op.dll");
+session_options.RegisterCustomOpsLibrary_V2(ORT_TSTR("my_custom_op.dll"));
 
-Ort::Session session(env, "my_model.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("my_model.onnx"), session_options);
 ```
 
 ### Examples
@@ -300,7 +300,7 @@ custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
 // Register custom op library and pass in the custom op configs (optional).
 session_options.RegisterCustomOpsLibrary("MyOpenVINOWrapper_Lib.so", custom_op_configs);
 
-Ort::Session session(env, "custom_op_mnist_ov_wrapper.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("custom_op_mnist_ov_wrapper.onnx"), session_options);
 ```
 
 Refer to the [complete OpenVINO custom operator wrapper example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_openvino_wrapper_library) for more details. To create an ONNX model that wraps an external model or weights, refer to the [create_custom_op_wrapper.py tool](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/custom_op_wrapper/create_custom_op_wrapper.py).
