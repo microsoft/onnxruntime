@@ -60,8 +60,6 @@ jobs:
       brew install coreutils ninja npm yarn
     displayName: Install coreutils, ninja, npm, and yarn
 
-  - template: set-up-gradle-wrapper-step.yml
-
   - script: |
       python3 -m pip install -q flatbuffers
     displayName: Install python modules
@@ -131,7 +129,7 @@ jobs:
   - script: |
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --create-avd --system-image "system-images;android-31;default;x86_64" \
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android Emulator

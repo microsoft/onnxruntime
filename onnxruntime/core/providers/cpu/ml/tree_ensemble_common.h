@@ -45,7 +45,7 @@ class TreeEnsembleCommon : public TreeEnsembleCommonAttributes {
   // Type of weights should be a vector of OutputType. Onnx specifications says it must be float.
   // Lightgbm requires a double to do the summation of all trees predictions. That's why
   // `ThresholdType` is used as well for output type (double as well for lightgbm) and not `OutputType`.
-  std::vector<SparseValue<ThresholdType>> weights_;    
+  std::vector<SparseValue<ThresholdType>> weights_;
   std::vector<TreeNodeElement<ThresholdType>*> roots_;
 
  public:
@@ -209,7 +209,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   n_nodes_ = nodes_treeids.size();
   limit = static_cast<size_t>(n_nodes_);
-  InlinedVector<TreeNodeElementId> node_tree_ids;  
+  InlinedVector<TreeNodeElementId> node_tree_ids;
   node_tree_ids.reserve(limit);
   nodes_.clear();
   nodes_.reserve(limit);
@@ -267,19 +267,29 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     TreeNodeElementId& node_tree_id = node_tree_ids[i];
     coor.tree_id = node_tree_id.tree_id;
     coor.node_id = static_cast<int>(nodes_truenodeids[i]);
+    ORT_ENFORCE((coor.node_id >= 0 && coor.node_id < n_nodes_));
 
     auto found = idi.find(coor);
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (truenode).");
     }
-    truenode_ids.emplace_back((coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0);
+    if (found->second == truenode_ids.size()) {
+      ORT_THROW("A node cannot point to itself: ", coor.tree_id, "-", node_tree_id.node_id, " (truenode).");
+    }
+    truenode_ids.emplace_back(found->second);
 
     coor.node_id = static_cast<int>(nodes_falsenodeids[i]);
+    ORT_ENFORCE((coor.node_id >= 0 && coor.node_id < n_nodes_));
     found = idi.find(coor);
     if (found == idi.end()) {
       ORT_THROW("Unable to find node ", coor.tree_id, "-", coor.node_id, " (falsenode).");
     }
-    falsenode_ids.emplace_back((coor.node_id >= 0 && coor.node_id < n_nodes_) ? found->second : 0);
+    if (found->second == falsenode_ids.size()) {
+      ORT_THROW("A node cannot point to itself: ", coor.tree_id, "-", node_tree_id.node_id, " (falsenode).");
+    }
+    falsenode_ids.emplace_back(found->second);
+    // We could also check that truenode_ids[truenode_ids.size() - 1] != falsenode_ids[falsenode_ids.size() - 1]).
+    // It is valid but no training algorithm would produce a tree where left and right nodes are the same.
   }
 
   // sort targets
@@ -307,20 +317,20 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     TreeNodeElement<ThresholdType>& leaf = nodes_[found->second];
     if (leaf.is_not_leaf()) {
       // An exception should be raised in that case. But this case may happen in
-      // models converted with an old version of onnxmltools. There weights are ignored.
-      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");      
+      // models converted with an old version of onnxmltools. These weights are ignored.
+      // ORT_THROW("Node ", ind.tree_id, "-", ind.node_id, " is not a leaf.");
       continue;
     }
 
     w.i = target_class_ids[i];
-    w.value = target_class_weights_as_tensor.empty() 
-        ? static_cast<ThresholdType>(target_class_weights[i])
-        : target_class_weights_as_tensor[i];
+    w.value = target_class_weights_as_tensor.empty()
+                  ? static_cast<ThresholdType>(target_class_weights[i])
+                  : target_class_weights_as_tensor[i];
     if (leaf.falsenode_inc_or_n_weights == 0) {
-      leaf.truenode_inc_or_first_weight = static_cast<uint32_t>(weights_.size());
+      leaf.truenode_inc_or_first_weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
     }
-    ++leaf.falsenode_inc_or_n_weights; 
+    ++leaf.falsenode_inc_or_n_weights;
     weights_.push_back(w);
   }
 
@@ -336,10 +346,10 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
       }
       continue;
     }
-    ORT_ENFORCE(truenode_ids[i] == 0 || truenode_ids[i] > i);
-    nodes_[i].truenode_inc_or_first_weight = truenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(truenode_ids[i] - i);
-    ORT_ENFORCE(falsenode_ids[i] == 0 || falsenode_ids[i] > i);
-    nodes_[i].falsenode_inc_or_n_weights = falsenode_ids[i] == 0 ? 0 : static_cast<uint32_t>(falsenode_ids[i] - i);
+    ORT_ENFORCE(truenode_ids[i] != i);  // That would mean the left node is itself, leading to an infinite loop.
+    nodes_[i].truenode_inc_or_first_weight = static_cast<int32_t>(truenode_ids[i] - i);
+    ORT_ENFORCE(falsenode_ids[i] != i);  // That would mean the right node is itself, leading to an infinite loop.
+    nodes_[i].falsenode_inc_or_n_weights = static_cast<int32_t>(falsenode_ids[i] - i);
   }
 
   n_trees_ = roots_.size();
@@ -627,22 +637,22 @@ void TreeEnsembleCommon<InputType, ThresholdType, OutputType>::ComputeAgg(concur
   }
 }  // namespace detail
 
-#define TREE_FIND_VALUE(CMP)                                         \
-  if (has_missing_tracks_) {                                         \
-    while (root->is_not_leaf()) {                                    \
-      val = x_data[root->feature_id];                                \
-      root += (val CMP root->value_or_unique_weight ||               \
-              (root->is_missing_track_true() && _isnan_(val)))       \
-                 ? root->truenode_inc_or_first_weight                \
-                 : root->falsenode_inc_or_n_weights;                 \
-    }                                                                \
-  } else {                                                           \
-    while (root->is_not_leaf()) {                                    \
-      val = x_data[root->feature_id];                                \
-      root += val CMP root->value_or_unique_weight                   \
-                ? root->truenode_inc_or_first_weight                 \
-                : root->falsenode_inc_or_n_weights;                  \
-    }                                                                \
+#define TREE_FIND_VALUE(CMP)                                    \
+  if (has_missing_tracks_) {                                    \
+    while (root->is_not_leaf()) {                               \
+      val = x_data[root->feature_id];                           \
+      root += (val CMP root->value_or_unique_weight ||          \
+               (root->is_missing_track_true() && _isnan_(val))) \
+                  ? root->truenode_inc_or_first_weight          \
+                  : root->falsenode_inc_or_n_weights;           \
+    }                                                           \
+  } else {                                                      \
+    while (root->is_not_leaf()) {                               \
+      val = x_data[root->feature_id];                           \
+      root += val CMP root->value_or_unique_weight              \
+                  ? root->truenode_inc_or_first_weight          \
+                  : root->falsenode_inc_or_n_weights;           \
+    }                                                           \
   }
 
 inline bool _isnan_(float x) { return std::isnan(x); }

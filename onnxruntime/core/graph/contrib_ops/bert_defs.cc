@@ -213,6 +213,13 @@ For self attention, kv_sequence_length equals to sequence_length (sequence lengt
 For cross attention, query and key might have different lengths.
 )DOC";
 
+// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedMultiheadAttention`
+// if the user requests it. Hence, the schemas of `DecoderMaskedMultiheadAttention` and `Attention` schemas
+// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedMultiheadAttention`
+// and its kernel.
+// TODO(hasesh): Decouple the schema of `DecoderMaskedMultiheadAttention` from the schema of the `Attention` operator
+// by making appropriate tool changes.
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     Attention, 1,
     OpSchema()
@@ -260,6 +267,94 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
                "(batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), "
                "or index with shape (batch_size) or (2 * batch_size)",
+               "M",
+               OpSchema::Optional)
+        .Input(4,
+               "past",
+               "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
+               "When past_present_share_buffer is set, "
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(5,
+               "relative_position_bias",
+               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "past_sequence_length",
+               "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M",
+               OpSchema::Optional)
+        .Output(0,
+                "output",
+                "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
+                "T")
+        .Output(1,
+                "present",
+                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "T",
+                OpSchema::Optional)
+        .TypeConstraint("T",
+                        {"tensor(float)", "tensor(float16)"},
+                        "Constrain input and output types to float tensors.")
+        .TypeConstraint("M",
+                        {"tensor(int32)"},
+                        "Constrain mask index to integer types")
+        .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          constexpr int past_input_index = 4;
+          AttentionTypeAndShapeInference(ctx, past_input_index);
+        }));
+
+constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
+Uni-directional attention that supports input sequence length of 1.
+
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+and v_hidden_size is that of V.
+
+The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
+
+Both past and present state need to be provided.
+
+The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+
+The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
+)DOC";
+
+ONNX_MS_OPERATOR_SET_SCHEMA(
+    DecoderMaskedMultiheadAttention, 1,
+    OpSchema()
+        .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
+        .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its size is "
+              "(2, batch_size, num_heads, max_sequence_length, head_size)",
+              AttributeProto::INT,
+              OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Input(0,
+               "input",
+               "Input tensor with shape (batch_size, 1, input_hidden_size)",
+               "T")
+        .Input(1,
+               "weights",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
+               "T")
+        .Input(2,
+               "bias",
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
+               "T")
+        .Input(3,
+               "mask_index",
+               "Mask values of shape (batch_size, total_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(4,
