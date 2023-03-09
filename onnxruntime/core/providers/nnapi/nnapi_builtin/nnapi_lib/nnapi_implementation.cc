@@ -32,6 +32,7 @@ limitations under the License.
 #define NNAPI_LOG(format, ...) fprintf(stderr, format "\n", __VA_ARGS__);
 
 namespace {
+
 #ifdef __ANDROID__
 int32_t GetAndroidSdkVersion() {
   const char* sdkProp = "ro.build.version.sdk";
