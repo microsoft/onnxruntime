@@ -115,7 +115,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return ORT_NNAPI_MAX_SUPPORTED_API_LEVEL;
 #endif
   }();
-  LOGS_DEFAULT(VERBOSE) << "Finding Android API level: " << android_feature_level;
+  LOGS_DEFAULT(VERBOSE) << "Effective NNAPI feature level: " << android_feature_level;
 
   const nnapi::OpSupportCheckParams params{
       android_feature_level,
