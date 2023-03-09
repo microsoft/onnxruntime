@@ -1,7 +1,7 @@
 jobs:
 - job: iOS_CI_on_Mac
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
   timeoutInMinutes: 150
@@ -12,6 +12,7 @@ jobs:
       displayName: Install protobuf
 
     - script: |
+        sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
           --build_dir $(Build.BinariesDirectory)/iOS \
