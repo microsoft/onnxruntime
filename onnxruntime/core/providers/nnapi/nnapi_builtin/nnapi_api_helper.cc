@@ -25,12 +25,14 @@ static int32_t GetNNAPIRuntimeFeatureLevel(const NnApi& nnapi_handle) {
 }
 
 /**
- * Get the max feature level supported by all target devices.
+ * Get the max feature level supported by target devices. We want to run as more ops as possible
+  on NNAPI devices except nnapi-cpu. So we get the max feature level across target devices.
+
  *
  * @param nnapi_handle nnapi-lib handle.
  * @param device_handles target devices users want to use.
  *
- * @return The max feature level support by a set of devices.
+ * @return The max feature level support by a branch of devices.
  *
  */
 static int32_t GetDeviceFeatureLevelInternal(const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> devices) {
@@ -38,7 +40,7 @@ static int32_t GetDeviceFeatureLevelInternal(const NnApi& nnapi_handle, gsl::spa
 
   int64_t devices_feature_level = -1;
 
-  for (const auto &device : devices) {
+  for (const auto& device : devices) {
     // we want to op run on the device with the highest feature level so we can support more ops.
     // and we don't care which device runs them.
     devices_feature_level = std::max(device.feature_level, devices_feature_level);
@@ -109,7 +111,7 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
   return Status::OK();
 }
 
-std::string GetDeviceDescription(gsl::span<const DeviceWrapper> devices) {
+std::string GetDevicesDescription(gsl::span<const DeviceWrapper> devices) {
   std::string nnapi_target_devices_detail;
   for (const auto& device : devices) {
     const auto device_detail = MakeString("[Name: [", device.name, "], Type [", device.type, "]], ");
@@ -118,7 +120,7 @@ std::string GetDeviceDescription(gsl::span<const DeviceWrapper> devices) {
   return nnapi_target_devices_detail;
 }
 
-// Get devices-set first and then get the max feature level supported by all target devices
+// Get devices-set first and then get the max feature level supported by target devices
 // return -1 if failed.  It's not necessary to handle the error here, because level=-1 will refuse all ops
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option) {
   InlinedVector<DeviceWrapper> nnapi_target_devices;
@@ -129,7 +131,7 @@ int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_h
   return GetDeviceFeatureLevelInternal(nnapi_handle, nnapi_target_devices);
 }
 
-// get the max feature level supported by all target devices, If no devices are specified,
+// get the max feature level supported by target devices, If no devices are specified,
 // it will return the runtime feature level
 int32_t GetNNAPIEffectiveFeatureLevel(const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> device_handles) {
   return GetDeviceFeatureLevelInternal(nnapi_handle, device_handles);

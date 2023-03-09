@@ -108,14 +108,14 @@ Status Model::PrepareForExecution(std::unique_ptr<Execution>& execution) {
 #pragma region Model::NNMemory
 
 #ifdef USENNAPISHAREDMEM
-Model::NNMemory::NNMemory(const NnApi& nnapi_handle, const char* name, size_t size): nnapi_(nnapi_handle) {
+Model::NNMemory::NNMemory(const NnApi& nnapi_handle, const char* name, size_t size) : nnapi_(nnapi_handle) {
   if (name && size > 0) {
     byte_size_ = size;
     fd_ = nnapi_.ASharedMemory_create(name, size);
     data_ptr_ = reinterpret_cast<uint8_t*>(
         mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0));
     THROW_ON_ERROR(nnapi_.ANeuralNetworksMemory_createFromFd(size, PROT_READ | PROT_WRITE,
-                                                              fd_, 0, &nn_memory_handle_));
+                                                             fd_, 0, &nn_memory_handle_));
   }
 }
 
@@ -188,11 +188,12 @@ Status Execution::SetOutputBuffer(const int32_t index, const OutputBuffer& outpu
 }
 
 Status Execution::Predict(const std::vector<int32_t>& dynamic_outputs, std::vector<Shaper::Shape>& dynamic_output_shapes) {
-  ANeuralNetworksEvent* event = nullptr;
-  RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksExecution_startCompute(execution_, &event));
-  RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksEvent_wait(event));
-  nnapi_.ANeuralNetworksEvent_free(event);
-
+  {
+    ANeuralNetworksEvent* event = nullptr;
+    RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksExecution_startCompute(execution_, &event));
+    auto free_event = gsl::finally([&]() { nnapi_.ANeuralNetworksEvent_free(event); });
+    RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksEvent_wait(event));
+  }
   dynamic_output_shapes.clear();
   dynamic_output_shapes.reserve(dynamic_outputs.size());
   for (const int32_t i : dynamic_outputs) {
