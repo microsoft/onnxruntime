@@ -60,6 +60,9 @@ struct ProviderInfo_CUDA {
   // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
   virtual bool TestAll() = 0;
 #endif
+
+protected:
+  ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };
 
 }  // namespace onnxruntime
