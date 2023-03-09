@@ -1479,7 +1479,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // In Python3, a Python bytes object will be passed to C++ functions that accept std::string or char*
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
-                           bool load_config_from_model = false) {
+                       bool load_config_from_model = false) {
         auto env = GetEnv();
         std::unique_ptr<PyInferenceSession> sess;
 
@@ -1602,17 +1602,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         }
         return fetches;
       })
-      .def("run_with_ortvaluevector", [](
-        PyInferenceSession* sess,
-        RunOptions run_options,
-        const std::vector<std::string>& feed_names,
-        const std::vector<OrtValue>& feeds,
-        const std::vector<std::string>& fetch_names,
-        std::vector<OrtValue>& fetches,
-        const std::vector<OrtDevice>& fetch_devices) -> void {
-          // release GIL to allow multiple python threads to invoke Run() in parallel.
-          py::gil_scoped_release release;
-          OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
+      .def("run_with_ortvaluevector", [](PyInferenceSession* sess, RunOptions run_options, const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds, const std::vector<std::string>& fetch_names, std::vector<OrtValue>& fetches, const std::vector<OrtDevice>& fetch_devices) -> void {
+        // release GIL to allow multiple python threads to invoke Run() in parallel.
+        py::gil_scoped_release release;
+        OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
       })
       .def("end_profiling", [](const PyInferenceSession* sess) -> std::string {
         return sess->GetSessionHandle()->EndProfiling();
@@ -1774,9 +1767,44 @@ void InitArray() {
 }
 
 namespace {
+// This class provides a static shell for on-demand and thread-safe construction
+// of Environment object for both Inference and Training python layers.
+// Environment class contains objects such as default logger, that must be available
+// for the entire duration of a program that makes use of onnxruntime library.
+// Because Python is a garbage collected language and the order of destruction of objects
+// is not guaranteed we design this class with the following important features.
 
+// 1) we make this class a singleton that is a function local static. The function local statics
+//    are constructed when the function is called the very first time. This fact has several important
+//    properties.
+//    - First, it is constructed before it is first needed possibly by another static object
+//      and destroyed after that object is destroyed.
+//    - Second, it is constructed in a thread safe manner.
+//    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
+//      to the static objects that are simply declared in order in a single unit, but their lifespan is
+//      unconnected to that of in other compilation units. This is achieved automatically by run-time
+//      by execution atexit() to build a chain.
+//  2) We make Environment owned by a shared_ptr. This is done because python objects such as Inference and Training
+//    sessions depend on this global. We acquire a shared_ptr instance when those objects are instantiated
+//    and release it automatically when they are garbage collected. Although with this change all of the
+//    globals seem to have been destroyed after module is unloaded and GC runs before that, it is cheap and gives
+//    a piece of mind as there were situations when GC was still running in the past after Env was gone.
+//    TrainingEnv global also holds shared reference to this global.
+// 3) We guard against singleton resurrection attempts to detect code runs that when it should
+//    not and make necessary adjustments.
+//    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class EnvInitializer {
  public:
+  static std::shared_ptr<onnxruntime::Environment> SharedInstance() {
+    // Guard against attempts to resurrect the singleton
+    if (EnvInitializer::destroyed) {
+      ORT_THROW("Detected an attempt to resurrect destroyed Environment");
+    }
+    static EnvInitializer env_holder;
+    return env_holder.Get();
+  }
+
+ private:
   EnvInitializer() {
     // Initialization of the module
     InitArray();
@@ -1799,24 +1827,16 @@ class EnvInitializer {
     return session_env_;
   }
 
-  static bool destroyed;
-
- private:
   std::shared_ptr<Environment> session_env_;
+
+  static bool destroyed;
 };
 
 bool EnvInitializer::destroyed = false;
 }  // namespace
 
-// Make Environment a function local static
-// so it will never gets destroyed before the first object that needs it.
 std::shared_ptr<onnxruntime::Environment> GetEnv() {
-  // Guard against attempts to resurrect the singleton
-  if (EnvInitializer::destroyed) {
-    ORT_THROW("Detected an attempt to resurrect destroyed Environment");
-  }
-  static EnvInitializer env_holder;
-  return env_holder.Get();
+  return EnvInitializer::SharedInstance();
 }
 
 }  // namespace python

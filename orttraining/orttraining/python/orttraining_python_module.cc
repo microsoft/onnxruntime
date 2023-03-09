@@ -178,8 +178,52 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
   execution_provider_instances_map_.clear();
 }
 
+namespace {
+
+// This class provides a static shell for on-demand and thread-safe construction
+// of ORTTrainingPythonEnv object for both Inference and Training python layers.
+// ORTTrainingPythonEnv class contains instances of execution providers that have been
+// instantiated for training purposes. It depends on the Environment singleton to which it
+// holds a shared_ptr instance.
+//
+// 1) we make this class a singleton that is a function local static. The function local statics
+//    are constructed when the function is called the very first time. This fact has several important
+//    properties. 
+//    - First, it is constructed before it is first needed possibly by another static object
+//      and destroyed after that object is destroyed.
+//    - Second, it is constructed in a thread safe manner.
+//    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
+//      to the static objects that are simply declared in order in a single unit, but their lifespan is 
+//      unconnected to that of in other compilation units. This is achieved automatically by run-time
+//      by execution atexit() to build a chain.
+// 2) This ORTTrainingPythonEnv is currently owned by a unique_ptr unlike the Environment singleton. This is
+//    because we currently do not see a need to refer to it by any of the Python objects or by other singletons.
+//    With this change this singleton is properly destroyed after python module is unloaded, but before the Environment.
+//    HOWEVER, because it holds instances of execution providers, we want to make sure that those instances are destroyed
+//    before those depended EP DLLs are unloaded so EP destructor can run.
+//    This static is destroyed when this compilation unit is unloaded and it generally happens
+//    AFTER EP dlls are unloaded. To mitigate that, we clear EP instances using python `atexit` (different from C atexit())
+//    mechanism which takes place after all python objects are GCed but before any DLLs are unloaded or
+//    runtime starts destroying globals.
+// 3) We guard against singleton resurrection attempts to detect code that runs when it should not
+//    and make necessary adjustments.
+//    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class TrainingEnvInitialzer {
  public:
+
+  static ORTTrainingPythonEnv& Instance() {
+    // Guard against attempts to resurrect the singleton
+    if (TrainingEnvInitialzer::destroyed) {
+      ORT_THROW("Detected an attempt to resurrect destroyed Training Environment");
+    }
+
+    static TrainingEnvInitialzer training_env_holder;
+
+    return training_env_holder.Get();
+  }
+
+ private:
+
   TrainingEnvInitialzer() {
     InitArray();
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
@@ -194,25 +238,22 @@ class TrainingEnvInitialzer {
     return *ort_training_env_;
   }
 
-  static bool destroyed;
-
- private:
   std::unique_ptr<ORTTrainingPythonEnv> ort_training_env_;
+
+  static bool destroyed;
 };
 
 bool TrainingEnvInitialzer::destroyed = false;
 
+}  // namespace
+
 ORTTrainingPythonEnv& GetTrainingEnv() {
-  // Guard against attempts to resurrect the singleton
-  if (TrainingEnvInitialzer::destroyed) {
-    ORT_THROW("Detected an attempt to resurrect destroyed Training Env Environment");
-  }
-
-  static TrainingEnvInitialzer training_env_holder;
-
-  return training_env_holder.Get();
+  return TrainingEnvInitialzer::Instance();
 }
 
+// TODO: If this global has a conflicting lifespan with other globals
+// such as Environment, follow the global objects management pattern for
+// Environment and ORTTrainingPythonEnv
 #ifdef ENABLE_EAGER_MODE
 using namespace torch_ort::eager;
 static std::unique_ptr<ORTBackendsManager> ort_backends_manager_instance;
@@ -364,10 +405,8 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       },
       "Clean the execution provider instances used in ort training module.");
 
-  // clean the ort training environment when python interpreter exit
-  // otherwise the global var will be de-constrcut after user main.
-  // the order of ort training environment deconstruction and cudart
-  // deconstruction is not stable, which will lead to crash.
+  // See documentation for class TrainingEnvInitialzer earlier in this module
+  // for an explanation as to why this is needed.
   auto atexit = py::module_::import("atexit");
   atexit.attr("register")(py::cpp_function([]() {
     GetTrainingEnv().ClearExecutionProviderInstances();
