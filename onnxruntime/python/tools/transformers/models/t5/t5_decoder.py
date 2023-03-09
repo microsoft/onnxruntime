@@ -291,7 +291,7 @@ class T5DecoderHelper:
 
         input_names = ["input_ids"]
         input_names.append("encoder_attention_mask")
-        #input_names.append("encoder_hidden_states")
+        # input_names.append("encoder_hidden_states")
         input_names.extend(input_past_names)
 
         dynamic_axes = {
