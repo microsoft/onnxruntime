@@ -54,6 +54,7 @@ jobs:
           --config RelWithDebInfo \
           --build_apple_framework \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
+          --use_cache \
           --parallel
       displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
 
