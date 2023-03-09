@@ -9,9 +9,10 @@
 #include "core/platform/ort_mutex.h"
 #include "nnapi_lib/NeuralNetworksWrapper.h"
 
+struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
-struct NnApi;
+
 #if defined(__ANDROID__)
 #define USENNAPISHAREDMEM 1
 #endif

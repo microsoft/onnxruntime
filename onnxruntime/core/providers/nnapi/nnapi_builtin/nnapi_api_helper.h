@@ -8,10 +8,10 @@
 #include <android/api-level.h>
 #endif
 
-
+struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
-struct NnApi;
+
 class ModelBuilder;
 
 struct DeviceWrapper {
@@ -57,12 +57,12 @@ int32_t GetNNAPIEffectiveFeatureLevel(const NnApi& nnapi_handle, gsl::span<const
 /**
  * Get all hardware accelerators by different deviceoption.
  *
-*/
+ */
 Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
                         InlinedVector<DeviceWrapper>& nnapi_target_devices);
 
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option);
 
-std::string GetDeviceDescription(gsl::span<const DeviceWrapper> devices);
+std::string GetDevicesDescription(gsl::span<const DeviceWrapper> devices);
 }  // namespace nnapi
 }  // namespace onnxruntime

@@ -9,9 +9,9 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/providers/nnapi/nnapi_provider_factory.h"
 
+struct NnApi;
 namespace onnxruntime {
 namespace nnapi {
-struct NnApi;
 class Model;
 }
 
@@ -45,7 +45,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, std::unique_ptr<onnxruntime::nnapi::Model>> nnapi_models_;
 
   // nnapi handle for either Android NNAPI or stub implementation.
-  const nnapi::NnApi* nnapi_handle_ = nullptr;
+  const NnApi* nnapi_handle_ = nullptr;
   InlinedVector<nnapi::DeviceWrapper> nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
 };

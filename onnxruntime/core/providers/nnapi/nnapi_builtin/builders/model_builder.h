@@ -12,6 +12,7 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "shaper.h"
 
+struct NnApi;
 namespace onnxruntime {
 
 class GraphViewer;
@@ -21,7 +22,6 @@ class Node;
 class NodeArg;
 
 namespace nnapi {
-struct NnApi;
 
 class IOpBuilder;
 class IOpSupportChecker;
@@ -103,6 +103,7 @@ class ModelBuilder {
   const NodeUnit& GetNodeUnit(const Node* node) const;
 
   int32_t GetEffectiveFeatureLevel() const { return nnapi_effective_feature_level_; }
+
  private:
   const NnApi& nnapi_;
   const GraphViewer& graph_viewer_;
