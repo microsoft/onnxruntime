@@ -120,7 +120,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
-                                   (nullptr == past_key && nullptr == past_value) &&
+                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                                    key != nullptr &&
                                    (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
