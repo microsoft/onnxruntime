@@ -212,6 +212,7 @@ static void RunMultiHeadAttentionTest(
     if (enable_cuda) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
+      std::cout << "Running on CUDA" << std::endl;
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
 
