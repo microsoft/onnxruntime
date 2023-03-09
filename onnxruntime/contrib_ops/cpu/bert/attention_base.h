@@ -29,6 +29,15 @@ class AttentionBase {
                      int head_size,
                      int kv_sequence_length,
                      int& past_sequence_length) const;
+  
+  // Tensor* GetPresent(OpKernelContext* context,
+  //                    const Tensor* past,
+  //                    int batch_size,
+  //                    int head_size,
+  //                    int kv_sequence_length,
+  //                    int& past_sequence_length,
+  //                    MLDataType* elt_type,
+  //                    OrtValue* present_kv) const;
 
  protected:
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {

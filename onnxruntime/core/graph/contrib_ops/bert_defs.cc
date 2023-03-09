@@ -281,18 +281,26 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
+        .Attr("static_kv", "Whether to use static key and value(Cross-Attention). Default value is 1.",
+              AttributeProto::INT, OPTIONAL_VALUE)
         .Input(0,
                "query",
-               "Query with shape (batch_size, sequence_length, hidden_size)",
+               "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size)",
-               "T")
+               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)",
+               "T",
+               OpSchema::Optional)
         .Input(2,
                "value",
                "Value with shape (batch_size, kv_sequence_length, v_hidden_size)",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection",
@@ -303,15 +311,36 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
+        .Input(5,
+               "relative_position_bias",
+               "relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)"
+               " or (1, num_heads, sequence_length, total_sequence_length)",
+               "T",
+               OpSchema::Optional)
+        .Input(6,
+               "past_key",
+               "past state for cross key with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(7,
+               "past_value",
+               "past state for cross value with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
         .Output(1,
-                "present",
-                "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). "
-                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
-                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "present_key",
+                "present state for cross key with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self key with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "present state for cross value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self value with shape (batch_size, num_heads, total_sequence_length, head_size)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")

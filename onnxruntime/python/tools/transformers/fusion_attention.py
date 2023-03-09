@@ -97,7 +97,6 @@ class FusionAttention(Fusion):
         num_heads: int,
         attention_mask: AttentionMask,
         use_multi_head_attention: bool = False,
-        fuse_mha_bias: bool = False,
     ):
         attention_op_name = "MultiHeadAttention" if use_multi_head_attention else "Attention"
         super().__init__(model, attention_op_name, ["SkipLayerNormalization", "LayerNormalization"])
@@ -105,7 +104,6 @@ class FusionAttention(Fusion):
         self.num_heads = num_heads
         self.attention_mask = attention_mask
         self.use_multi_head_attention = use_multi_head_attention
-        self.fuse_mha_bias = fuse_mha_bias
         self.mask_filter_value = None
 
         # Flags to show warning only once
@@ -390,29 +388,41 @@ class FusionAttention(Fusion):
 
     def create_multihead_attention_node(
         self,
-        q_input: str,
-        k_input: str,
-        v_input: str,
+        q_matmul: NodeProto,
+        k_matmul: Union[NodeProto, None],
+        v_matmul: Union[NodeProto, None],
+        q_add: NodeProto,
+        k_add: Union[NodeProto, None],
+        v_add: Union[NodeProto, None],
         num_heads: int,
         hidden_size: int,
         output: str,
-        present_kv: str = "",
+        key_padding_mask: str = "",
+        add_qk: str = "",
+        past_k: str = "",
+        past_v: str = "",
         present_k: str = "",
         present_v: str = "",
     ) -> Union[NodeProto, None]:
         """Create a MultiHeadAttention node.
 
         Args:
-            q_input (str): name of output from Q path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose)
-            k_input (str): name of output from K path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose, or could be past K value)
-            v_input (str): name of output from V path (could be after MatMul, could be after MatMul + Add, could be after MatMul + Add + Reshape + Transpose, or could be past V value)
+            q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size)
+            q_add (NodeProto): name of Add from Q path
+            k_add (NodeProto): name of Add from K path
+            v_add (NodeProto): name of Add from V path
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
             output (str): output name of MHA
-            present_kv (str): output name of present KV values
-            present_k (str): name of output to store present K value after MHA
-            present_v (str): name of output to store present V value after MHA
-
+            key_padding_mask (str): name of key padding mask
+            add_qk (str): name of add after Q x K'
+            past_k (str): name of past K value - (batch_size, num_heads, past_sequence_length, head_size)
+            past_v (str): name of past V value - (batch_size, num_heads, past_sequence_length, head_size)
+            present_k (str): name of present K value - (batch_size, num_heads, sequence_length, head_size)
+            present_v (str): name of present V value - (batch_size, num_heads, sequence_length, head_size)
+            
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
         """
@@ -427,42 +437,58 @@ class FusionAttention(Fusion):
         graph_output_names = [node.name for node in self.model.graph().output]
         mha_node_name = self.model.create_node_name("Attention")
 
-        mha_inputs = [q_input, k_input, v_input]
-        if self.fuse_mha_bias and k_input in graph_input_names and v_input in graph_input_names:
-            # K and V are past values of size (B,N,P,H) and need to be transposed to (B,P,N,H) and then reshaped to (B,P,N*H)
-            k_input, v_input = self.transpose_kv(k_input, v_input)
-            k_input, v_input = self.reshape_kv(k_input, v_input)
-            mha_inputs[1], mha_inputs[2] = k_input, v_input
+        # Add initial Q/K/V inputs for MHA
+        mha_inputs = [q_matmul.output[0]]
+        if k_matmul is not None and v_matmul is not None:
+            mha_inputs.extend([k_matmul.output[0], v_matmul.output[0]])
+        else:
+            mha_inputs.extend(["", ""])
 
-            # Create QKV bias with q_input = after MatMul
-            input_name_to_nodes = self.model.input_name_to_nodes()
-            q_add = input_name_to_nodes[q_input][0]
-            q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-            
-            qb = NumpyHelper.to_array(q_bias)
+        # Create combined Q/K/V bias
+        q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
+        qb = NumpyHelper.to_array(q_bias)
+        kb, vb = None, None
+        if k_add is not None and v_add is not None:
+            k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
+            v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
+            kb = NumpyHelper.to_array(k_bias)
+            vb = NumpyHelper.to_array(v_bias)
+        else:
             kb = np.zeros_like(qb)
             vb = np.zeros_like(qb)
-            q_bias_shape = np.prod(qb.shape)
-            qkv_bias = np.stack((qb, kb, vb), axis=0)
-            qkv_bias_dim = 3 * q_bias_shape
 
-            bias = helper.make_tensor(
-                name=mha_node_name + "_qkv_bias",
-                data_type=TensorProto.FLOAT,
-                dims=[qkv_bias_dim],
-                vals=qkv_bias.flatten().tolist(),
-            )
-            if q_bias.data_type == 10:
-                bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
-            self.model.add_initializer(bias, self.this_graph_name)
+        qkv_bias = np.stack((qb, kb, vb), axis=0)
+        qkv_bias_dim = 3 * np.prod(qb.shape)
 
-            mha_inputs.append(mha_node_name + "_qkv_bias")
+        bias_name = mha_node_name + "_qkv_bias"
+        bias = helper.make_tensor(
+            name=bias_name,
+            data_type=TensorProto.FLOAT,
+            dims=[qkv_bias_dim],
+            vals=qkv_bias.flatten().tolist(),
+        )
 
+        # Convert bias to FP16 if model is using FP16
+        if q_bias.data_type == 10:
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+        self.model.add_initializer(bias, self.this_graph_name)
+
+        # Add bias to inputs for MHA
+        mha_inputs.append(bias_name)
+
+        # Add optional inputs for MHA
+        if past_k != "" and past_v != "" and past_k in graph_input_names and past_v in graph_input_names:
+            mha_inputs.extend([
+                key_padding_mask,
+                add_qk,
+                past_k,
+                past_v,
+            ])
+
+        # Add outputs for MHA
         mha_outputs = [output]
         if present_k != "" and present_v != "" and present_k in graph_output_names and present_v in graph_output_names:
-            # New K and V values will be stored into model outputs
-            mha_outputs.append(present_kv)
-            self.split_kv(present_k, present_v, present_kv)
+            mha_outputs.extend([present_k, present_v])
 
         mha_node = helper.make_node(
             "MultiHeadAttention",

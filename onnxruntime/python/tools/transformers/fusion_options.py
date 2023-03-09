@@ -26,7 +26,6 @@ class FusionOptions:
         # (2) Attention could only handle self attention; MultiHeadAttention could handle both self and cross attention.
         # (3) MultiHeadAttention has only cuda implementation right now.
         self.use_multi_head_attention = False
-        self.fuse_mha_bias = False
 
         self.enable_skip_layer_norm = True
         self.enable_embed_layer_norm = True
@@ -77,8 +76,6 @@ class FusionOptions:
             options.use_raw_attention_mask(False)
         if args.no_attention_mask:
             options.disable_attention_mask()
-        if args.fuse_mha_bias:
-            options.fuse_mha_bias = True
         return options
 
     @staticmethod
@@ -188,11 +185,3 @@ class FusionOptions:
             "MultiHeadAttention has no bias fusion in CPU implementation, only CUDA implementation does right now.",
         )
         parser.set_defaults(use_multi_head_attention=False)
-
-        parser.add_argument(
-            "--fuse_mha_bias",
-            required=False,
-            action="store_true",
-            help="Fuse bias into MultiHeadAttention operator"
-        )
-        parser.set_defaults(fuse_mha_bias=False)

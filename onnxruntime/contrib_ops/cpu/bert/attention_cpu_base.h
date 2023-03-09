@@ -10,6 +10,7 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/print_tensor_utils.h"
+// #include <chrono>
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,6 +27,8 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* mask_index,    // mask index. nullptr if no mask or its size is B
                         const Tensor* past,          // past state
                         Tensor* output,              // output tensor
+                        Tensor* present_k,           // present K tensor (if separating present KV)
+                        Tensor* present_v,           // present V tensor (if separating present KV)
                         int batch_size,              // batch size (B)
                         int sequence_length,         // sequence length of Q (S)
                         int kv_sequence_length,      // sequence length of K or V (L)
@@ -33,6 +36,7 @@ class AttentionCPUBase : public AttentionBase {
                         int v_head_size,             // head size of V (H_v)
                         int v_hidden_size,           // hidden size of V (D_v)
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
+                        bool separate_present_kv,    // whether to separate present KV into present K and present V
                         OpKernelContext* context) const {
     // const int kv_sequence_length = sequence_length;
     // std::cout << "Q (in apply):" << std::endl;
@@ -41,10 +45,6 @@ class AttentionCPUBase : public AttentionBase {
     //   const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
     //   onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
     // }
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(Q + i) << ", ";
-    // }
-    // std::cout << std::endl;
 
     // std::cout << "K (in apply):" << std::endl;
     // for(int i = 0; i < 1; i++) {
@@ -52,11 +52,6 @@ class AttentionCPUBase : public AttentionBase {
     //   const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
     //   onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
     // }
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(K + i) << ", ";
-    // }
-    // std::cout << std::endl;
-
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -64,7 +59,27 @@ class AttentionCPUBase : public AttentionBase {
     auto* tp = context->GetOperatorThreadPool();
 
     int past_sequence_length = 0;
-    Tensor* present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
+    OrtValue present_kv;
+    Tensor* present = nullptr;
+    if (separate_present_kv) {
+      auto element_type = DataTypeImpl::GetType<T>();
+      past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
+      std::array<int64_t, 5> present_dims{2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, v_head_size};
+      TensorShape present_shape(present_dims);
+
+      // Use present_kv to store present KV instead of output
+      AllocatorPtr allocator;
+      ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+      Tensor::InitOrtValue(element_type, present_shape, allocator, present_kv);
+      present = present_kv.GetMutable<Tensor>();
+
+      if (nullptr != past && nullptr == present) {
+        ORT_THROW("Expect to have present state output when past state input is given");
+      }
+    }
+    else {
+      present = GetPresent(context, past, batch_size, v_head_size, kv_sequence_length, past_sequence_length);
+    }
 
     // Total sequence length including that of past state: T = P + L
     const int total_sequence_length = past_sequence_length + kv_sequence_length;
@@ -96,6 +111,7 @@ class AttentionCPUBase : public AttentionBase {
       extra_add_qk_data = extra_add_qk->Data<T>();
     }
 
+    // std::cout << "Q x K'" << std::endl;
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
@@ -107,11 +123,18 @@ class AttentionCPUBase : public AttentionBase {
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
+    // std::cout << "softmax x V" << std::endl;
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                             static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                             v_head_size, v_hidden_size,
                             past_data, present_data, tp);
+
+    if (separate_present_kv) {
+      // std::cout << "Separate present KV" << std::endl;
+      SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
+                        batch_size, kv_sequence_length, qk_head_size, v_head_size, context);
+    }
 
     return Status::OK();
   }
@@ -139,24 +162,11 @@ class AttentionCPUBase : public AttentionBase {
                              ThreadPool* tp,                            // thread pool
                              const T* extra_add_qk_data                 // extra add matrix with shape BxNxSxT
   ) const {
-    // std::cout << "Q (in probs):" << std::endl;
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(Q + i) << ", ";
-    // }
-    // std::cout << std::endl;
-
-    // std::cout << "K (in probs):" << std::endl;
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(K + i) << ", ";
-    // }
-    // std::cout << std::endl;
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;      // P x H
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;        // S x H
     const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;    // L x H
     const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;               // T x H
-
-    // std::cout << "Lengths: " << total_sequence_length << ", " << past_chunk_length << ", " << q_input_chunk_length << ", " << kv_input_chunk_length << ", " << present_chunk_length << std::endl;
 
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
@@ -170,12 +180,11 @@ class AttentionCPUBase : public AttentionBase {
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
-      // const float alpha = sequence_length == kv_sequence_length ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
-      // std::cout << "Alpha: " << alpha << std::endl;
 
       // The cost of Gemm
       const double cost = static_cast<double>(head_size) * sequence_length * total_sequence_length;
 
+      // auto t1 = std::chrono::high_resolution_clock::now();
       ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const int batch_index = static_cast<int>(i) / num_heads_;
@@ -223,23 +232,24 @@ class AttentionCPUBase : public AttentionBase {
           }
         }
       });
+      // auto t2 = std::chrono::high_resolution_clock::now();
+      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " μs (Q x K')" << std::endl;
     }
 
-    //  attention_probs(B, N, S, T) = Softmax(attention_probs)
+    // attention_probs(B, N, S, T) = Softmax(attention_probs)
     // std::cout << "Q x K' + mask:" << std::endl;
     // for(int i = 0; i < 1; i++) {
     //   std::cout << "[" << i << "]:" << std::endl;
     //   const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
     //   onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
     // }
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(attention_probs + i) << ", ";
-    // }
-    // std::cout << std::endl;
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
+      // auto t3 = std::chrono::high_resolution_clock::now();
       ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
+      // auto t4 = std::chrono::high_resolution_clock::now();
+      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " μs (softmax)" << std::endl;
     }
   }
 
@@ -269,10 +279,6 @@ class AttentionCPUBase : public AttentionBase {
     //   const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
     //   onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
     // }
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(attention_probs + i) << ", ";
-    // }
-    // std::cout << std::endl;
     
     // std::cout << "V (in score):" << std::endl;
     // for(int i = 0; i < 1; i++) {
@@ -280,10 +286,6 @@ class AttentionCPUBase : public AttentionBase {
     //   const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
     //   onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
     // }
-    // for (int i = 0; i < 5; i++) {
-    //   std::cout << *(V + i) << ", ";
-    // }
-    // std::cout << std::endl;
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {
@@ -296,6 +298,7 @@ class AttentionCPUBase : public AttentionBase {
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(v_head_size) * static_cast<double>(sequence_length);
 
+    // auto t5 = std::chrono::high_resolution_clock::now();
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const T* v = V + kv_input_chunk_length * i;
@@ -324,7 +327,26 @@ class AttentionCPUBase : public AttentionBase {
         }
       }
     });
+    // auto t6 = std::chrono::high_resolution_clock::now();
+    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count() << " μs (softmax x V)" << std::endl;
   }
+
+  template <typename T>
+  void SeparatePresentKV(T* present_kv,       // concatenated present K and present V data with size 2xBxNxLxH
+                         T* present_k,        // present K output tensor
+                         T* present_v,        // present V output tensor
+                         int batch_size,           // batch size
+                         int kv_sequence_length,   // sequence length of K or V
+                         int qk_head_size,         // head size of Q or K (H)
+                         int v_head_size,          // head size of V (H_v)
+                         OpKernelContext* context) const {
+
+    const int num_k_elements = batch_size * num_heads_ * kv_sequence_length * qk_head_size;
+    const int num_v_elements = batch_size * num_heads_ * kv_sequence_length * v_head_size;
+    memcpy(present_k, present_kv, num_k_elements * sizeof(T));
+    memcpy(present_v, present_kv + num_k_elements, num_v_elements * sizeof(T));
+  }
+
 };
 
 }  // namespace contrib

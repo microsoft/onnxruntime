@@ -353,5 +353,37 @@ Tensor* AttentionBase::GetPresent(OpKernelContext* context,
   return present;
 }
 
+// Tensor* AttentionBase::GetPresent(OpKernelContext* context,
+//                                   const Tensor* past,
+//                                   int batch_size,
+//                                   int head_size,
+//                                   int kv_sequence_length,
+//                                   int& past_sequence_length,
+//                                   MLDataType* elt_type,
+//                                   OrtValue* present_kv) const {
+//   // Input and output shapes:
+//   //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
+//   //   present     : (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size) but assigned to temp tensor, not output
+
+//   past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
+//   std::vector<int64_t> present_dims({2, batch_size, num_heads_, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size});
+//   gsl::span<const int64_t> present_dims_span;
+//   TensorShape present_shape(present_dims_span);
+
+//   // Use temp tensor to store present KV instead of output
+//   AllocatorPtr allocator;
+//   if (context->GetTempSpaceAllocator(&allocator) != Status::OK()) {
+//     ORT_THROW("Temporary space could not be allocated for present KV");
+//   }
+//   Tensor::InitOrtValue(*elt_type, present_shape, allocator, *present_kv);
+//   Tensor* present = present_kv->GetMutable<Tensor>();
+
+//   if (nullptr != past && nullptr == present) {
+//     ORT_THROW("Expect to have present state output when past state input is given");
+//   }
+
+//   return present;
+// }
+
 }  // namespace contrib
 }  // namespace onnxruntime
