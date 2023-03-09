@@ -46,7 +46,7 @@ def skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon):
     return output, val
 
 
-def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: str, func):
+def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: str, func, has_optional_output=False):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
     skip = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
@@ -56,7 +56,11 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
     # Because of rocm FMAs calculation issue with float16, epsilon should be larger when hidden_size is small
     epsilon = 0.05 if hidden_size < 8 else 0.0005
     output_y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
+    output_optional = (
+        np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
+        if has_optional_output
+        else np.empty((0), dtype=dtype)
+    )
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
@@ -86,8 +90,9 @@ def run_skip_layer_norm(batch_size: int, seq_len: int, hidden_size: int, dtype: 
         optional_d.UpdateHostNumpyArray()
 
         y_ref, y_optional = skip_layer_norm(input_x, skip, bias, gamma, beta, epsilon)
-        np.testing.assert_almost_equal(y_ref, output_y, decimal=1e-05)
-        np.testing.assert_almost_equal(y_optional, output_optional, decimal=1e-05)
+        np.testing.assert_almost_equal(y_ref, output_y, decimal=1)
+        if has_optional_output:
+            np.testing.assert_almost_equal(y_optional, output_optional, decimal=1)
 
 
 dtypes = ["float32", "float16"]
@@ -113,7 +118,7 @@ class SkipLayerNormMetric(ke.BandwidthMetric):
         return prefix + "not supported or redundant"
 
 
-def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
+def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, has_optional_output):
     np.random.seed(0)
     input_x = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
     skip = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
@@ -122,7 +127,11 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     bias = np.random.rand(hidden_size).astype(dtype)
     epsilon = 0.0005
     output_y = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
-    output_optional = np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
+    output_optional = (
+        np.random.rand(batch_size, seq_len, hidden_size).astype(dtype)
+        if has_optional_output
+        else np.empty((0), dtype=dtype)
+    )
 
     input_d = ke.DeviceArray(input_x)
     skip_d = ke.DeviceArray(skip)
@@ -154,10 +163,10 @@ def profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func):
     ke.report(SkipLayerNormMetric(func, dtype, duration_ms, total_bytes, batch_size, seq_len, hidden_size))
 
 
-def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort=True):
+def profile_with_args(batch_size, seq_len, hidden_size, dtype, sort=True, has_optional_output=False):
     with ke.benchmark(sort):
         for func in dtype_to_funcs(dtype):
-            profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func)
+            profile_skip_layer_norm_func(batch_size, seq_len, hidden_size, dtype, func, has_optional_output)
 
 
 def profile():
@@ -177,9 +186,12 @@ if __name__ == "__main__":
     group.add_argument("hidden_size", type=int)
     group.add_argument("dtype", choices=dtypes)
     group.add_argument("--sort", action="store_true")
+    group.add_argument("--has_optional_output", "-o", action="store_true")
 
     if len(sys.argv) == 1:
         profile()
     else:
         args = parser.parse_args()
-        profile_with_args(args.batch_size, args.seq_len, args.hidden_size, args.dtype, args.sort)
+        profile_with_args(
+            args.batch_size, args.seq_len, args.hidden_size, args.dtype, args.sort, args.has_optional_output
+        )
