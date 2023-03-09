@@ -18,10 +18,10 @@ In QKV projection (prior to this pipeline):
 X --o--> K [B,T,N*H] ->Reshape-> [B,T,N,H] ->Permute0213-> [B,N,T,H]
      \-> V [B,T,N*H] ->Reshape-> [B,T,N,H] ->Permute0213-> [B,N,T,H]
 
-pre_softmax_attn_scores        = Q*K' = [B,N,S,H] * [BxNxTxH]' = [B,N,S,T]                      Batched GEMM1
-pre_softmax_attn_scores_masked = pre_softmax_attn_scores +? bias +? mask                        Add Bias, +? is optional
-attn_scores                    = softmax(pre_softmax_attn_scores_masked * scale) = [B,N,S,T]    Scale then Softmax
-scaled_multi_head_attn         = attn_scores * V = [B,N,S,T] * [B,N,T,H] = [B,N,S,H]            Batched GEMM2
+pre_softmax_attn_scores        = Q*K' = [B,N,S,H] * [BxNxTxH]' = [B,N,S,T]               Batched GEMM1
+pre_softmax_attn_scores_masked = pre_softmax_attn_scores * scale +? bias +? mask         Scale Add Bias, +? is optional
+attn_scores                    = softmax(pre_softmax_attn_scores_masked) = [B,N,S,T]     Softmax
+scaled_multi_head_attn         = attn_scores * V = [B,N,S,T] * [B,N,T,H] = [B,N,S,H]     Batched GEMM2
 
 Op outputs scaled_multi_head_attn:
 [B,N,S,H] ->Permute0213-> [B,S,N,H] ->Reshape-> [B,S,N*H]
@@ -33,15 +33,15 @@ GemmSoftmaxGemmPermuteGenericPipeline handles it in specialized softmax. TODO: r
 
 CK in GemmSoftmaxGemmPermuteTunablePipeline
 
-   Q*K' --------------> [B,N,S,T] -------+?--> masked
+   Q*K' ---> scale ---> [B,N,S,T] -------+?--> masked
    bias --------------> [B,N,S,T] --+?--/
 mask_2d ---> [B,T] ---> [B,1,1,T] -/
 
-   Q*K' --------------> [B,N,S,T] -------+?--> masked
+   Q*K' ---> scale ---> [B,N,S,T] -------+?--> masked
    bias --------------> [B,N,S,T] --+?--/
 mask_3d --> [B,S,T] --> [B,1,S,T] -/
 
-   Q*K' --------------> [B,N,S,T] -------+?--> masked
+   Q*K' ---> scale ---> [B,N,S,T] -------+?--> masked
    bias --------------> [B,N,S,T] --+?--/
 mask_4d -> [B,1,M,M] -> [B,1,S,T] -/                      M is max_sequence_length from megatron, we will create a
                                                           **sub-view** from original mask buffer
@@ -49,10 +49,11 @@ mask_4d -> [B,1,M,M] -> [B,1,S,T] -/                      M is max_sequence_leng
 For CK implementation, there will be four cases combined:
 non-biased, non-masked, no special processing.
     biased, non-masked, no special processing, add the mask directly.
-non-biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast add with Q*K'.
-    biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast add with bias then add with Q*K'.
+non-biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast add with scaled Q*K'.
+    biased,     masked, convert the mask to [B,1,1_or_S,T] and perform broadcast add with bias and scaled Q*K'.
 
-broadcast add is not actually perform the broadcasting, just broadcast the load operation from memory.
+Broadcast add is not actually perform the broadcasting, just broadcast the load operation from memory. The impl details
+are in composable kernels. The scale and add logic is performed via Acc0ElementOp
 
 */
 
