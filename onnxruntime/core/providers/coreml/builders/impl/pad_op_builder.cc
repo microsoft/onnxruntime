@@ -24,8 +24,8 @@ class PadOpBuilder : public BaseOpBuilder {
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
-  [[nodiscard]] Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                             const logging::Logger& logger) const override;
+  Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
+                               const logging::Logger& logger) const override;
 #endif
 
   // Operator support related
@@ -97,14 +97,14 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     if (!GetShape(*input_defs[0], input_shape, logger))
       return false;
 
-    if (input_shape.size() > 4 || input_shape.empty()) {
-      LOGS_DEFAULT(VERBOSE) << "Pad only supports up to 1-4d shape, input is "
+    if (input_shape.empty() || input_shape.size() > 4 || input_shape.size() < 2) {
+      LOGS(logger, VERBOSE) << "Pad requires input shape between 2-4d, input is "
                             << input_shape.size() << "d shape";
       return false;
     }
 
     if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
-      LOGS_DEFAULT(VERBOSE) << "Pad input with zero elements for dimension is not supported";
+      LOGS(logger, VERBOSE) << "Pad input with zero elements for dimension is not supported";
       return false;
     }
   }
@@ -117,8 +117,9 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       return false;
     }
 
-    if (input_defs.size() < 3) {
-      LOGS(logger, VERBOSE) << "constant_value input is required for constant mode Pad op support.";
+    if (input_defs.size() != 3) {
+      LOGS(logger, VERBOSE) <<
+      "`constant_value` input is required for constant mode Pad op. Optional input `axes` is not supported now.";
       return false;
     }
   }
@@ -127,7 +128,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   {
     const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
     if (pads_initializer_it == initializers.end()) {
-      LOGS_DEFAULT(VERBOSE) << "pads must be known";
+      LOGS(logger, VERBOSE) << "pads must be known";
       return false;
     }
 
@@ -137,7 +138,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     // Note: CoreML uses BorderAmounts type for paddings which requires both start/end edgesizes.
     // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#borderamounts
     if (unpacked_tensor.size() != 4) {
-      LOGS_DEFAULT(VERBOSE) << "Only support length 4 pads input, pads length: "
+      LOGS(logger, VERBOSE) << "Only support length 4 pads input, pads length: "
                             << unpacked_tensor.size();
       return false;
     }
@@ -145,7 +146,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {
-        LOGS_DEFAULT(VERBOSE) << "Negative pad value is not supported: pads["
+        LOGS(logger, VERBOSE) << "Negative pad value is not supported: pads["
                               << i << "] = " << tensor_data[i];
         return false;
       }
@@ -154,7 +155,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
 
   // only support if `constant_value` input is known
   if (!Contains(initializers, input_defs[2]->Name())) {
-    LOGS_DEFAULT(VERBOSE) << "constant_value must be known";
+    LOGS(logger, VERBOSE) << "constant_value must be known";
     return false;
   }
 
