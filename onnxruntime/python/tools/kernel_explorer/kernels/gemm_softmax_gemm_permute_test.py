@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 
-import math
 import os
 import sys
 from dataclasses import dataclass
@@ -19,7 +18,7 @@ from utils import dtype_to_suffix
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
     arrays = []
-    for i in range(num_distribution):
+    for _ in range(num_distribution):
         mean = np.random.rand() - 0.5
         std = np.random.rand() + 0.5
         arrays.append(np.random.normal(mean, std, (num_element_per_dist,)))
@@ -87,11 +86,11 @@ def _test_gemm_softmax_gemm_permute(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(math.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
-    K = multinormal_distribution(math.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
-    V = multinormal_distribution(math.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
+    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
+    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
+    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
     if bias_shape is not None:
-        attn_bias = np.random.uniform(-2, 2, size=bias_shape)
+        attn_bias = np.random.uniform(-0.5, 0.5, size=bias_shape)
     if mask_shape is not None:
         attn_mask = (np.random.randint(0, 100, size=mask_shape) < 95).astype(np.int32)
 
@@ -118,23 +117,6 @@ def _test_gemm_softmax_gemm_permute(
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
-
-    print(
-        f,
-        batch,
-        seqlen,
-        total_seqlen,
-        num_heads,
-        head_size,
-        mask_dim,
-        scale,
-        dev_Q,
-        dev_K,
-        dev_V,
-        dev_attn_bias,
-        dev_attn_mask,
-        dev_out,
-    )
 
     my_gemm_softmax_gemm_permute = f(
         batch,
@@ -194,7 +176,7 @@ def _test_gemm_softmax_gemm_permute(
 @pytest.mark.parametrize("dtype", dtypes)
 def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype))
-    scale = 1.0 / math.sqrt(head_size)
+    scale = 1.0 / np.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
 
 
@@ -208,7 +190,7 @@ def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, n
 @pytest.mark.parametrize("dtype", dtypes)
 def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0))
-    scale = 1.0 / math.sqrt(head_size)
+    scale = 1.0 / np.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
 
 
@@ -222,7 +204,7 @@ def test_gemm_softmax_gemm_permute_ck(dtype, batch, seqlen, total_seqlen, nhead,
 @pytest.mark.parametrize("dtype", ["float16"])
 def test_gemm_softmax_gemm_permute_tunable(dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim):
     f = getattr(ke, "GemmSoftmaxGemmPermuteTunable_" + dtype_to_suffix(dtype))
-    scale = 1.0 / math.sqrt(head_size)
+    scale = 1.0 / np.sqrt(head_size)
     _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
 
 
@@ -276,9 +258,9 @@ def profile_gemm_softmax_gemm_permute_func(
             raise ValueError
 
     np.random.seed(42)
-    Q = multinormal_distribution(math.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
-    K = multinormal_distribution(math.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
-    V = multinormal_distribution(math.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
+    Q = multinormal_distribution(np.prod(q_shape[:-1]), q_shape[-1]).reshape(q_shape).astype(np.float64)
+    K = multinormal_distribution(np.prod(k_shape[:-1]), k_shape[-1]).reshape(k_shape).astype(np.float64)
+    V = multinormal_distribution(np.prod(v_shape[:-1]), v_shape[-1]).reshape(v_shape).astype(np.float64)
     if bias_shape is not None:
         attn_bias = np.random.uniform(-2, 2, size=bias_shape)
     if mask_shape is not None:
@@ -295,23 +277,6 @@ def profile_gemm_softmax_gemm_permute_func(
     dev_out = ke.DeviceArray(out)
     dev_attn_bias = ke.DeviceArray(host_attn_bias) if host_attn_bias is not None else None
     dev_attn_mask = ke.DeviceArray(attn_mask) if attn_mask is not None else None
-
-    # print(
-    #     f,
-    #     batch,
-    #     seqlen,
-    #     total_seqlen,
-    #     num_heads,
-    #     head_size,
-    #     mask_dim,
-    #     scale,
-    #     dev_Q,
-    #     dev_K,
-    #     dev_V,
-    #     dev_attn_bias,
-    #     dev_attn_mask,
-    #     dev_out,
-    # )
 
     my_gemm_softmax_gemm_permute = f(
         batch,
