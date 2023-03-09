@@ -1,3 +1,13 @@
+parameters:
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: qnn-v2.6.0.221227161714_42395_win
+  values:
+  - qnn-v2.6.0.221227161714_42395_win
+  - qnn-v2.8.0.230223123141_52150_win
+
 jobs:
 - job: 'build'
   pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
@@ -5,11 +15,11 @@ jobs:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
     OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
-    EnvSetupScript: setup_env_qnn.bat
     buildArch: x64
     setVcvars: true
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
   timeoutInMinutes: 150
   workspace:
     clean: all
@@ -20,13 +30,6 @@ jobs:
       versionSpec: '3.7'
       addToPath: true
       architecture: $(buildArch)
-
-  - task: BatchScript@1
-    displayName: 'setup env'
-    inputs:
-      filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
-      modifyEnvironment: true
-      workingFolder: '$(Build.BinariesDirectory)'
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'
