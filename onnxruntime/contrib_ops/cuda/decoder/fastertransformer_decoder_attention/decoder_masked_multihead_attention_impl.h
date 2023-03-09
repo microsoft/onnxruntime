@@ -28,11 +28,10 @@ struct DecoderMaskedMultiheadAttentionParams : AttentionParameters {
   void* out = nullptr;
 
   const int32_t* cache_indir = nullptr;
-  const int32_t* mask = nullptr;    // [B, total_sequence_length]
+  const int32_t* mask = nullptr;  // [B, total_sequence_length]
 };
 
-
-template<
+template <
     // The type of the inputs. Supported types: float and half.
     typename T,
     // The hidden dimension per head.
@@ -45,10 +44,8 @@ template<
     int THREADS_PER_BLOCK>
 __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentionParams params);
 
-template<typename T, int head_size>
+template <typename T, int head_size>
 void mmha_launch_kernel(const DecoderMaskedMultiheadAttentionParams& params, cudaStream_t stream);
-
-
 
 }  // namespace cuda
 

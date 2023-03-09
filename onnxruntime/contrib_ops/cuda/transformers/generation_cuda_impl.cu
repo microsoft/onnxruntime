@@ -779,7 +779,7 @@ __global__ void UpdateDecoderMaskedMultiheadAttentionCacheIndirectionKernel(int3
     tgt_indir_cache[tgt_offset] = static_cast<int32_t>(beam_id);
   } else {
     // For all other time-steps, we look up the source indirection, to
-    // see which beam it came from based on the parent id beam.
+    // see which beam it came from based on the `src_beam`.
     const int src_offset = batch_id * beam_width * max_seq_length + src_beam * max_seq_length + time_step;
     tgt_indir_cache[tgt_offset] = src_indir_cache[src_offset];
   }

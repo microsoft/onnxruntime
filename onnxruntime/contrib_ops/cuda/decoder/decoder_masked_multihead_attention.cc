@@ -21,22 +21,43 @@ static constexpr int kCacheIndirectionInputIndex = 8;
 static constexpr int kPastInputIndex = 4;
 static constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T1, T2)                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      DecoderMaskedMultiheadAttention,                                         \
-      kMSDomain,                                                               \
-      1,                                                                       \
-      T1,                                                                      \
-      kCudaExecutionProvider,                                                  \
-      (*KernelDefBuilder::Create())                                            \
-          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())              \
-          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex)  \
-          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex), \
+#define REGISTER_KERNEL_TYPED(T1, T2)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      DecoderMaskedMultiheadAttention,                                        \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T1,                                                                     \
+      kCudaExecutionProvider,                                                 \
+      (*KernelDefBuilder::Create())                                           \
+          .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
+          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
+          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
       DecoderMaskedMultiheadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
+
+template <typename T>
+static Status DecoderMaskedMultiheadAttentionKernelDispatch(const DecoderMaskedMultiheadAttentionParams& parameters,
+                                                            cudaStream_t cuda_stream) {
+  switch (parameters.head_size) {
+    case 64:
+      mmha_launch_kernel<T, 64>(parameters, cuda_stream);
+      break;
+
+    case 128:
+      mmha_launch_kernel<T, 128>(parameters, cuda_stream);
+      break;
+
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "Unsupported head size in DecoderMaskedMultiheadAttention. "
+                             "Got head size: ",
+                             parameters.head_size);
+  }
+  return Status::OK();
+}
 
 template <typename T1, typename T2>
 Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
@@ -188,23 +209,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
-  switch (parameters.head_size) {
-    case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
-      break;
-
-    case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
-      break;
-
-    default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                             "Unsupported head size in DecoderMaskedMultiheadAttention. "
-                             "Got head size: ",
-                             parameters.head_size);
-  }
-
-  return Status::OK();
+  return DecoderMaskedMultiheadAttentionKernelDispatch<T2>(parameters, cuda_stream);
 }
 
 }  // namespace cuda

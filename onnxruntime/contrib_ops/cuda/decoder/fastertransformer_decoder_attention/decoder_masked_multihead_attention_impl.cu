@@ -22,6 +22,8 @@
 // Modifications:
 // (1) Removed some code paths from the original implementation that had features which is not supported by
 //  corresponding ORT kernel - for example- CrossAttention support, FP8, INT8, supports, etc.
+// (2) When dealing with masked tokens, this kernel implementation deviates from FasterTransformer by applying
+// mask filter values. Appropriate commentary exists in the code below.
 
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
@@ -286,7 +288,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr;
-
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
@@ -314,9 +315,16 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
     float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
 
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    if (is_masked) {
+      qk += params.mask_filter_value;
+    }
+
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-      qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
+      qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
     }
   }
@@ -355,8 +363,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Compute the logits and start the sum.
   float sum = 0.f;
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    float logit = is_masked ? 0.f : __expf(qk_smem[ti] - qk_max);
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    float logit = __expf(qk_smem[ti] - qk_max);
     sum += logit;
     qk_smem[ti] = logit;
   }
