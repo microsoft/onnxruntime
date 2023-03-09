@@ -182,11 +182,8 @@ class Session:
             if input.name not in feed_input_names and not input.type.startswith("optional"):
                 missing_input_names.append(input.name)
         if missing_input_names:
-            raise ValueError(
-                "Required inputs ({}) are missing from input feed ({}).".format(
-                    ",".join(missing_input_names), ",".join(feed_input_names)
-                )
-            )
+            raise ValueError("Required inputs ({}) are missing from input feed ({}).".format(
+                ",".join(missing_input_names), ",".join(feed_input_names)))
 
     def run(self, output_names, input_feed, run_options=None):
         """
