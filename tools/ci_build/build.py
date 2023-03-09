@@ -397,7 +397,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.19", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="3.1.32", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -485,6 +485,8 @@ def parse_arguments():
     parser.add_argument(
         "--nnapi_min_api", type=int, help="Minimum Android API level to enable NNAPI, should be no less than 27"
     )
+    parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
+    parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
     parser.add_argument("--eigen_path", help="Path to pre-installed Eigen.")
@@ -853,6 +855,7 @@ def generate_build_tree(
     acl_libs,
     armnn_home,
     armnn_libs,
+    qnn_home,
     snpe_root,
     cann_home,
     path_to_protoc_exe,
@@ -1050,6 +1053,9 @@ def generate_build_tree(
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
+    if qnn_home and os.path.exists(qnn_home):
+        cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
+
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
 
@@ -1168,6 +1174,11 @@ def generate_build_tree(
         if args.xcode_code_signing_team_id:
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
+    if args.use_qnn:
+        if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
+            raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
+        cmake_args += ["-Donnxruntime_USE_QNN=ON"]
+
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
@@ -1221,6 +1232,9 @@ def generate_build_tree(
         if args.wasm_malloc is not None:
             add_default_definition(emscripten_settings, "MALLOC", args.wasm_malloc)
         add_default_definition(emscripten_settings, "MALLOC", "dlmalloc")
+
+        # set -s STACK_SIZE=1048576
+        add_default_definition(emscripten_settings, "STACK_SIZE", "1048576")
 
         if emscripten_settings:
             cmake_args += [f"-Donnxruntime_EMSCRIPTEN_SETTINGS={';'.join(emscripten_settings)}"]
@@ -1566,7 +1580,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
         with contextlib.ExitStack() as context_stack:
             if args.android_run_emulator:
                 avd_name = "ort_android"
-                system_image = "system-images;android-{};google_apis;{}".format(args.android_api, args.android_abi)
+                system_image = "system-images;android-{};default;{}".format(args.android_api, args.android_abi)
 
                 android.create_virtual_device(sdk_tool_paths, system_image, avd_name)
                 emulator_proc = context_stack.enter_context(
@@ -1589,11 +1603,8 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             run_adb_shell("{0}/onnxruntime_test_all".format(device_dir))
 
             if args.build_java:
-                gradle_executable = "gradle"
-                # use the gradle wrapper if it exists, the gradlew should be setup under <repo root>/java
-                gradlew_path = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
-                if os.path.exists(gradlew_path):
-                    gradle_executable = gradlew_path
+                # use the gradle wrapper under <repo root>/java
+                gradle_executable = os.path.join(source_dir, "java", "gradlew.bat" if is_windows() else "gradlew")
                 android_test_path = os.path.join(cwd, "java", "androidtest", "android")
                 run_subprocess(
                     [
@@ -1936,6 +1947,7 @@ def build_python_wheel(
     use_dml,
     use_cann,
     use_azure,
+    use_qnn,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1996,6 +2008,8 @@ def build_python_wheel(
             args.append("--use_cann")
         elif use_azure:
             args.append("--use_azure")
+        elif use_qnn:
+            args.append("--use_qnn")
 
         run_subprocess(args, cwd=cwd)
 
@@ -2414,6 +2428,8 @@ def main():
     armnn_home = args.armnn_home
     armnn_libs = args.armnn_libs
 
+    qnn_home = args.qnn_home
+
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = setup_tensorrt_vars(args)
 
@@ -2623,6 +2639,7 @@ def main():
             acl_libs,
             armnn_home,
             armnn_libs,
+            qnn_home,
             snpe_root,
             cann_home,
             path_to_protoc_exe,
@@ -2688,6 +2705,7 @@ def main():
                 args.use_dml,
                 args.use_cann,
                 args.use_azure,
+                args.use_qnn,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

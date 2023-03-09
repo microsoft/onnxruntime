@@ -213,6 +213,13 @@ For self attention, kv_sequence_length equals to sequence_length (sequence lengt
 For cross attention, query and key might have different lengths.
 )DOC";
 
+// Currently, the `convert_generation.py` script renames the `Attention` nodes to `DecoderMaskedMultiheadAttention`
+// if the user requests it. Hence, the schemas of `DecoderMaskedMultiheadAttention` and `Attention` schemas
+// are tightly coupled. A change in Attention also needs corresponding schema updates in `DecoderMaskedMultiheadAttention`
+// and its kernel.
+// TODO(hasesh): Decouple the schema of `DecoderMaskedMultiheadAttention` from the schema of the `Attention` operator
+// by making appropriate tool changes.
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     Attention, 1,
     OpSchema()
@@ -302,15 +309,28 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));
 
+constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
+Uni-directional attention that supports input sequence length of 1.
+
+The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
+is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
+and v_hidden_size is that of V.
+
+The mask_index is optional. If it is provided, only raw attention mask with shape (batch_size, total_sequence_length) is supported currently.
+
+Both past and present state need to be provided.
+
+The qkv_hidden_sizes is required only when K and V have different hidden sizes.
+
+The total_sequence_length is past_sequence_length + kv_sequence_length. Here kv_sequence_length is the length of K or V.
+Currently, only self attention is supported which means that kv_sequence_length equals to sequence_length (sequence length of Q).
+)DOC";
+
 ONNX_MS_OPERATOR_SET_SCHEMA(
     DecoderMaskedMultiheadAttention, 1,
     OpSchema()
-        .SetDoc(Attention_ver1_doc)
+        .SetDoc(DecoderMaskedMultiheadAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
-        .Attr("qkv_hidden_sizes",
-              "Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size",
-              AttributeProto::INTS,
-              OPTIONAL_VALUE)
         .Attr("past_present_share_buffer",
               "Corresponding past and present are same tensor, its size is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",

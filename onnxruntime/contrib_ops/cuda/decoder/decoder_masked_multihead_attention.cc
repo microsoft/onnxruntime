@@ -21,18 +21,18 @@ static constexpr int kCacheIndirectionInputIndex = 8;
 static constexpr int kPastInputIndex = 4;
 static constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T1, T2)                                         \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
-      DecoderMaskedMultiheadAttention,                                        \
-      kMSDomain,                                                              \
-      1,                                                                      \
-      T1,                                                                     \
-      kCudaExecutionProvider,                                                 \
-      (*KernelDefBuilder::Create())                                           \
-          .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
-          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
-          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
+#define REGISTER_KERNEL_TYPED(T1, T2)                                          \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
+      DecoderMaskedMultiheadAttention,                                         \
+      kMSDomain,                                                               \
+      1,                                                                       \
+      T1,                                                                      \
+      kCudaExecutionProvider,                                                  \
+      (*KernelDefBuilder::Create())                                            \
+          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())              \
+          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex)  \
+          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex), \
       DecoderMaskedMultiheadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)

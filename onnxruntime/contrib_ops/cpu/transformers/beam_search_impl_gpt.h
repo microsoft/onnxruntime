@@ -79,7 +79,8 @@ class BeamSearchGpt : public BeamSearchBase<T> {
       OrtValue& position_ids,
       bool increase_position,
       gsl::span<const int32_t> beam_next_tokens,
-      gsl::span<const int32_t> beam_indices,
+      gsl::span<const int32_t> beam_indices_cpu,
+      gsl::span<const int32_t> beam_indices_gpu,
       int past_sequence_length,
       int input_sequence_len,
       bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
@@ -150,7 +151,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int past_sequence_length,
     int input_sequence_len,
     bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
@@ -162,7 +164,8 @@ Status BeamSearchGpt<T>::UpdateFeeds(
                             position_ids,
                             increase_position,
                             beam_next_tokens,
-                            beam_indices,
+                            beam_indices_cpu,
+                            beam_indices_gpu,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
@@ -365,6 +368,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
 
     // Prepare inputs for next round of subgraph call.
     if (current_length < parameters->max_length) {
+      gsl::span<const int32_t> place_holder;
       // For the first iteration, position_ids is initialized as sequence lengths. We can add it to feeds directly.
       // For the remaining iterations, we need increase position_ids first, then add it to feeds.
       bool increase_position = (iteration_counter > 1);
@@ -372,6 +376,8 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                       ReinterpretAsSpan<const int32_t>(beam_indices),
+                                      gpt_subgraph_.has_decoder_masked_multihead_attention_ ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+                                                                                            : place_holder,
                                       current_length - 1,
                                       parameters->sequence_length,
                                       gpt_subgraph_.has_decoder_masked_multihead_attention_));

@@ -144,6 +144,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
   BufferUniquePtr next_positions_buffer_;
   BufferUniquePtr eos_meet_buffer_;
   BufferUniquePtr temp_topk_buffer_;
+  BufferUniquePtr staging_for_past_state_reorder_buffer_;
 };
 
 // Base class of gready search implementation that is common for both GPT-2 and Bart/T5.

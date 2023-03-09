@@ -93,8 +93,8 @@ Status GptSubgraph::CreateInitialFeeds(
 
     // If `add_beam_search_specific_inputs_for_decoder_masked_multihead_attention` is true, then the last inputs are `past_sequence_length`,
     // `beam_width`, and `cache_indirection`
-    auto past_end = add_beam_search_specific_inputs_for_decoder_masked_multihead_attention ? num_subgraph_inputs - 3 : num_subgraph_inputs - 1;
-    for (int i = first_past_input_index_; i < past_end; ++i) {
+    auto past_end_iter = add_beam_search_specific_inputs_for_decoder_masked_multihead_attention ? num_subgraph_inputs - 3 : num_subgraph_inputs - 1;
+    for (int i = first_past_input_index_; i < past_end_iter; ++i) {
       OrtValue past_tensor;
       Tensor::InitOrtValue(past_type, past_shape, default_allocator, past_tensor);
       feeds.push_back(past_tensor);

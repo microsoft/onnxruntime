@@ -54,11 +54,18 @@ struct BeamSearchState : public IBeamSearchState<T> {
     }
 
     if (has_decoder_masked_multihead_attention) {
+      // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
+      // when using DecoderMaskedMultiheadAttention
       TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), num_heads, max_length, head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);
 
       this->staging_for_past_state_reorder = std::move(temp);
+
+      // We need a buffer on GPU to hold the final chosen indices after BeamScorer has finished processing
+      // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
+      // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
+      this->chosen_indices = AllocateBuffer<int32_t>(allocator, chosen_indices_buffer_, batch_beam_size);
     }
   }
 
@@ -72,6 +79,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
   BufferUniquePtr beam_scores_buffer_;
   BufferUniquePtr scores_buffer_;
   BufferUniquePtr topk_temp_buffer_;
+  BufferUniquePtr chosen_indices_buffer_;
 };
 
 struct BeamSearchCpuState : public IBeamSearchCpuState {

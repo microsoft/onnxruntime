@@ -481,6 +481,8 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, 2 * num_beams);
     dumper->Print("next_scores before scorer", beam_state->next_scores.data(), batch_size, 2 * num_beams);
 #endif
+
+    // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          beam_state->next_scores.data(),
                                          beam_state->next_scores.size_bytes(),
@@ -528,6 +530,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
     dumper->Print("next_indices before scorer", beam_state->next_indices.data(), batch_size, top_k);
 #endif
 
+    // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_scores.data(),
                                          data,
                                          topk_scores->SizeInBytes(),
@@ -535,6 +538,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                                          cuda_stream));
   }
 
+  // TODO: Remove these kinds of cross-device copies once BeamScorer runs on CUDA
   CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(cpu_state->topk_tokens.data(),
                                        beam_state->next_tokens.data(),
                                        beam_state->next_tokens.size_bytes(),
@@ -551,12 +555,30 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   gsl::span<const int32_t> next_tokens(cpu_state->topk_tokens.data(), beam_state->next_tokens.size());
   gsl::span<const int32_t> next_indices(cpu_state->topk_indices.data(), beam_state->next_indices.size());
 
-  // Limitation: beam scorer runs in CPU. It might be better to use CUDA kernel to replace it.
+  // TODO: Implement BeamScorer on CUDA
   beam_scorer->Process(
       sequences,
       next_scores,
       next_tokens,
       next_indices);
+
+  // TODO: This is a temporary work-around as BeamScorer currently only runs on CPU.
+  // We can remove these kinds of work-arounds once BeamScorer runs on CUDA eventually.
+  auto chosen_indices = beam_scorer->GetNextIndices();
+  auto beam_state_chosen_indices = beam_state->chosen_indices;
+
+  if (!beam_state_chosen_indices.empty()) {
+    // If we have allocated `chosen_indices` in beam_state, it means that we
+    // will be needing the chosen indices from BeamScorer as we are using
+    // DecoderMaskedMultiheadAttention, so copy it over.
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(beam_state_chosen_indices.data(),
+                                         chosen_indices.data(),
+                                         chosen_indices.size_bytes(),
+                                         cudaMemcpyHostToDevice,
+                                         cuda_stream));
+
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+  }
 
 #ifdef ENABLE_NVTX_PROFILE
   processLogitsRange.End();
@@ -869,7 +891,8 @@ Status UpdateGptFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
@@ -927,6 +950,8 @@ Status UpdateGptFeeds(
     // If the last input is not `past_sequence_length`, then the beam search specific inputs
     // for `DecoderMaskedMultiheadAttention` is present
     if (has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+      ORT_ENFORCE(!beam_indices_gpu.empty(), "Beam indices must be present on CUDA while using DecoderMaskedMultiheadAttention with BeamSearch");
+
       // The cache indirection feed comes 2 feeds after the `past_sequence_length` feed
       const OrtValue& old_cache_indirection = next_inputs[past_sequence_length_idx + 2];
 
@@ -934,45 +959,21 @@ Status UpdateGptFeeds(
       OrtValue cache_indirection;
 
       Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), old_cache_indirection.Get<Tensor>().Shape(), allocator, cache_indirection);
-      const int32_t* src_indir_cache = old_cache_indirection.Get<Tensor>().Data<int32_t>();
-      int32_t* tgt_indir_cache = cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>();
-      cudaMemsetAsync(tgt_indir_cache, 0, old_cache_indirection.Get<Tensor>().SizeInBytes(), cuda_stream);
 
       // The third index of the past/present tensor is the max_sequence_length
       int max_sequence_length = static_cast<int>(last_outputs[gpt_subgraph_first_present_output_idx].Get<Tensor>().Shape()[3]);
-      int batch_size = batch_beam_size / num_beams;
-
-      void* temp_buffer;
-      size_t temp_buffer_size = 4 * batch_beam_size;
-      cudaMallocAsync(&temp_buffer, temp_buffer_size, cuda_stream);
-
-      // TODO(hasesh): When BeamScorer is implemented on CUDA, figure out a way to avoid this cross-device copy
-      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(temp_buffer, beam_indices.data(), beam_indices.size_bytes(), cudaMemcpyHostToDevice, cuda_stream));
-
-      cudaStreamSynchronize(cuda_stream);
-
-      std::vector<int32_t> investigate(batch_beam_size, 0);
-      std::memcpy(investigate.data(), beam_indices.data(), beam_indices.size_bytes());
 
       // Launch kernel to update the cache indirection buffer
-      cuda::UpdateDecoderMaskedMultiheadAttentionCacheIndirection(tgt_indir_cache,
-                                                                  src_indir_cache,
-                                                                  reinterpret_cast<const int32_t*>(temp_buffer),
-                                                                  batch_size,
+      cuda::UpdateDecoderMaskedMultiheadAttentionCacheIndirection(cache_indirection.GetMutable<Tensor>()->MutableData<int32_t>(),
+                                                                  old_cache_indirection.Get<Tensor>().Data<int32_t>(),
+                                                                  reinterpret_cast<const int32_t*>(beam_indices_gpu.data()),
+                                                                  batch_beam_size / num_beams,
                                                                   num_beams,
                                                                   input_sequence_len,
                                                                   max_sequence_length,
                                                                   current_length,
                                                                   cuda_stream);
-      cudaStreamSynchronize(cuda_stream);
-      std::vector<int32_t> investigate_1(old_cache_indirection.Get<Tensor>().Shape().Size(), 0);
-      cudaMemcpy(investigate_1.data(), src_indir_cache, old_cache_indirection.Get<Tensor>().SizeInBytes(), cudaMemcpyDeviceToHost);
-
-      std::vector<int32_t> investigate_2(cache_indirection.Get<Tensor>().Shape().Size(), 0);
-      cudaMemcpy(investigate_2.data(), tgt_indir_cache, cache_indirection.Get<Tensor>().SizeInBytes(), cudaMemcpyDeviceToHost);
-
-      cudaFreeAsync(temp_buffer, cuda_stream);
-
+      // Update cache indirection for next decoding run
       next_inputs[past_sequence_length_idx + 2] = cache_indirection;
     }
   } else {
@@ -983,7 +984,7 @@ Status UpdateGptFeeds(
         next_inputs[i + k] = last_outputs[i];
       }
     } else {
-      ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices, allocator,
+      ORT_RETURN_IF_ERROR(PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu, allocator,
                                               gpt_subgraph_first_past_input_idx,
                                               gpt_subgraph_first_present_output_idx, ort_stream));
     }
@@ -1173,7 +1174,8 @@ template Status UpdateGptFeeds<float>(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
@@ -1232,7 +1234,8 @@ template Status UpdateGptFeeds<MLFloat16>(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,

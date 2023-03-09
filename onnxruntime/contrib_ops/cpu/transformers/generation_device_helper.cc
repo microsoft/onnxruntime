@@ -574,7 +574,8 @@ Status UpdateGptFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
@@ -585,6 +586,7 @@ Status UpdateGptFeeds(
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
+  ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
   ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
 
@@ -642,7 +644,7 @@ Status UpdateGptFeeds(
       next_inputs[i + k] = last_outputs[i];
     }
   } else {
-    PickGptPastState<T>(last_outputs, next_inputs, beam_indices,
+    PickGptPastState<T>(last_outputs, next_inputs, beam_indices_cpu,
                         gpt_subgraph_first_past_input_idx,
                         gpt_subgraph_first_present_output_idx, allocator);
   }
@@ -894,7 +896,8 @@ template Status UpdateGptFeeds<float>(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
