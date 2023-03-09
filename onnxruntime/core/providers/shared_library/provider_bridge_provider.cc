@@ -310,6 +310,10 @@ void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) 
   return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
+InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+  return g_host->IExecutionProvider__CreatePreferredAllocators(this);
+}
+
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);

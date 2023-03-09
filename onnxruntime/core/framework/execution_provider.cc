@@ -31,13 +31,13 @@ AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
 //  return nullptr;
 
   OrtDevice::DeviceType device_type = OrtDevice::CPU;
-  if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") device_type = OrtDevice::GPU;
-
   OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
-  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) memory_type = OrtDevice::MemType::CUDA_PINNED; // TODO: keep only one pinned enum?
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) memory_type = OrtDevice::MemType::CUDA_PINNED;  // TODO: keep only one pinned enum?
+  else if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") device_type = OrtDevice::GPU;
 
   auto it = allocators2_->find(OrtDevice(device_type, memory_type, GetDeviceId()).ToInt32());
   if (it != allocators2_->end()) return it->second;
+  ORT_ENFORCE(false, "IExecutionProvider::GetAllocator(mem_type) returns false");
   return nullptr;
 }
 

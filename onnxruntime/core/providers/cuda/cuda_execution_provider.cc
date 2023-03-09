@@ -2521,7 +2521,7 @@ InlinedHashMap<int32_t, AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllo
       // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
       // at the risk the lifetime isn't managed correctly if one of those devices go away.
       0);
-  ret[OrtDevice(OrtDevice::GPU, OrtDevice::MemType::CUDA_PINNED, 0).ToInt32()] = CreateAllocator(pinned_memory_info);
+  ret[OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0).ToInt32()] = CreateAllocator(pinned_memory_info);
   return ret;
 }
 

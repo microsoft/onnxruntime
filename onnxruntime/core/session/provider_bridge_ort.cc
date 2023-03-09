@@ -304,6 +304,10 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
+  InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) {
+    return p->IExecutionProvider::CreatePreferredAllocators();
+  }
+
   // Status (direct)
   std::string Status__ToString(const Status* p) override { return p->Status::ToString(); }
 

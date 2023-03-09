@@ -137,6 +137,7 @@ AllocatorPtr SessionState::GetAllocator(OrtDevice device) const noexcept {
 //  return nullptr;
   auto it = allocators_.find(device.ToInt32());
   if (it != allocators_.end()) return it->second;
+  assert(false);
   return nullptr;
 }
 
