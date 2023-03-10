@@ -123,13 +123,13 @@ static void RunMultiHeadAttentionTest(
         tester.AddOptionalInputEdge<MLFloat16>();
       }
 
-      if (past_key_data.size()) {
+      if (past_key_data.size() && is_static_kv == false) {
         tester.AddInput<MLFloat16>("past_key", past_key_dims, ToFloat16(past_key_data));
       } else {
         tester.AddOptionalInputEdge<MLFloat16>();
       }
 
-      if (past_value_data.size()) {
+      if (past_value_data.size() && is_static_kv == false) {
         tester.AddInput<MLFloat16>("past_value", past_value_dims, ToFloat16(past_value_data));
       } else {
         tester.AddOptionalInputEdge<MLFloat16>();
@@ -139,13 +139,13 @@ static void RunMultiHeadAttentionTest(
       constexpr float abs_error = 0.05f;
       tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data), /*sort*/ false, rel_error, abs_error);
 
-      if (present_key_data.size() && is_static_kv == false) {
+      if (present_key_data.size()) {
         tester.AddOutput<MLFloat16>("present_key", present_key_dims, ToFloat16(present_key_data), /*sort*/ false, rel_error, abs_error);
       } else {
         tester.AddOptionalOutputEdge<MLFloat16>();
       }
 
-      if (present_value_data.size() && is_static_kv == false) {
+      if (present_value_data.size()) {
         tester.AddOutput<MLFloat16>("present_value", present_value_dims, ToFloat16(present_value_data), /*sort*/ false, rel_error, abs_error);
       } else {
         tester.AddOptionalOutputEdge<MLFloat16>();

@@ -2920,7 +2920,6 @@ void GetCrossAttentionDataWithPast(AttentionTestData& data) {
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFlashAttention,
-      AttentionKernelType::AttentionKernel_Default,
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
       AttentionKernelType::AttentionKernel_TrtFusedAttention,
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
@@ -2981,7 +2980,6 @@ void GetSelfAttentionDataWithPast(AttentionTestData& data) {
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFlashAttention,
-      AttentionKernelType::AttentionKernel_Default,
       AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
       AttentionKernelType::AttentionKernel_TrtFusedAttention,
       AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
