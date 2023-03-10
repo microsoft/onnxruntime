@@ -35,13 +35,13 @@ class TestOpInstanceNormalization(unittest.TestCase):
         :return: A data reader.
         """
         input_data_list = []
-        for i in range(num_test_inputs):
+        for _ in range(num_test_inputs):
             inputs = {}
             for name, shape in name2shape.items():
                 inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
             input_data_list.extend([inputs])
-        dr = TestDataFeeds(input_data_list)
-        return dr
+        data_reader = TestDataFeeds(input_data_list)
+        return data_reader
 
     def construct_model(self, output_model_path):
         """
@@ -72,7 +72,7 @@ class TestOpInstanceNormalization(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options=None,
     ):
         """
         Quantizes an FP32 model and checks various properties about the generated quantized model.
@@ -87,7 +87,7 @@ class TestOpInstanceNormalization(unittest.TestCase):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
         weight_type_str = "u8" if (weight_type == QuantType.QUInt8) else "s8"
-        model_int8_path = "instance_normalization_fp32.quant_dqd_{}{}.onnx".format(activation_type_str, weight_type_str)
+        model_int8_path = f"instance_normalization_fp32.quant_dqd_{activation_type_str}{weight_type_str}.onnx"
 
         data_reader.rewind()
         quantize_static(
