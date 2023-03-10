@@ -376,8 +376,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       position_ids, increase_position,
                                       ReinterpretAsSpan<const int32_t>(beam_next_tokens),
                                       ReinterpretAsSpan<const int32_t>(beam_indices),
-                                      gpt_subgraph_.has_decoder_masked_multihead_attention_ ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
-                                                                                            : place_holder,
+                                      gpt_subgraph_.has_decoder_masked_multihead_attention_
+                                          ? ReinterpretAsSpan<const int32_t>(beam_state.chosen_indices)
+                                          : place_holder,
                                       current_length - 1,
                                       parameters->sequence_length,
                                       gpt_subgraph_.has_decoder_masked_multihead_attention_));

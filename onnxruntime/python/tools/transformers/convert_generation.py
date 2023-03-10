@@ -2425,6 +2425,7 @@ def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None
             raise ValueError("--decoder_onnx shall use together with --encoder_decoder_init_onnx")
 
     is_greedy = args.num_beams == 1 and args.num_return_sequences == 1
+
     if args.model_type == "gpt2" and is_greedy:
         if args.top_p > 0.0 and args.top_p < 1.0:
             convert_generation_model(args, GenerationType.SAMPLING)
