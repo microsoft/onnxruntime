@@ -20,11 +20,18 @@ Abstract:
 #include <algorithm>
 #include <cmath>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 #include <type_traits>
+
+#ifdef MLAS_NO_EXCEPTION
+#if defined(__ANDROID__)
+#include <android/log.h>
+#else
+#include <iostream>
+#endif
+#endif  // MLAS_NO_EXCEPTION
 
 #include "mlas.h"
 
