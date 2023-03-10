@@ -85,9 +85,9 @@ stages:
     job_name_suffix: 'Full'
     publish_executables: '1'
 
-- stage:
+- stage: iOS_Full_xcframework
   jobs:
-  - job: iOS_Full_xcframework
+  - job:
     workspace:
       clean: all
     pool:
@@ -191,9 +191,9 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     buildNodejs: true
-- stage:
+- stage: Jar_Packaging
   jobs:
-  - job: Jar_Packaging
+  - job:
     workspace:
       clean: all
     pool: 'Win-CPU-2021'
@@ -510,9 +510,9 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-- stage:
+- stage: Nodejs_Packaging_CPU
   jobs:
-  - job: Nodejs_Packaging_CPU
+  - job:
     workspace:
       clean: all
     pool: 'Win-CPU-2021'
@@ -789,9 +789,9 @@ stages:
 - template: ../nodejs/templates/test_macos.yml
   parameters:
     JobSuffix : 'macOS_CPU_x64'
-- stage:
+- stage: Final_Jar_Testing_Windows
   jobs:
-  - job: Final_Jar_Testing_Windows
+  - job:
     workspace:
       clean: all
     pool: 'Win-CPU-2021'
@@ -829,9 +829,9 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-- stage:
+- stage: Final_Jar_Testing_Linux
   jobs:
-  - job: Final_Jar_Testing_Linux
+  - job:
     workspace:
       clean: all
     pool: 'Linux-CPU'
@@ -871,9 +871,9 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-- stage:
+- stage: Final_Jar_Testing_MacOs
   jobs:
-  - job: Final_Jar_Testing_MacOs
+  - job:
     workspace:
       clean: all
     pool:
