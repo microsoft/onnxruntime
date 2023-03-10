@@ -1825,6 +1825,10 @@ IMPLEMENT_GRADIENT_BUILDER(GetPythonOpGradient) {
               "PythonOpGrad requiring gradient output count mismatch.");
   attrs.push_back(MakeAttribute("output_tensor_requires_grads", bw_tensor_output_requires_grads));
 
+  if (src_attrs.find("comment") != src_attrs.end() && utils::HasString(src_attrs.at("comment"))) {
+    attrs.push_back(MakeAttribute("comment", src_attrs.at("comment").s()));
+  }
+
   std::vector<ArgDef> output_args;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
     if (IsGradientRequiredForSrcNodeInput(i)) {

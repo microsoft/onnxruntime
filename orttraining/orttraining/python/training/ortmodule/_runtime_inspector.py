@@ -300,7 +300,7 @@ class InputDensityObserver:
         return value
 
 
-def summarize_activations(tensor, name, step_folder):
+def summarize_activations(tensor, depth, name, step_folder):
     if tensor is None or not isinstance(tensor, torch.Tensor):
         print(f"{name} not a torch tensor, value: {tensor}")
         return None
@@ -324,7 +324,7 @@ def summarize_activations(tensor, name, step_folder):
 
     f = open(path, "w")
     f.write(
-        f"{name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
+        f"{'>'*depth + name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
         f"min: {flatten_array.min()} max: {flatten_array.max()}, mean: {flatten_array.mean()}, std: {flatten_array.std()} \n"
         f"nan: {num_nan}, inf: {num_inf}\n"
     )
@@ -402,7 +402,7 @@ class ActivationComplete(torch.autograd.Function):
         # This backward is called for each gradient input of the module, so we only increase the dump step
         # and clear states once.
         if ctx.current_step == DUMP_GLOBAL_STEP:
-            print(f"================== Completed dump for STEP {ctx.current_step} ==================")
+            print(f"================== Completed forward pass dump for STEP {ctx.current_step} ==================")
             DUMP_GLOBAL_STEP += 1
             OBSERVED_ACTIVATION_NAME = {}
 
@@ -411,7 +411,7 @@ class ActivationComplete(torch.autograd.Function):
 
 class ActivationObserver(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, name, id, input):
+    def forward(ctx, name, id, depth, input):
         global DUMP_GLOBAL_STEP
         global CONSTANT_OUTPUT_FOLDER_NAME
         val = None
@@ -428,10 +428,11 @@ class ActivationObserver(torch.autograd.Function):
         if CONSTANT_START_STEP is not None and CONSTANT_END_STEP is not None:
             if ctx.current_step >= CONSTANT_START_STEP and ctx.current_step < CONSTANT_END_STEP:
                 summarize_activations(
-                    val, name + "_forward", os.path.join(f"{CONSTANT_OUTPUT_FOLDER_NAME}", f"step_{ctx.current_step}")
+                    val, depth, name + " forward run", os.path.join(f"{CONSTANT_OUTPUT_FOLDER_NAME}", f"step_{ctx.current_step}")
                 )
         ctx.name = name
         ctx.id = id
+        ctx.depth = depth
 
         return input.detach() if input is not None else None
 
@@ -448,10 +449,10 @@ class ActivationObserver(torch.autograd.Function):
         if CONSTANT_START_STEP is not None and CONSTANT_END_STEP is not None:
             if ctx.current_step >= CONSTANT_START_STEP and ctx.current_step < CONSTANT_END_STEP:
                 summarize_activations(
-                    val, ctx.name + "_backward", os.path.join(f"{CONSTANT_OUTPUT_FOLDER_NAME}", f"step_{ctx.current_step}")
+                    val, ctx.depth, ctx.name + " backward run", os.path.join(f"{CONSTANT_OUTPUT_FOLDER_NAME}", f"step_{ctx.current_step}")
                 )
 
-        return None, None, grad_output.detach() if grad_output is not None else None
+        return None, None, None, grad_output.detach() if grad_output is not None else None
 
 
 class ActivationSummarizer:
@@ -515,7 +516,7 @@ class ActivationSummarizer:
             name = f"{module.__class__.__name__}_{id}_{index}th_output"
             if name not in OBSERVED_ACTIVATION_NAME:
                 OBSERVED_ACTIVATION_NAME[name] = True
-                return ActivationObserver.apply(name, id, outputs)
+                return ActivationObserver.apply(name, id, MODULE_INDEX_TO_DEPTH[id], outputs)
             else:
                 return outputs
 

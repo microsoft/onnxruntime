@@ -3832,6 +3832,10 @@ Return true if all elements are true and false otherwise.
           "Indicate if the model is exported in training_mode, by default, False.",
           AttributeProto::INT,
           static_cast<int64_t>(0))
+      .Attr(
+          "comment",
+          "comment only for debugging purpose.",
+          AttributeProto::STRING, false)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
@@ -3968,6 +3972,11 @@ Return true if all elements are true and false otherwise.
           "A string inidicating autograd.Function.backward outputs's type."
           "value 'c' - non-tensor output; value 'd' - tensor output.",
           AttributeProto::STRING)
+      .Attr(
+          "comment",
+          "comment only for debugging purpose.",
+          AttributeProto::STRING,
+          false)
       .TypeConstraint(
           "T",
           OpSchema::all_tensor_types(),
