@@ -926,6 +926,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
+          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
+          list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
+        endif()
         message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
         add_custom_command(
           TARGET ${test_data_target} POST_BUILD
