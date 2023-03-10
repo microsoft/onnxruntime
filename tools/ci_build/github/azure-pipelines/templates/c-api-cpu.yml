@@ -273,9 +273,9 @@ stages:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
       condition: always()
-- stage:
+- stage: NuGet_Packaging_CPU
   jobs:
-  - job: NuGet_Packaging_CPU
+  - job:
     workspace:
       clean: all
     # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
