@@ -43,7 +43,6 @@ class TestOpInstanceNormalization(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-
     def construct_model(self, output_model_path):
         """
         Constructs an ONNX model containing a single InstanceNormalization node, and saves
@@ -66,7 +65,6 @@ class TestOpInstanceNormalization(unittest.TestCase):
 
         model = parser.parse_model(model_description)
         onnx.save(model, output_model_path)
-
 
     def static_quant_test_qdq(
         self,
@@ -119,7 +117,6 @@ class TestOpInstanceNormalization(unittest.TestCase):
         data_reader.rewind()
         check_model_correctness(self, model_fp32_path, model_int8_path, data_reader.get_next())
 
-
     def test_quantize_instance_normalization(self):
         """
         Unit test that quantizes (uint8) an ONNX model containing an InstanceNormalization operator.
@@ -136,7 +133,6 @@ class TestOpInstanceNormalization(unittest.TestCase):
             activation_type=QuantType.QUInt8,
             weight_type=QuantType.QUInt8,
         )
-
 
     def test_quantize_instance_normalization_s8s8(self):
         """
@@ -159,4 +155,3 @@ class TestOpInstanceNormalization(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
