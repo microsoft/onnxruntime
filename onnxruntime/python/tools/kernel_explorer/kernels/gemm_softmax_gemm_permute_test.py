@@ -12,8 +12,7 @@ from itertools import product
 import kernel_explorer as ke
 import numpy as np
 import pytest
-import scipy
-from utils import dtype_to_suffix
+from utils import dtype_to_suffix, softmax
 
 
 def multinormal_distribution(num_distribution, num_element_per_dist):
@@ -102,7 +101,7 @@ def _test_gemm_softmax_gemm_permute(
         filter_value = -10000.0
         converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
         pre_softmax_attn_scores = pre_softmax_attn_scores + converted_mask
-    attn_scores = scipy.special.softmax(pre_softmax_attn_scores, axis=-1)
+    attn_scores = softmax(pre_softmax_attn_scores, axis=-1)
     attn = attn_scores @ V
     ref = np.swapaxes(attn, 2, 1)  # permute 0213
 
