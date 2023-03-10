@@ -58,6 +58,7 @@ parameters:
   default: false
 stages:
 - stage: Windows_Packaging_${{ parameters.job_name_suffix }}
+  dependsOn: []
   jobs:
   - job:
     workspace:

@@ -40,6 +40,7 @@ parameters:
 
 stages:
 - stage: Linux_C_API_Packaging_CPU_x64
+  dependsOn: []
   jobs:
   - template: c-api-linux-cpu.yml
     parameters:
@@ -52,6 +53,7 @@ stages:
       PoolName: 'Linux-CPU'
 
 - stage: Linux_C_API_Packaging_CPU_aarch64
+  dependsOn: []
   jobs:
   - template: c-api-linux-cpu.yml
     parameters:
@@ -86,6 +88,7 @@ stages:
     publish_executables: '1'
 
 - stage: iOS_Full_xcframework
+  dependsOn: []
   jobs:
   - job:
     workspace:

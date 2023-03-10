@@ -42,6 +42,7 @@ parameters:
   default: 'onnxruntime-android'
 stages:
 - stage: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
+  dependsOn: []
   jobs:
   - job:
     timeoutInMinutes: 120

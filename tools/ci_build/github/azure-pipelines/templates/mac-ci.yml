@@ -24,6 +24,7 @@ parameters:
 
 stages:
 - stage: MacOS_C_API_Packaging_CPU_x64
+  dependsOn: []
   jobs:
   - job:
     workspace:
