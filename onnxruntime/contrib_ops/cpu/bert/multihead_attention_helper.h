@@ -34,13 +34,9 @@ Status CheckInputs(const T* query,
 
   // Check that key has either 3 dimensions or 4 dimensions
   const auto& key_dims = key->Shape().GetDims();
-  if (key_dims.size() < 4 && key_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 dimensions, got ",
+  if (key_dims.size() != 3 && key_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 4 dimensions, got ",
                            key_dims.size());
-  }
-  if (key_dims.size() > 3 && key_dims.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_key' is expected to have 4 dimensions, got ", 
-                            key_dims.size());
   }
 
   const auto& bias_dims = bias->Shape().GetDims();
@@ -78,13 +74,9 @@ Status CheckInputs(const T* query,
 
   // Check that value has either 3 dimensions or 4 dimensions
   const auto& value_dims = value->Shape().GetDims();
-  if (value_dims.size() < 4 && value_dims.size() != 3) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+  if (value_dims.size() != 3 && value_dims.size() != 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ",
                            value_dims.size());
-  }
-  if (value_dims.size() > 3 && value_dims.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past_value' is expected to have 4 dimensions, got ", 
-                            value_dims.size());
   }
 
   if (query_dims[0] != value_dims[0]) {

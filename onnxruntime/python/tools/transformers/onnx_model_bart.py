@@ -319,16 +319,14 @@ class FusionBartAttention(FusionAttention):
                 # present_v = "" if present_v == transpose_v.output[0] else present_v
                 new_node = self.create_multihead_attention_node(
                     matmul_q,
-                    matmul_k if decoder_cross_attention else None,
-                    matmul_v if decoder_cross_attention else None,
+                    matmul_k if decoder_cross_attention else past_k if decoder_cross_attention_with_past else None,
+                    matmul_v if decoder_cross_attention else past_v if decoder_cross_attention_with_past else None,
                     add_q,
                     add_k if decoder_cross_attention else None,
                     add_v if decoder_cross_attention else None,
                     num_heads,
                     hidden_size,
                     attention_last_node.output[0],
-                    past_k=past_k if decoder_cross_attention_with_past else "",
-                    past_v=past_v if decoder_cross_attention_with_past else "",
                     present_k=present_k,
                     present_v=present_v,
                 )

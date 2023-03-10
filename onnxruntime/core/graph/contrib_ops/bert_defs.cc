@@ -127,8 +127,8 @@ void RestorePaddingTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
 
 void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+  // Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, num_heads, kv_sequence_length, head_size)
+  // Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or (batch_size, num_heads, kv_sequence_length, v_head_size)
   // Output 0 has shape (batch_size, sequence_length, v_hidden_size)
 
   // Type inference
@@ -151,7 +151,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
     ONNX_NAMESPACE::TensorShapeProto output_shape;
     *output_shape.add_dim() = query_dims[0];
     *output_shape.add_dim() = query_dims[1];
-    *output_shape.add_dim() = value_dims[2];
+    *output_shape.add_dim() = (value_dims.size() == 3) ? value_dims[2] : value_dims[1] * value_dims[3];
     updateOutputShape(ctx, 0, output_shape);
   }
 }

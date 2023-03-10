@@ -146,8 +146,8 @@ template <typename T>
 Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   // std::cout << "Computing MHA CPU..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
-  const Tensor* key_temp = context->Input<Tensor>(1);
-  const Tensor* value_temp = context->Input<Tensor>(2);
+  const Tensor* key = context->Input<Tensor>(1);
+  const Tensor* value = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
   const Tensor* extra_add_qk = context->Input<Tensor>(5);
@@ -157,7 +157,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (query->Shape().GetDims().size() > 3) {
     ORT_NOT_IMPLEMENTED("Packed QKV not implemented for CPU");
   }
-  if (key_temp != nullptr && key_temp->Shape().GetDims().size() > 3) {
+  if (key != nullptr && key->Shape().GetDims().size() == 5) {
     ORT_NOT_IMPLEMENTED("Packed KV not implemented for CPU");
   }
   if (key_padding_mask != nullptr) {
@@ -166,17 +166,14 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (extra_add_qk != nullptr) {
     ORT_NOT_IMPLEMENTED("Addition after QxK' not implemented for CPU");
   }
-  if (key_temp != nullptr && past_key != nullptr) {
+  if (key != nullptr && past_key != nullptr) {
     ORT_NOT_IMPLEMENTED("MHA with both key and past key not implemented for CPU");
   }
-  if (value_temp != nullptr && past_value != nullptr) {
+  if (value != nullptr && past_value != nullptr) {
     ORT_NOT_IMPLEMENTED("MHA with both value and past value not implemented for CPU");
   }
 
-  // Move past_key and past_value to key and value if key_temp and value_temp are null
   const Tensor* past = nullptr;
-  const Tensor* key = (past_key != nullptr && key_temp == nullptr) ? past_key : key_temp;
-  const Tensor* value = (past_value != nullptr && value_temp == nullptr) ? past_value : value_temp;
   
   // Check that K/V have data
   ORT_ENFORCE(key != nullptr && value != nullptr);
@@ -222,7 +219,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
   }
 
-  if (key == past_key && value == past_value) {
+  if (key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4) {
     std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(kv_sequence_length), static_cast<int64_t>(qk_head_size)});
     std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(kv_sequence_length), static_cast<int64_t>(v_head_size)});
     Tensor* present_k = context->Output(1, present_k_shape);

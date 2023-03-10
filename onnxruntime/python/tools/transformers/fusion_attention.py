@@ -389,8 +389,8 @@ class FusionAttention(Fusion):
     def create_multihead_attention_node(
         self,
         q_matmul: NodeProto,
-        k_matmul: Union[NodeProto, None],
-        v_matmul: Union[NodeProto, None],
+        k_matmul: Union[NodeProto, str, None],
+        v_matmul: Union[NodeProto, str, None],
         q_add: NodeProto,
         k_add: Union[NodeProto, None],
         v_add: Union[NodeProto, None],
@@ -408,8 +408,8 @@ class FusionAttention(Fusion):
 
         Args:
             q_matmul (NodeProto): name of MatMul from Q path - (batch_size, sequence_length, hidden_size)
-            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size)
-            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size)
+            k_matmul (NodeProto): name of MatMul from K path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
+            v_matmul (NodeProto): name of MatMul from V path - (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, past_sequence_length, head_size)
             q_add (NodeProto): name of Add from Q path
             k_add (NodeProto): name of Add from K path
             v_add (NodeProto): name of Add from V path
@@ -433,14 +433,16 @@ class FusionAttention(Fusion):
             logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
             return None
 
-        graph_input_names = [node.name for node in self.model.graph().input]
-        graph_output_names = [node.name for node in self.model.graph().output]
+        graph_input_names = set([node.name for node in self.model.graph().input])
+        graph_output_names = set([node.name for node in self.model.graph().output])
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA
         mha_inputs = [q_matmul.output[0]]
-        if k_matmul is not None and v_matmul is not None:
+        if type(k_matmul) == NodeProto and type(v_matmul) == NodeProto:
             mha_inputs.extend([k_matmul.output[0], v_matmul.output[0]])
+        elif type(k_matmul) == str and type(v_matmul) == str and k_matmul in graph_input_names and v_matmul in graph_input_names:
+            mha_inputs.extend([k_matmul, v_matmul])
         else:
             mha_inputs.extend(["", ""])
 
