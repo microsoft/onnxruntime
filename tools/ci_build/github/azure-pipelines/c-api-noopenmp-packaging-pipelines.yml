@@ -98,7 +98,7 @@ stages:
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
       buildJava: true
       buildJavaOption: '--build_java'
-
+- stage: Windows_Packing_gpu
 - template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
@@ -113,7 +113,7 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     java_artifact_id: onnxruntime_gpu
-
+- stage: Windows_Packing_tensorrt
 - template: templates/win-ci.yml
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
