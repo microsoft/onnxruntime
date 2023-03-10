@@ -110,7 +110,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   auto* present_data = present->MutableData<T1>();
   auto* past_data = past->Data<T1>();
 
-  // No production use-case will incure this copy cost as the implementation of
+  // No production use-case will incur this copy cost as the implementation of
   // GreedySearch/BeamSearch is written in such a way that the past and present buffers
   // will be shared.
   // This is just to circumvent the OpTester's limitation of not being able to bind a specific
@@ -147,13 +147,13 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();
   parameters.k = reinterpret_cast<CudaT*>(gemm_buffer.get()) + parameters.hidden_size;
-  parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * parameters.hidden_size;
+  parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * static_cast<int64_t>(parameters.hidden_size);
 
   // Update the q, k, and v bias
   const T1* bias_data = bias->Data<T1>();
   parameters.q_bias = const_cast<T1*>(bias_data);
   parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
-  parameters.v_bias = const_cast<T1*>(bias_data + 2 * parameters.hidden_size);
+  parameters.v_bias = const_cast<T1*>(bias_data + 2 * static_cast<int64_t>(parameters.hidden_size));
 
   // Half of the past/present buffer correspond to K - the other half is V.
   auto k_size = present->Shape().Size() / 2;

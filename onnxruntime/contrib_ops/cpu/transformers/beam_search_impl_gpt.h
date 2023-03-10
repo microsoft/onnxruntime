@@ -352,7 +352,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedMultiheadAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
-      int64_t offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
+      size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose
       // operations.

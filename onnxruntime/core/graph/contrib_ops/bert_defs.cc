@@ -380,7 +380,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "cache_indirection",
-               "TODO",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
+               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
