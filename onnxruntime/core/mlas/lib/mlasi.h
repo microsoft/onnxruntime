@@ -17,14 +17,16 @@ Abstract:
 
 #pragma once
 
-#include <mlas.h>
-#include <memory.h>
 #include <algorithm>
-#include <limits>
 #include <cmath>
-#include <type_traits>
-#include <stdexcept>
 #include <functional>
+#include <iostream>
+#include <limits>
+#include <memory>
+#include <stdexcept>
+#include <type_traits>
+
+#include "mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -97,10 +99,10 @@ Abstract:
 
 MLAS_FORCEINLINE
 void
-MlasPrintFinalMessage(const char* msg)
+MlasPrintFinalMessage(const std::string& msg)
 {
 #if defined(__ANDROID__)
-    __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg);
+    __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
 #else
     // TODO, consider changing the output of the error message from std::cerr to logging when the
     // exceptions are disabled, since using std::cerr might increase binary size, and std::cerr
@@ -111,11 +113,12 @@ MlasPrintFinalMessage(const char* msg)
 #endif
 }
 
-#define MLAS_THROW_EX(ex, what)                       \
-    do {                                              \
-        std::string msg = #ex;                        \
-        msg.append(what;) MlasPrintFinalMessage(msg); \
-        abort();                                      \
+#define MLAS_THROW_EX(ex, what)     \
+    do {                            \
+        std::string msg = #ex;      \
+        msg.append(what);           \
+        MlasPrintFinalMessage(msg); \
+        abort();                    \
     } while (false)
 
 #else
