@@ -20,7 +20,7 @@ jobs:
     BuildConfig: 'RelWithDebInfo'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
     QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
-  timeoutInMinutes: 200
+  timeoutInMinutes: 240
   workspace:
     clean: all
   steps:
