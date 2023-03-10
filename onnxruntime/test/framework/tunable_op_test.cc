@@ -20,8 +20,35 @@ namespace {
 // test on CPU and it does not use stream
 using StreamT = void*;
 
+constexpr static const char* kTestKey = "THE_TEST_KEY";
+constexpr static const char* kValidTestValue = "THE_VALID_TEST_VALUE";
+
+static std::string GetTestValue() {
+  return kValidTestValue;
+}
+
+static Status ValidateTestValue(const std::string& value) {
+  auto current = GetTestValue();
+  ORT_RETURN_IF(current != value, "Only ", kValidTestValue, " is valid for key ", kTestKey);
+  return Status::OK();
+}
+
+class TestTuningResultsValidator : public TuningResultsValidator {
+ public:
+  TestTuningResultsValidator() {
+    RegisterValidator(kTestKey, GetTestValue, ValidateTestValue);
+  };
+
+ protected:
+  std::string GetOrtBuildConfig() const override {
+    return "TEST_BUILD";
+  }
+};
+
 class TestTuningContext : public ITuningContext {
  public:
+  using ITuningContext::ITuningContext;
+
   void EnableTunableOp() override { tuning_enabled_ = true; }
   void DisableTunableOp() override { tuning_enabled_ = false; }
   bool IsTunableOpEnabled() const override { return tuning_enabled_; }
@@ -29,14 +56,19 @@ class TestTuningContext : public ITuningContext {
   TuningResultsManager& GetTuningResultsManager() override { return manager_; }
   const TuningResultsManager& GetTuningResultsManager() const override { return manager_; }
 
+  const TuningResultsValidator& GetTuningResultsValidator() const override { return validator_; }
+
+  void ClearCache() { manager_.Clear(); }
+
  private:
   bool tuning_enabled_{false};
   TuningResultsManager manager_{};
+  TestTuningResultsValidator validator_{};
 };
 
 class TestEP : public IExecutionProvider {
   static constexpr const char* kEPType = "TestEP";
-  TestTuningContext tuning_ctx_{};
+  TestTuningContext tuning_ctx_{this};
 
  public:
   TestEP() : IExecutionProvider{kEPType, true} {}
@@ -45,6 +77,7 @@ class TestEP : public IExecutionProvider {
     return const_cast<TestTuningContext*>(&tuning_ctx_);
   }
 
+  void ClearCache() { tuning_ctx_.ClearCache(); }
 };
 
 class TestTimer : public ITimer<StreamT> {
@@ -337,11 +370,6 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
     this->RegisterOp(FastFull);
   }
 
-  // Re export for testing purpose
-  std::string Signature() {
-    return onnxruntime::test::TunableOp<VecAddParamsRecordLastRun>::Signature();
-  }
-
   constexpr static int kSlowFullId = 0;
   constexpr static int kFastFullId = 1;
 };
@@ -546,6 +574,43 @@ TEST(TunableOp, HandleInplaceUpdate) {
 #endif
 }
 
+TEST(TunableOp, OpSignatureMustNotChange) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::vector<std::string> signatures1;
+  std::vector<std::string> signatures2;
+  signatures1.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures1.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  signatures2.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures2.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_EQ(signatures1, signatures2);
+#endif
+}
+
+TEST(TunableOp, OpSignatureMustNotCollide) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::unordered_set<std::string> signatures;
+  signatures.insert(TunableVecAddSelectFast{}.Signature());
+  signatures.insert(TunableVecAddSelectSupported{}.Signature());
+  signatures.insert(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures.insert(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures.insert(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_THAT(signatures, ::testing::SizeIs(5));
+#endif
+}
+
 }  // namespace tuning
 
 namespace tuning_context {
@@ -584,12 +649,59 @@ TEST(TuningContext, TunableOpRespectTuningContext) {
   {
     ASSERT_EQ(mgr.Lookup(op.Signature()).size(), 0u);
 
-    // TunableOp(...), respect the existing entry
+    // TunableOp(...), respect the existing entry (manually loaded) if id in bound
     mgr.Add(op.Signature(), params.Signature(), tuning::TunableVecAddSelectFast::kSlowFullId);
     auto status = op(&params);
     ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(last_run, "SlowFull");
   }
+
+  last_run.clear();
+  mgr.Clear();
+  {
+    // TunableOp(...), must not respect the existing entry if id not in bound
+    // manually create an out of bound id
+    mgr.Add(op.Signature(), params.Signature(), 1000000);
+    auto status = op(&params);
+    ASSERT_TRUE(status.IsOK()) << "TunableOp should recover from an out of bound id";
+    ASSERT_EQ(last_run, "FastFull");
+    ASSERT_EQ(mgr.Lookup(op.Signature(), params.Signature()), tuning::TunableVecAddSelectFast::kFastFullId);
+  }
+#endif
+}
+
+TEST(TuningContext, GetAndLoadTuningResults) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  constexpr const int a = 7500000;
+  constexpr const int b = 42;
+  int c{};
+  tuning::VecAddParamsRecordLastRun params(&a, &b, &c, 1, 0);
+  std::string last_run;
+  params.last_run = &last_run;
+
+  tuning::TunableVecAddSelectFast op{};
+  auto* ctx = params.TuningContext();
+  ctx->EnableTunableOp();
+
+  auto status = op(&params);
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(last_run, "FastFull");
+
+  auto trs = ctx->GetTuningResults();
+  ASSERT_EQ(trs.ep, "TestEP");
+
+  ASSERT_EQ(trs.validators.size(), TestTuningResultsValidator::mandatory_keys.size() + 1);
+  for (const auto& key : TestTuningResultsValidator::mandatory_keys) {
+    ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(key)));
+  }
+  ASSERT_THAT(trs.validators, ::testing::Contains(::testing::Key(kTestKey)));
+
+  ASSERT_EQ(trs.results.size(), 1u);
+  ASSERT_THAT(trs.results, ::testing::Contains(::testing::Key(op.Signature())));
+  ASSERT_THAT(trs.results[op.Signature()], ::testing::Contains(::testing::Key(params.Signature())));
+  ASSERT_EQ(trs.results[op.Signature()][params.Signature()], tuning::TunableVecAddSelectFast::kFastFullId);
 #endif
 }
 

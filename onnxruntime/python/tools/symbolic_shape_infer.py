@@ -203,6 +203,7 @@ class SymbolicShapeInference:
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "GroupNorm": self._infer_GroupNorm,
             "BiasSplitGelu": self._infer_BiasSplitGelu,
+            "BiasAdd": self._infer_BiasAdd,
             "NhwcConv": self._infer_NhwcConv,
         }
         self.aten_op_dispatcher_ = {
@@ -443,6 +444,7 @@ class SymbolicShapeInference:
             "MultiHeadAttention",
             "GroupNorm",
             "BiasSplitGelu",
+            "BiasAdd",
             "NhwcConv",
         ]
 
@@ -1671,6 +1673,36 @@ class SymbolicShapeInference:
         )
 
     def _infer_Slice(self, node):
+        # SymPy fails to prove that `x_0 + ... + x_n >= 0` if one of `x_i` is a `sympy.Min(a, b)`,
+        # even when the relation holds for both `a` and `b`.
+        #
+        # When given `expr` of form `min(a, b) + ...`, this function returns `[a + ..., b + ...]`,
+        # so that we can prove inequalities for both expressions separately.
+        #
+        # If the number of `min(...)` subexpressions is not exactly one, this function just returns `[expr]`.
+        def flatten_min(expr):
+            assert isinstance(expr, sympy.Add), f"Expected a sum of two arguments, got {expr}"
+            min_positions = [idx for idx in range(len(expr.args)) if isinstance(expr.args[idx], sympy.Min)]
+            if len(min_positions) == 1:
+                min_pos = min_positions[0]
+
+                def replace_min_with_arg(arg_idx):
+                    replaced = list(expr.args)
+                    assert isinstance(
+                        replaced[min_pos], sympy.Min
+                    ), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
+                    assert (
+                        len(replaced[min_pos].args) == 2
+                    ), f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
+                    replaced[min_pos] = replaced[min_pos].args[arg_idx]
+                    return sympy.Add(*replaced)
+
+                return [
+                    replace_min_with_arg(0),
+                    replace_min_with_arg(1),
+                ]
+            return [expr]
+
         def less_equal(x, y):
             try:
                 return bool(x <= y)
@@ -1687,8 +1719,12 @@ class SymbolicShapeInference:
             try:
                 return bool(-y <= -x)
             except TypeError:
-                # the last attempt; this may raise TypeError
+                pass
+            try:
                 return bool(y - x >= 0)
+            except TypeError:
+                # the last attempt; this may raise TypeError
+                return all(bool(d >= 0) for d in flatten_min(y - x))
 
         def handle_negative_index(index, bound):
             """normalizes a negative index to be in [0, bound)"""
@@ -1794,6 +1830,12 @@ class SymbolicShapeInference:
     def _infer_SoftmaxCrossEntropyLoss(self, node):
         vi = self.known_vi_[node.output[0]]
         elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        # If output type is explicit specified in attribute, we use it as output tensor type.
+        specified_output_type = get_attribute(node, "output_type", None)
+        if specified_output_type is not None:
+            elem_type = specified_output_type
+
         vi.type.tensor_type.elem_type = elem_type
         vi.type.tensor_type.shape.CopyFrom(onnx.TensorShapeProto())
 
@@ -2023,28 +2065,43 @@ class SymbolicShapeInference:
         self._propagate_shape_and_type(node)
 
     def _infer_MultiHeadAttention(self, node):
-        # Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        # Without packed KV:
+        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        # Q, K and V without packing:
+        #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
         #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
         #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
-        # With packed KV:
-        #   Input 1 (key) has shape (batch_size, kv_sequence_length, num_heads, 2, head_size)
-        #   Input 2 (value) is nullptr
-        # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
+        # Packed KV:
+        #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+        #   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
+        #   Input 2  nullptr
+        # Packed QKV:
+        #   Input 0 (batch_size, sequence_length, num_heads, 3, head_size)
+        #   Input 1  nullptr
+        #   Input 2  nullptr
+
         query_shape = self._get_shape(node, 0)
-        key_shape = self._get_shape(node, 1)
-        if query_shape is not None and len(query_shape) == 3:
+        if query_shape is not None:
+            if len(query_shape) == 3:
+                key_shape = self._get_shape(node, 1)
+                # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
+                output_shape = query_shape
+                if key_shape and len(key_shape) == 3:
+                    value_shape = self._get_shape(node, 2)
+                    if value_shape and len(value_shape) == 3:
+                        output_shape[2] = value_shape[2]
 
-            # By default, hidden size is same for Q/K/V. Only need check v_hidden_size when value is provided.
-            output_shape = query_shape
-            if key_shape and len(key_shape) == 3:
-                value_shape = self._get_shape(node, 2)
-                if value_shape and len(value_shape) == 3:
-                    output_shape[2] = value_shape[2]
+                output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+            elif len(query_shape) == 5:
+                if isinstance(query_shape[2], int) and isinstance(query_shape[4], int):
+                    output_shape = [query_shape[0], query_shape[1], query_shape[2] * query_shape[4]]
+                else:
+                    output_shape = [query_shape[0], query_shape[1], f"{query_shape[2]}*{query_shape[4]}"]
 
-            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-            vi = self.known_vi_[node.output[0]]
-            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+                output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+                vi = self.known_vi_[node.output[0]]
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):
         self._propagate_shape_and_type(node)
@@ -2103,6 +2160,9 @@ class SymbolicShapeInference:
             vi = self.known_vi_[node.output[0]]
             output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
             vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, output_shape))
+
+    def _infer_BiasAdd(self, node):
+        self._propagate_shape_and_type(node)
 
     def _infer_PythonOp(self, node):
         output_tensor_types = get_attribute(node, "output_tensor_types")

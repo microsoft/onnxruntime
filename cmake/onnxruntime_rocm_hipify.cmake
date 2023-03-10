@@ -93,6 +93,13 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
+  "decoder/decoder_masked_multihead_attention.h"
+  "decoder/decoder_masked_multihead_attention.cc"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention.h"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.cu"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_64.cu"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_128.cu"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)
@@ -124,6 +131,7 @@ set(provider_excluded_files
   "math/softmax_common.cc"
   "math/softmax_common.h"
   "math/softmax.cc"
+  "math/softmax.h"
   "nn/conv.cc"
   "nn/conv.h"
   "nn/conv_transpose.cc"

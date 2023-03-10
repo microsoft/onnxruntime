@@ -15,14 +15,14 @@ void DnnlSqueeze::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
 
   // the input shape assumes OrtFormat so we get the memory in OrtFormat.
   auto data_mem = sp.GetMemoryInOrtFormat(node.Input(IN_DATA), dnnl_engine);
-  dnnl::memory::dims data_dims = data_mem.get_desc().dims();
+  dnnl::memory::dims data_dims = data_mem.get_desc().get_dims();
 
   std::vector<int64_t> axes_data;
   // ONNX Squeeze version 13+ the axes is an input tensor
   // ONNX Squeeze before version 13 axes comes from an Attribute.
   if (node.Input(IN_AXES).Exists()) {
     auto axes_mem = sp.GetMemory(node.Input(IN_AXES));
-    dnnl::memory::dims axes_dims = axes_mem.get_desc().dims();
+    dnnl::memory::dims axes_dims = axes_mem.get_desc().get_dims();
     int64_t* p_axes_data = (int64_t*)axes_mem.get_data_handle();
     axes_data = std::vector<int64_t>(p_axes_data, p_axes_data + axes_dims[0]);
   } else {
