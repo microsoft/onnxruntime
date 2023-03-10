@@ -384,10 +384,9 @@ class SymbolicShapeInference:
         if name in self.known_vi_:
             vi = self.known_vi_[name]
             return get_shape_from_value_info(vi)
-        else:
-            if name in self.initializers_:
-                return list(self.initializers_[name].dims)
-            return None
+        if name in self.initializers_:
+            return list(self.initializers_[name].dims)
+        return None
 
     def _get_shape_rank(self, node, idx):
         return len(self._get_shape(node, idx))
@@ -1508,11 +1507,13 @@ class SymbolicShapeInference:
                 self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
 
     def _infer_RelativePositionBias(self, node):
-        new_shape = []
-        new_shape.append("1")
-        new_shape.append(str(self._get_sympy_shape(node, 0)[1]))
-        new_shape.append(str(self._try_get_value(node, 1)))
-        new_shape.append(str(self._try_get_value(node, 2)))
+        seq_len = self._try_get_value(node, 1)
+        real_seq_len = self._try_get_value(node, 2)
+        if seq_len is None or real_seq_len is None:
+            return
+        num_heads = self._get_sympy_shape(node, 0)[1]
+
+        new_shape = [1, num_heads, str(seq_len), str(real_seq_len)]
 
         output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
         vi = self.known_vi_[node.output[0]]
@@ -2108,6 +2109,7 @@ class SymbolicShapeInference:
 
         query_shape = self._get_shape(node, 0)
         total_sequence_length = None
+        output_dtype = None
         if query_shape is not None:
             if len(query_shape) == 3:
                 key_shape = self._try_get_shape(node, 1)
@@ -2138,25 +2140,30 @@ class SymbolicShapeInference:
             if len(node.output) > 1:
                 batch_size = query_shape[0]
                 num_heads = get_attribute(node, "num_heads")
-                head_size = int(query_shape[2] / num_heads) if len(query_shape) == 3 else query_shape[4]
+
+                head_size = None
+                if len(query_shape) == 3:
+                    head_size = (
+                        int(query_shape[2] / num_heads)
+                        if isinstance(query_shape[2], int)
+                        else f"{query_shape[2]}/{num_heads}"
+                    )
+                else:
+                    head_size = query_shape[4]
 
                 past_shape = self._try_get_shape(node, 5)
+
                 if past_shape is not None:
                     if isinstance(past_shape[2], int) and isinstance(total_sequence_length, int):
                         total_sequence_length = past_shape[2] + total_sequence_length
                     else:
                         total_sequence_length = f"{past_shape[2]}+{total_sequence_length}"
 
-                if (
-                    isinstance(batch_size, int)
-                    and isinstance(num_heads, int)
-                    and isinstance(total_sequence_length, int)
-                    and isinstance(head_size, int)
-                ):
-                    present_shape = [batch_size, num_heads, total_sequence_length, head_size]
-                else:
-                    present_shape = [str(batch_size), str(num_heads), str(total_sequence_length), str(head_size)]
+                # Keep the batch size and total sequence length as string
+                present_shape = [str(batch_size), num_heads, str(total_sequence_length), head_size]
+                print(present_shape)
 
+                assert output_dtype is not None
                 vi = self.known_vi_[node.output[1]]
                 vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
                 vi = self.known_vi_[node.output[2]]

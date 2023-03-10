@@ -893,6 +893,7 @@ class OnnxModel:
 
         sorted_node_set_len = -1
         graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+        last_node_name = None
         while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
                 break
@@ -908,9 +909,10 @@ class OnnxModel:
                         deps_set.add(output)
                     continue
                 failed = False
-                for input in node.input:
-                    if input != "" and input not in deps_set:
+                for input_name in node.input:
+                    if input_name != "" and input_name not in deps_set:
                         failed = True
+                        last_node_name = node.name
                 if not failed:
                     sorted_nodes.append(node)
                     sorted_node_set.add(node_idx)
@@ -921,7 +923,7 @@ class OnnxModel:
 
         if len(sorted_node_set) != len(graph.node):
             raise RuntimeError(
-                f"Graph is not a DAG: len(sorted_node_set)={len(sorted_node_set)}, len(graph.node)={len(graph.node)}"
+                f"Graph is not a DAG: len(sorted_node_set)={len(sorted_node_set)}, len(graph.node)={len(graph.node)}, failed at node {last_node_name}"
             )
 
         graph.ClearField("node")
