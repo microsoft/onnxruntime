@@ -222,14 +222,14 @@ enum Os {
     Windows,
     Linux,
     MacOs,
+    IOs,
 }
 
 impl Os {
     fn archive_extension(&self) -> &'static str {
         match self {
             Os::Windows => "zip",
-            Os::Linux => "tgz",
-            Os::MacOs => "tgz",
+            Os::Linux | Os::MacOs | Os::IOs => "tgz",
         }
     }
 }
@@ -242,7 +242,29 @@ impl FromStr for Os {
             "windows" => Ok(Os::Windows),
             "macos" => Ok(Os::MacOs),
             "linux" => Ok(Os::Linux),
-            _ => Err(format!("Unsupported os: {}", s)),
+            "ios" => Ok(Os::IOs),
+            _ => Err(format!("Unsupported OS: {}", s)),
+        }
+    }
+}
+
+// Check is simulator
+#[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
+enum Simulator {
+    Yes,
+    No,
+}
+
+impl FromStr for Simulator {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "aarch64-apple-ios-sim" => Ok(Simulator::Yes),
+            "x86_64-apple-ios" => Ok(Simulator::Yes),
+            "aarch64-apple-ios" | "aarch64-apple-ios-macabi" | "x86_64-apple-ios-macabi" | "x86_64-apple-darwin" | "aarch64-apple-darwin" => Ok(Simulator::No),
+            _ => Err(format!("Unsupported OS: {}", s)),
         }
     }
 }
@@ -253,6 +275,24 @@ impl OnnxPrebuiltArchive for Os {
             Os::Windows => Cow::from("win"),
             Os::Linux => Cow::from("linux"),
             Os::MacOs => Cow::from("osx"),
+            Os::IOs => Cow::from("ios"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ABI {
+    Macabi,
+    None,
+}
+
+impl FromStr for ABI {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "macabi" => Ok(ABI::Macabi),
+            _ => Ok(ABI::None),
         }
     }
 }
@@ -417,10 +457,152 @@ fn prepare_libort_dir() -> PathBuf {
     }
 }
 
+// Prepare cmake config
+fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
+    print!("{:?}", env::var("CARGO_CFG_TARGET_ABI"));
+    for (key, value) in env::vars() {
+        println!("{key}: {value}");
+    }
+    let target_os: Os = env::var("CARGO_CFG_TARGET_OS")
+                    .expect("Unable to get TARGET_OS")
+                    .parse()
+                    .unwrap();
+
+    /*
+    let target_abi: ABI = env::var("CARGO_CFG_TARGET_ABI")
+                    .expect("Unable to get TARGET_ABI")
+                    .parse()
+                    .unwrap();
+    */
+    let target_abi: ABI = match env::var("CARGO_CFG_TARGET_ABI") {
+        Ok(val) => val.parse().unwrap(),
+        Err(_e) => ABI::None,
+    };
+    let target_simulator: Simulator = env::var("TARGET")
+                                    .expect("Unable to get TARGET")
+                                    .parse()
+                                    .unwrap();
+
+    let triplet = Triplet {
+        os: env::var("CARGO_CFG_TARGET_OS")
+            .expect("Unable to get TARGET_OS")
+            .parse()
+            .unwrap(),
+        arch: env::var("CARGO_CFG_TARGET_ARCH")
+            .expect("Unable to get TARGET_ARCH")
+            .parse()
+            .unwrap(),
+        accelerator: env::var(ORT_RUST_ENV_GPU)
+            .unwrap_or_default()
+            .parse()
+            .unwrap(),
+    };
+    print!("Paco: prebuilt triplet: {:?}, {:?}, {:?}. Please use {}=system and {}=/path/to/onnxruntime",
+    triplet.os, triplet.arch, triplet.accelerator, ORT_RUST_ENV_STRATEGY, ORT_RUST_ENV_SYSTEM_LIB_LOCATION);
+    //aarch64-apple-ios-sim
+    match (target_os, target_abi, target_simulator) {
+        (Os::Windows, ABI::Macabi | ABI::None, _) => {
+
+        },
+        (Os::MacOs, ABI::Macabi | ABI::None, _) => {
+
+        },
+        (Os::Linux, ABI::Macabi | ABI::None, _) => {
+
+        },
+        (Os::IOs, ABI::None, Simulator::Yes) => {
+            println!("Running IOS + No ABI");
+            config.define("CMAKE_SYSTEM_NAME", "ios");
+            config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
+            //config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            //config.define("CMAKE_OSX_ARCHITECTURES", "x86_64;arm64");
+            config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+            config.define("CMAKE_VERBOSE_MAKEFILE", "ON");
+            config.define("CMAKE_EXPORT_COMPILE_COMMANDS", "ON");
+            //config.env("IPHONEOS_DEPLOYMENT_TARGET", "13.0");
+            env::set_var("IPHONEOS_DEPLOYMENT_TARGET", "13.0");
+
+            config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.0");
+            //config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk");
+            config.define("CMAKE_OSX_SYSROOT", "iphonesimulator");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "ON");
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src --target=arm64-apple-ios14.0-simulator -D__thread= -mios-simulator-version-min=13.0");
+            //config.define("__thread", ""); //wrong
+            //add_definitions(-Dfoo=5)
+
+            // Use local protobuf as the protoc compiled via cmake crashes immeidately.
+            config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS", "OFF");
+            config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
+        },
+        (Os::IOs, ABI::None, Simulator::No) => {
+            println!("Running IOS + No ABI");
+            config.define("CMAKE_SYSTEM_NAME", "iOS");
+            config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
+            //config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+
+            config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "11.0");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "ON");
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+
+            // Use local protobuf as the protoc compiled via cmake crashes immeidately.
+            config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS", "OFF");
+            config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
+        },
+        (Os::IOs, ABI::Macabi, _) => {
+            // rustup default nightly-2022-08-03 && cargo build --target aarch64-apple-ios-macabi --verbose
+            println!("Running IOS + MacABI");
+            config.define("CMAKE_SYSTEM_NAME", "Darwin"); //for Catalyst
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "OFF");
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+        },
+    }
+    //std::process::exit(-1);
+    config
+}
+
+
+//
 fn prepare_libort_dir_compiled() -> PathBuf {
     let mut config = cmake::Config::new("../../cmake");
+    //config.showCXXFlag();
+    //std::process::exit(-1);
+    //println!("Rust Paco: {}", config.get_profile());
+    /*
     //config.define("CMAKE_SYSTEM_NAME", "iOS"); //for iOS only
-    config.define("CMAKE_SYSTEM_NAME", "Darwin");
+    config.define("CMAKE_SYSTEM_NAME", "Darwin"); //for Catalyst
     config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
     //config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
     //config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
@@ -444,11 +626,16 @@ fn prepare_libort_dir_compiled() -> PathBuf {
     config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
     config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
 
+    //config.define("onnxruntime_BUILD_SHARED_LIB", "OFF"); //for Catalyst??
+
     //config.define("onnxruntime_ENABLE_BITCODE", "ON"); //for iOS
     config.define("onnxruntime_ENABLE_BITCODE", "OFF"); //for Catalyst
-    
+
     // config.define("INCLUDE_DIRECTORIES", "/opt/homebrew/opt/flatbuffers/include");
     config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+    */
+    config = prepare_cmake_config(config);
+
     if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
         config.define("onnxruntime_USE_CUDA", "ON");
     }

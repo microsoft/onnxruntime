@@ -21,6 +21,7 @@ libloading = "0.7"
 
 [build-dependencies]
 bindgen = "0.63"
+#cmake = { path = "/Users/goodnotesci/goodnotes/gn_onnx/onnxruntime/rust/temp/cmake-rs/", version = "0.1" }
 cmake = "0.1"
 
 # Used on unix
