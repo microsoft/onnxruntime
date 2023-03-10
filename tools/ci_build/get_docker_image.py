@@ -107,6 +107,8 @@ def main():
             full_image_name,
             "--cache-from",
             full_image_name,
+            "--build-arg",
+            "BUILDKIT_INLINE_CACHE=1",
             *shlex.split(args.docker_build_args),
             "-f",
             args.dockerfile,
