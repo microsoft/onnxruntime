@@ -77,15 +77,15 @@ Status Clip_6<T>::Compute(OpKernelContext* ctx) const {
   // results on input tensors of 10^i elements for i in [1 .. 6].
   static constexpr int64_t length_per_task = 16384;
   
-  int64_t elem_count = Y->Shape().Size();
-  int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+  const int64_t elem_count = Y->Shape().Size();
+  const int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
   concurrency::ThreadPool::TryBatchParallelFor(
       ctx->GetOperatorThreadPool(), 
       static_cast<int32_t>(task_count),
       [&](ptrdiff_t task_idx) {
-          const auto start = task_idx * length_per_task;
-          int64_t count = std::min(length_per_task, elem_count - start);
+          const int64_t start = task_idx * length_per_task;
+          const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
 
           EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
               ConstEigenVectorMap<T>(X->Data<T>() + start, count)
@@ -118,14 +118,14 @@ struct Clip::ComputeImpl {
     // results on input tensors of 10^i elements for i in [1 .. 6].
     static constexpr int64_t length_per_task = 16384;
   
-    int64_t elem_count = Y->Shape().Size();
-    int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
+    const int64_t elem_count = Y->Shape().Size();
+    const int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
 
     concurrency::ThreadPool::TryBatchParallelFor(
         tp, static_cast<int32_t>(task_count),
         [&](ptrdiff_t task_idx) {
-            const auto start = task_idx * length_per_task;
-            int64_t count = std::min(length_per_task, elem_count - start);
+            const int64_t start = task_idx * length_per_task;
+            const size_t count = narrow<size_t>(std::min(length_per_task, elem_count - start));
 
             EigenVectorMap<T>(Y->MutableData<T>() + start, count) =
                 ConstEigenVectorMap<T>(X->Data<T>() + start, count)
