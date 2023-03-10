@@ -97,25 +97,27 @@ FetchContent_Declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
-    FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
+    #FIND_PACKAGE_ARGS 1.12.0...<2.0.0 NAMES Flatbuffers
 )
 
 #Here we support two build mode:
 #1. if ONNX_CUSTOM_PROTOC_EXECUTABLE is set, build Protobuf from source, except protoc.exe. This mode is mainly
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
+#Disable when building for catalyst
 #if(Patch_FOUND)
 #  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
 #else()
-# set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
+#  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 #endif()
+
 FetchContent_Declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
-  SOURCE_SUBDIR  cmake
-  PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
-  FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
+  #SOURCE_SUBDIR  cmake
+  #PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  #FIND_PACKAGE_ARGS 3.21.12 NAMES Protobuf
 )
 set(protobuf_BUILD_TESTS OFF CACHE BOOL "Build protobuf tests" FORCE)
 if (CMAKE_SYSTEM_NAME STREQUAL "Android")
