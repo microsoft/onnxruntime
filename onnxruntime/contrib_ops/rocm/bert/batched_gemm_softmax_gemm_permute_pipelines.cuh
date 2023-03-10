@@ -331,6 +331,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   template <int VecSize, typename Converter>
   __global__ static void ConvertToFilledMaskValue(
       T* __restrict__ out,
+      const int3 out_strides,
       const int* __restrict__ mask_buffer,
       const int3 mask_lengths,  // [B,S,T]
       const int3 mask_strides,
@@ -345,23 +346,24 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     const int sidx = bs_idx % mask_lengths.y;
     const int bidx = bs_idx / mask_lengths.y;
 
-    int64_t offset = mask_strides.x * bidx + mask_strides.y * sidx + mask_strides.z * tidx;
+    int64_t in_offset = mask_strides.x * bidx + mask_strides.y * sidx + mask_strides.z * tidx;
+    int64_t out_offset = out_strides.x * bidx + out_strides.y * sidx + out_strides.z * tidx;
 
     if (tidx + VecSize <= mask_lengths.z) {
       using LoadT = const aligned_vector<int, VecSize>;
       using StoreT = aligned_vector<T, VecSize>;
-      LoadT load = *reinterpret_cast<LoadT*>(mask_buffer + offset);
+      LoadT load = *reinterpret_cast<LoadT*>(mask_buffer + in_offset);
       StoreT store;
 
 #pragma unroll
       for (int i = 0; i < VecSize; i++) {
         store.val[i] = cvt(load.val[i]);
       }
-      *reinterpret_cast<StoreT*>(out + offset) = store;
+      *reinterpret_cast<StoreT*>(out + out_offset) = store;
     } else {
 #pragma unroll
       for (int i = tidx; i < mask_lengths.z; i++) {
-        out[offset + i] = cvt(mask_buffer[offset + i]);
+        out[out_offset + i] = cvt(mask_buffer[in_offset + i]);
       }
     }
   }
@@ -381,8 +383,8 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     };
 
     ConvertToFilledMaskValue<kVecSize><<<num_blocks, kThreadPerBlock, 0, params->Stream()>>>(
-        reinterpret_cast<T*>(params->workspace_buffer),
-        buffer, lengths, strides,  // mask desc
+        reinterpret_cast<T*>(params->workspace_buffer), {lengths.y * lengths.z, lengths.z, 1},  // out desc
+        buffer, lengths, strides,                                                               // mask desc
         cvt);
 
     return HIP_CALL(hipGetLastError());
@@ -462,9 +464,8 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
           bias_strides[kNumBiasBuffer - 1] = {N, 0, 0, 1};
         } else if (params->mask_index_dims.size() == 3) {  // [B,S,T]
           bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
-        } else if (params->mask_index_dims.size() == 4) {  // [B,1,max_seq_len,max_seq_len]
-          ck::index_t max_seq_len = params->attention->max_sequence_length;
-          bias_strides[kNumBiasBuffer - 1] = {max_seq_len * max_seq_len, 0, max_seq_len, 1};
+        } else if (params->mask_index_dims.size() == 4) {  // [B,1,max_seq_len,max_seq_len] -->convert--> [B,S,T]
+          bias_strides[kNumBiasBuffer - 1] = {M * N, 0, N, 1};
         } else {
           ORT_ENFORCE(false, "Unreachable");
         }
