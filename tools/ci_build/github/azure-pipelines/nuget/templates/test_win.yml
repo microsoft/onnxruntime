@@ -3,6 +3,7 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   Skipx86Tests: 'false'
+
 stages:
 - stage: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
   jobs:
