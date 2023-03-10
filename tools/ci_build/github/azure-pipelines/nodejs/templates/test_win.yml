@@ -3,15 +3,15 @@ parameters:
   JobSuffix: ''
 stages:
 - stage: Nodejs_Test_${{ parameters.JobSuffix }}
+  dependsOn:
+  - Nodejs_Packaging_CPU
+  condition: succeeded()
   jobs:
   - job:
     workspace:
       clean: all
     timeoutInMinutes:  120
     pool: ${{ parameters.AgentPool }}
-    dependsOn:
-    - Nodejs_Packaging_CPU
-    condition: succeeded()
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'

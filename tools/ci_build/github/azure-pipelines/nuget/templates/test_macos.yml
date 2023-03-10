@@ -4,7 +4,7 @@ parameters:
 stages:
 - stage: NuGet_Test_MacOS
   jobs:
-  - job: NuGet_Test_MacOS
+  - job:
     workspace:
       clean: all
     pool:
