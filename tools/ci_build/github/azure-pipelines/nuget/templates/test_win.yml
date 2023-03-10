@@ -6,14 +6,15 @@ parameters:
 
 stages:
 - stage: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
+  dependsOn:
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  condition: succeeded()
   jobs:
   - job:
     workspace:
       clean: all
     pool: ${{ parameters.AgentPool }}
-    dependsOn:
-    - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
-    condition: succeeded()
+
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'

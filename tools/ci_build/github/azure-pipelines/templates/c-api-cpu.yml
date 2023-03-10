@@ -191,21 +191,23 @@ stages:
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: true
     buildNodejs: true
+
 - stage: Jar_Packaging
+  dependsOn:
+  - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
+  - MacOS_C_API_Packaging_CPU_x64
+  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  condition: succeeded()
   jobs:
   - job:
     workspace:
       clean: all
     pool: 'Win-CPU-2021'
-    dependsOn:
-    - Linux_C_API_Packaging_CPU_x64
-    - Linux_C_API_Packaging_CPU_aarch64
-    - MacOS_C_API_Packaging_CPU_x64
-    - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
-    condition: succeeded()
+
     steps:
     - checkout: self
       submodules: false
@@ -274,6 +276,17 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 - stage: NuGet_Packaging_CPU
+  dependsOn:
+  - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
+  - MacOS_C_API_Packaging_CPU_x64
+  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  - Android_Java_API_AAR_Packaging_Full
+  - iOS_Full_xcframework
+  condition: succeeded()
   jobs:
   - job:
     workspace:
@@ -284,17 +297,7 @@ stages:
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
-    dependsOn:
-    - Linux_C_API_Packaging_CPU_x64
-    - Linux_C_API_Packaging_CPU_aarch64
-    - MacOS_C_API_Packaging_CPU_x64
-    - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
-    - Android_Java_API_AAR_Packaging_Full
-    - iOS_Full_xcframework
-    condition: succeeded()
+
     steps:
     - checkout: self
       submodules: true
@@ -511,6 +514,13 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 - stage: Nodejs_Packaging_CPU
+  dependsOn:
+  - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU_aarch64
+  - MacOS_C_API_Packaging_CPU_x64
+  - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
+  - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
+  condition: succeeded()
   jobs:
   - job:
     workspace:
@@ -522,13 +532,7 @@ stages:
       ${{ if not(eq(parameters.IsReleaseBuild, true)) }}:
         NpmPackagingMode: 'dev'
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
-    dependsOn:
-    - Linux_C_API_Packaging_CPU_x64
-    - Linux_C_API_Packaging_CPU_aarch64
-    - MacOS_C_API_Packaging_CPU_x64
-    - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
-    - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
-    condition: succeeded()
+
     steps:
     - checkout: self
       submodules: true
@@ -790,6 +794,8 @@ stages:
   parameters:
     JobSuffix : 'macOS_CPU_x64'
 - stage: Final_Jar_Testing_Windows
+  dependsOn:
+    Jar_Packaging
   jobs:
   - job:
     workspace:
@@ -799,8 +805,7 @@ stages:
     variables:
     - name: runCodesignValidationInjection
       value: false
-    dependsOn:
-      Jar_Packaging
+
     steps:
     - template: set-version-number-variables-step.yml
 
@@ -830,6 +835,8 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 - stage: Final_Jar_Testing_Linux
+  dependsOn:
+    Jar_Packaging
   jobs:
   - job:
     workspace:
@@ -839,8 +846,7 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     timeoutInMinutes: 60
-    dependsOn:
-      Jar_Packaging
+
     steps:
     - template: set-version-number-variables-step.yml
     - task: DownloadPipelineArtifact@2
@@ -872,6 +878,8 @@ stages:
       displayName: 'Clean Agent Directories'
       condition: always()
 - stage: Final_Jar_Testing_MacOs
+  dependsOn:
+    Jar_Packaging
   jobs:
   - job:
     workspace:
@@ -882,8 +890,6 @@ stages:
     - name: runCodesignValidationInjection
       value: false
     timeoutInMinutes: 60
-    dependsOn:
-      Jar_Packaging
     steps:
     - template: set-version-number-variables-step.yml
 
