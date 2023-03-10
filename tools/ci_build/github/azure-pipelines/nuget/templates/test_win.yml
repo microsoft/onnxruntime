@@ -4,8 +4,8 @@ parameters:
   ArtifactSuffix: ''
   Skipx86Tests: 'false'
 
-jobs:
-- job: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
+stages:
+- stage: NuGet_Test_Win_${{ parameters.ArtifactSuffix }}
   workspace:
     clean: all
   pool: ${{ parameters.AgentPool }}

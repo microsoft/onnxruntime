@@ -38,7 +38,7 @@ parameters:
   type: string
   default: 'default'
 
-jobs:
+stages:
 - template: c-api-linux-cpu.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}

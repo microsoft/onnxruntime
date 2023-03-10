@@ -3,8 +3,8 @@ parameters:
   ArtifactSuffix: ''
   NugetPackageName : ''
 
-jobs:
-- job: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
+stages:
+- stage: NuGet_Test_Linux_${{ parameters.ArtifactSuffix }}
   workspace:
     clean: all
   timeoutInMinutes:  120

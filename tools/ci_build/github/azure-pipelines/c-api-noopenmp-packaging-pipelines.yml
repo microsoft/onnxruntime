@@ -36,8 +36,9 @@ resources:
     name: pypa/manylinux
     ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
-jobs:
+stages:
 - template: templates/c-api-cpu.yml
+  dependsOn: []
   parameters:
     RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -48,7 +49,8 @@ jobs:
     AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
     BuildVariant: 'default'
 
-- job: Linux_C_API_Packaging_GPU_x64
+- stage: Linux_C_API_Packaging_GPU_x64
+  dependsOn: []
   workspace:
     clean: all
   timeoutInMinutes:  120
@@ -90,13 +92,14 @@ jobs:
     - template: templates/clean-agent-build-directory-step.yml
 
 - template: templates/linux-gpu-tensorrt-packaging-pipeline.yml
+  dependsOn: []
   parameters:
       artifactName: 'onnxruntime-linux-x64-tensorrt-$(OnnxRuntimeVersion)'
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
       buildJava: true
       buildJavaOption: '--build_java'
-
 - template: templates/win-ci.yml
+  dependsOn: []
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -112,6 +115,7 @@ jobs:
     java_artifact_id: onnxruntime_gpu
 
 - template: templates/win-ci.yml
+  dependsOn: []
   parameters:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
@@ -127,7 +131,7 @@ jobs:
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
 
-- job: Jar_Packaging_GPU
+- stage: Jar_Packaging_GPU
   workspace:
     clean: all
   pool: 'Win-CPU-2021'
@@ -192,7 +196,7 @@ jobs:
     condition: always()
 
 
-- job: Final_Jar_Testing_Windows_GPU
+- stage: Final_Jar_Testing_Windows_GPU
   workspace:
     clean: all
   pool: 'onnxruntime-gpu-winbuild-t4'
@@ -238,7 +242,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: Final_Jar_Testing_Linux_GPU
+- stage: Final_Jar_Testing_Linux_GPU
   workspace:
     clean: all
   pool: 'Onnxruntime-Linux-GPU'
@@ -273,7 +277,7 @@ jobs:
     displayName: 'Clean Agent Directories'
     condition: always()
 
-- job: Linux_Packaging_combined_GPU
+- stage: Linux_Packaging_combined_GPU
   workspace:
     clean: all
   pool: 'Onnxruntime-Linux-GPU'
@@ -366,7 +370,7 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
       artifactName: 'onnxruntime-linux-x64-gpu'
 
-- job: Windows_Packaging_combined_GPU
+- stage: Windows_Packaging_combined_GPU
   workspace:
     clean: all
   pool: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
@@ -448,7 +452,7 @@ jobs:
       artifactName: 'onnxruntime-win-x64-gpu'
       targetPath: '$(Build.ArtifactStagingDirectory)'
 
-- job: NuGet_Packaging_GPU
+- stage: NuGet_Packaging_GPU
   workspace:
     clean: all
   # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
@@ -761,7 +765,7 @@ jobs:
      mkdir $(Build.ArtifactStagingDirectory)\testdata
      copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\custom_op_library.* $(Build.ArtifactStagingDirectory)\testdata
 
-- job: NuGet_Packaging_DML
+- stage: NuGet_Packaging_DML
   workspace:
     clean: all
   pool: 'onnxruntime-gpu-winbuild-t4'

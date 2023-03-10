@@ -4,8 +4,8 @@ parameters:
   type: boolean
   default: true
 
-jobs:
-- job: Publish_NuGet_Package_And_Report
+stages:
+- stage: Publish_NuGet_Package_And_Report
   workspace:
     clean: all
   variables:

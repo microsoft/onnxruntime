@@ -22,8 +22,8 @@ parameters:
   # Controls whether unreleased onnx opsets are allowed. Default is set to 1
   AllowReleasedOpsetOnly: '0'
   IsReleaseBuild: false
-jobs:
-- job: ${{ parameters.JobName }}
+stages:
+- stage: ${{ parameters.JobName }}
   timeoutInMinutes: 200
   strategy:
     maxParallel: 2
