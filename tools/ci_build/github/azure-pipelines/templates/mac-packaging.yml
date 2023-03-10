@@ -1,30 +1,49 @@
 parameters:
+- name: MacosArch
+  type: string
+  values:
+  - 'x86_64'
+  - 'arm64'
+  - 'universal2'
+  default: 'x86_64'
+
 - name: AdditionalBuildFlags
   displayName: Additional build flags for build.py
   type: string
   default: ''
 
-- name: MacosArch  
-  type: string
-  default: 'x86_64'
-
+variables:
+- name: AdditionalBuildFlags
+  ${{ if eq(parameters.MacosArch, universal2) }}:
+    value: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+  ${{ if ne(parameters.MacosArch, arm64) }}:
+    value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+  ${{ if ne(parameters.MacosArch, x86_64) }}:
+    value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
 - name: BuildJava
-  type: boolean
-  default: true
-
+  ${{ if eq(parameters.MacosArch, universal2) }}:
+    value: false
+  ${{ if ne(parameters.MacosArch, arm64) }}:
+    value: true
+  ${{ if ne(parameters.MacosArch, x86_64) }}:
+    value: true
 - name: BuildNodejs
-  type: boolean
-  default: false
+  ${{ if eq(parameters.MacosArch, universal2) }}:
+    value: false
+  ${{ if ne(parameters.MacosArch, arm64) }}:
+    value: true
+  ${{ if ne(parameters.MacosArch, x86_64) }}:
+    value: true
 
 steps:     
     - script: |
         rm -rf $(Build.BinariesDirectory)/Release
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
       displayName: 'Build ${{ parameters.MacosArch }}'
 
     - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
       - script: |
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
         displayName: 'Running Tests'
 
     - task: ShellScript@2
@@ -50,7 +69,7 @@ steps:
       displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
       condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-    - ${{ if eq(parameters.BuildJava, true) }}:
+    - ${{ if eq(variables.BuildJava, true) }}:
         - template: java-api-artifacts-package-and-publish-steps-posix.yml
           parameters:
               arch: 'osx-${{ parameters.MacosArch }}'
@@ -60,7 +79,7 @@ steps:
               libraryName: 'libonnxruntime.dylib'
               nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
-    - ${{ if eq(parameters.BuildNodejs, true) }}:
+    - ${{ if eq(variables.BuildNodejs, true) }}:
         - template: nodejs-artifacts-package-and-publish-steps-posix.yml
           parameters:
               ${{ if eq(parameters.MacosArch, 'x86_64') }}:

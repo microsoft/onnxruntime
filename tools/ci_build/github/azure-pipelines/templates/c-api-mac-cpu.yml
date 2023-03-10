@@ -99,18 +99,7 @@ jobs:
   - template: mac-packaging.yml
     parameters:
       MacosArch: ${{ parameters.MacosArch }}
-  - ${{ if eq(parameters.MacosArch, universal2) }}:
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}  --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-      BuildJava: false
-      BuildNodejs: false
-  - ${{ if eq(parameters.MacosArch, 'arm64') }}:
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-      BuildJava: true
-      BuildNodejs: true
-  - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_java --build_nodejs  --use_coreml
-      BuildJava: true
-      BuildNodejs: true
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
   - script: |
       ccache -s
