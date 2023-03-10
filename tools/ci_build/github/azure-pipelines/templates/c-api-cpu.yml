@@ -40,25 +40,28 @@ parameters:
 
 stages:
 - stage: Linux_C_API_Packaging_CPU_x64
-  template: c-api-linux-cpu.yml
-  parameters:
-    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-    BaseImage: 'centos:7'
-    OnnxruntimeArch: ''
-    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-    OnnxruntimeNodejsBindingArch: 'x64'
-    PoolName: 'Linux-CPU'
+  jobs:
+  - template: c-api-linux-cpu.yml
+    parameters:
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      BaseImage: 'centos:7'
+      OnnxruntimeArch: ''
+      OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+      OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
+      OnnxruntimeNodejsBindingArch: 'x64'
+      PoolName: 'Linux-CPU'
+
 - stage: Linux_C_API_Packaging_CPU_aarch64
-  template: c-api-linux-cpu.yml
-  parameters:
-    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-    BaseImage: 'arm64v8/centos:7'
-    OnnxruntimeArch: 'aarch64'
-    OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-    OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-    OnnxruntimeNodejsBindingArch: 'arm64'
-    PoolName: 'aiinfra-linux-ARM64-CPU-2019'
+  jobs:
+  - template: c-api-linux-cpu.yml
+    parameters:
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      BaseImage: 'arm64v8/centos:7'
+      OnnxruntimeArch: 'aarch64'
+      OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+      OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
+      OnnxruntimeNodejsBindingArch: 'arm64'
+      PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
 - template: mac-ci.yml
   parameters:
