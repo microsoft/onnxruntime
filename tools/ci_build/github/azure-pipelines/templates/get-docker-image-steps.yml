@@ -74,10 +74,10 @@ steps:
   - task: Cache@2
     displayName: Cache Docker Image Task
     inputs:
-      key: ' "$(Build.SourceBranch)" | "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}'
+      key: ' "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }} '
       path: ${{ parameters.IMAGE_CACHE_DIR }}
       restoreKeys: |
-        "$(Build.SourceBranch)" | "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}
+        "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}
       cacheHitVar: CACHE_RESTORED
     condition: eq('${{ parameters.UsePipelineCache }}', 'true')
 
