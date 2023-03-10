@@ -1404,13 +1404,12 @@ def generate_gpt2_init_decoder(
     OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
     return True
 
-# bugbug
-def make_dim_proto_numeric(model, config):
+def make_dim_proto_numeric_t5(model, config):
     """Make dim_proto numeric.
 
     Args:
-        model (BartForConditionalGeneration): Bart model.
-        config: Bart config.
+        model: T5 encoder and decoder model.
+        config: T5 config.
     """
     sequence_length = str(1)
     num_heads = str(config.num_heads)
@@ -1721,8 +1720,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # )
             # initializers.extend(moved_initializers)
 
-        make_dim_proto_numeric(encoder_model, config)
-        make_dim_proto_numeric(decoder_model, config)
+        make_dim_proto_numeric_t5(encoder_model, config)
+        make_dim_proto_numeric_t5(decoder_model, config)
 
         node.attribute.extend(
             [

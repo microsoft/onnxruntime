@@ -231,9 +231,7 @@ class T5Helper:
 
         from fusion_options import FusionOptions
 
-        optimization_options = None
-        if not use_gpu:
-            # Currently there is no SkipSimplifiedLayerNorm cpu kernel
+        if is_float16:
             optimization_options = FusionOptions("t5")
             optimization_options.enable_skip_layer_norm = False
 
@@ -245,7 +243,9 @@ class T5Helper:
             opt_level=2 if not use_external_data_format else 0,
             optimization_options=optimization_options,
             use_gpu=False,
+            only_onnxruntime=not use_gpu,
         )
+
         if is_float16:
             if auto_mixed_precision:
                 T5Helper.auto_mixed_precision(m)

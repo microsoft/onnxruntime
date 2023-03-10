@@ -2095,8 +2095,8 @@ class SymbolicShapeInference:
         # Output 0 has shape (batch_size, sequence_length, v_hidden_size)
         # Q, K and V without packing:
         #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
-        #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
-        #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
+        #   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size) or (batch_size, num_heads, kv_sequence_length, head_size)
+        #   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size) or (batch_size, num_heads, kv_sequence_length, head_size)
         # Packed KV:
         #   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
         #   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
@@ -2107,6 +2107,7 @@ class SymbolicShapeInference:
         #   Input 2  nullptr
 
         query_shape = self._get_shape(node, 0)
+        total_sequence_length = None
         if query_shape is not None:
             if len(query_shape) == 3:
                 key_shape = self._try_get_shape(node, 1)
@@ -2116,22 +2117,46 @@ class SymbolicShapeInference:
                     value_shape = self._try_get_shape(node, 2)
                     if value_shape is not None and len(value_shape) == 3:
                         output_shape[2] = value_shape[2]
+                    total_sequence_length = key_shape[1]
 
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
                 vi = self.known_vi_[node.output[0]]
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
             elif len(query_shape) == 5:
                 if isinstance(query_shape[2], int) and isinstance(query_shape[4], int):
                     output_shape = [query_shape[0], query_shape[1], query_shape[2] * query_shape[4]]
                 else:
                     output_shape = [query_shape[0], query_shape[1], f"{query_shape[2]}*{query_shape[4]}"]
 
+                total_sequence_length = query_shape[1]
+
                 output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
                 vi = self.known_vi_[node.output[0]]
                 vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
-            # bugbug
+
             if len(node.output) > 1:
-                present_shape = ["batch_size", "8", "total_sequence_length", "64"]
+                batch_size = query_shape[0]
+                num_heads = get_attribute(node, "num_heads")
+                head_size = int(query_shape[2] / num_heads) if len(query_shape) == 3 else query_shape[4]
+
+                past_shape = self._try_get_shape(node, 5)
+                if past_shape is not None:
+                    if isinstance(past_shape[2], int) and isinstance(total_sequence_length, int):
+                        total_sequence_length = past_shape[2] + total_sequence_length
+                    else:
+                        total_sequence_length = f"{past_shape[2]}+{total_sequence_length}"
+
+                if (
+                    isinstance(batch_size, int)
+                    and isinstance(num_heads, int)
+                    and isinstance(total_sequence_length, int)
+                    and isinstance(head_size, int)
+                ):
+                    present_shape = [batch_size, num_heads, total_sequence_length, head_size]
+                else:
+                    present_shape = [str(batch_size), str(num_heads), str(total_sequence_length), str(head_size)]
+
                 vi = self.known_vi_[node.output[1]]
                 vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, present_shape))
                 vi = self.known_vi_[node.output[2]]
