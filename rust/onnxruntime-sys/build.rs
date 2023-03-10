@@ -468,12 +468,6 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
                     .parse()
                     .unwrap();
 
-    /*
-    let target_abi: ABI = env::var("CARGO_CFG_TARGET_ABI")
-                    .expect("Unable to get TARGET_ABI")
-                    .parse()
-                    .unwrap();
-    */
     let target_abi: ABI = match env::var("CARGO_CFG_TARGET_ABI") {
         Ok(val) => val.parse().unwrap(),
         Err(_e) => ABI::None,
@@ -482,6 +476,11 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
                                     .expect("Unable to get TARGET")
                                     .parse()
                                     .unwrap();
+
+    let target_arch: Architecture = env::var("CARGO_CFG_TARGET_ARCH")
+                                        .expect("Unable to get TARGET_ARCH")
+                                        .parse()
+                                        .unwrap();
 
     let triplet = Triplet {
         os: env::var("CARGO_CFG_TARGET_OS")
@@ -505,6 +504,30 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
 
         },
         (Os::MacOs, ABI::Macabi | ABI::None, _) => {
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("CMAKE_SYSTEM_NAME", "Darwin");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "OFF");
+
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
 
         },
         (Os::Linux, ABI::Macabi | ABI::None, _) => {
@@ -516,8 +539,15 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
             config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
             //config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
             config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
-            //config.define("CMAKE_OSX_ARCHITECTURES", "x86_64;arm64");
-            config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
             config.define("CMAKE_VERBOSE_MAKEFILE", "ON");
             config.define("CMAKE_EXPORT_COMPILE_COMMANDS", "ON");
             //config.env("IPHONEOS_DEPLOYMENT_TARGET", "13.0");
@@ -573,6 +603,8 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
         },
         (Os::IOs, ABI::Macabi, _) => {
             // rustup default nightly-2022-08-03 && cargo build --target aarch64-apple-ios-macabi --verbose
+            // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target aarch64-apple-ios-macabi
+            // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target x86_64-apple-ios-macabi
             println!("Running IOS + MacABI");
             config.define("CMAKE_SYSTEM_NAME", "Darwin"); //for Catalyst
             config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
@@ -586,6 +618,16 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
             config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
             config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
             config.define("onnxruntime_ENABLE_BITCODE", "OFF");
+
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
             config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
         },
     }
