@@ -4,7 +4,7 @@ parameters:
   type: string
   default: ''
 
-- name: job_name_suffix
+- name: stage_name_suffix
   displayName: job name
   type: string
   default: ''
@@ -15,9 +15,9 @@ parameters:
   type: string
   default: 'onnxruntime-android'
 stages:
-- stage: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
+- stage: Final_AAR_Testing_Android_${{ parameters.stage_name_suffix }}
   dependsOn:
-  - Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
+  - Android_Java_API_AAR_Packaging_${{ parameters.stage_name_suffix }}
   jobs:
   - job:
     workspace:

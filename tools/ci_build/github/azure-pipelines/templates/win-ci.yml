@@ -38,7 +38,7 @@ parameters:
   type: boolean
   default: false
 
-- name: job_name_suffix
+- name: stage_name_suffix
   displayName: job name for nuget
   type: string
   default: ''
@@ -57,7 +57,7 @@ parameters:
   type: boolean
   default: false
 stages:
-- stage: Windows_Packaging_${{ parameters.job_name_suffix }}
+- stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: []
   jobs:
   - job:

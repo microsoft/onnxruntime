@@ -104,7 +104,7 @@ stages:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: gpu
+    stage_name_suffix: gpu
     EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     msbuildPlatform: x64
@@ -118,7 +118,7 @@ stages:
     ort_build_pool_name: 'onnxruntime-gpu-tensorrt8-winbuild-t4'
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
-    job_name_suffix: tensorrt
+    stage_name_suffix: tensorrt
     EnvSetupScript: setup_env_gpu.bat
     buildArch: x64
     msbuildPlatform: x64

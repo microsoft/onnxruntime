@@ -20,7 +20,7 @@ parameters:
   type: string
   default: 'NPM_packages'
 
-jobs:
+stages:
 - template: android-java-api-aar.yml
   parameters:
     buildConfig: '${{parameters.BuildConfig}}'
@@ -31,11 +31,11 @@ jobs:
     #  packageName: 'onnxruntime-mobile'
     buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_aar_build_settings.json'
     artifactName: 'onnxruntime-android-full-aar'
-    job_name_suffix: 'For_React_Native'
+    stage_name_suffix: 'For_React_Native'
     pool_name: '${{parameters.PoolName}}'
     packageName: 'onnxruntime-android'
 
-- job: ReactNative_CI
+- stage: ReactNative_CI
   pool:
     vmImage: 'macOS-12'
   variables:
