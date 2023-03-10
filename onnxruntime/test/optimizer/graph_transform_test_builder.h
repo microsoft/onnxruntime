@@ -66,7 +66,7 @@ class ModelTestBuilder {
     }
 
     OrtValue input_value;
-    CreateMLValue<T>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault),
+    CreateMLValue<T>(std::make_shared<CPUAllocator>(),
                      shape,
                      data,
                      &input_value);

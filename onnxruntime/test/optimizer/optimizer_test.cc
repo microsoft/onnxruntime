@@ -67,18 +67,19 @@ TEST(OptimizerTest, Basic) {
 
   std::unique_ptr<CPUExecutionProvider> cpu_execution_provider =
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::unordered_map<int32_t, AllocatorPtr> allocators;
 #if !defined(DISABLE_SPARSE_TENSORS)
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),
                                      *cpu_execution_provider.get(),
                                      [&graph](const std::string& name) -> bool {
                                        return graph.IsSparseInitializer(name);
-                                     });
+                                     }, allocators);
 #else
   OptimizerExecutionFrame::Info info(nodes, initialized_tensor_set,
                                      graph.ModelPath(),
                                      *cpu_execution_provider.get(),
-                                     [](std::string const&) { return false; });
+                                     [](std::string const&) { return false; }, allocators);
 #endif  //! defined(DISABLE_SPARSE_TENSORS)
 
   std::vector<int> fetch_mlvalue_idxs{info.GetMLValueIndex("out")};

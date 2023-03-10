@@ -131,6 +131,8 @@ class SessionState {
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
   AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
 
+  std::unordered_map<int32_t, AllocatorPtr>& GetAllocators() { return allocators_; }
+
   const OrtValueNameIdxMap& GetOrtValueNameIdxMap() const noexcept { return ort_value_name_idx_map_; }
 
   /**

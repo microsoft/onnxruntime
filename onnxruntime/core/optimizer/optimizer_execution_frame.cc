@@ -32,10 +32,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
                                     const Path& model_path,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    std::unordered_map<int32_t, AllocatorPtr>& allocators)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
+  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).device.ToInt32()];
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -57,7 +58,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
                                                       model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
                                                       tensor_proto,
-                                                      MemBuffer(data.get(), cpu_tensor_length, allocator_ptr_->Info()),
+                                                      MemBuffer(data.get(), cpu_tensor_length, execution_provider_.GetMemoryInfo(mem_type_)),
                                                       ort_value));
 
       initializers_[idx] = ort_value;
@@ -86,10 +87,11 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
                                     const Path& model_path,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    std::unordered_map<int32_t, AllocatorPtr>& allocators)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = execution_provider_.GetAllocator(mem_type_);
+  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).device.ToInt32()];
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -175,8 +177,8 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
   Init(gsl::span<const int>(), gsl::span<const OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
 }
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& info) const {
-  return info_.GetAllocator(info);
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& /*info*/) const {
+  return info_.GetAllocator();
 }
 
 Status OptimizerExecutionFrame::CopyTensor(const Tensor& src, Tensor& dest) const {

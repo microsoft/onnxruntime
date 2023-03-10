@@ -898,7 +898,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
   // Do partitioning based on execution providers' capabilities.
   GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-                                                       mode));
+                                                       session_state.GetAllocators(), mode));
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
@@ -1182,6 +1182,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
+                                            session_state.GetAllocators(),
                                             GraphPartitioner::Mode::kOrtFormatLoad));
 
   return Status::OK();
@@ -1190,14 +1191,14 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
-    const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep) {
+    const InlinedHashSet<std::string>& optimizers_to_disable, const AllocatorPtr& allocator) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
        level <= static_cast<int>(session_options.graph_optimization_level);
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
-        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, allocator,
         optimizers_to_disable);
 
     for (const auto& transformer : transformers) {
@@ -1288,12 +1289,12 @@ common::Status InferenceSession::Initialize() {
 
     // Ensure all registered EPs have created their allocators and shared them where possible.
     // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
-    {
-      AllocatorManager allocator_manager;
-      for (const auto& provider : execution_providers_) {
-        provider->RegisterAllocator(allocator_manager);
-      }
-    }
+//    {
+//      AllocatorManager allocator_manager;
+//      for (const auto& provider : execution_providers_) {
+//        provider->RegisterAllocator(allocator_manager);
+//      }
+//    }
 
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
@@ -1466,9 +1467,9 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+      AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetMemoryInfo(OrtMemTypeDefault));
       ORT_RETURN_IF_ERROR_SESSIONID_(
-          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep));
+          ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, allocator));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -2462,7 +2463,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
         if (use_full_build_optimizations) {
-          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, session_state_->GetAllocators(),
                                                        optimizers_to_disable_);
         } else {
           const auto sat_context =
@@ -2471,7 +2472,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
                   ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
-          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+          AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetMemoryInfo(OrtMemTypeDefault));
+          return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, allocator,
                                                                       optimizers_to_disable_);
         }
       }();

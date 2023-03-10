@@ -904,9 +904,9 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
-Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
+Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider, AllocatorPtr allocator) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, allocator, nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {

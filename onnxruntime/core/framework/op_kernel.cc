@@ -21,7 +21,7 @@ const onnxruntime::KernelDef& OpKernel::KernelDef() const {
   return op_kernel_info_->GetKernelDef();
 }
 
-const OrtMemoryInfo& OpKernel::Allocator(OrtMemType mem_type) const {
+const OrtMemoryInfo OpKernel::Allocator(OrtMemType mem_type) const {
   return op_kernel_info_->GetMemoryInfo(mem_type);
 }
 

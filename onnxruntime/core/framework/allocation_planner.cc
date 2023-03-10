@@ -707,7 +707,7 @@ class PlannerImpl {
 
             if (!is_implicit_input) {
               OrtMemType mem_type = p_kernel_def->InputMemoryType(arg_idx);
-              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(mem_type)->Info());
+              plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetMemoryInfo(mem_type));
               set_node_arg_has_explicit_consumer.insert(index);
             } else {  // implicit input
               // Only process an implicit input if there are explicit consumers at this graph level
@@ -779,16 +779,16 @@ class PlannerImpl {
 
                   if (already_seen_ep_for_node_arg == map_implicitly_consumed_node_arg_to_ep.end()) {
                     // First time we are encountering this implicitly consumed input at this graph level (or)
-                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info());
+                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetMemoryInfo(OrtMemType::OrtMemTypeDefault));
                     map_implicitly_consumed_node_arg_to_ep.insert({index, exec_provider});
                   } else if (already_seen_ep_for_node_arg->second == exec_provider) {
                     // The EP that we previously seen for this implicit input is the same one as the current EP
                     // we have seen
-                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info());
+                    plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetMemoryInfo(OrtMemType::OrtMemTypeDefault));
                   } else {
                     // Default the location to CPU
                     plan_.SetLocation(static_cast<size_t>(index),
-                                      execution_providers_.Get(CPU)->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info());
+                                      execution_providers_.Get(CPU)->GetMemoryInfo(OrtMemType::OrtMemTypeDefault));
                     set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
                 }
@@ -811,10 +811,7 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          auto allocator = exec_provider->GetAllocator(p_kernel_def->OutputMemoryType(i));
-          ORT_ENFORCE(allocator);
-          plan_.SetLocation(static_cast<size_t>(index),
-                            allocator->Info());
+          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetMemoryInfo(p_kernel_def->OutputMemoryType(i)));
         }
       }
     }
@@ -832,7 +829,7 @@ class PlannerImpl {
     if (utils::IsInputOnCpu(node, &kernel_create_info, input_index))
       // weights are not output from any node, so it's OK to put its location on CPU provider
       return execution_providers_.GetDefaultCpuMemoryInfo();
-    return p_provider->GetAllocator(OrtMemTypeDefault)->Info();
+    return p_provider->GetMemoryInfo(OrtMemTypeDefault);
   }
 
   void GeneratePlanForWeightsHelper(const GraphViewer& graph_viewer,
@@ -1737,7 +1734,7 @@ class PlannerImpl {
     onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
     const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
     ORT_ENFORCE(ep);
-    auto& node_device_mem_location = ep->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info();
+    auto& node_device_mem_location = ep->GetMemoryInfo(OrtMemType::OrtMemTypeDefault);
     execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location.device));
     // 2. add steps to the execution plan
     for (auto node_index : stream_nodes_[0]) {
@@ -1777,7 +1774,7 @@ class PlannerImpl {
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
         ORT_ENFORCE(ep);
-        auto& node_device_mem_location = ep->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info();
+        auto node_device_mem_location = ep->GetMemoryInfo(OrtMemType::OrtMemTypeDefault);
         execution_plan.emplace_back(std::make_unique<SequentialExecutionPlan::LogicStream>(node_device_mem_location.device));
       } else {
         execution_plan.emplace_back(nullptr);
@@ -1877,7 +1874,7 @@ class PlannerImpl {
         auto* node = graph_viewer_.GetNode(node_index);
         onnxruntime::ProviderType exec_provider_name = node->GetExecutionProviderType();
         const IExecutionProvider* ep = execution_providers.Get(exec_provider_name);
-        auto& node_device_mem_location = ep->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info();
+        auto node_device_mem_location = ep->GetMemoryInfo(OrtMemType::OrtMemTypeDefault);
         ORT_ENFORCE(execution_plan[node_stream_map_[node_index]]->device_.Type() == node_device_mem_location.device.Type());
       }
     }
@@ -2250,8 +2247,7 @@ Status DeviceBasedPartitioner::PartitionGraph(const onnxruntime::GraphViewer& gr
       const auto& op_type = node->OpType();
       const auto& node_name = node->Name();
       auto* ep = execution_providers.Get(*node);
-      auto& device_mem_location = ep->GetAllocator(OrtMemType::OrtMemTypeDefault)->Info();
-      auto device_type = device_mem_location.device.Type();
+      auto device_type = ep->GetMemoryInfo(OrtMemType::OrtMemTypeDefault).device.Type();
 
       // log the device
       auto it = device_to_stream.find(device_type);

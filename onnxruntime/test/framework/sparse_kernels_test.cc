@@ -391,7 +391,7 @@ class SparseTensorTests : public testing::Test {
 
   OrtValue Constant(const std::vector<int64_t>& elts, const std::vector<int64_t>& shape) {
     OrtValue mlvalue;
-    CreateMLValue<int64_t>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), shape, elts, &mlvalue);
+    CreateMLValue<int64_t>(std::make_shared<CPUAllocator>(), shape, elts, &mlvalue);
     return mlvalue;
   }
 
@@ -586,7 +586,7 @@ TEST(SparseCrcsFormatTests, Test1) {
   ASSERT_EQ(9U + 1U, outer_indices.size());
 
   // Test owning instance
-  auto default_allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
+  auto default_allocator = std::make_shared<CPUAllocator>();
 
   SparseTensor tensor_alloc(DataTypeImpl::GetType<float>(), dense_shape, default_allocator);
   ASSERT_EQ(tensor_alloc.DenseShape(), dense_shape);
@@ -1289,7 +1289,7 @@ TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
 
 TEST(SparseTensorConversionTests, CsrConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
 
   const TensorShape dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1508,7 +1508,7 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 TEST(SparseTensorConversionTests, CooConversion) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
 
   const TensorShapeVector dense_shape{3, 3};
   std::vector<int32_t> dense_data = {
@@ -1739,7 +1739,7 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 TEST(SparseTensorConversionTests, BlockSparse) {
   auto* cpu_provider = TestCPUExecutionProvider();
-  auto cpu_allocator = cpu_provider->GetAllocator(OrtMemTypeDefault);
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
 
   DataTransferManager dtm;
   {

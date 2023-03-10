@@ -93,9 +93,6 @@ SessionState::SessionState(Graph& graph,
       allocators_[it.first] = it.second;
     }
   }
-  for (auto ep : execution_providers_) {
-    ep->SetAllocators(&allocators_);
-  }
 }
 
 //void SessionState::SetupAllocators() {
@@ -498,7 +495,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   }
 
                 } else {  // caching of pre-packed weights' turned OFF
-                  AllocatorPtr session_cpu_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+                  AllocatorPtr session_cpu_alloc = GetAllocator(kernel->Info().GetMemoryInfo(OrtMemType::OrtMemTypeDefault).device);
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
                                                       session_cpu_alloc,  // use allocator tied to this session
                                                       is_packed,
@@ -1493,7 +1490,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
-          execution_providers_.GetDefaultCpuAllocator(),
+          GetAllocator(OrtDevice()),
           ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
           [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
                                       bool constant, bool sparse) -> Status {

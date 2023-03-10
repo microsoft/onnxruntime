@@ -16,12 +16,14 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
+                                 std::unordered_map<int32_t, AllocatorPtr>& allocators,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
       excluded_initializers_(excluded_initializers),
-      execution_provider_(execution_provider) {
+      execution_provider_(execution_provider),
+      allocators_(allocators) {
 }
 
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
@@ -151,11 +153,11 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 #if !defined(DISABLE_SPARSE_TENSORS)
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         is_sparse_initializer_check);
+                                         is_sparse_initializer_check, allocators_);
 #else
       // Create execution frame for executing constant nodes.
       OptimizerExecutionFrame::Info info({node}, constant_inputs, graph.ModelPath(), execution_provider_,
-                                         [](std::string const&) { return false; });
+          [](std::string const&) { return false; }, allocators_);
 #endif
 
       std::vector<int> fetch_mlvalue_idxs;

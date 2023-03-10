@@ -539,7 +539,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data,
+  CreateMLValue<float>(std::make_shared<CPUAllocator>(), dims, data,
                        &ml_value);
 
   NameMLValMap feeds;

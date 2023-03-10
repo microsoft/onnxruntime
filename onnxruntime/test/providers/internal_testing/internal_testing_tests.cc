@@ -277,8 +277,8 @@ TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
   init_session(eps, session2);
 
   // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
-  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault),
-            eps[1]->GetAllocator(OrtMemType::OrtMemTypeDefault))
+  ASSERT_EQ(std::make_shared<CPUAllocator>(),
+            std::make_shared<CPUAllocator>())
       << "EPs do not have the same default allocator";
 }
 
@@ -313,14 +313,14 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
   ASSERT_STATUS_OK(env.UnregisterAllocator(mem_info));
 
   // CPU EP is simple and should use the replacement allocator
-  ASSERT_EQ(replacement_alloc, eps[1]->GetAllocator(OrtMemType::OrtMemTypeDefault));
+  ASSERT_EQ(replacement_alloc, std::make_shared<CPUAllocator>());
 
   // our test EP has a local allocator and GetAllocator override.
   //   - a call to GetAllocator won't match the replacement one because of this.
   //   - a call to IExecutionProvider::GetAllocator should.
   // this is not a good setup, but at least clarifies how the current system works.
-  ASSERT_NE(replacement_alloc, eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault));
-  ASSERT_EQ(replacement_alloc, eps[0]->IExecutionProvider::GetAllocator(OrtMemType::OrtMemTypeDefault));
+  ASSERT_NE(replacement_alloc, std::make_shared<CPUAllocator>());
+  ASSERT_EQ(replacement_alloc, std::make_shared<CPUAllocator>());
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
@@ -423,7 +423,7 @@ TEST(InternalTestingEP, TestModelWithSubgraph) {
   // the output from fused nodes using the testing EP is always 0, so we should match the expected output this way
   // as we replace all the Add nodes with something that returns 0.
   // RunAndVerifyOutputsWithEP checks that nodes are assigned to the EP so we know it's being used to execute the model
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), {1}, {-2.f},
+  CreateMLValue<float>(std::make_shared<CPUAllocator>(), {1}, {-2.f},
                        &ml_value);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("state_var_in", ml_value));

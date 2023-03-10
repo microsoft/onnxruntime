@@ -77,12 +77,6 @@ class IExecutionProvider {
   }
 
   /**
-   * Get an allocator with specified device id and MemType. Return nullptr if it doesn't exist
-   */
-  //virtual AllocatorPtr GetAllocator(OrtMemType mem_type) const;
-  AllocatorPtr GetAllocator(OrtMemType mem_type) const;
-
-  /**
    * Returns a data transfer object that implements methods to copy to and
    * from this device.
    * If no copy is required for the successful operation of this provider,
@@ -312,7 +306,19 @@ class IExecutionProvider {
 
   virtual InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators();
 
-  inline void SetAllocators(std::unordered_map<int32_t, AllocatorPtr>* allocators) { allocators2_ = allocators; }
+  inline OrtMemoryInfo GetMemoryInfo(OrtMemType mem_type) const {
+    OrtDevice::DeviceType device_type = OrtDevice::CPU;
+    OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
+    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+      memory_type = OrtDevice::MemType::CUDA_PINNED;  // TODO: keep only one pinned enum?
+    } else if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") {
+      device_type = OrtDevice::GPU;
+    }
+    int device_id = GetDeviceId();
+
+    OrtDevice device(device_type, memory_type, static_cast<int16_t>(device_id));
+    return OrtMemoryInfo("OrtMemoryInfo", OrtAllocatorType::OrtDeviceAllocator, device, device_id, mem_type);   // TODO: OrtAllocatorType
+  }
 
  private:
   const std::string type_;
@@ -323,8 +329,6 @@ class IExecutionProvider {
   // GPU device.
   using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
   AllocatorMap allocators_;
-
-  std::unordered_map<int32_t, AllocatorPtr>* allocators2_;
 
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;

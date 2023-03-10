@@ -285,10 +285,6 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return g_host->IAllocator__CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
-AllocatorPtr IExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-  return g_host->IExecutionProvider__GetAllocator(this, mem_type);
-}
-
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   g_host->IExecutionProvider__InsertAllocator(this, allocator);
 }

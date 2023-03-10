@@ -126,6 +126,8 @@ struct GetCapabilityForEPParams {
   GraphPartitioner::Mode mode;
   TransformLayoutFunction transform_layout;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  AllocatorPtr allocator;
 };
 }  // namespace
 
@@ -187,7 +189,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep));
+    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.allocator));
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
     // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
@@ -332,7 +334,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
-                                           TransformLayoutFunction transform_layout_function) {
+                                           TransformLayoutFunction transform_layout_function,
+                                           std::unordered_map<int32_t, AllocatorPtr>& allocators) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -346,7 +349,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_function));
+                                                       transform_layout_function, allocators));
     }
   }
 
@@ -361,6 +364,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // TODO: when the graph contains a function node, and user passes in the dll which could
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
+  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault).device.ToInt32()];
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
@@ -369,6 +373,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(capabilities),
       mode,
       transform_layout_function,
+      allocator,
   };
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
@@ -453,8 +458,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
         BuildFusedKernelDef(builder, metadef, type);
         ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
             builder,
-            [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-              return FunctionKernel::Create(func_mgr, info, out);
+            [&allocators](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+              return FunctionKernel::Create(func_mgr, info, allocators, out);
             }));
 
         // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
@@ -530,7 +535,8 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 
 static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
                                        const ExecutionProviders& execution_providers,
-                                       KernelRegistryManager& kernel_registry_manager) {
+                                       KernelRegistryManager& kernel_registry_manager,
+                                       std::unordered_map<int32_t, AllocatorPtr>& allocators) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -544,7 +550,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
     for (const auto& ep : execution_providers) {
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(graph, func_mgr, kernel_registry_manager,
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
-                                                       transform_layout_function));
+                                                       transform_layout_function, allocators));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -564,7 +570,8 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
-                                          IExecutionProvider& current_ep) {
+                                          IExecutionProvider& current_ep,
+                                          std::unordered_map<int32_t, AllocatorPtr>& allocators) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   auto& graph = partition_params.graph.get();
@@ -578,11 +585,12 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       auto& subgraph = *entry.second;
       PartitionParams subgraph_partition_params = partition_params;
       subgraph_partition_params.graph = std::ref(subgraph);
-      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(subgraph_partition_params, kernel_registry_mgr, current_ep));
+      ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(subgraph_partition_params, kernel_registry_mgr, current_ep, allocators));
     }
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault).device.ToInt32()];
   // clang-format off
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
@@ -593,6 +601,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       GraphPartitioner::Mode::kOrtFormatLoad,
       partition_params.transform_layout_function,
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+      allocator,
   };
   // clang-format on
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
@@ -660,8 +669,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
     ORT_RETURN_IF_ERROR(fused_kernel_registry.Register(
         KernelCreateInfo(std::move(kernel_def),
-                         [](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-                           return FunctionKernel::Create(func_mgr, info, out);
+                         [&allocators](FuncManager& func_mgr, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+                           return FunctionKernel::Create(func_mgr, info, allocators, out);
                          })));
 
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
@@ -675,17 +684,18 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 // Simplified partitioning where custom EPs may produce compiled nodes.
 static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const ExecutionProviders& execution_providers,
-                                      KernelRegistryManager& kernel_registry_manager) {
+                                      KernelRegistryManager& kernel_registry_manager,
+                                      std::unordered_map<int32_t, AllocatorPtr>& allocators) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
-    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep));
+    ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, allocators));
   }
 
   return Status::OK();
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   TransformLayoutFunction transform_layout_function, Mode mode) const {
+                                   TransformLayoutFunction transform_layout_function, std::unordered_map<int32_t, AllocatorPtr>& allocators, Mode mode) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -728,13 +738,13 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode,
-                                                 providers_, kernel_registry_mgr_));
+                                                 providers_, kernel_registry_mgr_, allocators));
 #else
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModel(partition_params,
-                                                providers_, kernel_registry_mgr_));
+                                                providers_, kernel_registry_mgr_, allocators));
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

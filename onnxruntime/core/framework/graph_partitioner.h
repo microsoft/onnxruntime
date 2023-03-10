@@ -11,7 +11,7 @@ namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
-using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep)>;
+using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep, AllocatorPtr allocator)>;
 
 class GraphPartitioner {
  public:
@@ -30,6 +30,7 @@ class GraphPartitioner {
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    TransformLayoutFunction transform_layout_function,
+                   std::unordered_map<int32_t, AllocatorPtr>& allocators,
                    Mode mode = Mode::kNormal) const;
 
  private:
