@@ -3,15 +3,16 @@ parameters:
   ArtifactSuffix: ''
 stages:
 - stage: NuGet_Test_MacOS
+  dependsOn:
+  - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
+  condition: succeeded()
   jobs:
   - job:
     workspace:
       clean: all
     pool:
       vmImage: 'macOS-12'
-    dependsOn:
-    - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
-    condition: succeeded()
+
     variables:
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
