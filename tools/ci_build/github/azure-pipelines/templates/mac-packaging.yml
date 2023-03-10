@@ -12,80 +12,79 @@ parameters:
   type: string
   default: ''
 
-
+variables:
+  - name: AdditionalBuildFlags
+    ${{ if eq(parameters.MacosArch, universal2) }}:
+      value: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+    ${{ if ne(parameters.MacosArch, arm64) }}:
+      value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+    ${{ if ne(parameters.MacosArch, x86_64) }}:
+      value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+  - name: BuildJava
+    ${{ if eq(parameters.MacosArch, universal2) }}:
+      value: false
+    ${{ if ne(parameters.MacosArch, arm64) }}:
+      value: true
+    ${{ if ne(parameters.MacosArch, x86_64) }}:
+      value: true
+  - name: BuildNodejs
+    ${{ if eq(parameters.MacosArch, universal2) }}:
+      value: false
+    ${{ if ne(parameters.MacosArch, arm64) }}:
+      value: true
+    ${{ if ne(parameters.MacosArch, x86_64) }}:
+      value: true
 
 steps:
-  variables:
-    - name: AdditionalBuildFlags
-      ${{ if eq(parameters.MacosArch, universal2) }}:
-        value: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-      ${{ if ne(parameters.MacosArch, arm64) }}:
-        value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-      ${{ if ne(parameters.MacosArch, x86_64) }}:
-        value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
-    - name: BuildJava
-      ${{ if eq(parameters.MacosArch, universal2) }}:
-        value: false
-      ${{ if ne(parameters.MacosArch, arm64) }}:
-        value: true
-      ${{ if ne(parameters.MacosArch, x86_64) }}:
-        value: true
-    - name: BuildNodejs
-      ${{ if eq(parameters.MacosArch, universal2) }}:
-        value: false
-      ${{ if ne(parameters.MacosArch, arm64) }}:
-        value: true
-      ${{ if ne(parameters.MacosArch, x86_64) }}:
-        value: true
-    - script: |
-        rm -rf $(Build.BinariesDirectory)/Release
-        python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
-      displayName: 'Build ${{ parameters.MacosArch }}'
+- script: |
+    rm -rf $(Build.BinariesDirectory)/Release
+    python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+  displayName: 'Build ${{ parameters.MacosArch }}'
 
-    - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-      - script: |
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
-        displayName: 'Running Tests'
+- ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+  - script: |
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+    displayName: 'Running Tests'
 
-    - task: ShellScript@2
-      displayName: 'Copy build artifacts for zipping'
-      inputs:
-        scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
-        args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
-        workingDirectory: '$(Build.BinariesDirectory)/Release'
+- task: ShellScript@2
+  displayName: 'Copy build artifacts for zipping'
+  inputs:
+    scriptPath: 'tools/ci_build/github/linux/copy_strip_binary.sh'
+    args: '-r $(Build.BinariesDirectory) -a onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion) -l libonnxruntime.$(OnnxRuntimeVersion).dylib -c Release -s $(Build.SourcesDirectory) -t $(Build.SourceVersion)'
+    workingDirectory: '$(Build.BinariesDirectory)/Release'
 
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
-        includeRootFolder: true
-        archiveType: 'tar' # Options: zip, 7z, tar, wim
-        tarCompression: 'gz'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
-        replaceExistingArchive: true
+- task: ArchiveFiles@2
+  inputs:
+    rootFolderOrFile: '$(Build.BinariesDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion)'
+    includeRootFolder: true
+    archiveType: 'tar' # Options: zip, 7z, tar, wim
+    tarCompression: 'gz'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-osx-${{ parameters.MacosArch }}-$(OnnxRuntimeVersion).tgz'
+    replaceExistingArchive: true
 
-    - script: |
-       set -e -x       
-       mkdir -p $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
-      displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
-      condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
+- script: |
+   set -e -x       
+   mkdir -p $(Build.ArtifactStagingDirectory)/testdata
+   cp $(Build.BinariesDirectory)/Release/libcustom_op_library.dylib $(Build.ArtifactStagingDirectory)/testdata
+  displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
+  condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-    - ${{ if eq(variables.BuildJava, true) }}:
-        - template: java-api-artifacts-package-and-publish-steps-posix.yml
-          parameters:
-              arch: 'osx-${{ parameters.MacosArch }}'
-              buildConfig: 'Release'
-              artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
-              version: '$(OnnxRuntimeVersion)'
-              libraryName: 'libonnxruntime.dylib'
-              nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+- ${{ if eq(variables.BuildJava, true) }}:
+    - template: java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          arch: 'osx-${{ parameters.MacosArch }}'
+          buildConfig: 'Release'
+          artifactName: 'onnxruntime-java-osx-${{ parameters.MacosArch }}'
+          version: '$(OnnxRuntimeVersion)'
+          libraryName: 'libonnxruntime.dylib'
+          nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
-    - ${{ if eq(variables.BuildNodejs, true) }}:
-        - template: nodejs-artifacts-package-and-publish-steps-posix.yml
-          parameters:
-              ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-                  arch: x64
-              ${{ if eq(parameters.MacosArch, 'arm64') }}:
-                  arch: arm64
-              os: 'darwin'
-              artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'
+- ${{ if eq(variables.BuildNodejs, true) }}:
+    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+          ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+              arch: x64
+          ${{ if eq(parameters.MacosArch, 'arm64') }}:
+              arch: arm64
+          os: 'darwin'
+          artifactName: 'drop-onnxruntime-nodejs-osx-${{ parameters.MacosArch }}'
