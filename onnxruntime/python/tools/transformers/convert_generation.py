@@ -1404,6 +1404,7 @@ def generate_gpt2_init_decoder(
     OnnxModel.save(init_decoder_model_proto, init_decoder_onnx_path, save_as_external_data=use_external_data_format)
     return True
 
+
 def make_dim_proto_numeric_t5(model, config):
     """Make dim_proto numeric.
 
@@ -1439,6 +1440,7 @@ def make_dim_proto_numeric_t5(model, config):
                 dim_value = int(dim_proto.dim_param)
                 dim_proto.Clear()
                 dim_proto.dim_value = dim_value
+
 
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.

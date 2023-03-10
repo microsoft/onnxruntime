@@ -876,7 +876,7 @@ class OnnxModel:
         return True
 
     @staticmethod
-    def graph_topological_sort(graph):
+    def graph_topological_sort(graph, is_deterministic=False):
         deps_set = set()  # dependency set of all node
         sorted_node_set = set()  # sorted node set
         sorted_nodes = []  # initialize sorted_nodes
@@ -885,15 +885,19 @@ class OnnxModel:
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
 
+        if is_deterministic:
+            input_names.sort()
+
         for input_name in input_names:
             deps_set.add(input_name)
 
         sorted_node_set_len = -1
-        while len(sorted_node_set) != len(graph.node):
+        graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+        while len(sorted_node_set) != len(graph_nodes):
             if len(sorted_node_set) == sorted_node_set_len:
                 break
             sorted_node_set_len = len(sorted_node_set)
-            for node_idx, node in enumerate(graph.node):
+            for node_idx, node in enumerate(graph_nodes):
                 if node_idx in sorted_node_set:
                     continue
                 input_count = sum(1 for _ in node.input if _)
@@ -923,11 +927,11 @@ class OnnxModel:
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self):
+    def topological_sort(self, is_deterministic=False):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph)
+        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
     @staticmethod
     def save(

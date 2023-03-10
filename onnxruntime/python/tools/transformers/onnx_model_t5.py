@@ -102,6 +102,7 @@ class FusionT5Attention(FusionAttention):
         if self.mask_filter_value is not None:
             attention_node.attribute.extend([helper.make_attribute("mask_filter_value", float(self.mask_filter_value))])
 
+        self.increase_counter("MultiHeadAttention")
         return attention_node
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):

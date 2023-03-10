@@ -124,12 +124,10 @@ class T5DecoderInputs:
         self,
         decoder_input_ids,
         encoder_attention_mask,
-        # encoder_hidden_states,
         past_key_values=None,
     ):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
         self.encoder_attention_mask: torch.LongTensor = encoder_attention_mask
-        # self.encoder_hidden_states: Union[torch.FloatTensor, torch.HalfTensor] = encoder_hidden_states
         self.past_key_values: Union[List[torch.FloatTensor], List[torch.HalfTensor], None] = past_key_values
 
     @staticmethod
@@ -183,13 +181,6 @@ class T5DecoderInputs:
         )
 
         float_type = torch.float16 if float16 else torch.float32
-        # encoder_hidden_state = torch.rand(
-        #     batch_size,
-        #     encode_sequence_length,
-        #     hidden_size,
-        #     dtype=float_type,
-        #     device=device,
-        # )
 
         if past_decode_sequence_length > 0:
             self_attention_past_shape = [
@@ -220,19 +211,16 @@ class T5DecoderInputs:
         input_list = [
             self.decoder_input_ids,
             self.encoder_attention_mask,
-            # self.encoder_hidden_states,
         ]
         if self.past_key_values:
             input_list.extend(self.past_key_values)
         return input_list
 
     def to_fp32(self):
-        # encoder_hidden_state = self.encoder_hidden_states.to(dtype=torch.float32)
         past = [p.to(dtype=torch.float32) for p in self.past_key_values] if self.past_key_values else None
         return T5DecoderInputs(
             self.decoder_input_ids.clone(),
             self.encoder_attention_mask.clone(),
-            # encoder_hidden_state,
             past,
         )
 
@@ -280,7 +268,6 @@ class T5DecoderHelper:
         # Shape of input tensors (sequence_length==1):
         #    input_ids: (batch_size, sequence_length)
         #    encoder_attention_mask: (batch_size, encode_sequence_length)
-        #    encoder_hidden_states: (batch_size, encode_sequence_length, hidden_size)
         #    past_self_*: (batch_size, num_heads, past_decode_sequence_length, head_size)
         #    past_cross_*: (batch_size, num_heads, encode_sequence_length, head_size)
 
@@ -291,7 +278,6 @@ class T5DecoderHelper:
 
         input_names = ["input_ids"]
         input_names.append("encoder_attention_mask")
-        # input_names.append("encoder_hidden_states")
         input_names.extend(input_past_names)
 
         dynamic_axes = {

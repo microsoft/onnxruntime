@@ -231,6 +231,7 @@ class T5Helper:
 
         from fusion_options import FusionOptions
 
+        optimization_options = None
         if is_float16:
             optimization_options = FusionOptions("t5")
             optimization_options.enable_skip_layer_norm = False
