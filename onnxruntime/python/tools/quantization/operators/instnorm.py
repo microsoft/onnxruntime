@@ -27,4 +27,3 @@ class QDQInstanceNormalization(QDQOperatorBase):
 
         # Bias
         self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1])
-
