@@ -42,7 +42,7 @@ total_seqlens = [128, 512]
 num_heads = [8, 12]
 head_sizes = [64]
 biaseds = [False, True]
-mask_dims = [0, 2, 3]
+mask_dims = [0, 2, 3, 4]
 
 
 def get_biased_id(biased):
@@ -70,6 +70,7 @@ def _test_gemm_softmax_gemm_permute(
     attn_mask = None
     mask_shape = None
     mask_shape_broadcasted = None
+    max_seqlen = None
     if mask_dim != 0:
         if mask_dim == 2:
             mask_shape = [batch, total_seqlen]
@@ -78,9 +79,8 @@ def _test_gemm_softmax_gemm_permute(
             mask_shape = [batch, seqlen, total_seqlen]
             mask_shape_broadcasted = [batch, 1, seqlen, total_seqlen]
         elif mask_dim == 4:
-            max_seqlen = 1024
+            max_seqlen = ((seqlen - 1) // 1024 + 1) * 1024  # round up to multiple of 1024
             mask_shape = [batch, 1, max_seqlen, max_seqlen]
-            mask_shape_broadcasted = [batch, 1, max_seqlen, max_seqlen]
         else:
             raise ValueError
 
@@ -99,7 +99,11 @@ def _test_gemm_softmax_gemm_permute(
         pre_softmax_attn_scores = pre_softmax_attn_scores + attn_bias
     if attn_mask is not None:
         filter_value = -10000.0
-        converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
+        if mask_dim == 4:
+            # equivalent to past_sequence_length = max_sequence_length - seqlen
+            converted_mask = (1 - attn_mask[:, :, -seqlen:, :total_seqlen]) * filter_value
+        else:
+            converted_mask = (1 - attn_mask.reshape(mask_shape_broadcasted)) * filter_value
         pre_softmax_attn_scores = pre_softmax_attn_scores + converted_mask
     attn_scores = softmax(pre_softmax_attn_scores, axis=-1)
     attn = attn_scores @ V
@@ -121,6 +125,7 @@ def _test_gemm_softmax_gemm_permute(
         batch,
         seqlen,
         total_seqlen,
+        max_seqlen,
         num_heads,
         head_size,
         mask_dim,
@@ -245,13 +250,14 @@ def profile_gemm_softmax_gemm_permute_func(
 
     attn_mask = None
     mask_shape = None
+    max_seqlen = None
     if mask_dim != 0:
         if mask_dim == 2:
             mask_shape = [batch, total_seqlen]
         elif mask_dim == 3:
             mask_shape = [batch, seqlen, total_seqlen]
         elif mask_dim == 4:
-            max_seqlen = 1024
+            max_seqlen = ((seqlen - 1) // 1024 + 1) * 1024  # round up to multiple of 1024
             mask_shape = [batch, 1, max_seqlen, max_seqlen]
         else:
             raise ValueError
@@ -281,6 +287,7 @@ def profile_gemm_softmax_gemm_permute_func(
         batch,
         seqlen,
         total_seqlen,
+        max_seqlen,
         num_heads,
         head_size,
         mask_dim,

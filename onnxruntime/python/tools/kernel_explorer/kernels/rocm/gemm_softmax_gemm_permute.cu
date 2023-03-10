@@ -25,6 +25,7 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       int64_t batch,
       int64_t seqlen,
       int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
       int64_t num_heads,
       int64_t head_size,
       int64_t mask_dim,
@@ -39,11 +40,11 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
 
     attn_.batch_size = batch;
     attn_.sequence_length = seqlen;
-    attn_.kv_sequence_length = seqlen;        // NOTE: not used
-    attn_.past_sequence_length = 0;           // NOTE: not used
+    attn_.kv_sequence_length = seqlen;  // NOTE: not used
+    attn_.past_sequence_length = 0;
     attn_.original_past_sequence_length = 0;  // NOTE: not used
     attn_.total_sequence_length = total_seqlen;
-    attn_.max_sequence_length = -1;  // TODO: set
+    attn_.max_sequence_length = 0;
     attn_.hidden_size = num_heads * head_size;
     attn_.head_size = head_size;
     attn_.v_hidden_size = attn_.hidden_size;  // Q,K,V hidden size must agree now
@@ -88,8 +89,11 @@ class IGemmSoftmaxGemmPermuteKernelExplorer : public IKernelExplorer {
       } else if (mask_dim == 3) {
         params_.mask_index_dims = {batch, seqlen, total_seqlen};
       } else if (mask_dim == 4) {
-        int max_seqlen = 1024;  // TODO:
-        params_.mask_index_dims = {batch, 1, max_seqlen, max_seqlen};
+        ORT_ENFORCE(max_seqlen.has_value());
+        attn_.max_sequence_length = max_seqlen.value();
+        ORT_ENFORCE(attn_.max_sequence_length >= seqlen);
+        attn_.past_sequence_length = attn_.max_sequence_length - seqlen;
+        params_.mask_index_dims = {batch, 1, attn_.max_sequence_length, attn_.max_sequence_length};
       }
     }
     params_.out_buffer = reinterpret_cast<T*>(out.ptr());
@@ -123,6 +127,7 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t batch,
       int64_t seqlen,
       int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
       int64_t num_heads,
       int64_t head_size,
       int64_t mask_dim,
@@ -133,7 +138,8 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
-      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
+      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
+                                                 num_heads, head_size, mask_dim, scale,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_));
   }
@@ -159,6 +165,7 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       int64_t batch,
       int64_t seqlen,
       int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
       int64_t num_heads,
       int64_t head_size,
       int64_t mask_dim,
@@ -169,7 +176,8 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
-      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
+      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
+                                                 num_heads, head_size, mask_dim, scale,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(GemmSoftmaxGemmPermuteTunableOp<T>::GetWorkspaceNumBytes(&this->attn_));
 
@@ -216,6 +224,7 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       int64_t batch,
       int64_t seqlen,
       int64_t total_seqlen,
+      std::optional<int64_t> max_seqlen,
       int64_t num_heads,
       int64_t head_size,
       int64_t mask_dim,
@@ -226,7 +235,8 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
       std::optional<DeviceArray>& attn_bias,
       std::optional<DeviceArray>& attn_mask,
       DeviceArray& out)
-      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, num_heads, head_size, mask_dim, scale,
+      : IGemmSoftmaxGemmPermuteKernelExplorer<T>(batch, seqlen, total_seqlen, max_seqlen,
+                                                 num_heads, head_size, mask_dim, scale,
                                                  Q, K, V, attn_bias, attn_mask, out) {
     this->SetWorkspace(std::max(
         GemmSoftmaxGemmPermuteGenericPipeline<T>::GetWorkspaceNumBytes(&this->attn_),
@@ -248,20 +258,20 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 };
 
-#define REGISTER_COMMON(name, type, ...)                                  \
-  py::class_<type<__VA_ARGS__>>(m, name)                                  \
-      .def(py::init<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, \
-                    float,                                                \
-                    DeviceArray&,                                         \
-                    DeviceArray&,                                         \
-                    DeviceArray&,                                         \
-                    std::optional<DeviceArray>&,                          \
-                    std::optional<DeviceArray>&,                          \
-                    DeviceArray&>())                                      \
-      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                  \
-      .def("Run", &type<__VA_ARGS__>::Run)                                \
-      .def("Profile", &type<__VA_ARGS__>::Profile)                        \
-      .def("ListOps", &type<__VA_ARGS__>::ListOps)                        \
+#define REGISTER_COMMON(name, type, ...)                                                          \
+  py::class_<type<__VA_ARGS__>>(m, name)                                                          \
+      .def(py::init<int64_t, int64_t, int64_t, std::optional<int64_t>, int64_t, int64_t, int64_t, \
+                    float,                                                                        \
+                    DeviceArray&,                                                                 \
+                    DeviceArray&,                                                                 \
+                    DeviceArray&,                                                                 \
+                    std::optional<DeviceArray>&,                                                  \
+                    std::optional<DeviceArray>&,                                                  \
+                    DeviceArray&>())                                                              \
+      .def("SetRepeats", &type<__VA_ARGS__>::SetRepeats)                                          \
+      .def("Run", &type<__VA_ARGS__>::Run)                                                        \
+      .def("Profile", &type<__VA_ARGS__>::Profile)                                                \
+      .def("ListOps", &type<__VA_ARGS__>::ListOps)                                                \
       .def("SelectOp", &type<__VA_ARGS__>::SelectOp);
 
 #define REGISTER_GENERIC(dtype) \
