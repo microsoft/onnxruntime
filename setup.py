@@ -48,7 +48,7 @@ def parse_arg_remove_string(argv, arg_name_equal):
 # Any combination of the following arguments can be applied
 
 if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
-    package_name = "ort-nightly"
+    package_name = "ort_function_experiment-nightly"
     nightly_build = True
 
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")

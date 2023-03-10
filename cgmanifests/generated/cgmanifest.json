@@ -302,7 +302,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ad834eb73ee0cd9b6fa9ea892caeed5fa17d7dc0",
+          "commitHash": "51076cea3857ffbfa085e97433135eae38b3d2e7",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "onnx"
