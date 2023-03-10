@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
-#include "core/common/span_utils.h"
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"

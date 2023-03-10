@@ -815,7 +815,11 @@ TEST(PadOpTest, ConstantPadAxes) {
                           1, 1});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
   test.AddInput<int32_t>("value", {1}, {0});
+#if defined(USE_COREML) && defined(__APPLE__)
+  test.AddInput<int64_t>("axes", {2}, {1, 3}, true /*axes_is_initializer*/);
+#else
   test.AddInput<int32_t>("axes", {2}, {1, 3});
+#endif
   test.AddOutput<int32_t>("output", {1, 2, 2, 4},
                           {0, 1, 1, 0,
                            0, 1, 1, 0,
