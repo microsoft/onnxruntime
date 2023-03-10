@@ -231,7 +231,12 @@ static bool IsIdentityPerm(const std::vector<int64_t>& perm) {
 // Computes permutation from channel last to channel first ordering of given rank. Nearly all handlers work for any
 // permutation, but some are restricted. Also used for layout transformation.
 std::vector<int64_t> ChannelLastToFirstPerm(size_t rank) {
-  if (rank < 2) {
+  size_t rank_limit = 2;
+#ifdef USE_QNN
+  // Qnn layout sensitive ops doesn't support < 2D, exclude Transpose with perm like [0, 2, 1]
+  rank_limit = 4;
+#endif
+  if (rank < rank_limit) {
     return {};
   }
 
