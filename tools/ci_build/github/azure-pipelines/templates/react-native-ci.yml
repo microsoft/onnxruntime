@@ -37,7 +37,7 @@ jobs:
 
 - job: ReactNative_CI
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
     runCodesignValidationInjection: false
   dependsOn:
