@@ -11,7 +11,7 @@ from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrat
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
-from .registry import IntegerOpsRegistry, QLinearOpsRegistry, QDQRegistry
+from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
 
 class QuantConfig:
