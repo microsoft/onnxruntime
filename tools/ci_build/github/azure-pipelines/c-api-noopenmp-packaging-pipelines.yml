@@ -37,16 +37,7 @@ resources:
     ref: 1a61614cabfd6b91c6afd6d9e172cc5b838c65fe
 
 stages:
-- template: templates/c-api-cpu.yml
-  parameters:
-    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-    AdditionalBuildFlags: ''
-    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
-    BuildVariant: 'default'
+
 
 - stage: Linux_C_API_Packaging_GPU_x64
   dependsOn: []
@@ -98,6 +89,17 @@ stages:
       artifactNameNoVersionString: 'onnxruntime-linux-x64-tensorrt'
       buildJava: true
       buildJavaOption: '--build_java'
+
+- template: templates/c-api-cpu.yml
+  parameters:
+    RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+    DoCompliance: ${{ parameters.DoCompliance }}
+    DoEsrp: ${{ parameters.DoEsrp }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+    AdditionalBuildFlags: ''
+    AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos'
+    BuildVariant: 'default'
 
 - template: templates/win-ci.yml
   parameters:
