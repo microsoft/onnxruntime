@@ -483,7 +483,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
           {},
           Nop{},
           Nop{},
-          Acc0ElementOp{params->scale, params->attention->mask_filter_value},
+          Acc0ElementOp{params->scale},
           Nop{},
           Nop{});
 
