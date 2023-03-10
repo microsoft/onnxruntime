@@ -199,7 +199,7 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
   - Linux_C_API_Packaging_CPU_aarch64
-  - MacOS_C_API_Packaging_CPU_x64
+  - MacOS_C_API_Packaging_CPU
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -282,7 +282,7 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
   - Linux_C_API_Packaging_CPU_aarch64
-  - MacOS_C_API_Packaging_CPU_x64
+  - MacOS_C_API_Packaging_CPU
   - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm_${{ parameters.BuildVariant }}
@@ -520,7 +520,7 @@ stages:
   dependsOn:
   - Linux_C_API_Packaging_CPU_x64
   - Linux_C_API_Packaging_CPU_aarch64
-  - MacOS_C_API_Packaging_CPU_x64
+  - MacOS_C_API_Packaging_CPU
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   condition: succeeded()
