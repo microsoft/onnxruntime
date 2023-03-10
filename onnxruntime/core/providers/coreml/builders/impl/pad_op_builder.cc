@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
@@ -56,6 +57,9 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto* constant_padding_type = coreml_pad->mutable_constant();  // CoreML::Specification::PaddingLayerParams_PaddingConstant
 
   const auto& input_defs = node.InputDefs();
+  std::vector<int64_t> input_shape;
+  GetShape(*input_defs[0], input_shape, logger);
+  const auto input_rank = SafeInt<int64_t>(input_shape.size());
 
   const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());            // pads
   const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());  // constant_value
@@ -70,11 +74,11 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Add padding
   auto* height_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
-  height_border->set_startedgesize(pads_span[0]);
-  height_border->set_endedgesize(pads_span[2]);
+  height_border->set_startedgesize(pads_span[input_rank - 2]);
+  height_border->set_endedgesize(pads_span[2 * input_rank - 2]);
   auto* width_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
-  width_border->set_startedgesize(pads_span[1]);
-  width_border->set_endedgesize(pads_span[3]);
+  width_border->set_startedgesize(pads_span[input_rank - 1]);
+  width_border->set_endedgesize(pads_span[2 * input_rank - 1]);
 
   *layer->mutable_input()->Add() = input_defs[0]->Name();
   *layer->mutable_output()->Add() = node.OutputDefs()[0]->Name();
@@ -92,21 +96,19 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   const auto& input_defs = node.InputDefs();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
 
-  {
-    std::vector<int64_t> input_shape;
-    if (!GetShape(*input_defs[0], input_shape, logger))
-      return false;
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger))
+    return false;
 
-    if (input_shape.empty() || input_shape.size() > 4 || input_shape.size() < 2) {
-      LOGS(logger, VERBOSE) << "Pad requires input shape between 2-4d, input is "
-                            << input_shape.size() << "d shape";
-      return false;
-    }
+  if (input_shape.empty() || input_shape.size() < 2) {
+    LOGS(logger, VERBOSE) << "Pad requires input shape to be at least 2, input is "
+                          << input_shape.size() << "d shape";
+    return false;
+  }
 
-    if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
-      LOGS(logger, VERBOSE) << "Pad input with zero elements for dimension is not supported";
-      return false;
-    }
+  if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
+    LOGS(logger, VERBOSE) << "Pad input with zero elements for dimension is not supported";
+    return false;
   }
 
   {
@@ -117,14 +119,14 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       return false;
     }
 
-    if (input_defs.size() != 3) {
-      LOGS(logger, VERBOSE) <<
-      "`constant_value` input is required for constant mode Pad op. Optional input `axes` is not supported now.";
+    if (input_defs.size() < 3) {
+      LOGS(logger, VERBOSE) << "`constant_value` input is required for constant mode Pad op.";
       return false;
     }
   }
 
-  // only support if `pads` input is known and is of length 4 and does not contain negative values
+  // only support if `pads` input is known and does not contain negative values and only has non-zero padding values
+  // for last two dimensions.
   {
     const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
     if (pads_initializer_it == initializers.end()) {
@@ -135,19 +137,24 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     const ONNX_NAMESPACE::TensorProto& pads_initializer = *pads_initializer_it->second;
     Initializer unpacked_tensor(pads_initializer);
 
-    // Note: CoreML uses BorderAmounts type for paddings which requires both start/end edgesizes.
-    // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#borderamounts
-    if (unpacked_tensor.size() != 4) {
-      LOGS(logger, VERBOSE) << "Only support length 4 pads input, pads length: "
-                            << unpacked_tensor.size();
-      return false;
-    }
-
     auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
     for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
       if (tensor_data[i] < 0) {
         LOGS(logger, VERBOSE) << "Negative pad value is not supported: pads["
                               << i << "] = " << tensor_data[i];
+        return false;
+      }
+    }
+
+    // Check that the input pads value only have non-zero values on last two dimensions - [H,W].
+    // As CoreML PaddinglayerParams only apply padding on the last two dimensions:
+    // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
+    const auto input_rank = SafeInt<int64_t>(input_shape.size());
+    for (int64_t i = 0; i < unpacked_tensor.size(); i++) {
+      if (!(i == input_rank - 1 || i == input_rank - 2 ||
+            i == 2 * input_rank - 1 || i == 2 * input_rank - 2) &&
+          tensor_data[i] != 0) {
+        LOGS(logger, VERBOSE) << "CoreML Pads value only support padding on last two dimensions.";
         return false;
       }
     }
