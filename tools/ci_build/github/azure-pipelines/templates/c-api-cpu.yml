@@ -413,11 +413,12 @@ jobs:
       msbuildArguments: '-p:SelectedTargets=PreNet6 -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - template: win-esrp-dll.yml
-    parameters:
-      FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
-      DisplayName: 'ESRP - Sign C# dlls'
-      DoEsrp: ${{ parameters.DoEsrp }}
+  - ${{ if eq(parameters.DoEsrp, true) }}:
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
+        DisplayName: 'ESRP - Sign C# dlls'
+        DoEsrp: ${{ parameters.DoEsrp }}
 
   - task: MSBuild@1
     displayName: Update projects.assets.json with combined list of all target frameworks

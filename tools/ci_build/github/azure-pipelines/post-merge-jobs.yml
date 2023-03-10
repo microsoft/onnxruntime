@@ -1,26 +1,19 @@
 stages:
-- stage: normal
+
+# This stage is to test if the combined build works on
+# o	Windows ARM64
+# o	Windows ARM64EC
+# o	Windows x64
+# o	Windows x86
+# Now we don't have coverage for ARM64EC yet. Will add it.
+- stage: ort_ext_combined_build
   dependsOn: [ ]
   jobs:
-  - template: templates/c-api-linux-cpu.yml
+  - template: templates/mac-ci.yml
     parameters:
+      AllowReleasedOpsetOnly: 1
+      BuildForAllArchs: true
       AdditionalBuildFlags: --use_extensions
-      BaseImage: 'centos:7'
-      OnnxruntimeArch: 'x64'
-      OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-      OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all'
-      OnnxruntimeNodejsBindingArch: 'x64'
-      PoolName: 'Linux-CPU'
-
-  - template: templates/c-api-linux-cpu.yml
-    parameters:
-      AdditionalBuildFlags: --use_extensions
-      BaseImage: 'arm64v8/centos:7'
-      OnnxruntimeArch: 'aarch64'
-      OnnxruntimeCFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-      OnnxruntimeCXXFlags: '-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -O3 -Wl,--strip-all'
-      OnnxruntimeNodejsBindingArch: 'arm64'
-      PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
   - template: templates/win-ci.yml
     parameters:
@@ -35,20 +28,12 @@ stages:
       runTests: true
       buildJava: false
       buildNodejs: false
-
-  - template: templates/win-ci.yml
-    parameters:
-      DoCompliance: true
-      DoEsrp: false
-      job_name_suffix: CPU_arm_default
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      msbuildPlatform: arm
-      packageName: arm
-      buildparameter: --arm --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
-      runTests: false
-      buildJava: false
-      buildNodejs: false
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        ort_build_pool_name: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        ort_build_pool_name: 'Win-CPU-2021'
 
   - template: templates/win-ci.yml
     parameters:
@@ -63,7 +48,13 @@ stages:
       runTests: false
       buildJava: false
       buildNodejs: true
-
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        ort_build_pool_name: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        ort_build_pool_name: 'Win-CPU-2021'
+            
   - template: templates/win-ci.yml
     parameters:
       DoCompliance: true
@@ -77,23 +68,13 @@ stages:
       runTests: true
       buildJava: true
       buildNodejs: true
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        ort_build_pool_name: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        ort_build_pool_name: 'Win-CPU-2021'
 
-  - template: templates/win-ci-vs-2019.yml
-    parameters:
-      BuildConfig: 'Debug'
-      EnvSetupScript: setup_env.bat
-      buildArch: x64
-      additionalBuildFlags: --disable_memleak_checker --use_mimalloc
-      msbuildPlatform: x64
-      isX86: false
-      job_name_suffix: x64_mimalloc
-      RunOnnxRuntimeTests: true
-      RunStaticCodeAnalysis: false
-      isTraining: false
-      ORT_EP_NAME: CPU
-      GenerateDocumentation: false
-      EnablePython: false
-      MachinePool: 'Win-CPU-2021'
 - stage: Mimalloc
   dependsOn: [ ]
   jobs:
@@ -112,7 +93,13 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        MachinePool: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        MachinePool: 'Win-CPU-2021'
+
 - stage: NoAbseil
   dependsOn: [ ]
   jobs:
@@ -131,7 +118,12 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        MachinePool: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        MachinePool: 'Win-CPU-2021'
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -151,7 +143,12 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        MachinePool: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        MachinePool: 'Win-CPU-2021'
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -171,8 +168,14 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      MachinePool: 'Win-CPU-2021'
+      # The public ADO project
+      ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+        MachinePool: 'Win-CPU-2019'
+      # The private ADO project
+      ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        MachinePool: 'Win-CPU-2021'
 
+#Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
   dependsOn: [ ]
   jobs:
@@ -182,7 +185,12 @@ stages:
     timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    pool: 'Linux-CPU'
+    # The public ADO project
+    ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+      pool: 'Linux-CPU-2019'
+    # The private ADO project
+    ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+      pool: 'Linux-CPU'
     steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -204,52 +212,23 @@ stages:
           llvm-cov show -instr-profile=ort.profdata onnxruntime_test_all -object onnxruntime_mlas_test -object onnxruntime_api_tests_without_env -object onnx_test_runner -object onnxruntime_shared_lib_test -object onnxruntime_global_thread_pools_test -object onnxruntime_api_tests_without_env $(Build.SourcesDirectory)/include/onnxruntime $(Build.SourcesDirectory)/onnxruntime/core $(Build.SourcesDirectory)/onnxruntime/contrib_ops --format=html -output-dir=$(Build.ArtifactStagingDirectory)
         workingDirectory: $(Build.BinariesDirectory)
 
-    - task: AzureCLI@2
-      displayName: 'Azure CLI'
-      inputs:
-        azureSubscription: AIInfraBuildOnnxRuntimeOSS
-        scriptType: bash
-        scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
-        arguments: '"$(Build.BinariesDirectory)/report.json" "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" x64 linux default'
-        workingDirectory: '$(Build.BinariesDirectory)'
+    - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+      - task: AzureCLI@2
+        displayName: 'Azure CLI'
+        inputs:
+          azureSubscription: AIInfraBuildOnnxRuntimeOSS
+          scriptType: bash
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/github/linux/upload_code_coverage_data.sh
+          arguments: '"$(Build.BinariesDirectory)/report.json" "https://aiinfra.visualstudio.com/Lotus/_build/results?buildId=$(Build.BuildId)" x64 linux default'
+          workingDirectory: '$(Build.BinariesDirectory)'
 
-    - task: PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: html
-
-  - job: Upload
-    workspace:
-      clean: all
-    pool: 'Win-CPU-2021'
-    variables:
-    - name: runCodesignValidationInjection
-      value: false
-    - name: skipComponentGovernanceDetection
-      value: true
-    dependsOn:
-    - CodeCoverage
-    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    steps:
-    - checkout: self
-      submodules: false
-
-    - task: DownloadPipelineArtifact@2
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        buildType: 'current'
-        artifactName: 'html'
-        targetPath: '$(Build.BinariesDirectory)'
-
-    - task: AzureFileCopy@4
-      displayName: 'AzureBlob File Copy'
-      inputs:
-        SourcePath: '$(Build.BinariesDirectory)\*'
-        azureSubscription: AIInfraBuildOnnxRuntimeOSS
-        Destination: AzureBlob
-        storage: onnxruntime
-        ContainerName: '$web'
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          targetPath: '$(Build.ArtifactStagingDirectory)'
+          artifact: html
+  - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+    - template: templates/upload-code-coverage-data.yml
 
 - stage: AndroidCustomBuildScript
   dependsOn: [ ]
@@ -257,7 +236,12 @@ stages:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    pool: 'Linux-CPU'
+    # The public ADO project
+    ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+      pool: 'Linux-CPU-2019'
+    # The private ADO project
+    ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+      pool: 'Linux-CPU'
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:
