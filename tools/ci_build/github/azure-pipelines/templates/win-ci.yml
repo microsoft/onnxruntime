@@ -62,6 +62,7 @@ stages:
   dependsOn: []
   jobs:
   - job:
+    dependsOn: []
     workspace:
       clean: all
     pool: ${{ parameters.ort_build_pool_name }}

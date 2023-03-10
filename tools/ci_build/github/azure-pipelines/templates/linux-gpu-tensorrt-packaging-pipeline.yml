@@ -20,6 +20,7 @@ stages:
   dependsOn: []
   jobs:
   - job:
+    dependsOn: []
     workspace:
       clean: all
     timeoutInMinutes:  180
