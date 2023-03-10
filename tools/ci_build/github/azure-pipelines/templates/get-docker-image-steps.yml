@@ -52,6 +52,11 @@ steps:
         pythonInterpreter: /usr/bin/python3
       displayName: patch manylinux
 
+- script: |
+    docker image ls
+    docker system df
+  displayName: Check Docker Images
+
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:
   - template: with-container-registry-steps.yml
     parameters:
@@ -69,10 +74,10 @@ steps:
   - task: Cache@2
     displayName: Cache Docker Image Task
     inputs:
-      key: '"${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}'
+      key: ' docker | "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}'
       path: ${{ parameters.IMAGE_CACHE_DIR }}
       restoreKeys: |
-        "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}
+        docker | "${{ parameters.Repository }}" | ${{ parameters.DockerCacheKeys }}
       cacheHitVar: CACHE_RESTORED
     condition: eq('${{ parameters.UsePipelineCache }}', 'true')
 
