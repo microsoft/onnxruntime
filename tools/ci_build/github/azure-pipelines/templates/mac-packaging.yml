@@ -12,15 +12,25 @@ parameters:
   type: string
   default: ''
 
+- name: BuildJava
+  displayName: Build with Java
+  type: boolean
+  default: false
+
+- name: BuildNodejs
+  displayName: Build with Nodejs
+  type: boolean
+  default: false
+
 steps:
 - script: |
     rm -rf $(Build.BinariesDirectory)/Release
-    python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+    python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters..AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
   displayName: 'Build ${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ variables.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters..AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --build_shared_lib --config Release
     displayName: 'Running Tests'
 
 - task: ShellScript@2
@@ -46,7 +56,7 @@ steps:
   displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
   condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-- ${{ if eq(variables.BuildJava, true) }}:
+- ${{ if eq(parameters..BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
           arch: 'osx-${{ parameters.MacosArch }}'
@@ -56,7 +66,7 @@ steps:
           libraryName: 'libonnxruntime.dylib'
           nativeLibraryName: 'libonnxruntime4j_jni.dylib'
 
-- ${{ if eq(variables.BuildNodejs, true) }}:
+- ${{ if eq(parameters..BuildNodejs, true) }}:
     - template: nodejs-artifacts-package-and-publish-steps-posix.yml
       parameters:
           ${{ if eq(parameters.MacosArch, 'x86_64') }}:

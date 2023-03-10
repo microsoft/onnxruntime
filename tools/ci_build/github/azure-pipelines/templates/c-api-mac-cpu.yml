@@ -99,8 +99,6 @@ jobs:
   - template: mac-packaging.yml
     parameters:
       MacosArch: ${{ parameters.MacosArch }}
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-    variables:
       ${{ if eq(parameters.MacosArch, universal2) }}:
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         BuildJava: false
