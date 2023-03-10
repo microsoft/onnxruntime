@@ -15,7 +15,6 @@
 #endif
 
 // Providers
-#define ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH 128
 #include "onnxruntime/core/providers/cpu/cpu_provider_factory.h"
 #include "onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"
 #include "onnxruntime/core/providers/tvm/tvm_provider_factory.h"
@@ -31,7 +30,6 @@
 #ifdef USE_DNNL
 #include "core/providers/dnnl/dnnl_provider_options.h"
 #endif
-
 
 /*
  * Class:     ai_onnxruntime_OrtSession_SessionOptions
@@ -434,7 +432,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addCUD
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnnl
   (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
     (void)jobj;
-  #ifdef USE_DNNL
+#ifdef USE_DNNL
     OrtDnnlProviderOptions dnnl_options;
     dnnl_options.use_arena = useArena;  // Follow the user command
     const OrtApi* api = (OrtApi*)apiHandle;
@@ -442,7 +440,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDnn
 #else
     (void)apiHandle; (void)handle; (void)useArena; // Parameters used when DNNL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with DNNL support.");
-  #endif
+#endif
 }
 
 /*
@@ -639,33 +637,29 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
   const char* epName = (*jniEnv)->GetStringUTFChars(jniEnv, jepName, NULL);
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*)optionsHandle;
-  size_t keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
+  int keyCount = (*jniEnv)->GetArrayLength(jniEnv, configKeyArr);
 
-  if (keyCount > ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH) {
-    throwOrtException(jniEnv, ORT_INVALID_ARGUMENT, "Too many provider options.");
-  }
+  const char** keyArray = (const char**)allocarray(keyCount, sizeof(const char*));
+  const char** valueArray = (const char**)allocarray(keyCount, sizeof(const char*));
+  jstring* jkeyArray = (jstring*)allocarray(keyCount, sizeof(jstring));
+  jstring* jvalueArray = (jstring*)allocarray(keyCount, sizeof(jstring));
 
-  const char* keyArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  const char* valueArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  jstring jkeyArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-  jstring jvalueArray[ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH];
-
-  for (size_t i = 0; i < keyCount; i++) {
-    // In this loop, it is type-safe to call (jsize)i since i is
-    // upper-bounded by keyCount (type: jsize) returned by GetArrayLength.
-    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, (jsize)i));
-    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, (jsize)i));
+  for (int i = 0; i < keyCount; i++) {
+    jkeyArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configKeyArr, i));
+    jvalueArray[i] = (jstring)((*jniEnv)->GetObjectArrayElement(jniEnv, configValueArr, i));
     keyArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jkeyArray[i], NULL);
     valueArray[i] = (*jniEnv)->GetStringUTFChars(jniEnv, jvalueArray[i], NULL);
   }
 
   checkOrtStatus(jniEnv, api, api->SessionOptionsAppendExecutionProvider(options, epName, keyArray, valueArray, keyCount));
 
-  for (size_t i = 0; i < keyCount; i++) {
+  for (int i = 0; i < keyCount; i++) {
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jkeyArray[i], keyArray[i]);
     (*jniEnv)->ReleaseStringUTFChars(jniEnv, jvalueArray[i], valueArray[i]);
   }
   (*jniEnv)->ReleaseStringUTFChars(jniEnv, jepName, epName);
+  free((void*)keyArray);
+  free((void*)valueArray);
+  free((void*)jkeyArray);
+  free((void*)jvalueArray);
 }
-
-#undef ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH

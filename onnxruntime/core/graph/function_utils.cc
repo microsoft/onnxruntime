@@ -348,7 +348,7 @@ class Inliner {
     name = new_name;
   }
 
-  void rename(std::string& name) {
+  void rename(std::string& name, bool is_new_def) {
     if (name.empty()) return;
     for (auto i = rename_scopes.size(); i > 0; --i) {
       const auto& map = rename_scopes[i - 1];
@@ -358,7 +358,10 @@ class Inliner {
         return;
       }
     }
-    make_unique(name);
+    if (is_new_def) {
+      make_unique(name);
+    }
+    // Otherwise, it is a reference to an outer-scope variable that should not be renamed.
   }
 
   template <bool isOutput>
@@ -396,10 +399,10 @@ class Inliner {
       n.set_name(prefix + n.name());
 
     for (auto& x : *n.mutable_input()) {
-      rename(x);
+      rename(x, false);
     }
     for (auto& y : *n.mutable_output()) {
-      rename(y);
+      rename(y, true);
     }
     auto& attributes = *n.mutable_attribute();
     for (auto attr_iter = attributes.begin(); attr_iter != attributes.end();) {

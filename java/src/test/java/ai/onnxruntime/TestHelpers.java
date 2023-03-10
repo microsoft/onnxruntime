@@ -13,9 +13,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -25,6 +27,10 @@ import org.junit.jupiter.api.Assertions;
 public class TestHelpers {
 
   private static final Pattern LOAD_PATTERN = Pattern.compile("[,\\[\\] ]");
+
+  static void deleteDirectoryTree(Path input) throws IOException {
+    Files.walk(input).sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+  }
 
   static boolean[] toPrimitiveBoolean(List<Boolean> input) {
     boolean[] output = new boolean[input.size()];
@@ -251,7 +257,7 @@ public class TestHelpers {
   }
 
   public static Path getResourcePath(String path) {
-    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
+    return new File(TestHelpers.class.getResource(path).getFile()).toPath();
   }
 
   public static float[] loadTensorFromFile(Path filename) {
