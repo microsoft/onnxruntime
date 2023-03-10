@@ -57,20 +57,17 @@ parameters:
   type: boolean
   default: false
 
-stages:
-- stage: Windows_Packaging_${{ parameters.job_name_suffix }}
-  jobs:
-  - job:
-    dependsOn: []
-    workspace:
-      clean: all
-    pool: ${{ parameters.ort_build_pool_name }}
-    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutInMinutes: 1200
-    ${{ else }}:
-      timeoutInMinutes: 300
+jobs:
+- job: Windows_Packaging_${{ parameters.job_name_suffix }}
+  workspace:
+    clean: all
+  pool: ${{ parameters.ort_build_pool_name }}
+  ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+    timeoutInMinutes: 1200
+  ${{ else }}:
+    timeoutInMinutes: 300
 
-    steps:
+  steps:
     - checkout: self
       clean: true
       submodules: none
@@ -144,8 +141,8 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)'
 
     - script: |
-        dir *.dll
-        mkdir $(Build.ArtifactStagingDirectory)\testdata
+       dir *.dll
+       mkdir $(Build.ArtifactStagingDirectory)\testdata
       workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
       displayName: 'List built DLLs'
 
@@ -267,9 +264,9 @@ stages:
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
           Contents: |
-            **/*.obj
-            **/*.pdb
-            **/*.dll
+           **/*.obj
+           **/*.pdb
+           **/*.dll
 
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
@@ -297,8 +294,8 @@ stages:
         continueOnError: true
 
     - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
+      parameters :
+        condition : 'succeeded'
 
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
