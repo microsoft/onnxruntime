@@ -30,7 +30,7 @@ static int32_t GetNNAPIRuntimeFeatureLevel(const NnApi& nnapi_handle) {
 
  *
  * @param nnapi_handle nnapi-lib handle.
- * @param device_handles target devices users want to use.
+ * @param `devices` target devices users want to use.
  *
  * @return The max feature level support by a branch of devices.
  *
