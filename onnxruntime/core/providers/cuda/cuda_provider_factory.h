@@ -20,7 +20,6 @@ class NvtxRangeCreator;
 }
 
 struct ProviderInfo_CUDA {
-  virtual ~ProviderInfo_CUDA() {}  // This is declared due to a TSA warning, the only instantiation of this class is a global variable of automatic storage.
 
   virtual OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) = 0;
   virtual OrtStatus* GetCurrentGpuDeviceId(_In_ int* device_id) = 0;
@@ -60,6 +59,9 @@ struct ProviderInfo_CUDA {
   // tests and is only called from onnxruntime_test_all. Release builds don't need this function.
   virtual bool TestAll() = 0;
 #endif
+
+protected:
+  ~ProviderInfo_CUDA() = default;  // Can only be destroyed through a subclass instance
 };
 
 }  // namespace onnxruntime
