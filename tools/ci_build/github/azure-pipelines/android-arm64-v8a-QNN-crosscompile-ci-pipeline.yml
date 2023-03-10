@@ -14,8 +14,6 @@ jobs:
   - script: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
     displayName: Install coreutils and ninja
 
-  - template: templates/set-up-gradle-wrapper-step.yml
-
   - script: sudo chmod go+rw /dev/kvm
     displayName: Update permissions to KVM
 
