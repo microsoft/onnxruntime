@@ -28,9 +28,10 @@ namespace onnxruntime {
 namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-                           gsl::span<const DeviceWrapper> nnapi_target_devices)
+                           gsl::span<const DeviceWrapper> nnapi_target_devices,
+                           TargetDeviceOption target_device_option)
     : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)},
-      shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices),
+      shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option),
       nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
@@ -475,6 +476,9 @@ Status ModelBuilder::AddOperations() {
 Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_indices,
                                   const std::vector<std::string>& output_names,
                                   const std::vector<OperandType>& output_types) {
+#ifndef NDEBUG
+  operations_recorder_.emplace_back(track_node_index_, op);
+#endif
   InlinedVector<uint32_t> output_indices;
   for (size_t i = 0; i < output_types.size(); i++) {
     uint32_t index = 0;
@@ -548,47 +552,52 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "The model cannot run using current set of target devices, ",
                              GetDevicesDescription(nnapi_target_devices_));
-
-    } else {
+    // workaround for bugs in Android OS. sometimes ops are passed checking but failed at compilation.
+    }
+    // else // no else after return
+    if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       use_create_for_devices = true;
     }
   }
 
 #ifndef NDEBUG
   if (nnapi_target_devices_.size() > 1 && nnapi_target_devices_.back().type == ANEURALNETWORKS_DEVICE_CPU) {
-    auto* supported_ops = supported_ops_holder.get();
+    auto supported_ops = gsl::make_span(supported_ops_holder.get(), num_nnapi_ops_);
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksModel_getSupportedOperationsForDevices(
             nnapi_model_->model_, device_handles.data(),
-            static_cast<uint32_t>(device_handles.size() - 1), supported_ops),
+            static_cast<uint32_t>(device_handles.size() - 1), supported_ops.data()),
         "on getSupportedOperationsForDevices");
 
-    std::unordered_map<std::string, int32_t> optype_support;
-    const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
-    for (size_t idx = 0; idx < node_indices.size(); idx++) {
-      auto node_idx = node_indices[idx];
-      const auto* node(graph_viewer_.GetNode(node_idx));
+    ORT_ENFORCE(num_nnapi_ops_==operations_recorder_.size(), "num_nnapi_ops_!=operations_recorder_.size()");
+    std::unordered_map<std::string, std::pair<int32_t, int32_t>> optype_support_status;
+    for (size_t idx = 0; idx < operations_recorder_.size(); idx++) {
+      auto [onnx_node_idx, nnapi_idx] = operations_recorder_[idx];
+      const auto* node(graph_viewer_.GetNode(onnx_node_idx));
+      auto stat_name = node->OpType() + ".nnapi_op_" + std::to_string(nnapi_idx);
+
       if (!supported_ops[idx]) {
-        optype_support[node->OpType()]++;
+        optype_support_status[stat_name].first++;
       } else {
-        optype_support[node->OpType()]--;
+        optype_support_status[stat_name].second++;
       }
     }
     size_t total_ops = 0;
-    std::string fb_op_alloc_detail, nm_op_alloc_detail;
+    std::string fallback_op_detail, normal_op_detail;
 
-    for (const auto& [op, count] : optype_support) {
-      if (count > 0) {
-        total_ops += count;
-        fb_op_alloc_detail += std::to_string(count) + "x " + op + ",";
-      } else {
-        nm_op_alloc_detail += std::to_string(-count) + "x " + op + ",";
+    for (const auto& [op, ops_status] : optype_support_status) {
+      auto& [support_cnt, unspport_cnt] = ops_status;
+      total_ops += support_cnt + unspport_cnt;
+      if (support_cnt > 0) {
+        fallback_op_detail += MakeString(support_cnt, "x ", op, ", ");
+      } else if (unspport_cnt > 0) {
+        normal_op_detail += MakeString(unspport_cnt, "x ", op, ", ");
       }
     }
 
-    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fb_op_alloc_detail << "] out of " << num_nnapi_ops_
+    LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fallback_op_detail << "] out of " << num_nnapi_ops_
                           << " are falling-back to " << kNnapiCpuDeviceName << ", and ["
-                          << nm_op_alloc_detail << "] are running in accelerators.";
+                          << normal_op_detail << "] are running in accelerators.";
   }
 #endif
   // When calling ANeuralNetworksCompilation_createForDevices,

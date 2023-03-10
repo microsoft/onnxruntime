@@ -6,6 +6,7 @@
 #include <unordered_set>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/graph/basic_types.h"
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
@@ -31,7 +32,7 @@ class ModelBuilder {
   using Shape = Shaper::Shape;
 
   ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-               gsl::span<const DeviceWrapper> nnapi_target_devices);
+               gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -104,6 +105,15 @@ class ModelBuilder {
 
   int32_t GetEffectiveFeatureLevel() const { return nnapi_effective_feature_level_; }
 
+  // Just for Debugging
+  void SetDebugTrackNode(const size_t node_index) {
+#ifndef NDEBUG
+    track_node_index_ = node_index;
+#else
+    ORT_UNUSED_PARAMETER(node_index);
+#endif
+  }
+
  private:
   const NnApi& nnapi_;
   const GraphViewer& graph_viewer_;
@@ -147,12 +157,20 @@ class ModelBuilder {
 
   gsl::span<const DeviceWrapper> nnapi_target_devices_;
 
+  const TargetDeviceOption target_device_option_;
   // feature_level, to decide if we can run this node on NNAPI
   int32_t nnapi_effective_feature_level_ = 0;
   // The number of nnapi operations in this model
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
+#ifndef NDEBUG
+  // tracking current node index for debugging
+  size_t track_node_index_ = 0;
+  // recording onnx node index and nnapi operation index.
+  // An onnx node might be decomposed into multiple nnapi operations
+  InlinedVector<std::pair<size_t, int32_t>> operations_recorder_;
+#endif
   // Convert the onnx model to ANeuralNetworksModel
   common::Status Prepare();
 
