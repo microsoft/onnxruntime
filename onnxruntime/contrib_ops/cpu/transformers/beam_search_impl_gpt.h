@@ -358,7 +358,7 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
       // operations.
       // If we ever do them in different streams, we must use different staging buffers to avoid data
       // races.
-      for (int64_t i = 0; i < gpt_subgraph_.num_layers; ++i) {
+      for (size_t i = 0; i < static_cast<size_t>(gpt_subgraph_.num_layers); ++i) {
         ORT_RETURN_IF_ERROR(reorder_past_state_func_(cuda_device_prop_,
                                                      *fetches[offset + i].GetMutable<Tensor>(),
                                                      beam_state.staging_for_past_state_reorder,
