@@ -56,9 +56,10 @@ parameters:
   displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
   type: boolean
   default: false
-
+stages:
+- stage: Windows_Packaging_${{ parameters.job_name_suffix }}
   jobs:
-  - job: Windows_Packaging_${{ parameters.job_name_suffix }}
+  - job:
     workspace:
       clean: all
     pool: ${{ parameters.ort_build_pool_name }}
