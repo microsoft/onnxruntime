@@ -13,27 +13,18 @@ parameters:
   default: ''
 
 variables:
-- name: AdditionalBuildFlags
   ${{ if eq(parameters.MacosArch, universal2) }}:
-    value: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+    BuildJava: false
+    BuildNodejs: false
   ${{ if ne(parameters.MacosArch, arm64) }}:
-    value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+    BuildJava: true
+    BuildNodejs: true
   ${{ if ne(parameters.MacosArch, x86_64) }}:
-    value: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
-- name: BuildJava
-  ${{ if eq(parameters.MacosArch, universal2) }}:
-    value: false
-  ${{ if ne(parameters.MacosArch, arm64) }}:
-    value: true
-  ${{ if ne(parameters.MacosArch, x86_64) }}:
-    value: true
-- name: BuildNodejs
-  ${{ if eq(parameters.MacosArch, universal2) }}:
-    value: false
-  ${{ if ne(parameters.MacosArch, arm64) }}:
-    value: true
-  ${{ if ne(parameters.MacosArch, x86_64) }}:
-    value: true
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+    BuildJava: true
+    BuildNodejs: true
 
 steps:
 - script: |
