@@ -110,7 +110,8 @@ class ModelBuilder {
 #ifndef NDEBUG
     track_node_index_ = node_index;
 #else
-    ORT_UNUSED_PARAMETER(node_index);
+    // ORT_UNUSED_PARAMETER minimal build
+    (void)(node_index);
 #endif
   }
 
