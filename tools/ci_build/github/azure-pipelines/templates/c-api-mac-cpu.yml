@@ -96,29 +96,29 @@ jobs:
     displayName: ccache MacOS Build
     condition: eq(${{ parameters.WITHCACHE }}, true)
 
-- ${{ if eq(parameters.MacosArch, 'universal2') }}:
-  - template: mac-packaging.yml
-    parameters:
-      MacosArch: ${{ parameters.MacosArch }}
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
-      BuildJava: false
-      BuildNodejs: false
+  - ${{ if eq(parameters.MacosArch, 'universal2') }}:
+    - template: mac-packaging.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        BuildJava: false
+        BuildNodejs: false
 
-- ${{ if eq(parameters.MacosArch, 'arm64') }}:
-  - template: mac-packaging.yml
-    parameters:
-      MacosArch: ${{ parameters.MacosArch }}
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
-      BuildJava: true
-      BuildNodejs: true
+  - ${{ if eq(parameters.MacosArch, 'arm64') }}:
+    - template: mac-packaging.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        BuildJava: true
+        BuildNodejs: true
 
-- ${{ if eq(parameters.MacosArch, 'x86_64') }}:
-  - template: mac-packaging.yml
-    parameters:
-      MacosArch: ${{ parameters.MacosArch }}
-      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
-      BuildJava: true
-      BuildNodejs: true
+  - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
+    - template: mac-packaging.yml
+      parameters:
+        MacosArch: ${{ parameters.MacosArch }}
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+        BuildJava: true
+        BuildNodejs: true
 
   - script: |
       ccache -s
