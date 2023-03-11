@@ -894,6 +894,14 @@ static CostCheckResult
 PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
                              const std::vector<int64_t>& perm,
                              const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+#ifdef USE_QNN
+  //  2, 3 dimension Transpose can also idienfied as layout transpose node, e.g perm [0, 2, 1]
+  //  Qnn layout sensitive ops doesn't support < 2D, exclude if perm rank < 4
+  if (perm.size() < 4) {
+    return CostCheckResult::kFallThrough;
+  }
+#endif
+
   // we aggressively push the layout transpose nodes
   if (perm == ChannelFirstToLastPerm(perm.size()) ||
       perm == ChannelLastToFirstPerm(perm.size())) {
