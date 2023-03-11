@@ -29,7 +29,6 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/reorder.cpp
   ${MLAS_SRC_DIR}/snchwc.cpp
   ${MLAS_SRC_DIR}/activate.cpp
-  ${MLAS_SRC_DIR}/activate_fp16.cpp
   ${MLAS_SRC_DIR}/logistic.cpp
   ${MLAS_SRC_DIR}/tanh.cpp
   ${MLAS_SRC_DIR}/erf.cpp
@@ -298,7 +297,7 @@ else()
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()
-    if(ARM64 AND MLAS_SOURCE_IS_NOT_SET AND NOT X86 AND NOT X86_64 AND NOT POWER AND NOT ARM)
+    if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
         enable_language(ASM)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
@@ -319,6 +318,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
           ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
