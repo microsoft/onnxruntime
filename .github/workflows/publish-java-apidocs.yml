@@ -41,6 +41,6 @@ jobs:
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: java/build/docs/javadoc
           branch: gh-pages
-          target: docs/api/java
+          folder: java/build/docs/javadoc
+          target-folder: docs/api/java
