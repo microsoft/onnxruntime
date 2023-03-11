@@ -15,7 +15,7 @@ parameters:
 - name: BuildJava
   displayName: Build with Java
   type: boolean
-  default: false
+  default: true
 
 - name: BuildNodejs
   displayName: Build with Nodejs
