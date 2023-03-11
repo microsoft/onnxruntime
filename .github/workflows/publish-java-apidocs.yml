@@ -33,7 +33,7 @@ jobs:
           ref: gh-pages
           clean: false
       - name: Log commit docs were generated from
-        run: cat $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
+        run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
