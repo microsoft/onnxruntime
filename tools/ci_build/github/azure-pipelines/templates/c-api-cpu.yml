@@ -84,7 +84,7 @@ stages:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-mobile-aar'
-      stage_name_suffix: 'Mobile'
+      job_name_suffix: 'Mobile'
       packageName: 'onnxruntime-mobile'
 
 
@@ -101,7 +101,7 @@ stages:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
-      stage_name_suffix: 'Full'
+      job_name_suffix: 'Full'
 
 - stage: iOS_Full_xcframework
   dependsOn: []
