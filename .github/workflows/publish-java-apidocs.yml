@@ -5,6 +5,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: "apidocs-java"
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
