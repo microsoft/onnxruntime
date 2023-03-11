@@ -13,8 +13,6 @@ ONNX Runtime gives you a variety of options to add machine learning to your mobi
 
 * [Build an objection detection application on iOS](./deploy-ios.md)
 * [Build an image classification application on Android](./deploy-android.md)
-* [Build an super resolution application on iOS](./superres.md#ios-app)
-* [Build an super resolution application on Android](./superres.md#android-app)
 
 ## ONNX Runtime mobile application development flow
 

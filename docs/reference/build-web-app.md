@@ -1,15 +1,13 @@
 ---
 title: Build a web app with ONNX Runtime
 description: Considerations and options for building a web application with ONNX Runtime
-parent: Deploy on web
-grand_parent: Tutorials
-nav_order: 3
-redirect_from: /reference/build-web-app
-
+parent: Reference
+has_children: false
+nav_order: 6
 ---
+
 # Build a web application with ONNX Runtime
 {: .no_toc}
-This document explains the options and considerations for building a web application with ONNX Runtime.
 
 ## Contents
 {: .no_toc}
@@ -17,6 +15,7 @@ This document explains the options and considerations for building a web applica
 * TOC
 {:toc}
 
+This document explains the options and considerations for building a web application with ONNX Runtime.
 
 ## Options for deployment target
 
@@ -48,9 +47,9 @@ You need to understand your web app's scenario and get an ONNX model that is app
 
 ONNX models can be obtained from the [ONNX model zoo](https://github.com/onnx/models), converted from PyTorch or TensorFlow, and many other places.
 
-You can [convert the ONNX format model to ORT format model](../../reference/ort-format-models.md), for optimized binary size, faster initialization and peak memory usage.
+You can [convert the ONNX format model to ORT format model](./ort-format-models.md), for optimized binary size, faster initialization and peak memory usage.
 
-You can [perform a model-specific custom build](../../build/custom.md) to further optimize binary size.
+You can [perform a model-specific custom build](../build/custom.md) to further optimize binary size.
 
 ## Bootstrap your application
 
@@ -79,7 +78,7 @@ Add "@dev" to the package name to use the nightly build (eg. npm install onnxrun
 ## Consume onnxruntime-web in your code
 
 1. Import onnxruntime-web
-   See  [import onnxruntime-web](../../get-started/with-javascript.md#import-1)
+   See  [import onnxruntime-web](../get-started/with-javascript.md#import-1)
 
 2. Initialize the inference session
    See [InferenceSession.create](https://github.com/microsoft/onnxruntime-inference-examples/blob/main/js/quick-start_onnxruntime-web-bundler/main.js#L14)
@@ -91,7 +90,7 @@ Add "@dev" to the package name to use the nightly build (eg. npm install onnxrun
 
    Session run happens each time their is new user input.
 
-Refer to [ONNX Runtime Web API docs](../../api/js) for more detail.
+Refer to [ONNX Runtime Web API docs](../api/js) for more detail.
   
 ## Pre and post processing
 
@@ -105,7 +104,7 @@ Raw input is usually a string (for NLP model) or an image (for image model). The
 
 ### Image input
 
-1. Use a JS/wasm library to pre-process the data, and create tensor as input to fulfill the requirement of the model. See the [image classification using ONNX Runtime Web](./classify-images-nextjs-github-template.md) tutorial.
+1. Use a JS/wasm library to pre-process the data, and create tensor as input to fulfill the requirement of the model. See the [image classification using ONNX Runtime Web](../tutorials/web/classify-images-nextjs-github-template.md) tutorial.
 
 2. Modify the model to include the pre-processing inside the model as operators. The model will expect a certain web image format (eg. A bitmap or texture from canvas).
 

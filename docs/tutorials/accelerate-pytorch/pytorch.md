@@ -157,7 +157,7 @@ Then you can run the ONNX model in the environment of your choice. The ONNXRunti
   // Allocate ONNXRuntime session
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   Ort::Env env;
-  Ort::Session session{env, ORT_TSTR("model.onnx"), Ort::SessionOptions{nullptr}};
+  Ort::Session session{env, L"model.onnx", Ort::SessionOptions{nullptr}};
 
   // Allocate model inputs: fill in shape and size
   std::array<float, ...> input{};

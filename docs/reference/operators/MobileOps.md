@@ -10,9 +10,6 @@ These are the operators and types included in the ORT Mobile pre-built packages 
 
 | Release | Documentation |
 |---------|---------------|
-| 1.14 | [Pre-Built Package Support](./mobile_package_op_type_support_1.14.md)|
-| 1.13 | [Pre-Built Package Support](./mobile_package_op_type_support_1.13.md)|
-| 1.12 | [Pre-Built Package Support](./mobile_package_op_type_support_1.12.md)|
 | 1.11 | [Pre-Built Package Support](./mobile_package_op_type_support_1.11.md)|
 | 1.10 | [Pre-Built Package Support](./mobile_package_op_type_support_1.10.md)|
 | 1.9 | [Pre-Built Package Support](./mobile_package_op_type_support_1.9.md)|

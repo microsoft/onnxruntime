@@ -153,7 +153,7 @@ optional arguments:
 
 **Since ONNX Runtime 1.11**
 
-Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./../performance/ort-format-model-runtime-optimization.md) for more information.
+Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./mobile/ort-format-model-runtime-optimization.md) for more information.
 
 This replaces the [optimization level](#optimization-level) option from earlier ONNX Runtime versions.
 

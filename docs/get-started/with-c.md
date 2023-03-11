@@ -1,7 +1,7 @@
 ---
 title: C
 parent: Get Started
-nav_order: 3
+nav_order: 4
 ---
 
 # Get started with ORT for C
@@ -110,4 +110,4 @@ To turn on/off telemetry collection on official Windows builds, please use Enabl
 
 ## Samples
 
-See [Candy Style Transfer](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/fns_candy_style_transfer)
+See [Tutorials: API Basics - C](../tutorials/api-basics)

@@ -33,13 +33,13 @@ We provide a convenient Python script that exports the PyTorch model into ONNX f
 
     ```bash
     pip install torch
-    pip install pillow
     pip install onnx
     pip install onnxruntime
-    pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-extensions
+    pip install onnxruntime-extensions
+    pip install pillow
     ```
-  
-    A note on versions: the best super resolution results are achieved with ONNX opset 18 (with its support for the Resize operator with anti-aliasing), which is supported by onnx 1.13.0 and onnxruntime 1.14.0 and later. The onnxruntime-extensions package is a pre-release version. The release version will be available soon.
+
+   A note on versions: the best super resolution results are achieved with ONNX opset 18 (with its support for the Resize operator with anti-aliasing), which is supported by onnx 1.13.0 and onnxruntime 1.14.0 and later.
 
 2. Then download the script and test image from the onnxruntime-extensions GitHub repository (if you have not already cloned this repository):
 
@@ -102,7 +102,8 @@ Add the following dependencies to the app `build.gradle`:
 
 ```gradle
 implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
-implementation 'com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.release'
+// TODO: update with released version aar package when available
+implementation files('libs/onnxruntime-extensions-android-0.6.0.aar')
 ```
 
 #### Project resources
