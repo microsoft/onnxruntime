@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - java
   workflow_dispatch:
 
 concurrency:
