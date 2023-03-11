@@ -50,6 +50,8 @@ class XnnpackExecutionProvider : public IExecutionProvider {
     return xnnpack_thread_pool_;
   }
 
+  InlinedHashMap<OrtDevice, AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   pthreadpool* xnnpack_thread_pool_{nullptr};
 };

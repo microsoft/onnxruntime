@@ -38,6 +38,7 @@ class CPUExecutionProvider : public IExecutionProvider {
  private:
   CPUExecutionProviderInfo info_;
   std::vector<FuseRuleFn> fuse_rules_;
+  AllocatorPtr allocator_;
 };
 
 // Registers all available CPU kernels

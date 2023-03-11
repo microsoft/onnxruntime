@@ -90,7 +90,7 @@ SessionState::SessionState(Graph& graph,
   for (auto ep : execution_providers_) {
     InlinedHashMap<OrtDevice, AllocatorPtr> preferedAllocators = ep->CreatePreferredAllocators();
     for (auto it : preferedAllocators) {
-      allocators_[it.first] = it.second;
+      allocators_.insert({it.first, it.second});    // DONT overwrite existing key
     }
   }
 }

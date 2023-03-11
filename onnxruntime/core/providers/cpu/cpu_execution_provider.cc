@@ -2423,19 +2423,20 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
 InlinedHashMap<OrtDevice, AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
   InlinedHashMap<OrtDevice, AllocatorPtr> ret;
   ret.reserve(1);
-
-  bool create_arena = info_.create_arena;
+  if (!allocator_) {
+    bool create_arena = info_.create_arena;
 #if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-  create_arena = false;
+    // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+    create_arena = false;
 #elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-  create_arena = false;
+    // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+    create_arena = false;
 #endif
-  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
-
-  ret[OrtDevice()] = CreateAllocator(device_info);
+    AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena}; 
+    allocator_ = CreateAllocator(device_info);
+  }
+  ret[OrtDevice()] = allocator_;
   return ret;
 }
 

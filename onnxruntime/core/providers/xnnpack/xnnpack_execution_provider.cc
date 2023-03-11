@@ -192,6 +192,28 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   ORT_UNUSED_PARAMETER(allocator_manager);
 }
 
+InlinedHashMap<OrtDevice, AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
+  InlinedHashMap<OrtDevice, AllocatorPtr> ret;
+  ret.reserve(1);
+  const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
+  if (!stored_allocator) {
+    const AllocatorCreationInfo allocator_info(
+        [](int) {
+          // lazy create the allocator
+          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+                                                              OrtAllocatorType::OrtDeviceAllocator));
+        });
+    stored_allocator = CreateAllocator(allocator_info);
+  }
+  xnn_allocator->context = stored_allocator.get();
+  const xnn_status st = xnn_initialize(xnn_allocator);
+  if (st != xnn_status_success) {
+    ORT_THROW("XNNPACK initialization failed with status ", st);
+  }
+  ret[OrtDevice()] = stored_allocator;
+  return ret;
+}
+
 // For ops are not lay-out sensitive and does not defined in
 // onnx-domain, it will be created dynamicly
 static bool RequestDynamicSchema(const NodeUnit& node_unit) {
