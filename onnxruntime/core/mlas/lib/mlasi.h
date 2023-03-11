@@ -23,6 +23,7 @@ Abstract:
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string>
 #include <type_traits>
 
 #ifdef MLAS_NO_EXCEPTION
