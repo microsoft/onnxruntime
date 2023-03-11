@@ -58,7 +58,7 @@ jobs:
       brew install ccache
       echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
     displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-    condition: eq(${{ parameters.WITHCACHE }}, true)
+    condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
     inputs:
@@ -67,9 +67,10 @@ jobs:
       restoreKeys: |
         "$(TODAY)" | ccache | protocol
     displayName: ccache protocol
-    condition: eq(${{ parameters.WITHCACHE }}, true)
+    condition: eq(${{ parameters.WithCache }}, true)
 
   - script: |
+      sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
       set -e -x
       pushd .
       $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
@@ -78,14 +79,14 @@ jobs:
       export ONNX_ML=1
       export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
       python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-      sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
+
     displayName: 'Install dependencies'
 
   - script: |
       ccache -s
       ccache -z
     displayName: Show Cache stats and Clear protolbuf stats.
-    condition: eq(${{ parameters.WITHCACHE }}, true)
+    condition: eq(${{ parameters.WithCache }}, true)
 
   - task: Cache@2
     inputs:
@@ -94,7 +95,7 @@ jobs:
       restoreKeys: |
         "$(TODAY)" | ccache | onnxruntime
     displayName: ccache MacOS Build
-    condition: eq(${{ parameters.WITHCACHE }}, true)
+    condition: eq(${{ parameters.WithCache }}, true)
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
     - template: mac-packaging.yml
@@ -124,7 +125,7 @@ jobs:
       ccache -s
       ccache -z
     displayName: Show Cache stats
-    condition: eq(${{ parameters.WITHCACHE }}, true)
+    condition: eq(${{ parameters.WithCache }}, true)
 
   - task: PublishPipelineArtifact@1
     inputs:
