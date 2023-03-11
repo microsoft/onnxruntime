@@ -1,10 +1,10 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "module": "ES2020",
+    "module": "CommonJS",
     "downlevelIteration": true,
     "declarationDir": "./types",
   },
-  "include": ["lib", "test"],
+  "include": ["lib", "script", "test"],
   "exclude": ["lib/wasm/proxy-worker"]
 }
