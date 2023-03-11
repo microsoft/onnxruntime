@@ -18,14 +18,17 @@ stages:
 
 # build binaries for Android
 - ${{ if parameters.BuildAndroidBinaries }}:
-  - template: templates/android-java-api-aar.yml
-    parameters:
-      buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
-      stage_name_suffix: 'Full'
-      publish_executables: '1'
-      pool_name: 'Linux-CPU'
+  - stage: BuildAndroidBinaries
+    dependsOn: []
+    jobs:
+    - template: templates/android-java-api-aar.yml
+      parameters:
+        buildConfig: 'Release'
+        buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+        artifactName: 'onnxruntime-android-full-aar'
+        job_name_suffix: 'Full'
+        publish_executables: '1'
+        pool_name: 'Linux-CPU'
 
 # build Python packages
 # Linux GPU only
