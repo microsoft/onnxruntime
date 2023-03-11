@@ -26,20 +26,20 @@ stages:
 - stage: MacOS_C_API_Packaging_CPU
   dependsOn: []
   jobs:
-  - template: c-api-mac-cpu.yml
+  - template: mac-packing-jobs.yml
     parameters:
       MacosArch: 'x86_64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       WithCache: ${{ parameters.WithCache }}
   - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-    - template: c-api-mac-cpu.yml
+    - template: mac-packing-jobs.yml
       parameters:
         MacosArch: 'arm64'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-    - template: c-api-mac-cpu.yml
+    - template: mac-packing-jobs.yml
       parameters:
         MacosArch: 'universal2'
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}

@@ -65,7 +65,7 @@ stages:
       OnnxruntimeNodejsBindingArch: 'arm64'
       PoolName: 'aiinfra-linux-ARM64-CPU-2019'
 
-- template: mac-ci.yml
+- template: mac-packaging-stages.yml
   parameters:
     AllowReleasedOpsetOnly: 1
     BuildForAllArchs: true
