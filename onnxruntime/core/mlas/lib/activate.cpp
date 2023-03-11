@@ -498,17 +498,20 @@ Return Value:
             break;
         }
 
-        case MlasClipActivation: {
+        case MlasClipActivation:
+        {
             MlasActivationKernel<MlasClipActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
-        case MlasHardSigmoidActivation: {
+        case MlasHardSigmoidActivation:
+        {
             MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
-        case MlasActivationKindCount: {
+        case MlasActivationKindCount:
+        {
             MLAS_THROW_EX(std::runtime_error, "bad mlas activation kind");
             break;
         }
