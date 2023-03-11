@@ -205,11 +205,7 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
   // to avoid the performance impact from using the valid_items interface.
   float thread_data = -ROCMRT_INF_F;
   if (threadIdx.x < all_sequence_length) {
-    if (add_before_softmax == nullptr) {
-      thread_data = float(input[index]) * rsqrt_head_size;
-    } else {
-      thread_data = float(input[index] + add_before_softmax[index]) * rsqrt_head_size;
-    }
+    thread_data = float(input[index]) * rsqrt_head_size;
 
     const int sequence_index = blockIdx.x % sequence_length;
     if (is_unidirectional) {
@@ -233,6 +229,10 @@ __global__ void SoftmaxWithRawMaskSmallKernel(
       if (mask) {
         thread_data = -ROCMRT_INF_F;
       }
+    }
+
+    if (add_before_softmax != nullptr) {
+      thread_data += float(add_before_softmax[index]);
     }
   }
 
