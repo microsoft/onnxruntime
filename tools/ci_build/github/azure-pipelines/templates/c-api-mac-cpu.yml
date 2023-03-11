@@ -129,7 +129,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
-      artifactName: 'onnxruntime-osx'
+      artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
   - template: component-governance-component-detection-steps.yml
     parameters:
