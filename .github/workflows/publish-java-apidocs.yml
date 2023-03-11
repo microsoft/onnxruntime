@@ -5,6 +5,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   publish:
     name: Generate Java docs
@@ -35,3 +38,9 @@ jobs:
           name: java-apidocs-${{ steps.vars.outputs.sha_short }}
           path: |
             java/build/docs/javadoc
+      - name: Deploy
+        uses: JamesIves/github-deploy-action@v4
+        with:
+          folder: java/build/docs/javadoc
+          branch: gh-pages
+          target: docs/api/java
