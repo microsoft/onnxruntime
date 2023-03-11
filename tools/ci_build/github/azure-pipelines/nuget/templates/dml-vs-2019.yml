@@ -2,7 +2,7 @@ parameters:
   DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
   DoCompliance: 'false'
   BuildCommand: ''
-  JobName: 'Windows_CI_Dev'
+  StageName: 'Windows_CI_Dev'
   DoNugetPack:  'false'
   NuPackScript : ''
   ArtifactName: 'drop-nuget'
@@ -23,7 +23,7 @@ parameters:
   AllowReleasedOpsetOnly: '0'
   IsReleaseBuild: false
 stages:
-- stage: ${{ parameters.JobName }}
+- stage: ${{ parameters.StageName }}
   jobs:
   - job:
     timeoutInMinutes: 200

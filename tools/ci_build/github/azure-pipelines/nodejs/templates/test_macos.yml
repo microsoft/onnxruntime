@@ -1,7 +1,7 @@
 parameters:
-  JobSuffix: ''
+  StageSuffix: ''
 stages:
-- stage: Nodejs_Test_MacOS_${{ parameters.JobSuffix }}
+- stage: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
   dependsOn:
   - Nodejs_Packaging_CPU
   condition: succeeded()

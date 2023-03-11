@@ -786,16 +786,16 @@ stages:
 - template: ../nodejs/templates/test_win.yml
   parameters:
     AgentPool : 'Win-CPU-2021'
-    JobSuffix : 'Win_CPU_x64'
+    StageSuffix : 'Win_CPU_x64'
 
 - template: ../nodejs/templates/test_linux.yml
   parameters:
     AgentPool : 'Linux-CPU'
-    JobSuffix : 'Linux_CPU_x64'
+    StageSuffix : 'Linux_CPU_x64'
 
 - template: ../nodejs/templates/test_macos.yml
   parameters:
-    JobSuffix : 'macOS_CPU_x64'
+    StageSuffix : 'macOS_CPU_x64'
 - stage: Final_Jar_Testing_Windows
   dependsOn:
     Jar_Packaging

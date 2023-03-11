@@ -1,8 +1,8 @@
 parameters:
   AgentPool: 'Linux-CPU'
-  JobSuffix: ''
+  StageSuffix: ''
 stages:
-- stage: Nodejs_Test_${{ parameters.JobSuffix }}
+- stage: Nodejs_Test_${{ parameters.StageSuffix }}
   dependsOn:
   - Nodejs_Packaging_CPU
   condition: succeeded()
