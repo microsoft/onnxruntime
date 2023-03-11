@@ -3969,6 +3969,16 @@ struct OrtApi {
                   _In_ const CustomComputeFn custom_compute_fn,
                   _In_ size_t num_outputs,
                   _In_... /* output types from ONNXTensorElementDataType */);
+
+  ORT_API2_STATUS(RegisterCustomFunc,
+                  _In_ const char* domain_name,
+                  _In_ const char* op_name,
+                  _In_ const char* execution_provider,
+                  _In_ const CustomComputeFn custom_compute_fn);
+
+  ORT_API2_STATUS(AddCustomOp,
+                  _In_ const char* domain_name,
+                  _In_ OrtCustomOp* custom_op);
 };
 
 /*
@@ -4076,8 +4086,6 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessio
  * \param use_arena zero: false. non-zero: true.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
-
-//ORT_API_STATUS(LiteCustomOpResgiter, _In_ const char* domain, _In_ const char* op_name, _In_ void (*)(OrtKernelContext*));
 
 #ifdef __cplusplus
 }
