@@ -39,7 +39,7 @@ jobs:
           path: |
             java/build/docs/javadoc
       - name: Deploy
-        uses: JamesIves/github-deploy-action@v4
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: java/build/docs/javadoc
           branch: gh-pages
