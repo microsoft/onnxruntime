@@ -44,3 +44,4 @@ jobs:
           branch: gh-pages
           folder: java/build/docs/javadoc
           target-folder: docs/api/java
+          clean: true
