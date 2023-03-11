@@ -17,7 +17,7 @@ class FunctionKernel : public OpKernel {
 
   // The original design is we load the dll, find the entry point and wrapper it.
   // Here for quick prototype, we keep the entry pointer in the node.
-  static Status Create(FuncManager& func_mgr, const OpKernelInfo& info, std::unordered_map<int32_t, AllocatorPtr>& allocators, std::unique_ptr<OpKernel>& out) {
+  static Status Create(FuncManager& func_mgr, const OpKernelInfo& info, std::map<OrtDevice, AllocatorPtr>& allocators, std::unique_ptr<OpKernel>& out) {
     const NodeComputeInfo* compute;
     ORT_RETURN_IF_ERROR(func_mgr.GetFuncs(info.node().Name(), compute));
     std::unique_ptr<FunctionKernel> funckernel = std::make_unique<FunctionKernel>(info, compute);
@@ -27,7 +27,7 @@ class FunctionKernel : public OpKernel {
     if (compute->create_state_func) {
       // TODO: we are only provide host allocate method in compute context.
       // Do we need to hold the ref-counting here?
-      funckernel->host_allocator_ = allocators[info.GetDevice(OrtMemType::OrtMemTypeDefault).ToInt32()];
+      funckernel->host_allocator_ = allocators[info.GetDevice(OrtMemType::OrtMemTypeDefault)];
       ComputeContext context = {allocate_helper_func, release_helper_func, funckernel->host_allocator_.get(),
                                 info.node().Name().c_str()};
       int ret = funckernel->compute_info_->create_state_func(&context, &funckernel->func_state_);

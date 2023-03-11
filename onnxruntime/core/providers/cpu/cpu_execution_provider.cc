@@ -2420,8 +2420,8 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
 
-InlinedHashMap<int32_t, AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  InlinedHashMap<int32_t, AllocatorPtr> ret;
+InlinedHashMap<OrtDevice, AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
+  InlinedHashMap<OrtDevice, AllocatorPtr> ret;
   ret.reserve(1);
 
   bool create_arena = info_.create_arena;
@@ -2435,7 +2435,7 @@ InlinedHashMap<int32_t, AllocatorPtr> CPUExecutionProvider::CreatePreferredAlloc
   AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                     DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
-  ret[OrtDevice().ToInt32()] = CreateAllocator(device_info);
+  ret[OrtDevice()] = CreateAllocator(device_info);
   return ret;
 }
 

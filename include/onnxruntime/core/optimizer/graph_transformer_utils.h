@@ -50,7 +50,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& execution_provider /*required by constant folding*/,
-    std::unordered_map<int32_t, AllocatorPtr>& allocators,
+    std::map<OrtDevice, AllocatorPtr>& allocators,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)

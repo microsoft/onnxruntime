@@ -335,7 +335,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
                                            TransformLayoutFunction transform_layout_function,
-                                           std::unordered_map<int32_t, AllocatorPtr>& allocators) {
+                                           std::map<OrtDevice, AllocatorPtr>& allocators) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -364,7 +364,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // TODO: when the graph contains a function node, and user passes in the dll which could
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
-  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
+  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault)];
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
@@ -536,7 +536,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, GraphPartitioner::Mode mode,
                                        const ExecutionProviders& execution_providers,
                                        KernelRegistryManager& kernel_registry_manager,
-                                       std::unordered_map<int32_t, AllocatorPtr>& allocators) {
+                                       std::map<OrtDevice, AllocatorPtr>& allocators) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -571,7 +571,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
 static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_params,
                                           KernelRegistryManager& kernel_registry_mgr,
                                           IExecutionProvider& current_ep,
-                                          std::unordered_map<int32_t, AllocatorPtr>& allocators) {
+                                          std::map<OrtDevice, AllocatorPtr>& allocators) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   auto& graph = partition_params.graph.get();
@@ -590,7 +590,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
+  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault)];
   // clang-format off
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
@@ -685,7 +685,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
                                       const ExecutionProviders& execution_providers,
                                       KernelRegistryManager& kernel_registry_manager,
-                                      std::unordered_map<int32_t, AllocatorPtr>& allocators) {
+                                      std::map<OrtDevice, AllocatorPtr>& allocators) {
   // process full graph with each EP
   for (const auto& ep : execution_providers) {
     ORT_RETURN_IF_ERROR(PartitionOrtFormatModelImpl(partition_params, kernel_registry_manager, *ep, allocators));
@@ -695,7 +695,7 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   TransformLayoutFunction transform_layout_function, std::unordered_map<int32_t, AllocatorPtr>& allocators, Mode mode) const {
+                                   TransformLayoutFunction transform_layout_function, std::map<OrtDevice, AllocatorPtr>& allocators, Mode mode) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.

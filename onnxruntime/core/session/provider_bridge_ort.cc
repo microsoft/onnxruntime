@@ -303,7 +303,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::RegisterAllocator(allocator_manager);
   }
 
-  InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) {
+  InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) {
     return p->IExecutionProvider::CreatePreferredAllocators();
   }
 

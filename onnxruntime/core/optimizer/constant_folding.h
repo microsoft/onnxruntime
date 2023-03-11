@@ -24,7 +24,7 @@ class ConstantFolding : public GraphTransformer {
   */
   ConstantFolding(const IExecutionProvider& execution_provider,
                   bool skip_dequantize_linear,
-                  std::unordered_map<int32_t, AllocatorPtr>& allocators,
+                  std::map<OrtDevice, AllocatorPtr>& allocators,
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                   const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
@@ -34,7 +34,7 @@ class ConstantFolding : public GraphTransformer {
   bool skip_dequantize_linear_;
   const InlinedHashSet<std::string> excluded_initializers_;
   const IExecutionProvider& execution_provider_;
-  std::unordered_map<int32_t, AllocatorPtr>& allocators_;
+  std::map<OrtDevice, AllocatorPtr>& allocators_;
 };
 
 }  // namespace onnxruntime

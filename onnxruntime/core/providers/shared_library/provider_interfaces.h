@@ -232,7 +232,7 @@ struct ProviderHost {
 
   virtual void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) = 0;
 
-  virtual InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) = 0;
+  virtual InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 

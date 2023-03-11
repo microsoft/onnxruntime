@@ -27,13 +27,13 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const Path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func,
-         std::unordered_map<int32_t, AllocatorPtr>& allocators);
+         std::map<OrtDevice, AllocatorPtr>& allocators);
     Info(const std::vector<const Node*>& nodes,
          const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
          const Path& model_path,
          const IExecutionProvider& execution_provider,
          const std::function<bool(const std::string&)>& is_sparse_initializer_func,
-         std::unordered_map<int32_t, AllocatorPtr>& allocators);
+         std::map<OrtDevice, AllocatorPtr>& allocators);
     ~Info() = default;
 
     const AllocatorPtr& GetAllocator() const {

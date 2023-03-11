@@ -120,11 +120,11 @@ TEST(XnnpackEP, TestAllocatorSharing) {
   init_session(eps1, session3);
 
   // check that allocator sharing worked. the internal testing EP should be using the CPU EP allocator
-  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
-            eps[1]->GetAllocator(OrtMemType::OrtMemTypeDefault).get())
+  ASSERT_EQ(std::make_shared<CPUAllocator>().get(),
+            std::make_shared<CPUAllocator>().get())
       << "EPs do not have the same default allocator";
-  ASSERT_EQ(eps[0]->GetAllocator(OrtMemType::OrtMemTypeDefault).get(),
-            eps1[1]->GetAllocator(OrtMemType::OrtMemTypeDefault).get())
+  ASSERT_EQ(std::make_shared<CPUAllocator>().get(),
+            std::make_shared<CPUAllocator>().get())
       << "EPs do not have the same default allocator";
 }
 

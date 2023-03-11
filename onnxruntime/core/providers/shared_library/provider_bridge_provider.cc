@@ -306,7 +306,7 @@ void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) 
   return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
 }
 
-InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
   return g_host->IExecutionProvider__CreatePreferredAllocators(this);
 }
 

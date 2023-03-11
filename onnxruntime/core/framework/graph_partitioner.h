@@ -30,7 +30,7 @@ class GraphPartitioner {
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    TransformLayoutFunction transform_layout_function,
-                   std::unordered_map<int32_t, AllocatorPtr>& allocators,
+                   std::map<OrtDevice, AllocatorPtr>& allocators,
                    Mode mode = Mode::kNormal) const;
 
  private:

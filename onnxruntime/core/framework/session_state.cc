@@ -88,7 +88,7 @@ SessionState::SessionState(Graph& graph,
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   //  SetupAllocators();
   for (auto ep : execution_providers_) {
-    InlinedHashMap<int32_t, AllocatorPtr> preferedAllocators = ep->CreatePreferredAllocators();
+    InlinedHashMap<OrtDevice, AllocatorPtr> preferedAllocators = ep->CreatePreferredAllocators();
     for (auto it : preferedAllocators) {
       allocators_[it.first] = it.second;
     }
@@ -119,7 +119,7 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 }
 
 AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept {
-  auto it = allocators_.find(device.ToInt32());
+  auto it = allocators_.find(device);
   if (it != allocators_.end()) return it->second;
   assert(false);
   return nullptr;

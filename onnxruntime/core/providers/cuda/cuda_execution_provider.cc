@@ -2509,7 +2509,7 @@ void CUDAExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
 InlinedHashMap<int32_t, AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
   InlinedHashMap<int32_t, AllocatorPtr> ret;
   ret.reserve(2);
-  ret[OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info_.device_id).ToInt32()] = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+  ret[OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info_.device_id)] = CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
                                                    info_.external_allocator_info, info_.default_memory_arena_cfg);
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
@@ -2521,7 +2521,7 @@ InlinedHashMap<int32_t, AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllo
       // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
       // at the risk the lifetime isn't managed correctly if one of those devices go away.
       0);
-  ret[OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0).ToInt32()] = CreateAllocator(pinned_memory_info);
+  ret[OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0)] = CreateAllocator(pinned_memory_info);
   return ret;
 }
 

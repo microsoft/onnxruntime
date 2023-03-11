@@ -304,7 +304,7 @@ class IExecutionProvider {
     return nullptr;
   }
 
-  virtual InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators();
+  virtual InlinedHashMap<OrtDevice, AllocatorPtr> CreatePreferredAllocators();
 
   OrtDevice GetMemoryInfo(OrtMemType mem_type) const;
 

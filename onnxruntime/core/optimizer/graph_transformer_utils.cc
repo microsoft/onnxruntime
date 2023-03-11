@@ -175,7 +175,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
-    std::unordered_map<int32_t, AllocatorPtr>& allocators,
+    std::map<OrtDevice, AllocatorPtr>& allocators,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
@@ -217,7 +217,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
-      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
+      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault)];
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
@@ -335,7 +335,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
-      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
+      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault)];
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for

@@ -98,8 +98,8 @@ OrtDevice IExecutionProvider::GetMemoryInfo(OrtMemType mem_type) const {
   return OrtDevice(device_type, memory_type, static_cast<int16_t>(device_id));
 }
 
-InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
-  return InlinedHashMap<int32_t, AllocatorPtr>();
+InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+  return InlinedHashMap<OrtDevice, AllocatorPtr>();
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

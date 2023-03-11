@@ -74,19 +74,15 @@ struct OrtDevice {
     return device_id < other.device_id;
   }
 
-  int32_t ToInt32() const {
-    return int32_t(device_id << 16 | device_type << 8 | memory_type);
-  }
-
  private:
   // Device type.
-  DeviceType device_type;
+  int32_t device_type : 8;
 
   // Memory type.
-  MemoryType memory_type;
+  int32_t memory_type : 8;
 
   // Device index.
-  DeviceId device_id;
+  int32_t device_id : 16;
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
