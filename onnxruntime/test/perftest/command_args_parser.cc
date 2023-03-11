@@ -55,7 +55,8 @@ namespace perftest {
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q: [CUDA only] use separate stream for copy. \n"
-      "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
+      "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n112dec65655efb31c720d8b61d6254c3291caae0"
+      "\t-l: register a customop lib.\n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
       "\t    [OpenVINO only] [device_type]: Overrides the accelerator hardware type and precision with these values at runtime.\n"
       "\t    [OpenVINO only] [device_id]: Selects a particular hardware device for inference.\n"
@@ -133,7 +134,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("l:b:m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:AMPIDZvhsqz"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -298,6 +299,9 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'i':
         test_config.run_config.ep_runtime_config_string = optarg;
+        break;
+      case 'l':
+        test_config.run_config.custom_op_lib_path = optarg;
         break;
       case 'T':
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
