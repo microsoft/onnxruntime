@@ -200,7 +200,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
       // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
       // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
-      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0"){
+      if (session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableDoubleQDQRemover, "0") == "0") {
         transformers.emplace_back(std::make_unique<DoubleQDQPairsRemover>());
       }
       transformers.emplace_back(std::make_unique<ConstantSharing>());
@@ -217,7 +217,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       // run TransposeOptimizer last as it works in a slightly different way by moving Transpose nodes around.
       // shouldn't affect the end result - just easier to debug any issue if it's last.
-      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).device.ToInt32()];
+      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
       transformers.emplace_back(std::make_unique<TransposeOptimizer>(std::move(cpu_allocator)));
 
       // add __backwardpass attribute to nodes after YieldOp, ROCm-only
@@ -335,7 +335,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
-      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).device.ToInt32()];
+      auto cpu_allocator = allocators[cpu_execution_provider.GetMemoryInfo(OrtMemTypeDefault).ToInt32()];
       transformers.emplace_back(std::make_unique<NhwcTransformer>(std::move(cpu_allocator)));
       // NCHWCtransformer should have a higher priority versus this. Because NCHWCtransformer also do the similar things
       // of fusion patterns and target on CPU. However, NCHWCtransformer will reorder the layout to nchwc which is only available for

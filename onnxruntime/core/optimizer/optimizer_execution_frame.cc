@@ -36,7 +36,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     std::unordered_map<int32_t, AllocatorPtr>& allocators)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).device.ToInt32()];
+  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).ToInt32()];
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -58,7 +58,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
       ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
                                                       model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
                                                       tensor_proto,
-                                                      MemBuffer(data.get(), cpu_tensor_length, execution_provider_.GetMemoryInfo(mem_type_)),
+                                                      MemBuffer(data.get(), cpu_tensor_length, allocator_ptr_->Info()),
                                                       ort_value));
 
       initializers_[idx] = ort_value;
@@ -91,7 +91,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     std::unordered_map<int32_t, AllocatorPtr>& allocators)
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func) {
-  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).device.ToInt32()];
+  allocator_ptr_ = allocators[execution_provider_.GetMemoryInfo(mem_type_).ToInt32()];
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -177,7 +177,7 @@ OptimizerExecutionFrame::OptimizerExecutionFrame(const Info& info,
   Init(gsl::span<const int>(), gsl::span<const OrtValue>(), info.GetInitializers(), info.GetSparseInitializerLookupFunc(), fetches);
 }
 
-AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtMemoryInfo& /*info*/) const {
+AllocatorPtr OptimizerExecutionFrame::GetAllocatorImpl(const OrtDevice& /*info*/) const {
   return info_.GetAllocator();
 }
 

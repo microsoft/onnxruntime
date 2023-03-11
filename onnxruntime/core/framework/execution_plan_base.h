@@ -15,10 +15,10 @@ class ExecutionPlanBase {
    * @param ort_value_index The index of the mlvalue
    * @return memory location
    */
-  virtual const struct OrtMemoryInfo& GetLocation(size_t ort_value_index) const = 0;
-  virtual void SetLocation(size_t ort_value_index, const struct OrtMemoryInfo&) = 0;
+  virtual const struct OrtDevice& GetLocation(size_t ort_value_index) const = 0;
+  virtual void SetLocation(size_t ort_value_index, const struct OrtDevice&) = 0;
   // return all memory locations for all the MLValues
-  virtual InlinedHashSet<struct OrtMemoryInfo> GetAllLocations() const = 0;
+  virtual InlinedHashSet<struct OrtDevice> GetAllLocations() const = 0;
   virtual ~ExecutionPlanBase() = default;
 };
 

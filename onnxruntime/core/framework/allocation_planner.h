@@ -119,7 +119,7 @@ class SequentialPlanner {
       const ExecutionProviders& providers,
       const KernelCreateInfoMap& kernel_create_info_map,
       const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
-      const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_arg_to_location_map,
+      const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_arg_to_location_map,
       const OrtValueNameIdxMap& ort_value_name_idx_map,
       const ISequentialPlannerContext& context,
 #ifdef ORT_ENABLE_STREAM

@@ -82,6 +82,26 @@ void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
 void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
 }
 
+OrtDevice IExecutionProvider::GetMemoryInfo(OrtMemType mem_type) const {
+  OrtDevice::DeviceType device_type = OrtDevice::CPU;
+  OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
+  if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
+    if (type_ == onnxruntime::kCpuExecutionProvider)
+      memory_type = OrtDevice::MemType::DEFAULT;
+    else if (type_ == onnxruntime::kCpuExecutionProvider)
+      memory_type = OrtDevice::MemType::CUDA_PINNED;  // TODO: keep only one pinned enum?
+  } else if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") {
+    device_type = OrtDevice::GPU;
+  }
+  int device_id = GetDeviceId();
+
+  return OrtDevice(device_type, memory_type, static_cast<int16_t>(device_id));
+}
+
+InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+  return InlinedHashMap<int32_t, AllocatorPtr>();
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {
@@ -161,12 +181,6 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   static OrtMutex mutex;
   std::lock_guard<OrtMutex> lock(mutex);
   return metadef_id_generator_->GenerateId(graph_viewer, model_hash);
-}
-
-InlinedHashMap<int32_t, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
-  //InlinedHashMap<int32_t, AllocatorPtr> ret;
-  //return ret;
-  return InlinedHashMap<int32_t, AllocatorPtr>();
 }
 
 }  // namespace onnxruntime

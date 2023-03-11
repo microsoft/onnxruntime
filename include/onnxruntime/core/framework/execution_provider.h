@@ -306,19 +306,7 @@ class IExecutionProvider {
 
   virtual InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators();
 
-  inline OrtMemoryInfo GetMemoryInfo(OrtMemType mem_type) const {
-    OrtDevice::DeviceType device_type = OrtDevice::CPU;
-    OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
-    if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-      memory_type = OrtDevice::MemType::CUDA_PINNED;  // TODO: keep only one pinned enum?
-    } else if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") {
-      device_type = OrtDevice::GPU;
-    }
-    int device_id = GetDeviceId();
-
-    OrtDevice device(device_type, memory_type, static_cast<int16_t>(device_id));
-    return OrtMemoryInfo("OrtMemoryInfo", OrtAllocatorType::OrtDeviceAllocator, device, device_id, mem_type);   // TODO: OrtAllocatorType
-  }
+  OrtDevice GetMemoryInfo(OrtMemType mem_type) const;
 
  private:
   const std::string type_;

@@ -129,7 +129,7 @@ class SessionState {
   AllocatorPtr GetAllocator(const OrtMemoryInfo& location) const noexcept;
 
   /** Get the allocator for a given OrtDevice. The first allocator that matches will be returned. */
-  AllocatorPtr GetAllocator(OrtDevice device) const noexcept;
+  AllocatorPtr GetAllocator(const OrtDevice& device) const noexcept;
 
   std::unordered_map<int32_t, AllocatorPtr>& GetAllocators() { return allocators_; }
 
@@ -164,7 +164,7 @@ class SessionState {
 #endif
 
 #ifdef ENABLE_TRAINING
-// This is referenced in training::TrainingSession. Should be removed when this class is removed.
+  // This is referenced in training::TrainingSession. Should be removed when this class is removed.
   /**
     Get some initialized tensors (weights).
     @param interested_weights The names of the weights to retrieve.
@@ -355,7 +355,7 @@ class SessionState {
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
-  //void SetupAllocators();
+  // void SetupAllocators();
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
   void CreateGraphInfo();
@@ -390,7 +390,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  const InlinedHashMap<OrtValueName, OrtMemoryInfo>& outer_scope_node_arg_to_location_map = {},
+                                  const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
 #ifdef ENABLE_TRAINING
@@ -453,9 +453,9 @@ class SessionState {
   // for internal allocations by CUDAExecutionProvider::GetScratchBuffer, but could access the per-thread allocator
   // directly instead of going through CUDAExecutionProvider::GetAllocator.
   // If that can be validated we could simply store the AllocatorPtr here and get rid of the delegate.
-//  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
-//           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
-//      allocators_;
+  //  std::map<OrtMemoryInfo, std::function<AllocatorPtr(OrtMemType mem_type)>,
+  //           OrtMemoryInfoLessThanIgnoreNameAndAllocType>
+  //      allocators_;
   std::unordered_map<int32_t, AllocatorPtr> allocators_;
 
   OrtValueNameIdxMap ort_value_name_idx_map_;

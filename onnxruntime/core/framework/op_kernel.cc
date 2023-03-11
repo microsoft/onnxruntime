@@ -21,8 +21,8 @@ const onnxruntime::KernelDef& OpKernel::KernelDef() const {
   return op_kernel_info_->GetKernelDef();
 }
 
-const OrtMemoryInfo OpKernel::Allocator(OrtMemType mem_type) const {
-  return op_kernel_info_->GetMemoryInfo(mem_type);
+const OrtDevice OpKernel::Allocator(OrtMemType mem_type) const {
+  return op_kernel_info_->GetDevice(mem_type);
 }
 
 OpKernelContext::OpKernelContext(_Inout_ IExecutionFrame* frame, _In_ const OpKernel* kernel,
@@ -75,8 +75,8 @@ OrtValue* OpKernelContext::OutputMLValue(int index, const TensorShape& shape) {
 
   //: Though we don't need to give 'ret' an initial value, GCC would generate a warning if we don't do that
   //"error: 'ret' may be used uninitialized in this function"
-  //This warning only exists in Release build.
-  //I believe it's a false alarm.
+  // This warning only exists in Release build.
+  // I believe it's a false alarm.
 
   OrtValue* p_ml_value = nullptr;
   Status status = execution_frame_->GetOrCreateNodeOutputMLValue(index, GetOutputArgIndex(index), &shape, p_ml_value, kernel_->Node());
@@ -105,7 +105,7 @@ Status OpKernelContext::GetTempSpaceCPUAllocator(AllocatorPtr* output) const {
   // logic doesn't key on OrtAllocatorType, so any OrtAllocatorType
   // is good here.
   *output = execution_frame_->GetAllocator(
-      OrtMemoryInfo(CPU, OrtAllocatorType::OrtArenaAllocator));
+      OrtDevice());
   if (!*output)
     return Status(common::ONNXRUNTIME, common::FAIL, "CPU allocator not found");
   return Status::OK();
