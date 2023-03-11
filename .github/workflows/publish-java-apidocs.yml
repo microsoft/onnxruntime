@@ -5,6 +5,9 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   publish:
     name: Generate Java docs
@@ -29,15 +32,12 @@ jobs:
         with:
           ref: gh-pages
           clean: false
-      - name: Move API docs into target area
-        run: |
-          rm -rf docs/api/java
-          mv java/build/docs/javadoc docs/api/java
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
+      - name: Log source commit
+        run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages-pr
-          base: gh-pages
-          title: '[Automated]: Update Java API docs'
-          commit-message: 'Update Java API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/java
+          branch: gh-pages
+          folder: java/build/docs/javadoc
+          target-folder: docs/api/java
+          clean: true
