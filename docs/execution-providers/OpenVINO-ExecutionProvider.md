@@ -170,7 +170,7 @@ Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs
 
 Example:
 
-```bash
+```python
 import onnx
 onnx_model = onnx.load("model.onnx") # Your model in memory as ModelProto
 onnx.save_model(onnx_model, 'saved_model.onnx', save_as_external_data=True, all_tensors_to_one_file=True, location='data/weights_data', size_threshold=1024, convert_attribute=False)

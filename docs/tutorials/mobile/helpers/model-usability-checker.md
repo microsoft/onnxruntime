@@ -1,9 +1,10 @@
 ---
 title: Model Usability Checker
 descriptions: ORT Mobile model usability checker.
-parent: Helpers
-grand_parent: Mobile
+parent: ORT Mobile Model Export Helpers
+grand_parent: Deploy on Mobile
 nav_order: 1
+
 ---
 # Model Usability Checker
 {: .no_toc }
