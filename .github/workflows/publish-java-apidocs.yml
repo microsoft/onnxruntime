@@ -34,10 +34,6 @@ jobs:
       - name: Get source commit
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - uses: actions/checkout@v2
-        with:
-          ref: gh-pages
-          clean: false
       - name: Log source commit
         run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
       - name: Deploy
