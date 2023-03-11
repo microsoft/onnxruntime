@@ -2,7 +2,7 @@
 title: Julia and Ruby APIs
 description: Get started with APIs for Julia and Ruby developed by our community
 parent: Get Started
-nav_order: 9
+nav_order: 8
 has_toc: false
 ---
 

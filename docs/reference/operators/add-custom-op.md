@@ -7,7 +7,7 @@ nav_order: 4
 # Custom operators
 {: .no_toc }
 
-ONNX Runtime provides options to run custom operators that are not official ONNX operators.
+ONNX Runtime provides options to run custom operators that are not official ONNX operators. Note that custom operators differ from [contrib ops](./ContribOperators.md), which are selected unofficial ONNX operators that are built in directly to ORT.
 
 ## Contents
 {: .no_toc }
@@ -94,7 +94,7 @@ Ort::SessionOptions session_options;
 session_options.Add(domain);  // Add the domain to the session options.
 
 // Create a session.
-Ort::Session session(env, "my_model_with_custom_ops.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("my_model_with_custom_ops.onnx"), session_options);
 ```
 ## Create a library of custom operators
 Custom operators can be defined in a separate shared library (e.g., a .dll on Windows or a .so on Linux). A custom operator library must export and implement a `RegisterCustomOps` function. The `RegisterCustomOps` function adds a `Ort::CustomOpDomain` containing the library's custom operators to the provided session options.
@@ -183,9 +183,9 @@ Once compiled, the custom operator shared library can then be registered with an
 Ort::Env env;
 Ort::SessionOptions session_options;
 
-session_options.RegisterCustomOpsLibrary(L"my_custom_op.dll");
+session_options.RegisterCustomOpsLibrary_V2(ORT_TSTR("my_custom_op.dll"));
 
-Ort::Session session(env, "my_model.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("my_model.onnx"), session_options);
 ```
 
 ### Examples
@@ -300,94 +300,8 @@ custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
 // Register custom op library and pass in the custom op configs (optional).
 session_options.RegisterCustomOpsLibrary("MyOpenVINOWrapper_Lib.so", custom_op_configs);
 
-Ort::Session session(env, "custom_op_mnist_ov_wrapper.onnx", session_options);
+Ort::Session session(env, ORT_TSTR("custom_op_mnist_ov_wrapper.onnx"), session_options);
 ```
 
 Refer to the [complete OpenVINO custom operator wrapper example](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/testdata/custom_op_openvino_wrapper_library) for more details. To create an ONNX model that wraps an external model or weights, refer to the [create_custom_op_wrapper.py tool](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/custom_op_wrapper/create_custom_op_wrapper.py).
 
-## Contrib ops
-
-The [contrib ops domain](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/contrib_ops) contains ops that are built in to the runtime by default. However most new operators should not be added here to avoid increasing binary size of the core runtime package.
-
-See for example the Inverse op added in [#3485](https://github.com/microsoft/onnxruntime/pull/3485).
-
-The custom op's schema and shape inference function should be added in [contrib_defs.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/core/graph/contrib_ops/contrib_defs.cc) using `ONNX_CONTRIB_OPERATOR_SCHEMA`.
-
-```c++
-ONNX_CONTRIB_OPERATOR_SCHEMA(Inverse)
-    .SetDomain(kMSDomain) // kMSDomain = "com.microsoft"
-    .SinceVersion(1) // Same version used at op (symbolic) registration
-    ...
-```
-
-A new operator should have complete reference implementation tests and shape inference tests.
-
-Reference implementation python tests should be added in
-[onnxruntime/test/python/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops).
-E.g., [onnx_test_trilu.py](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/python/contrib_ops/onnx_test_trilu.py)
-
-Shape inference C++ tests should be added in
-[onnxruntime/test/contrib_ops](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops).
-E.g., [trilu_shape_inference_test.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops/trilu_shape_inference_test.cc)
-
-The operator kernel should be implemented using `Compute` function
-under contrib namespace in [onnxruntime/contrib_ops/cpu/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu/)
-for CPU and [onnxruntime/contrib_ops/cuda/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cuda/) for CUDA.
-
-```c++
-namespace onnxruntime {
-namespace contrib {
-
-class Inverse final : public OpKernel {
- public:
-  explicit Inverse(const OpKernelInfo& info) : OpKernel(info) {}
-  Status Compute(OpKernelContext* ctx) const override;
-
- private:
- ...
-};
-
-ONNX_OPERATOR_KERNEL_EX(
-    Inverse,
-    kMSDomain,
-    1,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", BuildKernelDefConstraints<float, double, MLFloat16>()),
-    Inverse);
-
-Status Inverse::Compute(OpKernelContext* ctx) const {
-... // kernel implementation
-}
-
-}  // namespace contrib
-}  // namespace onnxruntime
-```
-
-The kernel should be registered in [cpu_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cpu_contrib_kernels.cc) for CPU and [cuda_contrib_kernels.cc](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/contrib_ops/cuda_contrib_kernels.cc) for CUDA.
-
-Now you should be able to build and install ONNX Runtime to start using your custom op.
-
-### Contrib Op Tests
-
-Tests should be added in [onnxruntime/test/contrib_ops/](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/test/contrib_ops/).
-For example:
-
-```c++
-namespace onnxruntime {
-namespace test {
-
-// Add a comprehensive set of unit tests for custom op kernel implementation
-
-TEST(InverseContribOpTest, two_by_two_float) {
-  OpTester test("Inverse", 1, kMSDomain); // custom opset version and domain
-  test.AddInput<float>("X", {2, 2}, {4, 7, 2, 6});
-  test.AddOutput<float>("Y", {2, 2}, {0.6f, -0.7f, -0.2f, 0.4f});
-  test.Run();
-}
-
-...
-
-}  // namespace test
-}  // namespace onnxruntime
-```
