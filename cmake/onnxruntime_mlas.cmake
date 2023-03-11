@@ -298,7 +298,7 @@ else()
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
     endif()
-    if(ARM64 AND MLAS_SOURCE_IS_NOT_SET )
+    if(ARM64 AND MLAS_SOURCE_IS_NOT_SET AND NOT X86 AND NOT X86_64 AND NOT POWER AND NOT ARM)
         enable_language(ASM)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/aarch64/ConvSymS8KernelDot.S
