@@ -99,7 +99,7 @@ void run_ort(const char* model_path, const char* lib_name = nullptr) {
 int main(int argc, char* argv[]) {
   if (argc == 2) {
     const char* lib_name   = "./libcustom_op_ft_wrapper_library.so"; 
-    run_ort(argv[1]);
+    run_ort(argv[1], lib_name);
   } else if (argc == 3) {
     run_ort(argv[1], argv[2]);
   } else {
