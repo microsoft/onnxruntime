@@ -32,20 +32,26 @@ stages:
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       WithCache: ${{ parameters.WithCache }}
-  - ${{ if eq(parameters.BuildForAllArchs, true) }}:
-    - template: mac-packing-jobs.yml
-      parameters:
-        MacosArch: 'arm64'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
-    - template: mac-packing-jobs.yml
-      parameters:
-        MacosArch: 'universal2'
-        AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-        WithCache: ${{ parameters.WithCache }}
+  - template: mac-packing-jobs.yml
+    parameters:
+      MacosArch: 'arm64'
+      AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      WithCache: ${{ parameters.WithCache }}
+  - template: mac-packing-jobs.yml
+    parameters:
+      MacosArch: 'arm64'
+      AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
+      AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      WithCache: ${{ parameters.WithCache }}
   - job: PublishPipelineArtifactAndComponentGovernance
+    pool:
+      vmImage: 'macOS-12'
+    dependsOn:
+    - MacOS_C_API_Packaging_CPU_x86_64
+    - MacOS_C_API_Packaging_CPU_arm64
+    - MacOS_C_API_Packaging_CPU_universal2
+    condition: or(succeeded() ,skipped())
     steps:
     - task: PublishPipelineArtifact@1
       inputs:
