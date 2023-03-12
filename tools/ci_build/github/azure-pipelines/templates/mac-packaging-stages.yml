@@ -45,7 +45,7 @@ stages:
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-  - job: PublishPipelineArtifact And Component Governance
+  - job: PublishPipelineArtifactAndComponentGovernance
     steps:
     - task: PublishPipelineArtifact@1
       inputs:
