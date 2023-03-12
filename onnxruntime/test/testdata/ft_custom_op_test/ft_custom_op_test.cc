@@ -8,7 +8,7 @@
 #include <iostream>
 #include <vector>
 
-void run_ort() {
+void run_ort(const char* model_path, const char* lib_name = nullptr) {
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "test");
   const auto& api = Ort::GetApi();
   OrtTensorRTProviderOptionsV2* tensorrt_options;
@@ -18,41 +18,21 @@ void run_ort() {
 
   session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
-  const char* lib_name   = "/mnt/test_build_cuda/Release/libcustom_op_ft_wrapper_library.so"; 
-  char* model_path = nullptr;
-
-  int is_fp16 = 1; // input type
-  int batch_size = 16;
-
-  if (is_fp16){
-    //model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp16_bs_32_size_224_mode_2.onnx";
-    //model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp16_bs_16_size_224_mode_2.onnx";
-    model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp16_bs_1_size_224_mode_2.onnx";
-  } else {
-    //model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp32_bs_32_size_224_mode_2.onnx";
-    //model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp32_bs_16_size_224_mode_2.onnx";
-    model_path = "/mnt/repos/FasterTransformer/examples/tensorrt/vit/ft_vit_int8_input_fp32_bs_1_size_224_mode_2.onnx";
-  }
-
   OrtCUDAProviderOptions cuda_options;
   cuda_options.device_id = 0;
   session_options.AppendExecutionProvider_CUDA(cuda_options);
-
   session_options.RegisterCustomOpsLibrary(lib_name);
 
   Ort::Session session(env, model_path, session_options);
 
-  //*************************************************************************
-  // print model input layer (node names, types, shape etc.)
   Ort::AllocatorWithDefaultOptions allocator;
 
-  // print number of model input nodes
   const size_t num_input_nodes = session.GetInputCount();
   std::vector<Ort::AllocatedStringPtr> input_names_ptr;
   std::vector<const char*> input_node_names;
   input_names_ptr.reserve(num_input_nodes);
   input_node_names.reserve(num_input_nodes);
-  std::vector<int64_t> input_node_dims = {batch_size, 3, 224, 224};  // simplify... this model has only 1 input node {1, 3, 224, 224}.
+  std::vector<int64_t> input_node_dims = {1, 3, 224, 224};  // simplify... this model has only 1 input node {1, 3, 224, 224}.
                                          // Otherwise need vector<vector<>>
 
   std::cout << "=== FP Custom Op Test ===" << std::endl;
@@ -82,66 +62,49 @@ void run_ort() {
     std::cout << std::flush;
   }
 
-  int input_tensor_size = batch_size * 224 * 224 * 3;  // simplify ... using known dim values to calculate size
+  int input_tensor_size = 1 * 224 * 224 * 3;  // simplify ... using known dim values to calculate size
                                                        // use OrtGetTensorShapeElementCount() to get official size!
 
   std::vector<const char*> output_node_names = {"output"};
+  std::vector<float> input_tensor_values(input_tensor_size);
 
-  if (is_fp16) {
-    Ort::Float16_t input_tensor_values[input_tensor_size];
-    for (unsigned int i = 0; i < input_tensor_size; i++) input_tensor_values[i] = 15360;
+  // initialize input data with values in [0.0, 1.0]
+  for (unsigned int i = 0; i < input_tensor_size; i++) input_tensor_values[i] = (float)i / (input_tensor_size + 1);
 
-    // create input tensor object from data values
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    auto input_tensor = Ort::Value::CreateTensor<Ort::Float16_t>(memory_info, input_tensor_values, input_tensor_size,
-                                                            input_node_dims.data(), 4);
-    assert(input_tensor.IsTensor());
-    // warn up
-    for (int i = 0; i < 1; i++) {
-       session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-    }
-    
-    // score model & input tensor, get back output tensor
-    auto output_tensors =
-      session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-    assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+  // create input tensor object from data values
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+  auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size,
+                                                      input_node_dims.data(), 4);
 
-    // Get pointer to output tensor float values
-    float* floatarr = output_tensors.front().GetTensorMutableData<float>();
-
-  } else {
-    std::vector<float> input_tensor_values(input_tensor_size);
-
-    // initialize input data with values in [0.0, 1.0]
-    for (unsigned int i = 0; i < input_tensor_size; i++) input_tensor_values[i] = (float)i / (input_tensor_size + 1);
-
-    // create input tensor object from data values
-    auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size,
-                                                            input_node_dims.data(), 4);
-    assert(input_tensor.IsTensor());
-    // warn up
-    for (int i = 0; i < 1; i++) {
-       session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-    }
-    // score model & input tensor, get back output tensor
-    auto output_tensors =
-      session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
-    assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
-
-    // Get pointer to output tensor float values
-    float* floatarr = output_tensors.front().GetTensorMutableData<float>();
+  assert(input_tensor.IsTensor());
+  // warn up
+  for (int i = 0; i < 1; i++) {
+   session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
   }
 
-  //// score the model, and print scores for first 5 classes
-  //for (int i = 0; i < 5; i++) {
-    //std::cout << "Score for class [" << i << "] =  " << floatarr[i] << '\n';
-  //}
-  //std::cout << std::flush;
+  auto output_tensors = 
+    session.Run(Ort::RunOptions{nullptr}, input_node_names.data(), &input_tensor, 1, output_node_names.data(), 1);
+  assert(output_tensors.size() == 1 && output_tensors.front().IsTensor());
+
+  // Get pointer to output tensor float values
+  float* floatarr = output_tensors.front().GetTensorMutableData<float>();
+
+  std::cout << "Print first 5 elements of output ..." << std::endl;
+  for (int i = 0; i < 5; i++) {
+    std::cout << floatarr[i] << std::endl;
+  }
   std::cout << "Done!" << std::endl;
 }
 
-int main(int /*argc*/, char*[]) {
-  run_ort();
+int main(int argc, char* argv[]) {
+  if (argc == 2) {
+    const char* lib_name   = "./libcustom_op_ft_wrapper_library.so"; 
+    run_ort(argv[1]);
+  } else if (argc == 3) {
+    run_ort(argv[1], argv[2]);
+  } else {
+    std::cout << "Run with following command:" << std::endl;
+    std::cout << "./ft_custom_op_test model_path ft_wrapper_lib_path" << std::endl;
+  }
   return 0;
 }
