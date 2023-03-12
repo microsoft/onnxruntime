@@ -105,6 +105,41 @@ bool OpKernelInfo::TryGetConstantInput(int input_index, const OrtValue** constan
 }
 */
 
+bool OpKernelInfo::TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const {
+  if (OpKernelInfo::IsConstantInput(input_index)) {
+
+    //// Chi debug ...
+    //if (input_index == 1) {
+        //std::cout << "In OpKernelInfo::TryGetConstantInput ..." << std::endl;
+        //const OrtValue* p_ort_value = &constant_initialized_tensors_.at(input_index);
+        //std::cout << "p_ort_value" << std::endl;
+        //std::cout << p_ort_value << std::endl;
+        //const Tensor* p_tensor = &constant_initialized_tensors_.at(input_index).Get<Tensor>(); 
+        //std::cout << "p_tensor" << std::endl;
+        //std::cout << p_tensor << std::endl;
+
+        //const void* input_data = p_tensor->DataRaw(); 
+        //const float* p_input_data = reinterpret_cast<const float*>(input_data);
+        //std::cout << "p_input_data" << std::endl;
+        //std::cout << p_input_data << std::endl;
+        //std::cout << "p_input_data[0]" << std::endl;
+        //std::cout << p_input_data[0] << std::endl;
+    //}
+
+    *constant_input_value = &constant_initialized_tensors_.at(input_index);
+    return true;
+  }
+  return false;
+}
+
+bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_input_value) const {
+  if (OpKernelInfo::IsConstantInput(input_index)) {
+    *constant_input_value  = &constant_initialized_tensors_.at(input_index).Get<Tensor>();
+    return true;
+  }
+  return false;
+}
+
 bool OpKernelInfo::IsConstantInput(int input_index) const {
   if (input_index < 0 || input_index >= gsl::narrow_cast<int>(node_.InputDefs().size())) {
     return false;
@@ -128,19 +163,4 @@ bool OpKernelInfo::IsConstantInput(int input_index) const {
   return true;
 }
 
-bool OpKernelInfo::TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const {
-  if (OpKernelInfo::IsConstantInput(input_index)) {
-    *constant_input_value = &constant_initialized_tensors_.at(input_index);
-    return true;
-  }
-  return false;
-}
-
-bool OpKernelInfo::TryGetConstantInput(int input_index, const Tensor** constant_input_value) const {
-  if (OpKernelInfo::IsConstantInput(input_index)) {
-    *constant_input_value  = &constant_initialized_tensors_.at(input_index).Get<Tensor>();
-    return true;
-  }
-  return false;
-}
 }  // namespace onnxruntime

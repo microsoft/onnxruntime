@@ -500,12 +500,25 @@ if (onnxruntime_USE_CUDA)
 
     set(FT_VIT_LIBS 
       ${onnxruntime_FT_HOME}/build/lib/libViTINT8.so
+      #${onnxruntime_FT_HOME}/build/lib/libViTINT8.a
       ${onnxruntime_FT_HOME}/build/lib/libtrt_fused_multi_head_attention.a 
       ${onnxruntime_FT_HOME}/build/lib/libvit_kernels.a 
       ${onnxruntime_FT_HOME}/build/lib/libcublasINT8MMWrapper.a 
       ${onnxruntime_FT_HOME}/build/lib/libnvtx_utils.a 
       ${onnxruntime_FT_HOME}/build/lib/libmemory_utils.a
       ${onnxruntime_FT_HOME}/build/lib/libcuda_utils.a
+
+
+      #${onnxruntime_FT_HOME}/build/lib/libtensor.a
+      #${onnxruntime_FT_HOME}/build/lib/libadd_residual_kernels.a
+      #${onnxruntime_FT_HOME}/build/lib/libbert_preprocess_kernels.a
+      #${onnxruntime_FT_HOME}/build/lib/liblayernorm_int8_kernels.a
+      #${onnxruntime_FT_HOME}/build/lib/liblayernorm_kernels.a
+      #${onnxruntime_FT_HOME}/build/lib/liblayout_transformer_int8_kernels.a
+      #${onnxruntime_FT_HOME}/build/lib/libUnfusedAttentionLayerINT8.a
+      #${onnxruntime_FT_HOME}/build/lib/libUnfusedAttentionLayer.a
+      #${onnxruntime_FT_HOME}/build/lib/libFusedAttentionLayerINT8.a
+      #${onnxruntime_FT_HOME}/build/lib/libFusedAttentionLayer.a
     )
     MESSAGE(STATUS "FT ViT libs: ${FT_VIT_LIBS}")
     target_link_libraries(custom_op_ft_wrapper_library PRIVATE ${FT_VIT_LIBS} cublas cublasLt cudart cudnn m)

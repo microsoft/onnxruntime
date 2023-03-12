@@ -54,6 +54,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelC
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
   API_IMPL_BEGIN
   *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+  const OrtValue* value = *out;
+  const onnxruntime::Tensor& tensor = value->Get<onnxruntime::Tensor>();
+  const void* input_data = tensor.DataRaw(); 
+  const float* p_input_data = reinterpret_cast<const float*>(input_data);
+  //std::cout << "OrtApis::KernelContext_GetInput" << std::endl;
+  //std::cout << "p_input_data" << std::endl;
+  //std::cout << p_input_data << std::endl;
+  //std::cout << "p_input_data[0]" << std::endl;
+  //std::cout << p_input_data[0] << std::endl;
   return nullptr;
   API_IMPL_END
 };
@@ -283,10 +292,33 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKe
                     _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  //const OrtValue* value;
   *is_constant = static_cast<int>(op_info->TryGetConstantInput(index, out));
+  //*is_constant = static_cast<int>(op_info->TryGetConstantInput(index, &value));
+  //if (index > 0) {
+      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
+      ////const OrtValue* value = *out;
+      //std::cout << value << std::endl;
+      //const onnxruntime::Tensor& tensor = value->Get<onnxruntime::Tensor>();
+      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
+      //const void* input_data = tensor.DataRaw(); 
+      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
+      //const float* p_input_data = reinterpret_cast<const float*>(input_data);
+      //std::cout << "p_input_data" << std::endl;
+      //std::cout << p_input_data << std::endl;
+      //std::cout << "p_input_data[0]" << std::endl;
+      //std::cout << p_input_data[0] << std::endl;
+  //}
   return nullptr;
   API_IMPL_END
 };
+
+//ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
+  //API_IMPL_BEGIN
+  //*out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
+  //return nullptr;
+  //API_IMPL_END
+//};
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"
@@ -409,12 +441,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         const auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
-          ORT_ENFORCE(type_id_counter == 1,
-                      "There must be one (and only one) dynamic typed input to the custom op. "
-                      "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                      "which is required for the success of the model loading step. "
-                      "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
-                      "cannot be inferred without which model loading cannot proceed.");
+          if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
+              ORT_ENFORCE(type_id_counter == 1,
+                          "There must be one (and only one) dynamic typed input to the custom op. "
+                          "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                          "which is required for the success of the model loading step. "
+                          "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                          "cannot be inferred without which model loading cannot proceed.");
+          }
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
         } else {

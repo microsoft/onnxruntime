@@ -41,6 +41,8 @@ struct FTViTINT8CustomKernel {
   ViTTransformerINT8<float>* vit_fp32_;
   ViTTransformerINT8<half>* vit_fp16_;
   cublasAlgoMap* cublas_algo_map_;
+  //float* p_fp32_output_data_;
+  //half* p_fp16_output_data_;
   void* compute_stream_;
 
   int batch_size_;
@@ -51,12 +53,17 @@ struct FTViTINT8CustomKernel {
   int in_chans_;
   int is_fp16_;
   int weights_num_;
+  bool is_fp16_output_buffer_allocated_ = false;
+  bool is_fp32_output_buffer_allocated_ = false;
+  int write_ = 1;
 };
 
 struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel> {
   explicit FTViTINT8CustomOp(const char* provider, void* compute_stream);
 
   void* CreateKernel(const OrtApi&, const OrtKernelInfo*) const;
+
+  OrtMemType GetInputMemoryType(size_t index) const;
 
   const char* GetName() const { return name_; };
 
@@ -70,7 +77,7 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
 
   ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };   
+  OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };   
 
   size_t GetOutputTypeCount() const { return num_outputs_; };
 
@@ -78,12 +85,12 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
 
   ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
-  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC; };
+  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };
 
  private:
   const char* provider_;
   void* compute_stream_;
   const char* name_{"FTViTINT8"};
-  size_t num_inputs_ = 1;  // set to 1 to match with default min_arity for variadic input  
-  size_t num_outputs_ = 1; // set to 1 to match with default min_arity for variadic output 
+  size_t num_inputs_ = 223;
+  size_t num_outputs_ = 1;
 };
