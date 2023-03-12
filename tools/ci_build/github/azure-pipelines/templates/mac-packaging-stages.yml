@@ -47,21 +47,3 @@ stages:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       BuildForAllArchs: ${{ parameters.BuildForAllArchs }}
       WithCache: ${{ parameters.WithCache }}
-  - job: PublishPipelineArtifactAndComponentGovernance
-    pool:
-      vmImage: 'macOS-12'
-    workspace:
-      clean: all
-    dependsOn:
-      - MacOS_C_API_Packaging_CPU_x86_64
-      - MacOS_C_API_Packaging_CPU_arm64
-      - MacOS_C_API_Packaging_CPU_universal2
-    condition: or(succeeded() ,skipped())
-    steps:
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-osx'
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
