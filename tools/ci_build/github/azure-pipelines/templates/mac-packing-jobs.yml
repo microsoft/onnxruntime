@@ -7,6 +7,10 @@ parameters:
   - 'universal2'
   default: 'x86_64'
 
+- name: BuildForAllArchs
+  displayName: Build for all CPU ARCHs
+  type: boolean
+
 - name: WithCache
   displayName: Build with Cache
   type: boolean

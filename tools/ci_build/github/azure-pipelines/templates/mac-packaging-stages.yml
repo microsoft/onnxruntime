@@ -31,22 +31,27 @@ stages:
       MacosArch: 'x86_64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      BuildForAllArchs: ${{ parameters.BuildForAllArchs }}
       WithCache: ${{ parameters.WithCache }}
   - template: mac-packing-jobs.yml
     parameters:
       MacosArch: 'arm64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      BuildForAllArchs: ${{ parameters.BuildForAllArchs }}
       WithCache: ${{ parameters.WithCache }}
   - template: mac-packing-jobs.yml
     parameters:
       MacosArch: 'arm64'
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+      BuildForAllArchs: ${{ parameters.BuildForAllArchs }}
       WithCache: ${{ parameters.WithCache }}
   - job: PublishPipelineArtifactAndComponentGovernance
     pool:
       vmImage: 'macOS-12'
+    workspace:
+      clean: all
     dependsOn:
     - MacOS_C_API_Packaging_CPU_x86_64
     - MacOS_C_API_Packaging_CPU_arm64
