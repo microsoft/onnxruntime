@@ -31,7 +31,7 @@ parameters:
   - 0
 jobs:
 - job: MacOS_C_API_Packaging_CPU_${{ parameters.MacosArch }}
-  condition:  and(succeeded(), or (eq(parameters.MacosArch, x86_64), (parameters.BuildForAllArchs, True) ))
+  condition:  and(succeeded(), or (eq(parameters.MacosArch, x86_64), eq(parameters.BuildForAllArchs, True) ))
   workspace:
     clean: all
   variables:
