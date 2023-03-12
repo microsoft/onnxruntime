@@ -19,28 +19,27 @@ class MlasFp16ActivationTest : public MlasTestBase {
     };
 
     // N.B. The test data includes values at the edge of Tanh/Logistic boundaries.
-    //    Identity,     Relu,         LeakyRelu,    Tanh,         Logistic,     Clip,
     static const AliasedValue TestData[] = {
         {0x00000001},  // positive denormal
-        {0x80000001}, // negative denormal
-        {0x7fc00000}, // positive NaN
-        {0xffc00000}, // negative NaN
-        {0x00000000}, // 0.0f
-        {0x80000000}, // -0.0f
-        {0x3e800000}, // 0.25f
-        {0xbe800000}, // -0.25f
-        {0x40800000}, // 4.0f
-        {0xc0800000}, // -4.0f
-        {0x41200000}, // 10.0f
-        {0xc1200000}, // -10.0f
-        {0xc18866eb}, // -17.0502529144f
-        {0xc18869bb}, // -17.0516262054f
-        {0xc18852a8}, // -17.0403594971f
-        {0xc18844aa}, // -17.0335273743f
-        {0x418866eb}, // +17.0502529144f
-        {0x418869bb}, // +17.0516262054f
-        {0x418852a8}, // +17.0403594971f
-        {0x418844aa} // +17.0335273743f
+        {0x80000001},  // negative denormal
+        {0x7fc00000},  // positive NaN
+        {0xffc00000},  // negative NaN
+        {0x00000000},  // 0.0f
+        {0x80000000},  // -0.0f
+        {0x3e800000},  // 0.25f
+        {0xbe800000},  // -0.25f
+        {0x40800000},  // 4.0f
+        {0xc0800000},  // -4.0f
+        {0x41200000},  // 10.0f
+        {0xc1200000},  // -10.0f
+        {0xc18866eb},  // -17.0502529144f
+        {0xc18869bb},  // -17.0516262054f
+        {0xc18852a8},  // -17.0403594971f
+        {0xc18844aa},  // -17.0335273743f
+        {0x418866eb},  // +17.0502529144f
+        {0x418869bb},  // +17.0516262054f
+        {0x418852a8},  // +17.0403594971f
+        {0x418844aa}   // +17.0335273743f
     };
 
     constexpr size_t M = 5;
@@ -57,6 +56,7 @@ class MlasFp16ActivationTest : public MlasTestBase {
         MlasIdentityActivation,
         MlasReluActivation,
         MlasLeakyReluActivation,
+        MlasLogisticActivation,
         MlasClipActivation,
         MlasHardSigmoidActivation};
 
