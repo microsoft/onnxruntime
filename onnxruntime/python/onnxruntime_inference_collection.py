@@ -364,9 +364,9 @@ class InferenceSession(Session):
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)
-        except ValueError:
+        except ValueError as e:
             if self._enable_fallback:
-                print("EP Error using {}".format(providers))
+                print("EP Error '{}' when using {}".format(e, providers))
                 print("Falling back to {} and retrying.".format(self._fallback_providers))
                 self._create_inference_session(self._fallback_providers, None)
                 # Fallback only once.
