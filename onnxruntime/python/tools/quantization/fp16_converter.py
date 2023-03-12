@@ -1,4 +1,3 @@
-import argparse
 import itertools
 import logging
 from typing import Dict
@@ -8,7 +7,7 @@ import onnx
 import packaging.version as pv
 from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, ValueInfoProto, helper, numpy_helper
 
-from onnxruntime.quantization.onnx_model import ONNXModel
+from python.tools.quantization.onnx_model_converter_base import ConverterBase, parse_arguments
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +30,9 @@ class InitializerTracker:
             self.fp16_nodes.append(node)
 
 
-class FP16Converter:
-    default_allow_list = ["Conv", "MatMul"]
-
+class FP16Converter(ConverterBase):
     def __init__(self, model=None, allow_list=None):
-        self.allow_list = allow_list if allow_list is not None else self.default_allow_list
-        self.model = model if model is not None else None
+        super().__init__(model, allow_list)
 
     @staticmethod
     def __make_value_info_from_tensor(tensor: TensorProto) -> ValueInfoProto:
@@ -121,8 +117,6 @@ class FP16Converter:
     ) -> ModelProto:
         """
         Convert tensor float type in the ONNX ModelProto input to tensor
-
-
 
         :param model: ONNX ModelProto object
         :param keep_io_types: If True, keep the original input/output tensor types.
@@ -349,7 +343,7 @@ class FP16Converter:
 
         return model
 
-    def convert(self, keep_io_types=True):
+    def process(self, keep_io_types=True):
         if self.model is None:
             return False
         self.model = self.__convert_model_float_to_float16(self.model, keep_io_types=keep_io_types)
@@ -357,65 +351,14 @@ class FP16Converter:
 
     @staticmethod
     def convert_model(model, keep_io_types=True, op_allow_list=None):
-        FP16Converter(model, op_allow_list).convert(keep_io_types)
+        FP16Converter(model, op_allow_list).process(keep_io_types)
         return
 
     @staticmethod
     def convert_model_file(input_path, output_path, keep_io_types=True, op_allow_list=None):
         converter = FP16Converter(onnx.load(input_path), op_allow_list)
-        converter.convert(keep_io_types)
+        converter.process(keep_io_types)
         converter.export_model_to_path(output_path)
-
-    def set_allow_list(self, allow_list: list = None):
-        self.allow_list = allow_list if allow_list is None else self.default_allow_list
-
-    def import_model_from_path(self, model_path):
-        self.model = onnx.load(model_path)
-
-    def export_model_to_path(self, model_path, use_external_data_format=False):
-        if self.model is not None:
-            ONNXModel(self.model).save_model_to_file(model_path, use_external_data_format)
-
-    def set_model(self, model):
-        self.model = model
-
-    def get_model(self):
-        return self.model
-
-
-def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Graph fp16 conversion tool for ONNX Runtime."
-        "It convert ONNX graph from fp32 to fp16 using --allow_list."
-    )
-    parser.add_argument("--input", required=True, type=str, help="input onnx model path")
-
-    parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
-    parser.add_argument(
-        "--allow_list",
-        required=False,
-        default=[],
-        nargs="+",
-        help="allow list which contains all supported ops that can be converted into fp16.",
-    )
-    parser.add_argument(
-        "--use_external_data_format",
-        required=False,
-        action="store_true",
-        default=False,
-        help="use external data format to store large model (>2GB)",
-    )
-    parser.set_defaults(use_external_data_format=False)
-    parser.add_argument(
-        "--keep_io_types",
-        type=bool,
-        required=False,
-        help="keep input and output types as float32",
-        default=False,
-    )
-
-    args = parser.parse_args()
-    return args
 
 
 def main():

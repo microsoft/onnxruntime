@@ -1,30 +1,24 @@
-import argparse
-import sys
-from pathlib import Path
-
 import numpy as np
 import onnx
 from onnx import TensorProto as TensorType
 from onnx import numpy_helper
-
 from onnxruntime.quantization.onnx_model import ONNXModel
 
+from python.tools.quantization.onnx_model_converter_base import ConverterBase, parse_arguments
 
-class FP16ConverterSimple:
-    default_allow_list = ["Conv", "MatMul", "Relu"]
 
+class FP16ConverterSimple(ConverterBase):
     def __init__(self, model=None, allow_list=None):
-        self.allow_list = allow_list if allow_list is not None else self.default_allow_list
-        self.model = model if model is not None else None
+        super().__init__(model, allow_list)
 
     @staticmethod
-    def __cast_intializer_to_fp16(initializer, new_name):
+    def __cast_initializer_to_fp16(initializer, new_name):
         if int(initializer.data_type) == TensorType.FLOAT:
             new_tensor = np.asarray(numpy_helper.to_array(initializer), dtype=np.float16)
             return numpy_helper.from_array(new_tensor, new_name)
         return initializer
 
-    def __convert_all_io(self, op):
+    def __convert_op_io(self, op: str):
         model = ONNXModel(self.model)
         conv_nodes = model.find_nodes_by_type(op)
         initializer_name_set = model.get_initializer_name_set()
@@ -41,7 +35,7 @@ class FP16ConverterSimple:
                 else:
                     initializer = model.get_initializer(in_tensor_name)
                     new_in_tensor = initializer.name + "_fp16"
-                    new_initializer = self.__cast_intializer_to_fp16(initializer, new_in_tensor)
+                    new_initializer = self.__cast_initializer_to_fp16(initializer, new_in_tensor)
                     # remove the old initializer if it is not used by any other node
                     if len(model.find_nodes_by_initializer(model.graph(), initializer)) == 1:
                         model.remove_initializer(initializer)
@@ -62,71 +56,16 @@ class FP16ConverterSimple:
     @staticmethod
     def convert_model_file(input_path, output_path, keep_io_types=True, op_allow_list=None):
         converter = FP16ConverterSimple(onnx.load(input_path), op_allow_list)
-        converter.convert()
+        converter.process()
         converter.export_model_to_path(output_path)
 
-    def convert_op(self, op: str):
-        if op not in self.allow_list or self.model is None:
-            print("Unsupported op: " + op)
-            print("Supported ops: " + str(self.allow_list))
-            return False
-        return self.__convert_all_io(op)
+    def convert_ops(self, ops: [str]):
+        for op in ops:
+            self.__convert_op_io(op)
+        return
 
-    def convert(self):
-        self.convert_op("Relu")
-        return self.convert_op("Conv")
-        # return map(self.convert_op, self.allow_list)
-
-    def set_allow_list(self, allow_list: list = None):
-        self.allow_list = allow_list if allow_list is None else self.default_allow_list
-
-    def import_model_from_path(self, model_path):
-        self.model = onnx.load(model_path)
-
-    def export_model_to_path(self, model_path, use_external_data_format=False):
-        if self.model is not None:
-            ONNXModel(self.model).save_model_to_file(model_path, use_external_data_format)
-
-    def set_model(self, model):
-        self.model = model
-
-    def get_model(self):
-        return self.model
-
-
-def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Graph fp16 conversion tool for ONNX Runtime."
-                    "It convert ONNX graph from fp32 to fp16 using --allow_list."
-    )
-    parser.add_argument("--input", required=True, type=str, help="input onnx model path")
-
-    parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
-    parser.add_argument(
-        "--allow_list",
-        required=False,
-        default=[],
-        nargs="+",
-        help="allow list which contains all supported ops that can be converted into fp16.",
-    )
-    parser.add_argument(
-        "--use_external_data_format",
-        required=False,
-        action="store_true",
-        default=False,
-        help="use external data format to store large model (>2GB)",
-    )
-    parser.set_defaults(use_external_data_format=False)
-    parser.add_argument(
-        "--keep_io_types",
-        type=bool,
-        required=False,
-        help="keep input and output types as float32",
-        default=False,
-    )
-
-    args = parser.parse_args()
-    return args
+    def process(self):
+        return self.convert_ops(self.allow_list)
 
 
 def main():
