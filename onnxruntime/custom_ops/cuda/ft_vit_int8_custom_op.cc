@@ -46,7 +46,6 @@ const std::vector<std::string> pre_layer_weight_names  = {"transformer.embedding
 const std::vector<std::string> post_layer_weight_names = {"transformer.encoder.encoder_norm.weight",
                                                           "transformer.encoder.encoder_norm.bias"};
 
-#define FT_CUSTOM_OP_DEBUG
 template<typename T>
 void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int layer_num, bool with_cls_token = true)
 {
@@ -60,26 +59,10 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         Ort::ConstValue value = kinfo.GetTensorConstantInput(i, &is_constant);
         if (is_constant) {
             weights_map[name] = value; 
-
-            //// Chi debug ... weights are in GPU, following code will get segfault
-            //if (i == 1) {
-                //std::cout << "[ORT Custom Op] in loadWeightsPtrINT8" << std::endl;
-                //std::cout << name << std::endl;
-                //const float* p_value_data = value.GetTensorData<const float>(); 
-                //std::cout << p_value_data[0] << std::endl;
-                //std::cout << p_value_data[1] << std::endl;
-                //std::cout << p_value_data[3] << std::endl;
-                //std::cout << p_value_data[4] << std::endl;
-                //std::cout << p_value_data[5] << std::endl;
-            //}
-            //std::cout << "[loadWeightsPtrINT8]" << std::endl;
-            //std::cout << name << std::endl;
-            //const float* p_value_data = value.GetTensorData<const float>(); 
-            //std::cout << p_value_data << std::endl;
         }
     }
 
-    // Load weights pointer
+    // Load weights to weight address vector 
     long unsigned int idx = 0;
     for (auto& name : pre_layer_weight_names) {
         if (!with_cls_token && name == "transformer.embeddings.cls_token") {
@@ -90,13 +73,6 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         if (iter != weights_map.end()) {
             Ort::ConstValue ort_val = iter->second; 
             w[idx++] = ort_val.GetTensorData<T>();
-            //std::cout << name << std::endl;
-            //std::cout << idx - 1 << std::endl;
-            //std::cout << w[idx-1] << std::endl; 
-            //const T* p_value_data = ort_val.GetTensorData<const T>(); 
-            //std::cout << p_value_data[0] << std::endl;
-            //std::cout << p_value_data[1] << std::endl;
-            //std::cout << p_value_data[3] << std::endl;
         }
     }
 
@@ -110,16 +86,6 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
             if (iter != weights_map.end()) {
                 Ort::ConstValue ort_val = iter->second; 
                 w[idx++] = ort_val.GetTensorData<T>();
-                if (string_buf == "transformer.encoder.layer.11.h_amaxList" || string_buf == "transformer.encoder.layer.11.amaxList") {
-                    const float* ptr = ort_val.GetTensorData<float>();
-                    std::cout << string_buf << std::endl;
-                    std::cout << ptr[0] << std::endl;
-                    std::cout << ptr[1] << std::endl;
-                    std::cout << ptr[2] << std::endl;
-                    std::cout << ptr[7013] << std::endl;
-                    std::cout << ptr[7014] << std::endl;
-                    std::cout << ptr[7015] << std::endl;
-                }
             }
         }
     }
@@ -129,9 +95,6 @@ void loadWeightsPtrINT8(const OrtKernelInfo* info, std::vector<const T*>& w, int
         if (iter != weights_map.end()) {
             Ort::ConstValue ort_val = iter->second; 
             w[idx++] = ort_val.GetTensorData<T>();
-            //std::cout << name << std::endl;
-            //std::cout << idx - 1 << std::endl;
-            //std::cout << w[idx-1] << std::endl; 
         }
     }
 
@@ -198,9 +161,7 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
         w_fp16.resize(weights_num);
         loadWeightsPtrINT8<half>(info, w_fp16, layer_num, with_cls_token); 
         const half* const* pp_buf = &w_fp16[0];
-        //params_fp16_.AssignWeightsFromDeviceBuffers(pp_buf);
         params_fp16_.CopyWeightsFromHostBuffers(pp_buf);
-        //params_fp16_.print();
         attention_type_ = getAttentionType<half>(head_dim, getSMVersion(), true, seq_len);
         vit_fp16_ = new ViTTransformerINT8<half>(max_batch,
                                             img_size,
@@ -221,27 +182,6 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
                                             false,
                                             attention_type_);
 
-        /*
-        size_t size = params_fp16_.GetSerializeSize();
-        std::cout << "size is " << size << std::endl;
-        std::vector<half> weights;
-        weights.resize(size);
-        //std::cout << weights << std::endl;
-        params_fp16_.serialize(&weights[0]);
-        std::cout << "serialize done" << std::endl;
-
-        FILE *fp, *fp2;
-        fp=fopen("serailized_weights_fp16.txt","w");
-        //fp2=fopen("serailized_weights_2.txt","w");
-        fwrite(&weights[0], 1, size, fp);
-        fclose(fp);
-        for (unsigned i = 0; i < 10; i++) {
-           //fprintf(fp2, "%f\n", weights[i]);
-           //printf("%hf\n", weights[i]);
-            std::cout << weights[i] << std::endl;
-        }
-        //fclose(fp2);
-        */
     }
     else {
         params_fp32_ = ViTINT8Weight<float>(embed_dim, inter_size, layer_num, img_size, patch_size, in_chans, with_cls_token);
@@ -249,9 +189,7 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
         w_fp32.resize(weights_num);
         loadWeightsPtrINT8<float>(info, w_fp32, layer_num, with_cls_token); 
         const float* const* pp_buf = &w_fp32[0];
-        //params_fp32_.AssignWeightsFromDeviceBuffers(pp_buf);
         params_fp32_.CopyWeightsFromHostBuffers(pp_buf);
-        params_fp32_.print();
         attention_type_ = getAttentionType<float>(head_dim, getSMVersion(), true, seq_len);
         vit_fp32_ = new ViTTransformerINT8<float>(max_batch,
                                              img_size,
@@ -271,28 +209,6 @@ batch_size_(batch_size), img_size_(img_size), embed_dim_(embed_dim), is_fp16_(is
                                              allocator_,
                                              false,
                                              attention_type_);
-
-        /*
-        size_t size = params_fp32_.GetSerializeSize();
-        std::cout << "size is " << size << std::endl;
-        std::vector<float> weights;
-        weights.resize(size);
-        //std::cout << weights << std::endl;
-        params_fp32_.serialize(&weights[0]);
-        std::cout << "serialize done" << std::endl;
-
-        FILE *fp, *fp2;
-        fp=fopen("serailized_weights.txt","w");
-        //fp2=fopen("serailized_weights_2.txt","w");
-        fwrite(&weights[0], 1, size, fp);
-        fclose(fp);
-        for (unsigned i = 0; i < 10; i++) {
-           //fprintf(fp2, "%f\n", weights[i]);
-           printf("%f\n", weights[i]);
-        }
-        //fclose(fp2);
-        */
-
     }
 
     FT_LOG_INFO("batch_size: %d, img_size : %d,\n"
@@ -321,54 +237,7 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
 
     if (is_fp16_) {
         const half* p_input_data = ort_val.GetTensorData<half>();
-        //p_fp16_output_data_ = ort_val_output.GetTensorMutableData<half>();
-
-        //// allocate buffer for output
-        //if (!is_fp16_output_buffer_allocated_) {
-            ////deviceMalloc(&output_d, batch_size_ * seq_len_ * embed_dim_, true);
-            //check_cuda_error(cudaMalloc((void**)(&p_fp16_output_data_), sizeof(half) * batch_size_ * seq_len_ * embed_dim_));
-            //is_fp16_output_buffer_allocated_ = true;
-        //}
-        
-        half *p_fp16_output_data_;
-        deviceMalloc(&p_fp16_output_data_, batch_size_ * seq_len_ * embed_dim_, false);
-        //check_cuda_error(cudaMalloc((void**)(&p_fp16_output_data_), sizeof(half) * batch_size_ * seq_len_ * embed_dim_));
-
-        size_t size = batch_size_*3*img_size_*img_size_;
-        half c_tmp[size];
-        cudaMemcpy(
-             c_tmp, p_input_data, sizeof(half)*size, cudaMemcpyDeviceToHost);
-        std::cout << "\n[Ort Custom Op Compute before] input:" << std::endl;
-        std::cout << c_tmp[0] << std::endl;
-        std::cout << c_tmp[1] << std::endl;
-        std::cout << c_tmp[2] << std::endl;
-        std::cout << "..." << std::endl;
-        std::cout << c_tmp[size-3] << std::endl;
-        std::cout << c_tmp[size-2] << std::endl;
-        std::cout << c_tmp[size-1] << std::endl;
-
-        /*
-        if (write_ == 0) {
-            FILE *fp, *fp2;
-            int size = batch_size_*in_chans_*img_size_*img_size_;  
-            std::cout << size << std::endl;
-            half c_tmp_input_fp16[size];
-            cudaMemcpy(
-                 c_tmp_input_fp16, p_input_data, sizeof(half)*size, cudaMemcpyDeviceToHost);
-            //std::cout << "here 2" << std::endl;
-            fp=fopen("serailized_input_fp16.txt","w");
-            //fp2=fopen("serailized_input_2.txt","w");
-            fwrite(c_tmp_input_fp16, sizeof(half), size , fp);
-            fclose(fp);
-            for (unsigned i = 0; i < 10; i++) {
-               //fprintf(fp2, "%f\n", weights[i]);
-               //printf("%f\n", c_tmp_input[i]);
-                std::cout << c_tmp_input_fp16[i] << std::endl;
-            }
-            ////fclose(fp2);
-            write_ = 1;
-        }
-        */
+        half* p_output_data = ort_val_output.GetTensorMutableData<half>();
 
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
@@ -380,68 +249,14 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<half>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len_, (size_t)embed_dim_},
-                                      p_fp16_output_data_}};
+                                      p_output_data}};
 
         vit_fp16_->forward(&output_tensors, &input_tensors, &params_fp16_);
-
-
-        half tmp[3];
-        cudaMemcpy(
-             tmp, p_fp16_output_data_, sizeof(half)*3, cudaMemcpyDeviceToHost);
-             //tmp, output_tensors.at(0).getPtr<half>(), sizeof(half)*3, cudaMemcpyDeviceToHost);
-        std::cout << "[Ort Custom Op Compute done] output:" << std::endl;
-        std::cout << tmp[0] << std::endl;
-        std::cout << tmp[1] << std::endl;
-        std::cout << tmp[2] << std::endl;
-
-        check_cuda_error(cudaFree(p_fp16_output_data_));
-
     }
     else {
         const float* p_input_data = ort_val.GetTensorData<float>();
-        //p_fp32_output_data_ = ort_val_output.GetTensorMutableData<float>();
+        float* p_output_data = ort_val_output.GetTensorMutableData<float>();
 
-        //// allocate buffer for output
-        //if (!is_fp32_output_buffer_allocated_) {
-            ////deviceMalloc(&p_fp32_output_data_, batch_size_ * seq_len_ * embed_dim_, false);
-            //check_cuda_error(cudaMalloc((void**)(&p_fp32_output_data_), sizeof(float) * batch_size_ * seq_len_ * embed_dim_));
-            //is_fp32_output_buffer_allocated_ = true;
-        //}
-
-        float *p_fp32_output_data_;
-        deviceMalloc(&p_fp32_output_data_, batch_size_ * seq_len_ * embed_dim_, false);
-        //check_cuda_error(cudaMalloc((void**)(&p_fp32_output_data_), sizeof(float) * batch_size_ * seq_len_ * embed_dim_));
-
-        /*
-        float c_tmp[3] = {0.0, 0.0, 0.0};
-        cudaMemcpy(
-             c_tmp, p_input_data, sizeof(float)*3, cudaMemcpyDeviceToHost);
-        std::cout << "[Ort Custom Op Compute before] input:" << std::endl;
-        std::cout << c_tmp[0] << std::endl;
-        std::cout << c_tmp[1] << std::endl;
-        std::cout << c_tmp[2] << std::endl;
-
-        if (write_ == 0) {
-            FILE *fp, *fp2;
-            int size = batch_size_*in_chans_*img_size_*img_size_;  
-            std::cout << size << std::endl;
-            float c_tmp_input[size];
-            std::cout << "here 1" << std::endl;
-            cudaMemcpy(
-                 c_tmp_input, p_input_data, sizeof(float)*size, cudaMemcpyDeviceToHost);
-            //std::cout << "here 2" << std::endl;
-            fp=fopen("serailized_input.txt","w");
-            //fp2=fopen("serailized_input_2.txt","w");
-            fwrite(c_tmp_input, sizeof(float), size , fp);
-            fclose(fp);
-            for (unsigned i = 0; i < 10; i++) {
-               //fprintf(fp2, "%f\n", weights[i]);
-               printf("%f\n", c_tmp_input[i]);
-            }
-            ////fclose(fp2);
-            write_ = 1;
-        }
-        */
         std::vector<fastertransformer::Tensor> input_tensors = std::vector<fastertransformer::Tensor>{
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<float>(),
@@ -452,19 +267,8 @@ void FTViTINT8CustomKernel::Compute(OrtKernelContext* context) {
             fastertransformer::Tensor{MEMORY_GPU,
                                       getTensorType<float>(),
                                       std::vector<size_t>{(size_t)batch_size_, (size_t)seq_len_, (size_t)embed_dim_},
-                                      p_fp32_output_data_}};
+                                      p_output_data}};
         vit_fp32_->forward(&output_tensors, &input_tensors, &params_fp32_);
-
-        /*
-        float tmp[3];
-        cudaMemcpy(
-             tmp, p_output_data, sizeof(float)*3, cudaMemcpyDeviceToHost);
-        std::cout << "[Ort Custom Op Compute done] output:" << std::endl;
-        std::cout << tmp[0] << std::endl;
-        std::cout << tmp[1] << std::endl;
-        std::cout << tmp[2] << std::endl;
-        */
-        check_cuda_error(cudaFree(p_fp32_output_data_));
     }
 }
 
@@ -481,12 +285,6 @@ FTViTINT8CustomKernel::~FTViTINT8CustomKernel() {
     sync_check_cuda_error();
 
     // free data
-    //if (is_fp16_output_buffer_allocated_) {
-        //check_cuda_error(cudaFree(p_fp16_output_data_));
-    //}
-    //if (is_fp32_output_buffer_allocated_) {
-        //check_cuda_error(cudaFree(p_fp32_output_data_));
-    //}
     check_cuda_error(cublasDestroy(cublas_handle_));
     check_cuda_error(cublasLtDestroy(cublaslt_handle_));
     checkCUDNN(cudnnDestroy(cudnn_handle_));
@@ -509,7 +307,9 @@ OrtMemType FTViTINT8CustomOp::GetInputMemoryType(size_t index) const {
         return OrtMemTypeDefault;
     } else {
         // Second input and the rest of them are weights and we want them to be placed in CPU memory first,
-        // so that we can leverage FT weight's function CopyWeightsFromHostBuffers. 
+        // so that we can leverage FT weight's CopyWeightsFromHostBuffers() to prepare the weights before ViT forward.
+        // If we don't explicitly make weights stay in CPU memory, ORT will place them in GPU memory by default and we
+        // might need to modify FT source code in order to get the weights on GPU memory. We want to avoid modifying FT code.
         return OrtMemTypeCPUInput;
     }
 }
@@ -560,4 +360,3 @@ void* FTViTINT8CustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* in
                                      is_fp16,
                                      int8_mode);
 }
-

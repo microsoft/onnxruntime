@@ -54,15 +54,6 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetOutputCount, _In_ const OrtKernelC
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
   API_IMPL_BEGIN
   *out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
-  const OrtValue* value = *out;
-  const onnxruntime::Tensor& tensor = value->Get<onnxruntime::Tensor>();
-  const void* input_data = tensor.DataRaw(); 
-  const float* p_input_data = reinterpret_cast<const float*>(input_data);
-  //std::cout << "OrtApis::KernelContext_GetInput" << std::endl;
-  //std::cout << "p_input_data" << std::endl;
-  //std::cout << p_input_data << std::endl;
-  //std::cout << "p_input_data[0]" << std::endl;
-  //std::cout << p_input_data[0] << std::endl;
   return nullptr;
   API_IMPL_END
 };
@@ -292,33 +283,10 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKe
                     _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
   API_IMPL_BEGIN
   const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
-  //const OrtValue* value;
   *is_constant = static_cast<int>(op_info->TryGetConstantInput(index, out));
-  //*is_constant = static_cast<int>(op_info->TryGetConstantInput(index, &value));
-  //if (index > 0) {
-      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
-      ////const OrtValue* value = *out;
-      //std::cout << value << std::endl;
-      //const onnxruntime::Tensor& tensor = value->Get<onnxruntime::Tensor>();
-      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
-      //const void* input_data = tensor.DataRaw(); 
-      //std::cout << "In OrtApis::KernelInfoGetConstantInput_tensor" << std::endl;
-      //const float* p_input_data = reinterpret_cast<const float*>(input_data);
-      //std::cout << "p_input_data" << std::endl;
-      //std::cout << p_input_data << std::endl;
-      //std::cout << "p_input_data[0]" << std::endl;
-      //std::cout << p_input_data[0] << std::endl;
-  //}
   return nullptr;
   API_IMPL_END
 };
-
-//ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index, _Out_ const OrtValue** out) {
-  //API_IMPL_BEGIN
-  //*out = reinterpret_cast<const OrtValue*>(reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->GetInputMLValue(index));
-  //return nullptr;
-  //API_IMPL_END
-//};
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 #include "core/framework/customregistry.h"

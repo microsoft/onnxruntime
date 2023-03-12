@@ -41,8 +41,6 @@ struct FTViTINT8CustomKernel {
   ViTTransformerINT8<float>* vit_fp32_;
   ViTTransformerINT8<half>* vit_fp16_;
   cublasAlgoMap* cublas_algo_map_;
-  //float* p_fp32_output_data_;
-  //half* p_fp16_output_data_;
   void* compute_stream_;
 
   int batch_size_;
@@ -53,9 +51,6 @@ struct FTViTINT8CustomKernel {
   int in_chans_;
   int is_fp16_;
   int weights_num_;
-  bool is_fp16_output_buffer_allocated_ = false;
-  bool is_fp32_output_buffer_allocated_ = false;
-  int write_ = 1;
 };
 
 struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomKernel> {
@@ -65,23 +60,17 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
 
   OrtMemType GetInputMemoryType(size_t index) const;
 
-  const char* GetName() const { return name_; };
-
-  void SetName(const char* name) { name_ = name; };
+  const char* GetName() const { return "FTViTINT8"; };
 
   const char* GetExecutionProviderType() const { return provider_; };
 
-  size_t GetInputTypeCount() const { return num_inputs_; };
-
-  void SetInputTypeCount(size_t num) { num_inputs_ = num; };
+  size_t GetInputTypeCount() const { return 223; };
 
   ONNXTensorElementDataType GetInputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
   OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t) const { return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_OPTIONAL; };   
 
-  size_t GetOutputTypeCount() const { return num_outputs_; };
-
-  void SetOutputTypeCount(size_t num) { num_outputs_ = num; };
+  size_t GetOutputTypeCount() const { return 1; };
 
   ONNXTensorElementDataType GetOutputType(size_t) const { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
 
@@ -90,7 +79,4 @@ struct FTViTINT8CustomOp : Ort::CustomOpBase<FTViTINT8CustomOp, FTViTINT8CustomK
  private:
   const char* provider_;
   void* compute_stream_;
-  const char* name_{"FTViTINT8"};
-  size_t num_inputs_ = 223;
-  size_t num_outputs_ = 1;
 };
