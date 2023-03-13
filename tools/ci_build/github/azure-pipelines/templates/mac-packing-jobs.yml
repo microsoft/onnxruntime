@@ -10,6 +10,7 @@ parameters:
 - name: BuildForAllArchs
   displayName: Build for all CPU ARCHs
   type: boolean
+  default: true
 
 - name: WithCache
   displayName: Build with Cache
