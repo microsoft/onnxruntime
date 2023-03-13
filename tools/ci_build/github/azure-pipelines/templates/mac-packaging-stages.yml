@@ -52,12 +52,11 @@ stages:
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       WithCache: ${{ parameters.WithCache }}
-- stage:
+- stage: PublishPipelineArtifactAndComponentGovernance
   jobs:
   - job: PublishPipelineArtifactAndComponentGovernance
     pool:
       vmImage: 'macOS-12'
-    dependsOn: MacOS_C_API_Packaging_CPU
     steps:
     - task: PublishPipelineArtifact@1
       inputs:
