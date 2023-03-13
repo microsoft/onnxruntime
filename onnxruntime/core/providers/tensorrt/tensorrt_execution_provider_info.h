@@ -36,6 +36,11 @@ struct TensorrtExecutionProviderInfo {
   bool timing_cache_enable{false};
   bool force_timing_cache{false};
   bool detailed_build_log{false};
+  bool build_heuristics_enable{false};
+  bool sparsity_enable{false};
+  int builder_optimization_level{2};
+  int auxiliary_streams{-1};
+  std::string tactic_sources{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

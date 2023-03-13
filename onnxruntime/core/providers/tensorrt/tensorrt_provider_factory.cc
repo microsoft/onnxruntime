@@ -73,6 +73,11 @@ struct Tensorrt_Provider : Provider {
     info.timing_cache_enable = options.trt_timing_cache_enable != 0;
     info.force_timing_cache = options.trt_force_timing_cache != 0;
     info.detailed_build_log = options.trt_detailed_build_log != 0;
+    info.build_heuristics_enable = options.trt_build_heuristics_enable != 0;
+    info.build_heuristics_enable = options.trt_sparsity_enable;
+    info.build_heuristics_enable = options.trt_builder_optimization_level;
+    info.build_heuristics_enable = options.trt_auxiliary_streams;
+    info.build_heuristics_enable = options.trt_tactic_sources == nullptr ? "" : options.trt_tactic_sources;
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -143,6 +148,24 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_timing_cache_enable = internal_options.timing_cache_enable;
     trt_options.trt_force_timing_cache = internal_options.force_timing_cache;
     trt_options.trt_detailed_build_log = internal_options.detailed_build_log;
+    trt_options.trt_build_heuristics_enable = internal_options.build_heuristics_enable;
+    trt_options.trt_sparsity_enable = internal_options.build_heuristics_enable;
+    trt_options.trt_builder_optimization_level = internal_options.build_heuristics_enable;
+    trt_options.trt_auxiliary_streams = internal_options.build_heuristics_enable;
+    str_size = internal_options.tactic_sources.size();
+    if (str_size == 0) {
+      trt_options.trt_tactic_sources = nullptr;
+    } else {
+      dest = new char[str_size + 1];
+#ifdef _MSC_VER
+      strncpy_s(dest, str_size + 1, internal_options.tactic_sources.c_str(), str_size);
+#else
+      strncpy(dest, internal_options.tactic_sources.c_str(), str_size);
+#endif
+      dest[str_size] = '\0';
+      trt_options.trt_tactic_sources = (const char*)dest;
+    }
+
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

@@ -33,6 +33,11 @@ constexpr const char* kLayerNormFP32Fallback = "trt_layer_norm_fp32_fallback";
 constexpr const char* kTimingCacheEnable = "trt_timing_cache_enable";
 constexpr const char* kForceTimingCacheMatch = "trt_force_timing_cache_match";
 constexpr const char* kDetailedBuildLog = "trt_detailed_build_log";
+constexpr const char* kBuildHeuristics = "trt_build_heuristics_enable";
+constexpr const char* kSparsityEnable = "trt_sparsity_enable";
+constexpr const char* kBuilderOptimizationLevel = "trt_builder_optimization_level";
+constexpr const char* kAuxiliaryStreams = "trt_auxiliary_streams";
+constexpr const char* kTacticSources = "trt_tactic_sources";
 }  // namespace provider_option_names
 }  // namespace tensorrt
 
@@ -72,6 +77,11 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kTimingCacheEnable, info.timing_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceTimingCacheMatch, info.force_timing_cache)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kBuildHeuristics, info.build_heuristics_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kSparsityEnable, info.sparsity_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kBuilderOptimizationLevel, info.builder_optimization_level)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kAuxiliaryStreams, info.auxiliary_streams)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSources, info.tactic_sources)
           .Parse(options)); // add new provider option here.
 
   return info;
@@ -102,6 +112,11 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       {tensorrt::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.timing_cache_enable)},
       {tensorrt::provider_option_names::kForceTimingCacheMatch, MakeStringWithClassicLocale(info.force_timing_cache)},
       {tensorrt::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
+      {tensorrt::provider_option_names::kBuildHeuristics, MakeStringWithClassicLocale(info.build_heuristics_enable)},
+      {tensorrt::provider_option_names::kSparsityEnable, MakeStringWithClassicLocale(info.sparsity_enable)},
+      {tensorrt::provider_option_names::kBuilderOptimizationLevel, MakeStringWithClassicLocale(info.builder_optimization_level)},
+      {tensorrt::provider_option_names::kAuxiliaryStreams, MakeStringWithClassicLocale(info.auxiliary_streams)},
+      {tensorrt::provider_option_names::kTacticSources, MakeStringWithClassicLocale(info.tactic_sources)},
   };
   return options;
 }
