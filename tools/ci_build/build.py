@@ -1212,8 +1212,8 @@ def generate_build_tree(
             + (args.ios_toolchain_file if args.ios_toolchain_file else "../cmake/onnxruntime_ios.toolchain.cmake"),
         ]
         if args.use_cache:
-            cmake_args += ["-DCMAKE_C_COMPILER=" + "/usr/local/opt/ccache/libexec/gcc"]
-            cmake_args += ["-DCMAKE_CXX_COMPILER=" + "/usr/local/opt/ccache/libexec/g++"]
+            cmake_args += ["-DCMAKE_C_COMPILER=" + "/usr/local/opt/ccache/libexec/clang"]
+            cmake_args += ["-DCMAKE_CXX_COMPILER=" + "/usr/local/opt/ccache/libexec/clang++"]
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
