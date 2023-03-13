@@ -45,30 +45,3 @@ stages:
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-- stage: MacOS_C_API_Package_Publishing
-  jobs:
-  - job: MacOS_C_API_Package_Publishing
-    pool:
-      vmImage: 'macOS-12'
-    steps:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        artifact: 'onnxruntime-osx-x86_64'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        artifact: 'onnxruntime-osx-arm64'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        artifact: 'onnxruntime-osx-universal2'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifact: 'onnxruntime-osx'
-        condition: 'succeededOrFailed()'
-
-    - template: component-governance-component-detection-steps.yml
-      parameters:
-        condition: 'succeeded'
