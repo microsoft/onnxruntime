@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// TODO(pengwa): rename to upstream_gather.cc later, keep original name for now to make diff easier to review.
-
 #ifdef ENABLE_TRAINING_CORE
 
 #include <onnx/defs/attr_proto_util.h>
@@ -10,7 +8,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
-#include "core/optimizer/compute_optimizer/compute_optimizer.h"
+#include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
