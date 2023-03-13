@@ -299,6 +299,15 @@ int FusedMHARunnerFP16v2::getSFromMaxSeqLen(const int max_seq_len) const {
   return pimpl->getSFromMaxSeqLen(max_seq_len);
 }
 
+std::unique_ptr<FusedMHARunnerFP16v2> FusedMHARunnerFP16v2::Create(const int numHeads,
+                                                                   const int headSize,
+                                                                   const int sm,
+                                                                   bool causal_mask,
+                                                                   bool enable_flash_attention,
+                                                                   const float scale) {
+  return std::make_unique<FusedMHARunnerFP16v2>(numHeads, headSize, sm, causal_mask, enable_flash_attention, scale);
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -29,7 +29,7 @@ class MultiHeadAttention final : public CudaKernel {
   bool enable_trt_flash_attention_;
   bool disable_fused_cross_attention_;
   bool disable_memory_efficient_attention_;
-  mutable std::unique_ptr<MHARunner> fused_fp16_runner_;
+  mutable std::unique_ptr<FusedMHARunnerFP16v2> fused_fp16_runner_;
   mutable const FusedMultiHeadCrossAttentionKernel* fused_fp16_cross_attention_kernel_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_q_cache_;
   mutable CumulatedSequenceLengthCache cumulated_sequence_length_kv_cache_;
