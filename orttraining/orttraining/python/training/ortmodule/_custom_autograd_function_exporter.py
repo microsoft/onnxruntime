@@ -127,7 +127,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         input_pointer_scalar_positions = []
 
         tensor_args = []
-        debug_comment = ''
+        debug_comment = ""
         # Encode inputs to autograd.Function.
         for i, arg, call_type in zip(range(len(args)), args, cconv):
             if call_type == "d":
@@ -165,8 +165,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                             ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
                         )
                 else:
-                    if name == 'ActivationObserver' and isinstance(arg, str):
-                        # ActivationObserver is a special case where the first argument is a string
+                    if name == "_InspectActivation" and isinstance(arg, str):
+                        # _InspectActivation is a special case where the first argument is a string
                         # that is used to determine the type of the observer.
                         debug_comment += arg
 

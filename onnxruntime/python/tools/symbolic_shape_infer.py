@@ -2174,7 +2174,7 @@ class SymbolicShapeInference:
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-        if get_attribute(node, "name").decode() in ["ActivationObserver", "ActivationComplete"]:
+        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
             assert len(node.output) == len(node.input) + 1
             for input_index in range(len(node.output) - 1):
                 # Process the i-th tensor outputs.

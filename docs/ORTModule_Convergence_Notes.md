@@ -21,34 +21,32 @@ Before looking into further, we should clarify few things (if possible):
 Add codes:
 
 ```diff
-+	from onnxruntime.training.ortmodule._runtime_inspector import ActivationSummarizer
-+	summarizer = ActivationSummarizer("pt_result")
-+	summarizer.initialize(model)
++	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
++	SubscriberManager.subscribe(model, [StatisticsSubscriber("pt_out", override_output_dir=True)])
 
 ```
-Run training script to the steps that triggered the divergence. A folder named `pt_result` is created in current working directory. For each step, there is a folder containing summaries for every activation tensor.
+Run training script to the steps that triggered the divergence. A folder named `pt_out` is created in current working directory. For each step, there is a folder containing summaries for every activation tensor.
 
 
 Add few lines of code:
 ```diff
 	from onnxruntime.training.ortmodule import ORTModule
-	from onnxruntime.training.ortmodule._runtime_inspector import ActivationSummarizer
+	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
 
-+	summarizer = ActivationSummarizer("ort_result")
-+	summarizer.initialize(model)
++	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 	model = ORTModule(model)
 ```
 
 > ActivationSummarizer must be initialized before wrapping ORTModule.
 
-Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_result` is created in current working directory.
+Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_out` is created in current working directory.
 
 Run command to generate per step summary at dir orttraining/tools/scripts/
 
 Be noted: here we use the topo order of PyTorch to merge activation summary, to make it easier to compare the result.
 
 ```bash
-python summarize_activations.py --pt_dir pt_result --ort_dir ort_result --output_dir /tmp/output
+python -m onnxruntime.training.utils.hooks.merge_activation_summary --pt_dir pt_out --ort_dir ort_out --output_dir /tmp/output
 ```
 
 Manual diff the generate per-step summary to find the where is the first big diff happens.

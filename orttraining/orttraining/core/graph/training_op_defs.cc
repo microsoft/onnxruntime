@@ -3879,7 +3879,7 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOp's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "ActivationObserver" || func_name == "ActivationComplete") {
+        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);
           // Set inferred output types.
           for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
@@ -4016,7 +4016,7 @@ Return true if all elements are true and false otherwise.
         ORT_ENFORCE(output_tensor_types_proto, "PythonOpGrad's must have \"output_tensor_types\" attribute.");
 
         std::string func_name = getAttribute(ctx, "name", "");
-        if (func_name == "ActivationObserver" || func_name == "ActivationComplete") {
+        if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);
 
           // Set inferred output types.
