@@ -1,0 +1,69 @@
+parameters:
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: qnn-v2.8.0.230223123141_52150_win
+  values:
+  - qnn-v2.6.0.221227161714_42395_win
+  - qnn-v2.8.0.230223123141_52150_win
+
+jobs:
+- job: 'build'
+  pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+  variables:
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    buildArch: x64
+    setVcvars: true
+    BuildConfig: 'RelWithDebInfo'
+    ALLOW_RELEASED_ONNX_OPSET_ONLY: '1'
+    QNN_SDK_ROOT: 'C:\data\qnnsdk\${{parameters.QnnSdk}}'
+  timeoutInMinutes: 150
+  workspace:
+    clean: all
+  steps:
+
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.7'
+      addToPath: true
+      architecture: $(buildArch)
+
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QNN_SDK_ROOT) --parallel'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
+      platform: 'x64'
+      configuration: $(BuildConfig)
+      msbuildArgs: $(MsbuildArguments)
+      msbuildArchitecture: $(buildArch)
+      maximumCpuCount: true
+      logProjectEvents: false
+      workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
+      createLogFile: true
+
+  - powershell: |
+     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
+
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+    displayName: 'Run unit tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run ONNX Tests'
+
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -c 1 -v -e qnn -i "backend_path|$(QNN_SDK_ROOT)\target\x86_64-windows-msvc\lib\QnnCpu.dll" C:\data\float32_models
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run float32 model tests'
+

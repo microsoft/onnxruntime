@@ -5,7 +5,7 @@
 
 /// <summary>
 /// Options for the TensorRT provider that are passed to SessionOptionsAppendExecutionProvider_TensorRT_V2.
-/// Please note that this struct is *similar* to OrtTensorRTProviderOptions but only to be used internally. 
+/// Please note that this struct is *similar* to OrtTensorRTProviderOptions but only to be used internally.
 /// Going forward, new trt provider options are to be supported via this struct and usage of the publicly defined
 /// OrtTensorRTProviderOptions will be deprecated over time.
 /// User can only get the instance of OrtTensorRTProviderOptionsV2 via CreateTensorRTProviderOptions.
@@ -31,4 +31,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_force_sequential_engine_build;        // force building TensorRT engine sequentially. Default 0 = false, nonzero = true
   int trt_context_memory_sharing_enable;        // enable context memory sharing between subgraphs. Default 0 = false, nonzero = true
   int trt_layer_norm_fp32_fallback;             // force Pow + Reduce ops in layer norm to FP32. Default 0 = false, nonzero = true
+  int trt_timing_cache_enable;                  // enable TensorRT timing cache. Default 0 = false, nonzero = true
+  int trt_force_timing_cache;                   // force the TensorRT cache to be used even if device profile does not match. Default 0 = false, nonzero = true
+  int trt_detailed_build_log;                   // Enable detailed build step logging on TensorRT EP with timing for each engine build. Default 0 = false, nonzero = true
 };

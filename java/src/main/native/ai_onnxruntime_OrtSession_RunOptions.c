@@ -110,6 +110,22 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_getRunT
 
 /*
  * Class:     ai_onnxruntime_OrtSession_RunOptions
+ * Method:    addRunConfigEntry
+ * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024RunOptions_addRunConfigEntry
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong nativeHandle, jstring keyStr, jstring valueStr) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+  const char* key = (*jniEnv)->GetStringUTFChars(jniEnv, keyStr, NULL);
+  const char* value = (*jniEnv)->GetStringUTFChars(jniEnv, valueStr, NULL);
+  checkOrtStatus(jniEnv, api, api->AddRunConfigEntry((OrtRunOptions*) nativeHandle, key, value));
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, keyStr, key);
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, valueStr, value);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_RunOptions
  * Method:    setTerminate
  * Signature: (JJZ)V
  */

@@ -2,18 +2,18 @@
 # variable
 
 steps:
-  - powershell: |
-      if ($env:TELEMETRYGUID) {
-        $length = $env:TELEMETRYGUID.length
-        $fileContent = "#define TraceLoggingOptionMicrosoftTelemetry() \
-          TraceLoggingOptionGroup("+$env:TELEMETRYGUID.substring(1, $length-2)+")"
-        New-Item -Path "$(Build.SourcesDirectory)\include\onnxruntime\core\platform\windows\TraceLoggingConfigPrivate.h" -ItemType "file" -Value "$fileContent" -Force
-        Write-Host "##vso[task.setvariable variable=TelemetryOption]--use_telemetry"
-        Write-Host "Telemetry is enabled."
-      } else {
-        Write-Host "##vso[task.setvariable variable=TelemetryOption]"
-        Write-Host "Telemetry is disabled."
-      }
+  # TELEMETRYGUID is a runtime variable that is stored on the pipeline in an old-fashioned way. So it cannot be used in
+  # template expressions. We access it through env variables.
+  - task: PowerShell@2
     displayName: 'Set TelemetryOption variable and optionally create TraceLoggingConfigPrivate.h for WinML Telemetry'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\set_telemetry_var.ps1
+      failOnStderr: true
+      showWarnings: true
+      workingDirectory: $(Build.SourcesDirectory)
     env:
+      # When the pipeline variable does not exist, the following line will create a new env variable with value of
+      # what you see here. 
       TELEMETRYGUID: $(TELEMETRYGUID)
+      

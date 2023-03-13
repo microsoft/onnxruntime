@@ -59,7 +59,8 @@ static void GatherNDComputationReductionTest(const std::string& op_type,
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
+                                                     TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   validation_func(graph, op_type);
@@ -258,7 +259,7 @@ TEST(ComputeOptimizerTests, GatherND_E2E) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   // check the expected node orders.
@@ -351,7 +352,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -457,7 +458,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -563,7 +564,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -661,7 +662,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -759,7 +760,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_ScalarSlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -858,7 +859,7 @@ TEST(ComputeOptimizerTests, GatherMatMul_SlicingOnSecondLastDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -956,7 +957,7 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1049,7 +1050,7 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnBatchDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1143,7 +1144,7 @@ TEST(ComputeOptimizerTests, GatherReshape_ScalarSlicingOnSeqlenDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1236,7 +1237,7 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1330,7 +1331,7 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   GraphViewer graph_viewer(graph);
@@ -1426,7 +1427,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<ComputeOptimizer>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 

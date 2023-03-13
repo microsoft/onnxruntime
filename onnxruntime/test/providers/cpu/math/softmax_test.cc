@@ -350,7 +350,8 @@ TEST(SoftmaxOperator, DimWithZero) {
 
   RunTest(x_vals, expected_vals, dimensions, /*opset*/ -1, /*axis*/ 0,
           {kTensorrtExecutionProvider,
-           kNnapiExecutionProvider}  // NNAPI softmax does not support empty input
+           kNnapiExecutionProvider,  // NNAPI softmax does not support empty input
+           kQnnExecutionProvider}    // QNN doesn't support dim 0
   );
 }
 
