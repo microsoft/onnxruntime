@@ -54,7 +54,7 @@ pybind11::object AddNonTensorAsPyObj(const OrtValue& val,
                                      const DataTransferManager* data_transfer_manager,
                                      const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
 
-OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device);
+OrtMemoryInfo GetOrtDeviceByMemTypePerDeviceType(const OrtDevice& ort_device);
 
 int32_t GetTensorProtoType(const OrtValue& ort_value);
 

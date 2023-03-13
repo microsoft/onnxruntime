@@ -154,7 +154,7 @@ void addSparseTensorMethods(pybind11::module& m) {
 
                       // create references to make sure storage does not disappear
                       std::vector<py::object> reference_holders = {py_values, py_indices};
-                      OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+                      OrtMemoryInfo mem_info = GetOrtDeviceByMemTypePerDeviceType(ort_device);
                       TensorShape values_shape{py_values.size()};
                       auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
                                                                           const_cast<void*>(py_values.data()), mem_info);
@@ -217,7 +217,7 @@ void addSparseTensorMethods(pybind11::module& m) {
 
               // go ahead and create references to make sure storage does not disappear
               std::vector<py::object> reference_holders = {py_values, py_inner_indices, py_outer_indices};
-              OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+              OrtMemoryInfo mem_info = GetOrtDeviceByMemTypePerDeviceType(ort_device);
               TensorShape values_shape{py_values.size()};
               auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
                                                                   const_cast<void*>(py_values.data()), mem_info);
@@ -276,7 +276,7 @@ void addSparseTensorMethods(pybind11::module& m) {
 
               // create references to make sure storage does not disappear
               std::vector<py::object> reference_holders = {py_values, py_indices};
-              OrtMemoryInfo mem_info = GetMemoryInfoPerDeviceType(ort_device);
+              OrtMemoryInfo mem_info = GetOrtDeviceByMemTypePerDeviceType(ort_device);
               auto sparse_tensor = std::make_unique<SparseTensor>(ml_type, dense_shape, values_shape,
                                                                   const_cast<void*>(py_values.data()), mem_info);
               ORT_THROW_IF_ERROR(sparse_tensor->UseBlockSparseIndices(index_shape, const_cast<int32_t*>(py_indices.data())));

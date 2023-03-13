@@ -303,6 +303,10 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::CreatePreferredAllocators();
   }
 
+  OrtDevice IExecutionProvider__GetOrtDeviceByMemType(const IExecutionProvider* p, OrtMemType mem_type) override {
+    return p->IExecutionProvider::GetOrtDeviceByMemType(mem_type);
+  }
+
   // Status (direct)
   std::string Status__ToString(const Status* p) override { return p->Status::ToString(); }
 

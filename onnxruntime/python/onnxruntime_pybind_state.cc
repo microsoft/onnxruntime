@@ -940,6 +940,12 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "register_execution_provider", [&env](const SessionOptions& session_options, const std::string& type, const ProviderOptionsMap& provider_options_map) -> void {
+        auto ep = CreateExecutionProviderInstance(session_options, type, provider_options_map);
+        if (ep)
+            env.AddExecutionProvider(std::move(ep));
+      });
 
 #ifdef USE_OPENVINO
   m.def(

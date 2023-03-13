@@ -306,6 +306,10 @@ const std::vector<AllocatorPtr>& IExecutionProvider::CreatePreferredAllocators()
   return g_host->IExecutionProvider__CreatePreferredAllocators(this);
 }
 
+OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
+  return g_host->IExecutionProvider__GetOrtDeviceByMemType(this, mem_type);
+}
+
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);

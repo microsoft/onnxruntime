@@ -231,6 +231,7 @@ struct ProviderHost {
   virtual int IExecutionProvider__GenerateMetaDefId(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) = 0;
 
   virtual const std::vector<AllocatorPtr>& IExecutionProvider__CreatePreferredAllocators(const IExecutionProvider* p) = 0;
+  virtual OrtDevice IExecutionProvider__GetOrtDeviceByMemType(const IExecutionProvider* p, OrtMemType mem_type) = 0;
   // Status
   virtual std::string Status__ToString(const Status* p) = 0;
 

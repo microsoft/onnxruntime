@@ -10,6 +10,7 @@
 #include "core/platform/threadpool.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/framework/execution_providers.h"
 
 struct OrtThreadingOptions;
 namespace onnxruntime {
@@ -74,6 +75,10 @@ class Environment {
     return shared_allocators_;
   }
 
+  void AddExecutionProvider(const std::shared_ptr<IExecutionProvider>& exec_provider) {
+    ORT_THROW_IF_ERROR(execution_providers_.Add(exec_provider->Type(), exec_provider));
+  }
+
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
@@ -92,5 +97,6 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
   std::vector<AllocatorPtr> shared_allocators_;
+  ExecutionProviders execution_providers_;
 };
 }  // namespace onnxruntime
