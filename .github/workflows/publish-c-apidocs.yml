@@ -11,6 +11,9 @@ concurrency:
   group: "apidocs-c"
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 jobs:
   publish:
     name: Generate C/C++ API docs

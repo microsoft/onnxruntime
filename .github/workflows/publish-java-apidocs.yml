@@ -31,11 +31,8 @@ jobs:
           build-root-directory: java
           gradle-executable: java/gradlew
           arguments: javadoc
-      - name: Get source commit
-        id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
       - name: Log source commit
-        run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
+        run: git rev-parse --short HEAD > java/build/docs/javadoc/source-version.txt
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:

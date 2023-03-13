@@ -3,7 +3,16 @@ on:
   push:
     branches:
       - main
+    paths:
+      - onnxruntime/python
   workflow_dispatch:
+
+concurrency:
+  group: "apidocs-python"
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   publish:
@@ -27,23 +36,12 @@ jobs:
         run: |
           cd tools/doc
           ./builddoc.sh /usr/bin ../.. ../../build
-      - name: Set vars
-        id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - uses: actions/checkout@v2
+      - name: Log source commit
+        run: git rev-parse --short HEAD > build/docs/inference/html/source-version.txt
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          ref: gh-pages
-          clean: false
-      - name: Move API docs into target area
-        run: |
-          ls docs/api
-          rm -rf docs/api/python
-          mv build/docs/inference/html docs/api/python
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
-        with:
-          branch: gh-pages-pr-python-docs
-          base: gh-pages
-          title: '[Automated]: Update Python API docs'
-          commit-message: 'Update Python API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/python
+          branch: gh-pages
+          folder: build/docs/inference/html
+          target-folder: docs/api/python
+          clean: true
