@@ -110,12 +110,12 @@ class FusedMHARunnerFP16v2 : public MHARunner {
 
   int getSFromMaxSeqLen(const int max_seq_len) const override;
 
-  static std::unique_ptr<FusedMHARunnerFP16v2> Create(const int numHeads,
-                                                      const int headSize,
-                                                      const int sm,
-                                                      bool causal_mask,
-                                                      bool enable_flash_attention,
-                                                      const float scale);
+  static std::unique_ptr<MHARunner> Create(const int numHeads,
+                                           const int headSize,
+                                           const int sm,
+                                           bool causal_mask,
+                                           bool enable_flash_attention,
+                                           const float scale);
 
  private:
   int mSm;
