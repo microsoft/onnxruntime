@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 #include "core/providers/rocm/nn/conv.h"
 #include "core/common/span_utils.h"
+#include "core/providers/rocm/nn/conv_impl.h"
 #include "core/providers/rocm/rocm_common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tensor/slice.h"
-#include "core/providers/rocm/nn/conv_impl.h"
 
 namespace onnxruntime {
 namespace rocm {
@@ -351,13 +351,10 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
     if (channels_last) {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
-      const auto& y_shape = s_.Y->Shape();
-      int bias_size = b_shape[0];
-      int nums = y_shape[0] * y_shape[1] * y_shape[2] * y_shape[3];
 
       ConvBiasImpl(Stream(context), reinterpret_cast<HipT*>(s_.Y->MutableData<T>()),
                    reinterpret_cast<const HipT*>(B->Data<T>()),
-                   reinterpret_cast<HipT*>(s_.Y->MutableData<T>()), bias_size, nums);
+                   reinterpret_cast<HipT*>(s_.Y->MutableData<T>()), b_shape[0], s_.Y->Shape().Size());
     } else {
       MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
                                                           &beta, s_.y_tensor, s_.y_data));
