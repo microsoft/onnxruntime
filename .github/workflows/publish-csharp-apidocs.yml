@@ -36,9 +36,9 @@ jobs:
       uses: nuget/setup-nuget@v1
     - name: Build Documentation
       run: |
-        build/docfx/docfx.exe metadata csharp/ApiDocs/docfx.json
+        build/docfx/docfx metadata csharp/ApiDocs/docfx.json
         dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
-        build/docfx/docfx.exe build csharp/ApiDocs/docfx.json
+        build/docfx/docfx build csharp/ApiDocs/docfx.json
     - name: Log source commit
       run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Deploy
