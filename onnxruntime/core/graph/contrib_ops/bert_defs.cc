@@ -133,6 +133,11 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
   //   Input 1 (key) has shape (batch_size, kv_sequence_length, hidden_size)
   //   Input 2 (value) has shape (batch_size, kv_sequence_length, v_hidden_size)
 
+  // Q, K and V without packing and past (cross attention):
+  //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
+  //   Input 1 (key) has shape (batch_size, num_head, kv_sequence_length, head_size)
+  //   Input 2 (value) has shape (batch_size, num_head, kv_sequence_length, head_size)
+
   // Packed KV:
   //   Input 0 (query) has shape (batch_size, sequence_length, hidden_size)
   //   Input 1 (batch_size, kv_sequence_length, num_heads, 2, head_size)
@@ -167,14 +172,14 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
     if (hasInputShape(ctx, 2)) {
       auto& value_shape = getInputShape(ctx, 2);
       auto& value_dims = value_shape.dim();
-      if (value_dims.size() != 3) {
-        fail_shape_inference("Inputs 2 (value) shall be 3 dimensions");
+      if (value_dims.size() != 3 && value_dims.size() != 4) {
+        fail_shape_inference("Inputs 2 (value) shall be 3 or 4 dimensions");
       }
 
       ONNX_NAMESPACE::TensorShapeProto output_shape;
       *output_shape.add_dim() = query_dims[0];
       *output_shape.add_dim() = query_dims[1];
-      *output_shape.add_dim() = value_dims[2];
+      *output_shape.add_dim() = value_dims.size() == 3 ? value_dims[2] : value_dims[1] * value_dims[3];
       updateOutputShape(ctx, 0, output_shape);
       return;
     }
@@ -261,7 +266,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(2,
                "bias",
                "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
-               "T")
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
@@ -412,18 +418,23 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads", AttributeProto::INT)
         .Attr("mask_filter_value", "The value to be filled in the attention mask. Default value is -10000.0f",
               AttributeProto::FLOAT, OPTIONAL_VALUE)
+        .Attr("scale",
+              "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape (batch_size, kv_sequence_length, num_heads, 3, head_size)",
                "T")
         .Input(1,
                "key",
-               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size)",
+               "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
+                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
                "value",
-               "Value with shape (batch_size, kv_sequence_length, v_hidden_size)",
+               "Value with shape (batch_size, kv_sequence_length, v_hidden_size), or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(3,
@@ -442,10 +453,32 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                " or (1, num_heads, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
+        .Input(6,
+               "past_key",
+               "past state for self attention key with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
+        .Input(7,
+               "past_value",
+               "past state for self attention value with shape (batch_size, num_heads, past_sequence_length, head_size)",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, v_hidden_size)",
                 "T")
+        .Output(1,
+                "present_key",
+                "present state for cross attention key with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self attention key with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .Output(2,
+                "present_value",
+                "present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
+                "or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
