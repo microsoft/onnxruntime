@@ -32,7 +32,7 @@ stages:
       AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       WithCache: ${{ parameters.WithCache }}
-- ${{ if eq(parameters.BuildForAllArchs, true) }}:
+  - ${{ if eq(parameters.BuildForAllArchs, true) }}:
     - template: mac-packing-jobs.yml
       parameters:
         MacosArch: 'arm64'
