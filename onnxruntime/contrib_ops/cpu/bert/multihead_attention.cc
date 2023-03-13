@@ -16,7 +16,7 @@
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
-// #include <chrono>
+#include <chrono>
 #include <iostream>
 #include <vector>
 
@@ -52,9 +52,9 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
                         const T* qkv_bias,                  // Input: Q/K/V bias - bias is (D + D + D_v)
                         OrtValue& qkv_with_bias_transposed, // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
                         int bias_offset,                    // Bias offset to enter qkv_bias
-                        int batch_size,
+                        int batch_size,                     // batch size
                         int sequence_length,                // sequence_length for Q, kv_sequence_length for K/V
-                        int num_heads,
+                        int num_heads,                      // num heads
                         int head_size,                      // head_size for Q/K, v_head_size for V
                         int hidden_size,                    // hidden_size for Q/K, v_hidden_size for V
                         OpKernelContext* context) {
@@ -131,7 +131,7 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   // Transpose Q from BxSxNxH to BxNxSxH
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
-  size_t from = 0, to = 0;
+  size_t from = 0, to = 0; // from = 2, to = 1;
   bool moving_single_axis = IsTransposeMovingSingleAxis(permutations_span, from, to); // sets values of from and to
   ORT_ENFORCE(moving_single_axis);
   
@@ -144,7 +144,7 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
 
 template <typename T>
 Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
-  // std::cout << "Computing MHA CPU..." << std::endl;
+  // std::cout << "Computing multihead attention CPU..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -229,7 +229,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                        key_padding_mask, past, output, present_k, present_v, 
                                        batch_size, q_sequence_length, kv_sequence_length, 
                                        qk_head_size, v_head_size, v_hidden_size, 
-                                       extra_add_qk, true, context));    
+                                       extra_add_qk, true, context));
     return Status::OK();
   }
 

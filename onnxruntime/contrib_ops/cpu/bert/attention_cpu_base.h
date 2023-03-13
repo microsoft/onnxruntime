@@ -10,7 +10,8 @@
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/print_tensor_utils.h"
-// #include <chrono>
+#include <chrono>
+#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -38,7 +39,6 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
                         bool separate_present_kv,    // whether to separate present KV into present K and present V
                         OpKernelContext* context) const {
-    // const int kv_sequence_length = sequence_length;
     // std::cout << "Q (in apply):" << std::endl;
     // for(int i = 0; i < 1; i++) {
     //   std::cout << "[" << i << "]:" << std::endl;
@@ -162,6 +162,7 @@ class AttentionCPUBase : public AttentionBase {
                              ThreadPool* tp,                            // thread pool
                              const T* extra_add_qk_data                 // extra add matrix with shape BxNxSxT
   ) const {
+    // auto total_beg = std::chrono::high_resolution_clock::now();
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;      // P x H
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;        // S x H
@@ -170,13 +171,32 @@ class AttentionCPUBase : public AttentionBase {
 
     {
       // mask_data is nullptr when mask_index is nullptr and not unidirectional, otherwise its shape is BxSxT
+      // auto memset_beg = std::chrono::high_resolution_clock::now();
       if (mask_data != nullptr) {
         PrepareMask(mask_index, mask_index_dims, mask_data,
                     has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
-      } else {  // no any mask
-        size_t bytes = static_cast<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
-        memset(attention_probs, 0, bytes);
       }
+      else {  // no any mask
+        // std::cout << batch_size << ", " << num_heads_ << ", " << sequence_length << ", " << total_sequence_length << std::endl;
+        // if (sequence_length > 256 || total_sequence_length > 256) {
+        const int memset_loop_len = batch_size * num_heads_;
+        const double memset_cost = static_cast<double>(sequence_length) * total_sequence_length;
+        
+        ThreadPool::TryParallelFor(tp, memset_loop_len, memset_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+          for (std::ptrdiff_t i = begin; i != end; ++i) {
+            const int output_offset = static_cast<int>(i) * sequence_length * total_sequence_length;
+            T* output = attention_probs + output_offset;
+            memset(output, 0, static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
+          }
+        });
+        // } 
+        // else {
+        //   size_t bytes = static_cast<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
+        //   memset(attention_probs, 0, bytes);
+        // }
+      }
+      // auto memset_end = std::chrono::high_resolution_clock::now();
+      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(memset_end - memset_beg).count() << " μs (memset)" << std::endl;
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
@@ -251,6 +271,9 @@ class AttentionCPUBase : public AttentionBase {
       // auto t4 = std::chrono::high_resolution_clock::now();
       // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " μs (softmax)" << std::endl;
     }
+
+    // auto total_end = std::chrono::high_resolution_clock::now();
+    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_beg).count() << " μs (ComputeAttentionProbs)" << std::endl;
   }
 
   template <typename T>
@@ -267,6 +290,7 @@ class AttentionCPUBase : public AttentionBase {
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
+    // auto total_beg = std::chrono::high_resolution_clock::now();
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                     // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;      // P x H_v
     const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;        // S x H_v
@@ -329,6 +353,7 @@ class AttentionCPUBase : public AttentionBase {
     });
     // auto t6 = std::chrono::high_resolution_clock::now();
     // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count() << " μs (softmax x V)" << std::endl;
+    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t6 - total_beg).count() << " μs (VxAttentionScore)" << std::endl;
   }
 
   template <typename T>

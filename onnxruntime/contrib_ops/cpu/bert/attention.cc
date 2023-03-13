@@ -10,6 +10,9 @@
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
+#include <chrono>
+#include <iostream>
+
 using onnxruntime::narrow;
 using onnxruntime::concurrency::ThreadPool;
 namespace onnxruntime {
@@ -252,6 +255,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     const double cost = static_cast<double>(sequence_length) *
                         static_cast<double>(parameters.head_size) * static_cast<double>(input_hidden_size);
 
+    // auto t1 = std::chrono::high_resolution_clock::now();
     ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const int batch_index = static_cast<int>((i / 3) / num_heads_);
@@ -326,6 +330,8 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         }
       }
     });
+    // auto t2 = std::chrono::high_resolution_clock::now();
+    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " μs (AddBiasTranspose)" << std::endl;
   }
 
   // Compute the attention score and apply the score to V
