@@ -59,6 +59,10 @@ steps:
 - publish: '$(Build.ArtifactStagingDirectory)'
   artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
+- template: component-governance-component-detection-steps.yml
+  parameters:
+    condition: 'succeeded'
+
 - ${{ if eq(parameters.BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
       parameters:
