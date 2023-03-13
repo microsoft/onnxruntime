@@ -12,6 +12,7 @@
 #include "core/optimizer/compute_optimizer/upstream_transformer_base.h"
 
 using namespace onnxruntime::optimizer::compute_optimizer;
+
 namespace onnxruntime {
 
 UpStreamGatherGraphTransformer::UpStreamGatherGraphTransformer(
