@@ -51,10 +51,10 @@ stages:
     pool:
       vmImage: 'macOS-12'
     steps:
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-osx'
+    - download: current
+      patterns: '**/onnxruntime-osx-*/*'
+    - publish: '$(Build.ArtifactStagingDirectory)'
+      artifact: 'onnxruntime-osx'
     - template: component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
