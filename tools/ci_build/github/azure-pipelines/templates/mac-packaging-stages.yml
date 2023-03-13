@@ -23,7 +23,7 @@ parameters:
   default: false
 
 stages:
-- stage: MacOS_C_API_Package_Making
+- stage: MacOS_C_API_Packaging_CPU
   dependsOn: []
   jobs:
   - template: mac-packing-jobs.yml
@@ -45,9 +45,9 @@ stages:
         AllowReleasedOpsetOnly: ${{ parameters.AllowReleasedOpsetOnly }}
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
-- stage: MacOS_C_API_Packaging_CPU
+- stage: MacOS_C_API_Package_Publishing
   jobs:
-  - job: MacOS_C_API_Packaging_CPU
+  - job: MacOS_C_API_Package_Publishing
     pool:
       vmImage: 'macOS-12'
     steps:
