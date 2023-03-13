@@ -126,11 +126,11 @@ jobs:
     displayName: Show Cache stats
     condition: eq(${{ parameters.WithCache }}, true)
 
-  - task: PublishPipelineArtifact@1
-    inputs:
-      targetPath: '$(Build.ArtifactStagingDirectory)'
-      artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
-
-  - template: component-governance-component-detection-steps.yml
-    parameters:
-      condition: 'succeeded'
+#  - task: PublishPipelineArtifact@1
+#    inputs:
+#      targetPath: '$(Build.ArtifactStagingDirectory)'
+#      artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+#
+#  - template: component-governance-component-detection-steps.yml
+#    parameters:
+#      condition: 'succeeded'
