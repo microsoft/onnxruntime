@@ -4,7 +4,7 @@
 /* eslint-disable guard-for-in */
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
-import {execSync, spawnSync} from 'child_process';
+import {spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
 import * as globby from 'globby';
 import {default as minimatch} from 'minimatch';
@@ -146,6 +146,8 @@ run({
   log: args.logConfig,
   profile: args.profile,
   options: {
+    sessionOptions:
+        {graphOptimizationLevel: args.graphOptimizationLevel, optimizedModelFilePath: args.optimizedModelFilePath},
     debug: args.debug,
     cpuOptions: args.cpuOptions,
     webglOptions: args.webglOptions,
@@ -393,28 +395,23 @@ function tryLocateOpTestManifest(searchPattern: string): string {
 
 function run(config: Test.Config) {
   // STEP 1. write file cache to testdata-file-cache-*.json
-  npmlog.info('TestRunnerCli.Run', '(1/5) Writing file cache to file: testdata-file-cache-*.json ...');
+  npmlog.info('TestRunnerCli.Run', '(1/4) Writing file cache to file: testdata-file-cache-*.json ...');
   const fileCacheUrls = saveFileCache(fileCache);
   if (fileCacheUrls.length > 0) {
     config.fileCacheUrls = fileCacheUrls;
   }
   npmlog.info(
       'TestRunnerCli.Run',
-      `(1/5) Writing file cache to file: testdata-file-cache-*.json ... ${
+      `(1/4) Writing file cache to file: testdata-file-cache-*.json ... ${
           fileCacheUrls.length > 0 ? `DONE, ${fileCacheUrls.length} file(s) generated` : 'SKIPPED'}`);
 
   // STEP 2. write the config to testdata-config.json
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ...');
+  npmlog.info('TestRunnerCli.Run', '(2/4) Writing config to file: testdata-config.json ...');
   saveConfig(config);
-  npmlog.info('TestRunnerCli.Run', '(2/5) Writing config to file: testdata-config.json ... DONE');
+  npmlog.info('TestRunnerCli.Run', '(2/4) Writing config to file: testdata-config.json ... DONE');
 
-  // STEP 3. get npm bin folder
-  npmlog.info('TestRunnerCli.Run', '(3/5) Retrieving npm bin folder...');
-  const npmBin = execSync('npm bin', {encoding: 'utf8'}).trimRight();
-  npmlog.info('TestRunnerCli.Run', `(3/5) Retrieving npm bin folder... DONE, folder: ${npmBin}`);
-
-  // STEP 4. generate bundle
-  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle...');
+  // STEP 3. generate bundle
+  npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle...');
   const buildCommand = `node ${path.join(__dirname, 'build')}`;
   const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
   if (args.backends.indexOf('wasm') === -1) {
@@ -426,40 +423,37 @@ function run(config: Test.Config) {
     console.error(build.error);
     process.exit(build.status === null ? undefined : build.status);
   }
-  npmlog.info('TestRunnerCli.Run', '(4/5) Running build to generate bundle... DONE');
+  npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle... DONE');
 
   if (args.env === 'node') {
     // STEP 5. run tsc and run mocha
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc...');
-    const tscCommand = path.join(npmBin, 'tsc');
-    const tsc = spawnSync(tscCommand, {shell: true, stdio: 'inherit'});
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc...');
+    const tsc = spawnSync('npx', ['tsc'], {shell: true, stdio: 'inherit'});
     if (tsc.status !== 0) {
       console.error(tsc.error);
       process.exit(tsc.status === null ? undefined : tsc.status);
     }
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running tsc... DONE');
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc... DONE');
 
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha...');
-    const mochaCommand = path.join(npmBin, 'mocha');
-    const mochaArgs = [path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
-    npmlog.info('TestRunnerCli.Run', `CMD: ${mochaCommand} ${mochaArgs.join(' ')}`);
-    const mocha = spawnSync(mochaCommand, mochaArgs, {shell: true, stdio: 'inherit'});
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha...');
+    const mochaArgs = ['mocha', path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
+    npmlog.info('TestRunnerCli.Run', `CMD: npx ${mochaArgs.join(' ')}`);
+    const mocha = spawnSync('npx', mochaArgs, {shell: true, stdio: 'inherit'});
     if (mocha.status !== 0) {
       console.error(mocha.error);
       process.exit(mocha.status === null ? undefined : mocha.status);
     }
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running mocha... DONE');
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha... DONE');
 
   } else {
     // STEP 5. use Karma to run test
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner...');
-    const karmaCommand = path.join(npmBin, 'karma');
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
     const browser = getBrowserNameFromEnv(
         args.env,
         args.bundleMode === 'perf' ? 'perf' :
             args.debug             ? 'debug' :
                                      'test');
-    const karmaArgs = ['start', `--browsers ${browser}`];
+    const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
     if (args.debug) {
       karmaArgs.push('--log-level info --timeout-mocha 9999999');
     } else {
@@ -518,13 +512,13 @@ function run(config: Test.Config) {
         spawnSync(deleteEdgeActiveRecoveryCommand, {shell: true, stdio: 'inherit'});
       }
     }
-    npmlog.info('TestRunnerCli.Run', `CMD: ${karmaCommand} ${karmaArgs.join(' ')}`);
-    const karma = spawnSync(karmaCommand, karmaArgs, {shell: true, stdio: 'inherit'});
+    npmlog.info('TestRunnerCli.Run', `CMD: npx ${karmaArgs.join(' ')}`);
+    const karma = spawnSync('npx', karmaArgs, {shell: true, stdio: 'inherit'});
     if (karma.status !== 0) {
       console.error(karma.error);
       process.exit(karma.status === null ? undefined : karma.status);
     }
-    npmlog.info('TestRunnerCli.Run', '(5/5) Running karma to start test runner... DONE');
+    npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner... DONE');
   }
 }
 

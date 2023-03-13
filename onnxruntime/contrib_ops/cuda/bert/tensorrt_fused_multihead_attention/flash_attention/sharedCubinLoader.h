@@ -49,7 +49,7 @@ class TSharedCubinKernel {
       if (kernelMeta.mSM == smVersion &&
           kernelMeta.mDataType == mDataType &&
           mFunctions.find(kernelKey) == mFunctions.end()) {
-        int32_t const DEFAULT_SMEM_SIZE{48 * 1024};
+        constexpr int32_t DEFAULT_SMEM_SIZE = 48 * 1024;
         if (kernelMeta.mSharedMemBytes >= DEFAULT_SMEM_SIZE) {
           int32_t deviceID{0};
           cudaGetDevice(&deviceID);

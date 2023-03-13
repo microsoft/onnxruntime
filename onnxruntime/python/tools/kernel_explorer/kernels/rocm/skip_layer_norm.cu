@@ -136,7 +136,16 @@ class SkipLayerNormTunable : public IKernelExplorer {
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)                        \
   REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)                        \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 576)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 640)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 704)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 768)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 832)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 896)                        \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 1024)
 
 #define REGISTER_OP_TYPED(name, type)                                       \
   py::class_<name<type>>(m, #name "_" #type)                                \

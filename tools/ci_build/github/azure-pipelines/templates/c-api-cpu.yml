@@ -85,7 +85,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   timeoutInMinutes:  300
   steps:
     - template: set-version-number-variables-step.yml
@@ -764,7 +764,7 @@ jobs:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-11
+    AgentPool : macOS-12
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -865,7 +865,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
   - name: runCodesignValidationInjection
     value: false
@@ -893,7 +893,7 @@ jobs:
           popd
           wget https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
           wget https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
-          sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
           DYLD_LIBRARY_PATH=./test:${DYLD_LIBRARY_PATH}
           java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
         workingDirectory: '$(Build.BinariesDirectory)/final-jar'

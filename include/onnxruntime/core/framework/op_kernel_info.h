@@ -12,9 +12,9 @@
 
 namespace onnxruntime {
 
-class OrtValueNameIdxMap;
-class FuncManager;
 class DataTransferManager;
+class FuncManager;
+class OrtValueNameIdxMap;
 struct AllocPlanPerValue;
 
 // A very light-weight class, which works as an aggregated
