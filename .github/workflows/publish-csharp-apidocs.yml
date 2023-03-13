@@ -41,7 +41,7 @@ jobs:
         dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
         build/docfx/docfx.exe build csharp/ApiDocs/docfx.json
     - name: Log source commit
-      run: git rev-parse --short HEAD > docs/ApiDocs/csharp/source-version.txt
+      run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Deploy
       uses: JamesIves/github-pages-deploy-action@v4
       with:
