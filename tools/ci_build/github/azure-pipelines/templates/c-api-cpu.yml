@@ -346,15 +346,9 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
-      displayName: 'Download onnxruntime-osx-arm64 Pipeline Artifact'
+      displayName: 'Download osx-x64 Pipeline Artifact'
       inputs:
-        artifactName: 'onnxruntime-osx-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download onnxruntime-osx-x86_64 Pipeline Artifact'
-      inputs:
-        artifactName: 'onnxruntime-osx-x86_64'
+        artifactName: 'onnxruntime-osx'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
@@ -587,13 +581,7 @@ stages:
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet (OSX)'
       inputs:
-        artifactName: 'onnxruntime-osx-arm64'
-        targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - NuGet (OSX)'
-      inputs:
-        artifactName: 'onnxruntime-osx-x86_64'
+        artifactName: 'onnxruntime-osx'
         targetPath: '$(Build.BinariesDirectory)/nuget-artifact'
 
     - task: DownloadPipelineArtifact@0
