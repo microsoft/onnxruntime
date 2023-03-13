@@ -2,11 +2,8 @@
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
-from enum import Enum
 from logging import getLogger
-from os import name
-from sys import path
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 from fusion_base import Fusion
@@ -14,7 +11,6 @@ from fusion_options import AttentionMaskFormat
 from fusion_utils import FusionUtils, NumpyHelper
 from onnx import NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
-from shape_infer_helper import SymbolicShapeInferenceHelper, get_shape_from_type_proto
 
 logger = getLogger(__name__)
 
@@ -212,7 +208,7 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
-        scale: Union[float, None],
+        scale: Optional[float] = None,
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
