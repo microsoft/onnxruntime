@@ -350,7 +350,6 @@ class T5DecoderHelper:
         ort_inputs = {
             "input_ids": numpy.ascontiguousarray(inputs.decoder_input_ids.cpu().numpy()),
             "encoder_attention_mask": numpy.ascontiguousarray(inputs.encoder_attention_mask.cpu().numpy()),
-            # "encoder_hidden_states": numpy.ascontiguousarray(inputs.encoder_hidden_states.cpu().numpy()),
         }
 
         if inputs.past_key_values:

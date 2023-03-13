@@ -153,7 +153,6 @@ class T5Helper:
         op_block_list: List[str] = [
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
-            "Mul",
             "Relu",
             "Add",
         ],
@@ -162,7 +161,7 @@ class T5Helper:
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Mul", "Relu", "Add"]
+            op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """

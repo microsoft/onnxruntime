@@ -380,6 +380,8 @@ class SymbolicShapeInference:
             return list(self.initializers_[name].dims)
 
     def _try_get_shape(self, node, idx):
+        if idx > len(node.input) - 1:
+            return None
         name = node.input[idx]
         if name in self.known_vi_:
             vi = self.known_vi_[name]
@@ -2151,7 +2153,7 @@ class SymbolicShapeInference:
                 else:
                     head_size = query_shape[4]
 
-                past_shape = self._try_get_shape(node, 5)
+                past_shape = self._try_get_shape(node, 6)
 
                 if past_shape is not None:
                     if isinstance(past_shape[2], int) and isinstance(total_sequence_length, int):
@@ -2159,9 +2161,7 @@ class SymbolicShapeInference:
                     else:
                         total_sequence_length = f"{past_shape[2]}+{total_sequence_length}"
 
-                # Keep the batch size and total sequence length as string
-                present_shape = [str(batch_size), num_heads, str(total_sequence_length), head_size]
-                print(present_shape)
+                present_shape = [batch_size, num_heads, total_sequence_length, head_size]
 
                 assert output_dtype is not None
                 vi = self.known_vi_[node.output[1]]

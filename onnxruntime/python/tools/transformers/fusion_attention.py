@@ -212,7 +212,7 @@ class FusionAttention(Fusion):
         input: str,
         output: str,
         add_qk_str: str,
-        scale: float = None,
+        scale: Union[float, None],
     ) -> Union[NodeProto, None]:
         """Create an Attention node.
 
