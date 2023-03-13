@@ -7,11 +7,6 @@ parameters:
   - 'universal2'
   default: 'x86_64'
 
-- name: BuildForAllArchs
-  displayName: Build for all CPU ARCHs
-  type: boolean
-  default: true
-
 - name: WithCache
   displayName: Build with Cache
   type: boolean
@@ -30,9 +25,9 @@ parameters:
   values:
   - 1
   - 0
+
 jobs:
 - job: MacOS_C_API_Packaging_CPU_${{ parameters.MacosArch }}
-  condition:  and(succeeded(), or (eq(parameters.MacosArch, x86_64), eq(parameters.BuildForAllArchs, True) ))
   workspace:
     clean: all
   variables:
@@ -130,3 +125,12 @@ jobs:
       ccache -z
     displayName: Show Cache stats
     condition: eq(${{ parameters.WithCache }}, true)
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(Build.ArtifactStagingDirectory)'
+      artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+
+  - template: component-governance-component-detection-steps.yml
+    parameters:
+      condition: 'succeeded'
