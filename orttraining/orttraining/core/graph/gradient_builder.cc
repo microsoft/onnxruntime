@@ -1895,5 +1895,44 @@ IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
   return {NodeDef(OpDef{"FakeQuantGrad", kMSDomain, 1}, {GO(0), O(1)}, {GI(0)})};
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
+  // Add inputs of the LSTMInternal node as inputs of the LSTMGrad node
+  std::vector<ArgDef> input_args({I(0), I(1), I(2)});
+  for (int i = 3; i < GetSrcNodeInputSize(); i++) {
+    input_args.push_back(I(i));
+  }
+
+  // Add HAll, CAll, IOFC outputs of the LSTMInternal node as inputs of the LSTMGrad node
+  input_args.push_backl(O(0));  // all hidden states output of the LSTMInternal node
+  input_args.push_backl(O(3));  // all cell states output of the LSTMInternal node
+  input_args.push_backl(O(4));  // i, o, f, c gate computations output of the LSTMInternal node
+
+  // Add gradients of the outputs of the LSTMInternal node as inputs to the LSTMGrad node
+  // Gradients of the outputs of the LSTMInternal node include grad_HAll, grad_HFinal, grad_CFinal
+  for (int o = 0; o < 3; ++o) {
+    input_args.push_back(GO(o));
+  }
+
+  // Add gradients of the LSTMInternal inputs as outputs of the LSTMGrad node
+  // Outputs are gradients of:
+  //   1) X (input tensor)
+  //   2) W (weight tensor)
+  //   3) R (recurrence weight tensor)
+  //   4) B (bias tensor)
+  //   5) H0 (initial hidden state tensor)
+  //   6) C0 (initial cell state tensor)
+  //   7) P (peephole weight tensor)
+  std::vector<ArgDef> output_args;
+  constexpr size_t sequence_length_input_index = 4;
+  for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
+    if (sequence_length_input_index == i) continue;
+    if (IsGradientRequiredForSrcNodeInput(i)) {
+      output_args.push_back(GI(i));
+    }
+  }
+
+  return {NodeDef(OpDef{"LSTMGrad", kMSDomain, 1}, input_args, output_args, SrcNodeAttributes())};
+}
+
 }  // namespace training
 }  // namespace onnxruntime
