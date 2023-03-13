@@ -53,6 +53,7 @@ stages:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
       WithCache: ${{ parameters.WithCache }}
 - stage:
+  jobs:
   - job: PublishPipelineArtifactAndComponentGovernance
     pool:
       vmImage: 'macOS-12'
