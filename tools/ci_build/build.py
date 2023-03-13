@@ -1347,16 +1347,10 @@ def generate_build_tree(
                     "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7]),
                 ]
 
-
-    print("!!!!!!!!")
-    print(args.enable_ft)
-    print(args.use_cuda)
     if args.use_cuda and args.enable_ft:
         if is_windows():
             log.warning("FasterTransformer doesn't support Windows now.")
         else:
-            print(args.ft_home)
-            print("!!!!!!!!")
             cmake_args += [
                 "-Donnxruntime_ENABLE_FT=ON",
                 "-Donnxruntime_FT_HOME=" + args.ft_home,
