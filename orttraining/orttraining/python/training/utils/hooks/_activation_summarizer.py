@@ -13,6 +13,14 @@ from ._subscriber_manager import _ModuleHookSubscriberBase
 class StatisticsSubscriber(_ModuleHookSubscriberBase):
     """
     This subscriber is used to dump the activation's statistics to a file.
+
+    In the forward pass, summarize the tensor's statistics and write to a file.
+    In the backward pass, summarize the tensor's statistics and write into another file.
+
+    Each activation will be summarized into 1 or 2 files, depending on whether it is used in the backward pass.
+    So for each run step, there will be many files.
+
+    `merge_activation_summary.py` can be used to merge the files into one file per training step.
     """
 
     def __init__(self, output_dir, start_step_inclusive=0, end_step_exclusive=1000000, override_output_dir=False):
@@ -75,8 +83,5 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
             f"pos: {torch.greater(flatten_array, zerotensor).to(torch.int64).sum()}, "
             f"zero: {torch.eq(flatten_array, zerotensor).to(torch.int64).sum()},\n"
         )
-        # if num_nan + num_inf == 0:
-        #     elem_count = int(flatten_array.size(dim=0))
-        #     f.write(f"histogram: {torch.histogram(flatten_array, bins=max(1, elem_count.bit_length() - 1)) if elem_count > 2 else None} \n")
         f.write(f"{'='*16}\n")
         f.close()
