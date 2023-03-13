@@ -28,7 +28,7 @@ jobs:
     - name: Download DocFX
       run: |
         mkdir -p build/docfx
-        curl https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx.zip > build/docfx/docfx.zip
+        wget https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx-linux-x64-v${env:DOCFXVERSION}.zip -O build/docfx/docfx.zip
         unzip build/docfx/docfx.zip -d build/docfx
       env:
         DOCFXVERSION: 2.59.3
