@@ -25,6 +25,7 @@ class BenchmarkConv(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.n, op_param.cin, op_param.h, op_param.w).astype(op_param.data_type)
@@ -43,6 +44,7 @@ class BenchmarkConv(BenchmarkOp):
         # change here to test your data shape
         self.add_case(OpParam(2, 320, 320, 64, 64, data_type), model)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         profile = f"( n cout cin h w ) = ( {op_param.n} {op_param.cout} {op_param.cin} {op_param.h} {op_param.w} ), {time * 1000:7.4f} us"
         return profile
