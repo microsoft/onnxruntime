@@ -53,7 +53,17 @@ stages:
     steps:
     - task: DownloadPipelineArtifact@2
       inputs:
-        patterns: '**/onnxruntime-osx-*/*'
+        artifact: 'onnxruntime-osx-x86_64'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: DownloadPipelineArtifact@2
+      condition: eq(parameters.BuildForAllArchs, true)
+      inputs:
+        artifact: 'onnxruntime-osx-arm64'
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - task: DownloadPipelineArtifact@2
+      condition: eq(parameters.BuildForAllArchs, true)
+      inputs:
+        artifact: 'onnxruntime-osx-universal2'
         targetPath: '$(Build.ArtifactStagingDirectory)'
     - publish: '$(Build.ArtifactStagingDirectory)'
       artifact: 'onnxruntime-osx'
