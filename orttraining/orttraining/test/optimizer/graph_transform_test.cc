@@ -28,6 +28,7 @@
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/lstm_replacement.h"
 
 #include <random>
 
@@ -949,6 +950,52 @@ TEST_F(GraphTransformationTests, SoftmaxCrossEntropyLossInternalFusionWithCast) 
   ASSERT_TRUE(op_to_count["LogSoftmax"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.NegativeLogLikelihoodLossInternal"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.SoftmaxCrossEntropyLossInternal"] == 1);
+}
+
+TEST_F(GraphTransformationTests, LSTMReplacement) {
+  Model model("LSTMReplacement", true, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), {{"", 14}, {"com.microsoft", 1}}, {}, *logger_);
+  auto& graph = model.MainGraph();
+
+  TypeProto tensor;
+  tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float;
+  tensor_float.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_int;
+  tensor_int.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  onnxruntime::NodeArg X("X", &tensor);
+  onnxruntime::NodeArg W("W", &tensor);
+  onnxruntime::NodeArg R("R", &tensor);
+  onnxruntime::NodeArg B("B", &tensor);
+  onnxruntime::NodeArg SL("", nullptr);
+  onnxruntime::NodeArg H0("H0", &tensor);
+  onnxruntime::NodeArg C0("C0", &tensor);
+  onnxruntime::NodeArg P("P", &tensor);
+
+  onnxruntime::NodeArg HAll("HAll", &tensor);
+  onnxruntime::NodeArg Ht("Ht", &tensor);
+  onnxruntime::NodeArg Ct("Ct", &tensor);
+
+  Node& lstm_node = graph.AddNode(
+      "lstm", "LSTM", "LSTM operator",
+      {&X, &W, &R, &B, &SL, &H0, &C0, &P}, {&HAll, &Ht, &Ct}, nullptr);
+  lstm_node.AddAttribute("hidden_size", static_cast<int64_t>(128));
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+
+  std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
+  ASSERT_FALSE(op_to_count1.count("LSTMInternal"));
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.LSTMInternal") && op_to_count2["com.microsoft.LSTMInternal"] == 1);
 }
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,
