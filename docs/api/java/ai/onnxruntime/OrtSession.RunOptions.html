@@ -27,7 +27,7 @@
     catch(err) {
     }
 //-->
-var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":10,"i6":10,"i7":10};
+var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":10,"i6":10,"i7":10,"i8":10};
 var tabs = {65535:["t0","All Methods"],2:["t2","Instance Methods"],8:["t4","Concrete Methods"]};
 var altColor = "altColor";
 var rowColor = "rowColor";
@@ -188,52 +188,60 @@ implements java.lang.AutoCloseable</pre>
 </tr>
 <tr id="i0" class="altColor">
 <td class="colFirst"><code>void</code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#addRunConfigEntry(java.lang.String,java.lang.String)">addRunConfigEntry</a></span>&#8203;(java.lang.String&nbsp;key,
+                 java.lang.String&nbsp;value)</code></th>
+<td class="colLast">
+<div class="block">Adds a configuration entry to this <code>RunOptions</code>.</div>
+</td>
+</tr>
+<tr id="i1" class="rowColor">
+<td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#close()">close</a></span>()</code></th>
 <td class="colLast">&nbsp;</td>
 </tr>
-<tr id="i1" class="rowColor">
+<tr id="i2" class="altColor">
 <td class="colFirst"><code><a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getLogLevel()">getLogLevel</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Gets the current logging level set on this RunOptions.</div>
 </td>
 </tr>
-<tr id="i2" class="altColor">
+<tr id="i3" class="rowColor">
 <td class="colFirst"><code>int</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getLogVerbosityLevel()">getLogVerbosityLevel</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Gets the current logging verbosity level set on this RunOptions.</div>
 </td>
 </tr>
-<tr id="i3" class="rowColor">
+<tr id="i4" class="altColor">
 <td class="colFirst"><code>java.lang.String</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getRunTag()">getRunTag</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Gets the String used to log information about this run.</div>
 </td>
 </tr>
-<tr id="i4" class="altColor">
+<tr id="i5" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setLogLevel(ai.onnxruntime.OrtLoggingLevel)">setLogLevel</a></span>&#8203;(<a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a>&nbsp;level)</code></th>
 <td class="colLast">
 <div class="block">Sets the current logging level on this RunOptions.</div>
 </td>
 </tr>
-<tr id="i5" class="rowColor">
+<tr id="i6" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setLogVerbosityLevel(int)">setLogVerbosityLevel</a></span>&#8203;(int&nbsp;level)</code></th>
 <td class="colLast">
 <div class="block">Sets the current logging verbosity level on this RunOptions.</div>
 </td>
 </tr>
-<tr id="i6" class="altColor">
+<tr id="i7" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setRunTag(java.lang.String)">setRunTag</a></span>&#8203;(java.lang.String&nbsp;runTag)</code></th>
 <td class="colLast">
 <div class="block">Sets the run tag used in logging.</div>
 </td>
 </tr>
-<tr id="i7" class="rowColor">
+<tr id="i8" class="altColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setTerminate(boolean)">setTerminate</a></span>&#8203;(boolean&nbsp;terminate)</code></th>
 <td class="colLast">
@@ -406,6 +414,27 @@ implements java.lang.AutoCloseable</pre>
 <dl>
 <dt><span class="paramLabel">Parameters:</span></dt>
 <dd><code>terminate</code> - If true terminate all runs associated with this RunOptions.</dd>
+<dt><span class="throwsLabel">Throws:</span></dt>
+<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If the native library call failed.</dd>
+</dl>
+</li>
+</ul>
+<a id="addRunConfigEntry(java.lang.String,java.lang.String)">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>addRunConfigEntry</h4>
+<pre class="methodSignature">public&nbsp;void&nbsp;addRunConfigEntry&#8203;(java.lang.String&nbsp;key,
+                              java.lang.String&nbsp;value)
+                       throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
+<div class="block">Adds a configuration entry to this <code>RunOptions</code>.
+
+ <p>Setting the same key will overwrite the value.</div>
+<dl>
+<dt><span class="paramLabel">Parameters:</span></dt>
+<dd><code>key</code> - The configuration key.</dd>
+<dd><code>value</code> - The configuration value.</dd>
 <dt><span class="throwsLabel">Throws:</span></dt>
 <dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If the native library call failed.</dd>
 </dl>

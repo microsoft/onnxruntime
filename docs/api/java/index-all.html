@@ -171,6 +171,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Add ROCM as an execution backend, using the specified ROCM device id.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.RunOptions.html#addRunConfigEntry(java.lang.String,java.lang.String)">addRunConfigEntry(String, String)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime">OrtSession.RunOptions</a></dt>
+<dd>
+<div class="block">Adds a configuration entry to this <code>RunOptions</code>.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.html#addTensorrt(int)">addTensorrt(int)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a></dt>
 <dd>
 <div class="block">Adds Nvidia's TensorRT as an execution backend.</div>
@@ -196,7 +200,9 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">A Java interface to the ONNX Runtime.</div>
 </dd>
 <dt><a href="ai/onnxruntime/providers/package-summary.html">ai.onnxruntime.providers</a> - package ai.onnxruntime.providers</dt>
-<dd>&nbsp;</dd>
+<dd>
+<div class="block">Classes for controlling the behaviour of ONNX Runtime Execution Providers.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html#ALL_OPT">ALL_OPT</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensorLike.html#allocatorHandle">allocatorHandle</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensorLike.html" title="class in ai.onnxruntime">OnnxTensorLike</a></dt>
@@ -269,6 +275,8 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Closes the session options, releasing any memory acquired.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#close()">close()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProviderOptions.html#close(long,long)">close(long, long)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtProviderOptions.html" title="class in ai.onnxruntime">OrtProviderOptions</a></dt>
 <dd>
 <div class="block">Native close method.</div>
@@ -389,6 +397,16 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Create an OnnxTensor backed by a direct ShortBuffer.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtEnvironment.html#createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String)">createTrainingSession(String, String, String, String)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></dt>
+<dd>
+<div class="block">Create a training session using the default <a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtEnvironment.html#createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String,ai.onnxruntime.OrtSession.SessionOptions)">createTrainingSession(String, String, String, String, OrtSession.SessionOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></dt>
+<dd>
+<div class="block">Create a training session using the specified <a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html#CSRC">CSRC</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OnnxSparseTensor.SparseTensorType.html" title="enum in ai.onnxruntime">OnnxSparseTensor.SparseTensorType</a></dt>
 <dd>
 <div class="block">CSR or CSC sparse tensor.</div>
@@ -445,6 +463,27 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxModelMetadata.html#equals(java.lang.Object)">equals(Object)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxModelMetadata.html" title="class in ai.onnxruntime">OnnxModelMetadata</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#evalStep(java.util.Map)">evalStep(Map&lt;String, ? extends OnnxTensorLike&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single evaluation step using the supplied inputs.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#evalStep(java.util.Map,ai.onnxruntime.OrtSession.RunOptions)">evalStep(Map&lt;String, ? extends OnnxTensorLike&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single evaluation step using the supplied inputs.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#evalStep(java.util.Map,java.util.Set)">evalStep(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single evaluation step using the supplied inputs.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#evalStep(java.util.Map,java.util.Set,ai.onnxruntime.OrtSession.RunOptions)">evalStep(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single evaluation step using the supplied inputs.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#exportModelForInference(java.nio.file.Path,java.lang.String%5B%5D)">exportModelForInference(Path, String[])</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Exports the evaluation model as a model suitable for inference, setting the desired nodes as
+ output nodes.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html#EXTENDED_OPT">EXTENDED_OPT</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.OptLevel.html" title="enum in ai.onnxruntime">OrtSession.SessionOptions.OptLevel</a></dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -542,6 +581,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Gets the OrtEnvironment.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#getEvalInputNames()">getEvalInputNames()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Returns an ordered set of the eval model input names.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#getEvalOutputNames()">getEvalOutputNames()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Returns an ordered set of the eval model output names.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxTensor.html#getFloatBuffer()">getFloatBuffer()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxTensor.html" title="class in ai.onnxruntime">OnnxTensor</a></dt>
 <dd>
 <div class="block">Returns a copy of the underlying OnnxTensor as a FloatBuffer if it can be losslessly converted
@@ -634,6 +681,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Returns a copy of the underlying OnnxTensor as an IntBuffer if the underlying type is int32 or
  uint32, otherwise it returns null.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#getLearningRate()">getLearningRate()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Gets the current learning rate for this training session.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.RunOptions.html#getLogLevel()">getLogLevel()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime">OrtSession.RunOptions</a></dt>
 <dd>
 <div class="block">Gets the current logging level set on this RunOptions.</div>
@@ -722,6 +773,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">The sparsity type of the sparse tensor.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#getTrainInputNames()">getTrainInputNames()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Returns an ordered set of the train model input names.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#getTrainOutputNames()">getTrainOutputNames()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Returns an ordered set of the train model output names.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxMap.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxMap.html" title="class in ai.onnxruntime">OnnxMap</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OnnxSequence.html#getType()">getType()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OnnxSequence.html" title="class in ai.onnxruntime">OnnxSequence</a></dt>
@@ -789,6 +848,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Gets the model version.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtEnvironment.html#getVersion()">getVersion()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></dt>
+<dd>
+<div class="block">Gets the native library version string.</div>
+</dd>
 </dl>
 <a id="I:H">
 <!--   -->
@@ -823,6 +886,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Is this a sequence of maps?</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtEnvironment.html#isTrainingEnabled()">isTrainingEnabled()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></dt>
+<dd>
+<div class="block">Is training enabled in this build of ONNX Runtime?</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.Result.html#iterator()">iterator()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.Result.html" title="class in ai.onnxruntime">OrtSession.Result</a></dt>
 <dd>&nbsp;</dd>
 </dl>
@@ -841,6 +908,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </a>
 <h2 class="title">L</h2>
 <dl>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#lazyResetGrad()">lazyResetGrad()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Ensures the gradients are reset to zero before the next call to <a href="ai/onnxruntime/OrtTrainingSession.html#trainStep(java.util.Map)"><code>OrtTrainingSession.trainStep(java.util.Map&lt;java.lang.String, ? extends ai.onnxruntime.OnnxTensorLike&gt;)</code></a>.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/SequenceInfo.html#length">length</a></span> - Variable in class ai.onnxruntime.<a href="ai/onnxruntime/SequenceInfo.html" title="class in ai.onnxruntime">SequenceInfo</a></dt>
 <dd>
 <div class="block">The number of elements in this sequence.</div>
@@ -1105,6 +1176,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtProvider.html#OPEN_VINO">OPEN_VINO</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#optimizerStep()">optimizerStep()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Applies the gradient updates to the trainable parameters using the optimizer model.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#optimizerStep(ai.onnxruntime.OrtSession.RunOptions)">optimizerStep(OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Applies the gradient updates to the trainable parameters using the optimizer model.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtException.OrtErrorCode.html#ORT_ENGINE_ERROR">ORT_ENGINE_ERROR</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtException.OrtErrorCode.html" title="enum in ai.onnxruntime">OrtException.OrtErrorCode</a></dt>
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtException.OrtErrorCode.html#ORT_EP_FAIL">ORT_EP_FAIL</a></span> - ai.onnxruntime.<a href="ai/onnxruntime/OrtException.OrtErrorCode.html" title="enum in ai.onnxruntime">OrtException.OrtErrorCode</a></dt>
@@ -1242,6 +1321,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Constructs TensorRT execution provider options for the specified non-negative device id.</div>
 </dd>
+<dt><a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime"><span class="typeNameLink">OrtTrainingSession</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
+<dd>
+<div class="block">Wraps an ONNX training model and allows training and inference calls.</div>
+</dd>
 <dt><a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime"><span class="typeNameLink">OrtUtil</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
 <dd>
 <div class="block">Util code for interacting with Java arrays.</div>
@@ -1268,6 +1351,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>
 <div class="block">Registers custom ops for use with <a href="ai/onnxruntime/OrtSession.html" title="class in ai.onnxruntime"><code>OrtSession</code></a>s using this SessionOptions by calling
  the specified native function name.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#registerLinearLRScheduler(long,long,float)">registerLinearLRScheduler(long, long, float)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Registers a linear learning rate scheduler with linear warmup.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtUtil.html#reshape(boolean%5B%5D,long%5B%5D)">reshape(boolean[], long[])</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime">OrtUtil</a></dt>
 <dd>
@@ -1339,6 +1426,14 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 </a>
 <h2 class="title">S</h2>
 <dl>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#saveCheckpoint(java.nio.file.Path,boolean)">saveCheckpoint(Path, boolean)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Save out the training session state into the supplied checkpoint directory.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#schedulerStep()">schedulerStep()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Updates the learning rate based on the registered learning rate scheduler.</div>
+</dd>
 <dt><a href="ai/onnxruntime/SequenceInfo.html" title="class in ai.onnxruntime"><span class="typeNameLink">SequenceInfo</span></a> - Class in <a href="ai/onnxruntime/package-summary.html">ai.onnxruntime</a></dt>
 <dd>
 <div class="block">Describes an <a href="ai/onnxruntime/OnnxSequence.html" title="class in ai.onnxruntime"><code>OnnxSequence</code></a>, including it's element type if known.</div>
@@ -1392,6 +1487,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <div class="block">Sets the size of the CPU thread pool used for executing a single graph, if executing on a
  CPU.</div>
 </dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#setLearningRate(float)">setLearningRate(float)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Sets the learning rate for the training session.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.html#setLoggerId(java.lang.String)">setLoggerId(String)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a></dt>
 <dd>
 <div class="block">Sets the logger id to use.</div>
@@ -1419,6 +1518,10 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.RunOptions.html#setRunTag(java.lang.String)">setRunTag(String)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.RunOptions.html" title="class in ai.onnxruntime">OrtSession.RunOptions</a></dt>
 <dd>
 <div class="block">Sets the run tag used in logging.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#setSeed(long)">setSeed(long)</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Sets the RNG seed used by ONNX Runtime.</div>
 </dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtSession.SessionOptions.html#setSessionLogLevel(ai.onnxruntime.OrtLoggingLevel)">setSessionLogLevel(OrtLoggingLevel)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a></dt>
 <dd>
@@ -1499,6 +1602,22 @@ $('.navPadding').css('padding-top', $('.fixedNav').css("height"));
 <dd>&nbsp;</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/TensorInfo.html#toString()">toString()</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/TensorInfo.html" title="class in ai.onnxruntime">TensorInfo</a></dt>
 <dd>&nbsp;</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#trainStep(java.util.Map)">trainStep(Map&lt;String, ? extends OnnxTensorLike&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single step of training, accumulating the gradients.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#trainStep(java.util.Map,ai.onnxruntime.OrtSession.RunOptions)">trainStep(Map&lt;String, ? extends OnnxTensorLike&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single step of training, accumulating the gradients.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#trainStep(java.util.Map,java.util.Set)">trainStep(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single step of training, accumulating the gradients.</div>
+</dd>
+<dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtTrainingSession.html#trainStep(java.util.Map,java.util.Set,ai.onnxruntime.OrtSession.RunOptions)">trainStep(Map&lt;String, ? extends OnnxTensorLike&gt;, Set&lt;String&gt;, OrtSession.RunOptions)</a></span> - Method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></dt>
+<dd>
+<div class="block">Performs a single step of training, accumulating the gradients.</div>
+</dd>
 <dt><span class="memberNameLink"><a href="ai/onnxruntime/OrtUtil.html#transformShape(int%5B%5D)">transformShape(int[])</a></span> - Static method in class ai.onnxruntime.<a href="ai/onnxruntime/OrtUtil.html" title="class in ai.onnxruntime">OrtUtil</a></dt>
 <dd>
 <div class="block">Converts an int shape into a long shape.</div>

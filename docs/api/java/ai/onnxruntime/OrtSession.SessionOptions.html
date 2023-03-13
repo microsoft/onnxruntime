@@ -1182,8 +1182,11 @@ implements java.lang.AutoCloseable</pre>
 <h4>addXnnpack</h4>
 <pre class="methodSignature">public&nbsp;void&nbsp;addXnnpack&#8203;(java.util.Map&lt;java.lang.String,&#8203;java.lang.String&gt;&nbsp;providerOptions)
                 throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
-<div class="block">Adds Xnnpack as an execution backend. Needs to list all options here if a new option
- supported. current supported options: {}</div>
+<div class="block">Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
+ supported. current supported options: {} The maximum number of provider options is set to 128
+ (see addExecutionProvider's comment). This number is controlled by
+ ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
+ not enough, please increase it or implementing an incremental way to add more options.</div>
 <dl>
 <dt><span class="paramLabel">Parameters:</span></dt>
 <dd><code>providerOptions</code> - options pass to XNNPACK EP for initialization.</dd>

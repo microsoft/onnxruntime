@@ -27,7 +27,7 @@
     catch(err) {
     }
 //-->
-var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":9,"i6":9,"i7":9,"i8":9,"i9":9,"i10":9,"i11":10,"i12":10};
+var data = {"i0":10,"i1":10,"i2":10,"i3":10,"i4":10,"i5":10,"i6":10,"i7":9,"i8":9,"i9":9,"i10":9,"i11":9,"i12":9,"i13":10,"i14":10,"i15":10,"i16":10};
 var tabs = {65535:["t0","All Methods"],1:["t1","Static Methods"],2:["t2","Instance Methods"],8:["t4","Concrete Methods"]};
 var altColor = "altColor";
 var rowColor = "rowColor";
@@ -255,27 +255,50 @@ implements java.lang.AutoCloseable</pre>
 </td>
 </tr>
 <tr id="i5" class="rowColor">
+<td class="colFirst"><code><a href="OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String)">createTrainingSession</a></span>&#8203;(java.lang.String&nbsp;checkpointPath,
+                     java.lang.String&nbsp;trainPath,
+                     java.lang.String&nbsp;evalPath,
+                     java.lang.String&nbsp;optimizerPath)</code></th>
+<td class="colLast">
+<div class="block">Create a training session using the default <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+</td>
+</tr>
+<tr id="i6" class="altColor">
+<td class="colFirst"><code><a href="OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a></code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String,ai.onnxruntime.OrtSession.SessionOptions)">createTrainingSession</a></span>&#8203;(java.lang.String&nbsp;checkpointPath,
+                     java.lang.String&nbsp;trainPath,
+                     java.lang.String&nbsp;evalPath,
+                     java.lang.String&nbsp;optimizerPath,
+                     <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a>&nbsp;options)</code></th>
+<td class="colLast">
+<div class="block">Create a training session using the specified <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+</td>
+</tr>
+<tr id="i7" class="rowColor">
 <td class="colFirst"><code>static java.util.EnumSet&lt;<a href="OrtProvider.html" title="enum in ai.onnxruntime">OrtProvider</a>&gt;</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getAvailableProviders()">getAvailableProviders</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Gets the providers available in this environment.</div>
 </td>
 </tr>
-<tr id="i6" class="altColor">
+<tr id="i8" class="altColor">
 <td class="colFirst"><code>static <a href="OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getEnvironment()">getEnvironment</a></span>()</code></th>
 <td class="colLast">
 <div class="block">Gets the OrtEnvironment.</div>
 </td>
 </tr>
-<tr id="i7" class="rowColor">
+<tr id="i9" class="rowColor">
 <td class="colFirst"><code>static <a href="OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getEnvironment(ai.onnxruntime.OrtLoggingLevel)">getEnvironment</a></span>&#8203;(<a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a>&nbsp;logLevel)</code></th>
 <td class="colLast">
 <div class="block">Gets the OrtEnvironment.</div>
 </td>
 </tr>
-<tr id="i8" class="altColor">
+<tr id="i10" class="altColor">
 <td class="colFirst"><code>static <a href="OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getEnvironment(ai.onnxruntime.OrtLoggingLevel,java.lang.String)">getEnvironment</a></span>&#8203;(<a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a>&nbsp;loggingLevel,
               java.lang.String&nbsp;name)</code></th>
@@ -283,7 +306,7 @@ implements java.lang.AutoCloseable</pre>
 <div class="block">Gets the OrtEnvironment.</div>
 </td>
 </tr>
-<tr id="i9" class="rowColor">
+<tr id="i11" class="rowColor">
 <td class="colFirst"><code>static <a href="OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getEnvironment(ai.onnxruntime.OrtLoggingLevel,java.lang.String,ai.onnxruntime.OrtEnvironment.ThreadingOptions)">getEnvironment</a></span>&#8203;(<a href="OrtLoggingLevel.html" title="enum in ai.onnxruntime">OrtLoggingLevel</a>&nbsp;loggingLevel,
               java.lang.String&nbsp;name,
@@ -292,21 +315,35 @@ implements java.lang.AutoCloseable</pre>
 <div class="block">Creates an OrtEnvironment using the specified global thread pool options.</div>
 </td>
 </tr>
-<tr id="i10" class="altColor">
+<tr id="i12" class="altColor">
 <td class="colFirst"><code>static <a href="OrtEnvironment.html" title="class in ai.onnxruntime">OrtEnvironment</a></code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getEnvironment(java.lang.String)">getEnvironment</a></span>&#8203;(java.lang.String&nbsp;name)</code></th>
 <td class="colLast">
 <div class="block">Gets the OrtEnvironment.</div>
 </td>
 </tr>
-<tr id="i11" class="rowColor">
+<tr id="i13" class="rowColor">
+<td class="colFirst"><code>java.lang.String</code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#getVersion()">getVersion</a></span>()</code></th>
+<td class="colLast">
+<div class="block">Gets the native library version string.</div>
+</td>
+</tr>
+<tr id="i14" class="altColor">
+<td class="colFirst"><code>boolean</code></td>
+<th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#isTrainingEnabled()">isTrainingEnabled</a></span>()</code></th>
+<td class="colLast">
+<div class="block">Is training enabled in this build of ONNX Runtime?</div>
+</td>
+</tr>
+<tr id="i15" class="rowColor">
 <td class="colFirst"><code>void</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#setTelemetry(boolean)">setTelemetry</a></span>&#8203;(boolean&nbsp;sendTelemetry)</code></th>
 <td class="colLast">
 <div class="block">Turns on or off the telemetry.</div>
 </td>
 </tr>
-<tr id="i12" class="altColor">
+<tr id="i16" class="altColor">
 <td class="colFirst"><code>java.lang.String</code></td>
 <th class="colSecond" scope="row"><code><span class="memberNameLink"><a href="#toString()">toString</a></span>()</code></th>
 <td class="colLast">&nbsp;</td>
@@ -540,6 +577,74 @@ implements java.lang.AutoCloseable</pre>
 </dl>
 </li>
 </ul>
+<a id="createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String)">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>createTrainingSession</h4>
+<pre class="methodSignature">public&nbsp;<a href="OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a>&nbsp;createTrainingSession&#8203;(java.lang.String&nbsp;checkpointPath,
+                                                java.lang.String&nbsp;trainPath,
+                                                java.lang.String&nbsp;evalPath,
+                                                java.lang.String&nbsp;optimizerPath)
+                                         throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
+<div class="block">Create a training session using the default <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+<dl>
+<dt><span class="paramLabel">Parameters:</span></dt>
+<dd><code>checkpointPath</code> - Path to the checkpoint folder.</dd>
+<dd><code>trainPath</code> - Path to the training model.</dd>
+<dd><code>evalPath</code> - Path to the evaluation model. Null signifies there is no eval model.</dd>
+<dd><code>optimizerPath</code> - Path to the optimizer model. Null signifies there is no optimizer model.</dd>
+<dt><span class="returnLabel">Returns:</span></dt>
+<dd>An <a href="OrtTrainingSession.html" title="class in ai.onnxruntime"><code>OrtTrainingSession</code></a> with the specified model loaded.</dd>
+<dt><span class="throwsLabel">Throws:</span></dt>
+<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If the model failed to load, wasn't compatible or caused an error.</dd>
+</dl>
+</li>
+</ul>
+<a id="createTrainingSession(java.lang.String,java.lang.String,java.lang.String,java.lang.String,ai.onnxruntime.OrtSession.SessionOptions)">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>createTrainingSession</h4>
+<pre class="methodSignature">public&nbsp;<a href="OrtTrainingSession.html" title="class in ai.onnxruntime">OrtTrainingSession</a>&nbsp;createTrainingSession&#8203;(java.lang.String&nbsp;checkpointPath,
+                                                java.lang.String&nbsp;trainPath,
+                                                java.lang.String&nbsp;evalPath,
+                                                java.lang.String&nbsp;optimizerPath,
+                                                <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime">OrtSession.SessionOptions</a>&nbsp;options)
+                                         throws <a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></pre>
+<div class="block">Create a training session using the specified <a href="OrtSession.SessionOptions.html" title="class in ai.onnxruntime"><code>OrtSession.SessionOptions</code></a>, model and the default
+ memory allocator.</div>
+<dl>
+<dt><span class="paramLabel">Parameters:</span></dt>
+<dd><code>checkpointPath</code> - Path to the checkpoint folder.</dd>
+<dd><code>trainPath</code> - Path to the training model.</dd>
+<dd><code>evalPath</code> - Path to the evaluation model. Null signifies there is no eval model.</dd>
+<dd><code>optimizerPath</code> - Path to the optimizer model. Null signifies there is no optimizer model.</dd>
+<dd><code>options</code> - The session options.</dd>
+<dt><span class="returnLabel">Returns:</span></dt>
+<dd>An <a href="OrtTrainingSession.html" title="class in ai.onnxruntime"><code>OrtTrainingSession</code></a> with the specified model.</dd>
+<dt><span class="throwsLabel">Throws:</span></dt>
+<dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If the model failed to load, wasn't compatible or caused an error.</dd>
+</dl>
+</li>
+</ul>
+<a id="isTrainingEnabled()">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>isTrainingEnabled</h4>
+<pre class="methodSignature">public&nbsp;boolean&nbsp;isTrainingEnabled()</pre>
+<div class="block">Is training enabled in this build of ONNX Runtime?</div>
+<dl>
+<dt><span class="returnLabel">Returns:</span></dt>
+<dd>True if training is enabled.</dd>
+</dl>
+</li>
+</ul>
 <a id="setTelemetry(boolean)">
 <!--   -->
 </a>
@@ -554,6 +659,20 @@ implements java.lang.AutoCloseable</pre>
 <dd><code>sendTelemetry</code> - If true then send telemetry on onnxruntime usage.</dd>
 <dt><span class="throwsLabel">Throws:</span></dt>
 <dd><code><a href="OrtException.html" title="class in ai.onnxruntime">OrtException</a></code> - If the call failed.</dd>
+</dl>
+</li>
+</ul>
+<a id="getVersion()">
+<!--   -->
+</a>
+<ul class="blockList">
+<li class="blockList">
+<h4>getVersion</h4>
+<pre class="methodSignature">public&nbsp;java.lang.String&nbsp;getVersion()</pre>
+<div class="block">Gets the native library version string.</div>
+<dl>
+<dt><span class="returnLabel">Returns:</span></dt>
+<dd>The version string.</dd>
 </dl>
 </li>
 </ul>
