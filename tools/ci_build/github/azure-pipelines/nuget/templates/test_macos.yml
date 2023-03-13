@@ -31,7 +31,6 @@ jobs:
       packageFolder: '$(Build.BinariesDirectory)/nuget-artifact'
 
   - script: |
-     mv $(Build.BinariesDirectory)/testdata/x86_64/* $(Build.BinariesDirectory)/testdata
      $(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh \
                $(Build.BinariesDirectory)/nuget-artifact \
                $(NuGetPackageVersionNumber) \
