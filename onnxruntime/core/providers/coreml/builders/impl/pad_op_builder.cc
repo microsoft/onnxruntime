@@ -1,7 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
+#include <variant>
+
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
@@ -67,34 +68,48 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& pads_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());            // pads
   const auto& constant_value_tensor = *model_builder.GetInitializerTensors().at(input_defs[2]->Name());  // constant_value
 
-  Initializer constant_value_raw_data_init(constant_value_tensor);
-  float constant_value = constant_value_raw_data_init.DataAsSpan<float>()[0];
+  Initializer constant_value_initializer(constant_value_tensor);
+  float constant_value = constant_value_initializer.DataAsSpan<float>()[0];
   constant_padding_type->set_value(constant_value);
 
-  Initializer pads_initializer_raw_data(pads_tensor);
-  auto pads_span = pads_initializer_raw_data.DataAsSpan<int64_t>();
+  Initializer pads_initializer(pads_tensor);
+  auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
-  // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
-  std::vector<int64_t> default_axes(input_rank);
-  std::iota(std::begin(default_axes), std::end(default_axes), 0);
-  auto axes_tensor_data = gsl::span<const int64_t>(default_axes);
+  std::variant<InlinedVector<int64_t>, gsl::span<const int64_t>> axes_tensor_data;
+  int64_t num_axes = input_rank;
   if (input_defs.size() > 3) {
     // optional input axes is provided
     const ONNX_NAMESPACE::TensorProto& axes_tensor = *model_builder.GetInitializerTensors().at(input_defs[3]->Name());
-    Initializer axes_initializer_raw_data(axes_tensor);
-    axes_tensor_data = axes_initializer_raw_data.DataAsSpan<int64_t>();
+    Initializer axes_initializer(axes_tensor);
+    auto axes_span = axes_initializer.DataAsSpan<int64_t>();
+    axes_tensor_data.emplace<1>(axes_span);
+  } else {
+    // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
+    InlinedVector<int64_t> default_axes(input_rank);
+    std::iota(std::begin(default_axes), std::end(default_axes), 0);
+    axes_tensor_data.emplace<0>(default_axes);
   }
-  int64_t num_axes = axes_tensor_data.size();
+
+  if (std::holds_alternative<gsl::span<const int64_t>>(axes_tensor_data)) {
+    num_axes = std::get<1>(axes_tensor_data).size();
+  }
 
   // Add padding
   auto* height_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
   auto* width_border = coreml_pad->mutable_paddingamounts()->add_borderamounts();
   for (int64_t i = 0; i < num_axes; i++) {
-    if (SafeInt<int64_t>(axes_tensor_data[i]) == input_rank - 2) {
+    int64_t curr_axis_value;
+    if (std::holds_alternative<gsl::span<const int64_t>>(axes_tensor_data)) {
+      curr_axis_value = std::get<1>(axes_tensor_data)[i];
+    } else {
+      curr_axis_value = std::get<0>(axes_tensor_data)[i];
+    }
+
+    if (curr_axis_value == onnxruntime::narrow<int64_t>(input_rank - 2)) {
       height_border->set_startedgesize(pads_span[i]);
       height_border->set_endedgesize(pads_span[i + num_axes]);
     }
-    if (SafeInt<int64_t>(axes_tensor_data[i]) == input_rank - 1) {
+    if (curr_axis_value == onnxruntime::narrow<int64_t>(input_rank - 1)) {
       width_border->set_startedgesize(pads_span[i]);
       width_border->set_endedgesize(pads_span[i + num_axes]);
     }
@@ -121,7 +136,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
 
   if (input_shape.empty() || input_shape.size() < 2) {
-    LOGS(logger, VERBOSE) << "Pad requires input shape to be at least 2, input is "
+    LOGS(logger, VERBOSE) << "Pad requires input shape to be at least 2d, input is "
                           << input_shape.size() << "d shape";
     return false;
   }
@@ -150,7 +165,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   {
     const auto pads_initializer_it = initializers.find(input_defs[1]->Name());
     if (pads_initializer_it == initializers.end()) {
-      LOGS(logger, VERBOSE) << "pads must be a constant intializer.";
+      LOGS(logger, VERBOSE) << "pads must be a constant initializer.";
       return false;
     }
 
@@ -166,27 +181,41 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       }
     }
 
+    std::variant<InlinedVector<int64_t>, gsl::span<const int64_t>> axes_tensor_data;
     // Check that only supports padding on last two dimensions - [H,W].
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = input_shape.size();
-    // if not provided, make a default axes input as [0, 1, ..., input_rank - 1]
-    std::vector<int64_t> default_axes(input_rank);
-    std::iota(std::begin(default_axes), std::end(default_axes), 0);
-    auto axes_tensor_data = gsl::span<const int64_t>(default_axes);
+    int64_t num_axes = input_rank;
     if (input_defs.size() > 3) {
       // optional axes input is provided
       const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
       if (axes_initializer_it == initializers.end()) {
-        LOGS(logger, VERBOSE) << "If provided, axes must be a constant intializer.";
+        LOGS(logger, VERBOSE) << "If provided, axes must be a constant initializer.";
         return false;
       }
-      const ONNX_NAMESPACE::TensorProto& axes_initializer = *axes_initializer_it->second;
-      Initializer unpacked_tensor(axes_initializer);
-      axes_tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
+      const ONNX_NAMESPACE::TensorProto& axes_tensor = *axes_initializer_it->second;
+      Initializer axes_initializer(axes_tensor);
+      auto axes_span = axes_initializer.DataAsSpan<int64_t>();
+      axes_tensor_data.emplace<1>(axes_span);
+    } else {
+      // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
+      InlinedVector<int64_t> default_axes(input_rank);
+      std::iota(std::begin(default_axes), std::end(default_axes), 0);
+      axes_tensor_data.emplace<0>(default_axes);
     }
-    int64_t num_axes = axes_tensor_data.size();
+
+    if (std::holds_alternative<gsl::span<const int64_t>>(axes_tensor_data)) {
+      num_axes = std::get<1>(axes_tensor_data).size();
+    }
+
     for (int64_t i = 0; i < num_axes; i++) {
-      if (SafeInt<int64_t>(axes_tensor_data[i]) < input_rank - 2) {
+      int64_t curr_axis_value;
+      if (std::holds_alternative<gsl::span<const int64_t>>(axes_tensor_data)) {
+        curr_axis_value = std::get<1>(axes_tensor_data)[i];
+      } else {
+        curr_axis_value = std::get<0>(axes_tensor_data)[i];
+      }
+      if (curr_axis_value < onnxruntime::narrow<int64_t>(input_rank - 2)) {
         if (pads_tensor_data[i] != 0 || pads_tensor_data[i + num_axes] != 0) {
           // for axis specified that is not the last two dimension, padding is not supported. i.e.
           // non-zero value appears in `pads` input for corresponding non-last two dimensions.
