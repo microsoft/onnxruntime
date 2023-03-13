@@ -24,7 +24,7 @@ namespace onnxruntime {
 
 #ifdef USE_COMPOSABLE_KERNEL
 template <typename T, typename ALayout, typename BLayout>
-class CKGemmFastGelu : public IKernelExplorer {
+class CKGemmFastGelu : public ISelectableKernelExplorer {
  public:
   CKGemmFastGelu(BlasOp opa, BlasOp opb,
                  int64_t m, int64_t n, int64_t k,
@@ -72,11 +72,11 @@ class CKGemmFastGelu : public IKernelExplorer {
     ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return type_strings_;
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
         selected_op_ = i;
@@ -97,20 +97,16 @@ class CKGemmFastGelu : public IKernelExplorer {
   size_t selected_op_{};
 };
 
-#define REGISTER_OP(type, alayout, blayout, layout_string)                                         \
-  py::class_<CKGemmFastGelu<type, alayout, blayout>>(m, "CKGemmFastGelu_" #type "_" layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                     \
-                    double,                                                                        \
-                    DeviceArray&, int64_t,                                                         \
-                    DeviceArray&, int64_t,                                                         \
-                    DeviceArray&,                                                                  \
-                    double,                                                                        \
-                    DeviceArray&, int64_t>())                                                      \
-      .def("SetRepeats", &CKGemmFastGelu<type, alayout, blayout>::SetRepeats)                      \
-      .def("Profile", &CKGemmFastGelu<type, alayout, blayout>::Profile)                            \
-      .def("Run", &CKGemmFastGelu<type, alayout, blayout>::Run)                                    \
-      .def("ListOps", &CKGemmFastGelu<type, alayout, blayout>::ListOps)                            \
-      .def("SelectOp", &CKGemmFastGelu<type, alayout, blayout>::SelectOp);
+#define REGISTER_OP(type, alayout, blayout, layout_string)                                     \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "CKGemmFastGelu_" #type "_" layout_string,               \
+                                   TEMPLATED_TYPENAME(CKGemmFastGelu<type, alayout, blayout>)) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                 \
+                    double,                                                                    \
+                    DeviceArray&, int64_t,                                                     \
+                    DeviceArray&, int64_t,                                                     \
+                    DeviceArray&,                                                              \
+                    double,                                                                    \
+                    DeviceArray&, int64_t>())
 
 #define REGISTER_OP_FOR_ALL_TRANSAB(type) \
   REGISTER_OP(type, Row, Row, "NN");      \

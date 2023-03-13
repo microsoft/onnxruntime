@@ -19,7 +19,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 template <typename T>
-class GemmFastGeluUnfused : public IKernelExplorer {
+class GemmFastGeluUnfused : public ISelectableKernelExplorer {
  public:
   GemmFastGeluUnfused(BlasOp opa, BlasOp opb,
                       int64_t m, int64_t n, int64_t k,
@@ -58,11 +58,11 @@ class GemmFastGeluUnfused : public IKernelExplorer {
     ORT_THROW_IF_ERROR((contrib::rocm::blas::internal::GemmFastGeluUnfused<T>(&params_)));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"GemmFastGeluUnfused"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     Status status = contrib::rocm::blas::internal::GemmFastGeluUnfused<T>(&params_);
     return status.IsOK() && name == "GemmFastGeluUnfused";
   }
@@ -73,24 +73,19 @@ class GemmFastGeluUnfused : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 };
 
-#define REGISTER_OP(type)                                                \
-  py::class_<GemmFastGeluUnfused<type>>(m, "GemmFastGeluUnfused_" #type) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,           \
-                    double,                                              \
-                    DeviceArray&, int64_t,                               \
-                    DeviceArray&, int64_t,                               \
-                    DeviceArray&,                                        \
-                    double,                                              \
-                    DeviceArray&, int64_t>())                            \
-      .def("SetRepeats", &GemmFastGeluUnfused<type>::SetRepeats)         \
-      .def("Run", &GemmFastGeluUnfused<type>::Run)                       \
-      .def("Profile", &GemmFastGeluUnfused<type>::Profile)               \
-      .def("ListOps", &GemmFastGeluUnfused<type>::ListOps)               \
-      .def("SelectOp", &GemmFastGeluUnfused<type>::SelectOp);
+#define REGISTER_OP(dtype)                                                                       \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "GemmFastGeluUnfused_" #dtype, GemmFastGeluUnfused<dtype>) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                   \
+                    double,                                                                      \
+                    DeviceArray&, int64_t,                                                       \
+                    DeviceArray&, int64_t,                                                       \
+                    DeviceArray&,                                                                \
+                    double,                                                                      \
+                    DeviceArray&, int64_t>())
 
 KE_REGISTER(m) {
-  REGISTER_OP(float)
-  REGISTER_OP(half)
+  REGISTER_OP(float);
+  REGISTER_OP(half);
 }
 
 }  // namespace onnxruntime

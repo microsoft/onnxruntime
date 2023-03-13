@@ -77,43 +77,38 @@ class FastGeluTunable : public IKernelExplorer {
   contrib::rocm::FastGeluTunableOp<T> op_{};
 };
 
-#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
-  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>())                                     \
-      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
-      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
-      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
-      .def("IsSupported", &name<type, threads_per_block, vec_size>::IsSupported);
-
-#define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block) \
-  REGISTER_OP(name, type, threads_per_block, 1)                     \
-  REGISTER_OP(name, type, threads_per_block, 2)                     \
-  REGISTER_OP(name, type, threads_per_block, 4)                     \
-  REGISTER_OP(name, type, threads_per_block, 8)                     \
-  REGISTER_OP(name, type, threads_per_block, 16)
-
-#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(name, type) \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 64)            \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 128)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 192)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 256)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 320)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 384)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 448)           \
-  REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, 512)
-
-#define REGISTER_OP_TYPED(name, type)                                      \
-  py::class_<name<type>>(m, #name "_" #type)                               \
+#define REGISTER_OP_COMMON(name, type)                                     \
+  KE_REGISTER_OP_COMMON(m, name, TEMPLATED_TYPENAME(type))                 \
       .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, int, int>()) \
-      .def("SetRepeats", &name<type>::SetRepeats)                          \
-      .def("Profile", &name<type>::Profile)                                \
-      .def("Run", &name<type>::Run)                                        \
-      .def("IsSupported", &name<type>::IsSupported);
+      .def("IsSupported", &type::IsSupported);
+
+#define REGISTER_OP(dtype, threads_per_block, vec_size)                       \
+  REGISTER_OP_COMMON("FastGelu_" #dtype "_" #threads_per_block "_" #vec_size, \
+                     TEMPLATED_TYPENAME(FastGelu<dtype, threads_per_block, vec_size>))
+
+#define REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, threads_per_block) \
+  REGISTER_OP(dtype, threads_per_block, 1)                     \
+  REGISTER_OP(dtype, threads_per_block, 2)                     \
+  REGISTER_OP(dtype, threads_per_block, 4)                     \
+  REGISTER_OP(dtype, threads_per_block, 8)                     \
+  REGISTER_OP(dtype, threads_per_block, 16)
+
+#define REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(dtype) \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 64)            \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 128)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 192)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 256)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 320)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 384)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 448)           \
+  REGISTER_OP_FOR_ALL_VEC_SIZE(dtype, 512)
+
+#define REGISTER_OP_TYPED(tpl, dtype) REGISTER_OP_COMMON(#tpl "_" #dtype, tpl<dtype>)
 
 KE_REGISTER(m) {
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
-  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(half);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(float);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(double);
 
   REGISTER_OP_TYPED(FastGeluTunable, half);
   REGISTER_OP_TYPED(FastGeluTunable, float);

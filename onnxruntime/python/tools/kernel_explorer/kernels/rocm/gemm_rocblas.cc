@@ -22,7 +22,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 template <typename T>
-class RocBlasGemm : public IKernelExplorer {
+class RocBlasGemm : public ISelectableKernelExplorer {
  public:
   RocBlasGemm(BlasOp opa, BlasOp opb,
               int64_t m, int64_t n, int64_t k,
@@ -59,11 +59,11 @@ class RocBlasGemm : public IKernelExplorer {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Rocblas"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Rocblas";
   }
 
@@ -118,11 +118,11 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Rocblas"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Rocblas";
   }
 
@@ -137,7 +137,7 @@ class RocBlasBatchedGemm : public IBatchedGemmKernelExplorer<T> {
 };
 
 template <typename T>
-class RocBlasStridedBatchedGemm : public IKernelExplorer {
+class RocBlasStridedBatchedGemm : public ISelectableKernelExplorer {
  public:
   RocBlasStridedBatchedGemm(BlasOp opa, BlasOp opb,
                             int64_t m, int64_t n, int64_t k,
@@ -179,11 +179,11 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Rocblas"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Rocblas";
   }
 
@@ -197,13 +197,7 @@ class RocBlasStridedBatchedGemm : public IKernelExplorer {
   OpT op_{RocBlasStridedBatchedGemmOp<T>};
 };
 
-#define REGISTER_OP_COMMON(type, dtype)            \
-  py::class_<type<dtype>>(mod, #type "_" #dtype)   \
-      .def("SetRepeats", &type<dtype>::SetRepeats) \
-      .def("Profile", &type<dtype>::Profile)       \
-      .def("Run", &type<dtype>::Run)               \
-      .def("ListOps", &type<dtype>::ListOps)       \
-      .def("SelectOp", &type<dtype>::SelectOp)
+#define REGISTER_OP_COMMON(tpl, dtype) KE_REGISTER_SELECTABLE_OP_COMMON(mod, #tpl "_" #dtype, tpl<dtype>)
 
 #define REGISTER_GEMM(dtype)                                   \
   REGISTER_OP_COMMON(RocBlasGemm, dtype)                       \

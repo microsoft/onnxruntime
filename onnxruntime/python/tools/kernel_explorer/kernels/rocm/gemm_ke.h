@@ -9,7 +9,7 @@
 namespace onnxruntime {
 
 template <typename T>
-class IBatchedGemmKernelExplorer : public IKernelExplorer {
+class IBatchedGemmKernelExplorer : public ISelectableKernelExplorer {
  protected:
   void CopyAsBsCsPointersToDevice(const std::vector<DeviceArray>& as,
                                   const std::vector<DeviceArray>& bs,

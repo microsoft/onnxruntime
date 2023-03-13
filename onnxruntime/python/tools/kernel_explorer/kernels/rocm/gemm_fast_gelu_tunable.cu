@@ -18,7 +18,7 @@ namespace py = pybind11;
 
 namespace onnxruntime {
 template <typename T, typename ALayout, typename BLayout>
-class GemmFastGeluTunable : public IKernelExplorer {
+class GemmFastGeluTunable : public ISelectableKernelExplorer {
  public:
   GemmFastGeluTunable(BlasOp opa, BlasOp opb,
                       int64_t m, int64_t n, int64_t k,
@@ -59,11 +59,11 @@ class GemmFastGeluTunable : public IKernelExplorer {
     ORT_THROW_IF_ERROR((op_(&params_)));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"GemmFastGeluTunable"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "GemmFastGeluTunable";
   }
 
@@ -74,26 +74,22 @@ class GemmFastGeluTunable : public IKernelExplorer {
   GemmFastGeluTunableOp<T, ALayout, BLayout> op_{};
 };
 
-#define REGISTER_OP(type, alayout, blayout, layout_string)                                                   \
-  py::class_<GemmFastGeluTunable<type, alayout, blayout>>(m, "GemmFastGeluTunable_" #type "_" layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                               \
-                    double,                                                                                  \
-                    DeviceArray&, int64_t,                                                                   \
-                    DeviceArray&, int64_t,                                                                   \
-                    DeviceArray&,                                                                            \
-                    double,                                                                                  \
-                    DeviceArray&, int64_t>())                                                                \
-      .def("SetRepeats", &GemmFastGeluTunable<type, alayout, blayout>::SetRepeats)                           \
-      .def("Profile", &GemmFastGeluTunable<type, alayout, blayout>::Profile)                                 \
-      .def("Run", &GemmFastGeluTunable<type, alayout, blayout>::Run)                                         \
-      .def("ListOps", &GemmFastGeluTunable<type, alayout, blayout>::ListOps)                                 \
-      .def("SelectOp", &GemmFastGeluTunable<type, alayout, blayout>::SelectOp);
+#define REGISTER_OP(dtype, alayout, blayout, layout_string)                                          \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "GemmFastGeluTunable_" #dtype "_" layout_string,               \
+                                   TEMPLATED_TYPENAME(GemmFastGeluTunable<dtype, alayout, blayout>)) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                       \
+                    double,                                                                          \
+                    DeviceArray&, int64_t,                                                           \
+                    DeviceArray&, int64_t,                                                           \
+                    DeviceArray&,                                                                    \
+                    double,                                                                          \
+                    DeviceArray&, int64_t>())
 
-#define REGISTER_OP_FOR_ALL_TRANSAB(type) \
-  REGISTER_OP(type, Row, Row, "NN");      \
-  REGISTER_OP(type, Row, Col, "NT");      \
-  REGISTER_OP(type, Col, Row, "TN");      \
-  REGISTER_OP(type, Col, Col, "TT");
+#define REGISTER_OP_FOR_ALL_TRANSAB(dtype) \
+  REGISTER_OP(dtype, Row, Row, "NN");      \
+  REGISTER_OP(dtype, Row, Col, "NT");      \
+  REGISTER_OP(dtype, Col, Row, "TN");      \
+  REGISTER_OP(dtype, Col, Col, "TT");
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_TRANSAB(float);

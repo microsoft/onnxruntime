@@ -83,6 +83,12 @@ class IKernelExplorer {
   int repeats_{100};
 };
 
+class ISelectableKernelExplorer : public IKernelExplorer {
+ public:
+  virtual std::vector<std::string> ListOps() const = 0;
+  virtual bool SelectOp(const std::string& name) = 0;
+};
+
 pybind11::module GetKernelExplorerModule();
 
 class KernelExplorerInit {
@@ -99,5 +105,20 @@ class KernelExplorerInit {
 
 #define KE_REGISTER_(unique_id, module_name) KE_REGISTER_IMPL(unique_id, module_name)
 #define KE_REGISTER(module_name) KE_REGISTER_(__COUNTER__, module_name)
+
+// Wrap the template instantiation with this macro when multiple argument is needed,
+// because there will be comma in between.
+#define TEMPLATED_TYPENAME(...) __VA_ARGS__
+
+#define KE_REGISTER_OP_COMMON(module_name, registered_name, type) \
+  py::class_<type>(module_name, registered_name)                  \
+      .def("SetRepeats", &type::SetRepeats)                       \
+      .def("Run", &type::Run)                                     \
+      .def("Profile", &type::Profile)
+
+#define KE_REGISTER_SELECTABLE_OP_COMMON(module_name, registered_name, type)    \
+  KE_REGISTER_OP_COMMON(module_name, registered_name, TEMPLATED_TYPENAME(type)) \
+      .def("ListOps", &type::ListOps)                                           \
+      .def("SelectOp", &type::SelectOp)
 
 }  // namespace onnxruntime

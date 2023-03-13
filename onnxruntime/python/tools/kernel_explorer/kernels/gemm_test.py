@@ -49,7 +49,9 @@ def _test_gemm(func, dtype: str, transa: bool, transb: bool, m: int, n: int, k: 
 
     for impl in my_gemm.ListOps():
         if not my_gemm.SelectOp(impl):
+            print("Unsupport", impl)
             continue
+        print("  Support", impl)
 
         my_gemm.Run()
         dev_c.UpdateHostNumpyArray()

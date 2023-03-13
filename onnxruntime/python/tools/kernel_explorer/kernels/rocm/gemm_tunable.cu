@@ -20,7 +20,7 @@ using namespace onnxruntime::rocm::tunable::blas::internal;
 namespace onnxruntime {
 
 template <typename T, typename ALayout, typename BLayout>
-class GemmTunable : public IKernelExplorer {
+class GemmTunable : public ISelectableKernelExplorer {
  public:
   GemmTunable(BlasOp opa, BlasOp opb,
               int64_t m, int64_t n, int64_t k,
@@ -59,11 +59,11 @@ class GemmTunable : public IKernelExplorer {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Tunable"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Tunable";
   }
 
@@ -120,11 +120,11 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Tunable"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Tunable";
   }
 
@@ -138,7 +138,7 @@ class BatchedGemmTunable : public IBatchedGemmKernelExplorer<T> {
 };
 
 template <typename T, typename ALayout, typename BLayout>
-class StridedBatchedGemmTunable : public IKernelExplorer {
+class StridedBatchedGemmTunable : public ISelectableKernelExplorer {
  public:
   StridedBatchedGemmTunable(BlasOp opa, BlasOp opb,
                             int64_t m, int64_t n, int64_t k,
@@ -182,11 +182,11 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"Tunable"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "Tunable";
   }
 
@@ -199,37 +199,30 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
   rocblas_handle rocblas_handle_;
 };
 
-#define REGISTER_OP_COMMON(type, dtype, alayout, blayout, layout_string)           \
-  py::class_<type<dtype, alayout, blayout>>(m, #type "_" #dtype "_" layout_string) \
-      .def("SetRepeats", &type<dtype, alayout, blayout>::SetRepeats)               \
-      .def("Profile", &type<dtype, alayout, blayout>::Profile)                     \
-      .def("Run", &type<dtype, alayout, blayout>::Run)                             \
-      .def("ListOps", &type<dtype, alayout, blayout>::ListOps)                     \
-      .def("SelectOp", &type<dtype, alayout, blayout>::SelectOp)
-
-#define REGISTER_GEMM(dtype, alayout, blayout, layout_string)             \
-  REGISTER_OP_COMMON(GemmTunable, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,            \
-                    double,                                               \
-                    DeviceArray&, int64_t,                                \
-                    DeviceArray&, int64_t,                                \
-                    double,                                               \
+#define REGISTER_GEMM(dtype, alayout, blayout, layout_string)                                \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "GemmTunable_" #dtype "_" layout_string,               \
+                                   TEMPLATED_TYPENAME(GemmTunable<dtype, alayout, blayout>)) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                               \
+                    double,                                                                  \
+                    DeviceArray&, int64_t,                                                   \
+                    DeviceArray&, int64_t,                                                   \
+                    double,                                                                  \
                     DeviceArray&, int64_t>())
-
 #define REGISTER_GEMM_FOR_ALL_TRANSAB(dtype) \
   REGISTER_GEMM(dtype, Row, Row, "NN");      \
   REGISTER_GEMM(dtype, Row, Col, "NT");      \
   REGISTER_GEMM(dtype, Col, Row, "TN");      \
   REGISTER_GEMM(dtype, Col, Col, "TT");
 
-#define REGISTER_BATCHED_GEMM(dtype, alayout, blayout, layout_string)            \
-  REGISTER_OP_COMMON(BatchedGemmTunable, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                   \
-                    double,                                                      \
-                    std::vector<DeviceArray>&, int64_t,                          \
-                    std::vector<DeviceArray>&, int64_t,                          \
-                    double,                                                      \
-                    std::vector<DeviceArray>&, int64_t,                          \
+#define REGISTER_BATCHED_GEMM(dtype, alayout, blayout, layout_string)                               \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "BatchedGemmTunable_" #dtype "_" layout_string,               \
+                                   TEMPLATED_TYPENAME(BatchedGemmTunable<dtype, alayout, blayout>)) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                      \
+                    double,                                                                         \
+                    std::vector<DeviceArray>&, int64_t,                                             \
+                    std::vector<DeviceArray>&, int64_t,                                             \
+                    double,                                                                         \
+                    std::vector<DeviceArray>&, int64_t,                                             \
                     int64_t>())
 
 #define REGISTER_BATCHED_GEMM_FOR_ALL_TRANSAB(dtype) \
@@ -238,14 +231,15 @@ class StridedBatchedGemmTunable : public IKernelExplorer {
   REGISTER_BATCHED_GEMM(dtype, Col, Row, "TN");      \
   REGISTER_BATCHED_GEMM(dtype, Col, Col, "TT");
 
-#define REGISTER_STRIDED_BATCHED_GEMM(dtype, alayout, blayout, layout_string)           \
-  REGISTER_OP_COMMON(StridedBatchedGemmTunable, dtype, alayout, blayout, layout_string) \
-      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                          \
-                    double,                                                             \
-                    DeviceArray&, int64_t, int64_t,                                     \
-                    DeviceArray&, int64_t, int64_t,                                     \
-                    double,                                                             \
-                    DeviceArray&, int64_t, int64_t,                                     \
+#define REGISTER_STRIDED_BATCHED_GEMM(dtype, alayout, blayout, layout_string)                              \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, "StridedBatchedGemmTunable_" #dtype "_" layout_string,               \
+                                   TEMPLATED_TYPENAME(StridedBatchedGemmTunable<dtype, alayout, blayout>)) \
+      .def(py::init<BlasOp, BlasOp, int64_t, int64_t, int64_t,                                             \
+                    double,                                                                                \
+                    DeviceArray&, int64_t, int64_t,                                                        \
+                    DeviceArray&, int64_t, int64_t,                                                        \
+                    double,                                                                                \
+                    DeviceArray&, int64_t, int64_t,                                                        \
                     int64_t>())
 
 #define REGISTER_STRIDED_BATCHED_GEMM_FOR_ALL_TRANSAB(dtype) \

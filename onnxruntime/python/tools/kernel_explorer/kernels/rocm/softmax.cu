@@ -20,7 +20,7 @@ namespace py = pybind11;
 namespace onnxruntime {
 
 template <typename T, int VecSize>
-class SoftmaxBlockwise : public IKernelExplorer {
+class SoftmaxBlockwise : public ISelectableKernelExplorer {
  public:
   SoftmaxBlockwise(DeviceArray& output, DeviceArray& input, int softmax_elements,
                    int input_stride, int output_stride, int batch_count, bool is_log_softmax)
@@ -33,11 +33,11 @@ class SoftmaxBlockwise : public IKernelExplorer {
     ORT_THROW_IF_ERROR((rocm::SoftmaxBlockwiseOp<T, T, rocm::AccumulationType_t<T>, VecSize>(&params_)));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {type_string_};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     Status status = rocm::SoftmaxBlockwiseOp<T, T, rocm::AccumulationType_t<T>, VecSize>(&params_);
     return status.IsOK() && name == type_string_;
   }
@@ -49,7 +49,7 @@ class SoftmaxBlockwise : public IKernelExplorer {
 };
 
 template <typename T>
-class SoftmaxWarpwiseStaticSelection : public IKernelExplorer {
+class SoftmaxWarpwiseStaticSelection : public ISelectableKernelExplorer {
  public:
   SoftmaxWarpwiseStaticSelection(DeviceArray& output, DeviceArray& input, int softmax_elements,
                                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
@@ -60,11 +60,11 @@ class SoftmaxWarpwiseStaticSelection : public IKernelExplorer {
     ORT_THROW_IF_ERROR((rocm::SoftmaxWarpwiseStaticSelection<T, T, rocm::AccumulationType_t<T>>(&params_)));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"SoftmaxWarpwiseStaticSelection"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     auto status = rocm::SoftmaxWarpwiseStaticSelection<T, T, rocm::AccumulationType_t<T>>(&params_);
     return status.IsOK() && name == "SoftmaxWarpwiseStaticSelection";
   }
@@ -75,7 +75,7 @@ class SoftmaxWarpwiseStaticSelection : public IKernelExplorer {
 };
 
 template <typename T>
-class SoftmaxBlockwiseStaticSelection : public IKernelExplorer {
+class SoftmaxBlockwiseStaticSelection : public ISelectableKernelExplorer {
  public:
   SoftmaxBlockwiseStaticSelection(DeviceArray& output, DeviceArray& input, int softmax_elements,
                                   int input_stride, int output_stride, int batch_count, bool is_log_softmax)
@@ -86,11 +86,11 @@ class SoftmaxBlockwiseStaticSelection : public IKernelExplorer {
     ORT_THROW_IF_ERROR((rocm::SoftmaxBlockwiseStaticSelection<T, T, rocm::AccumulationType_t<T>>(&params_)));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"SoftmaxBlockwiseStaticSelection"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "SoftmaxBlockwiseStaticSelection";
   }
 
@@ -100,7 +100,7 @@ class SoftmaxBlockwiseStaticSelection : public IKernelExplorer {
 };
 
 template <typename T>
-class SoftmaxTunable : public IKernelExplorer {
+class SoftmaxTunable : public ISelectableKernelExplorer {
  public:
   SoftmaxTunable(DeviceArray& output, DeviceArray& input, int softmax_elements,
                  int input_stride, int output_stride, int batch_count, bool is_log_softmax)
@@ -113,11 +113,11 @@ class SoftmaxTunable : public IKernelExplorer {
     ORT_THROW_IF_ERROR(op_(&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return {"SoftmaxTunable"};
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     return name == "SoftmaxTunable";
   }
 
@@ -129,7 +129,7 @@ class SoftmaxTunable : public IKernelExplorer {
 
 #ifdef USE_COMPOSABLE_KERNEL
 template <typename T>
-class CKSoftmax : public IKernelExplorer {
+class CKSoftmax : public ISelectableKernelExplorer {
  public:
   CKSoftmax(DeviceArray& output, DeviceArray& input, int softmax_elements,
             int input_stride, int output_stride, int batch_count, bool is_log_softmax)
@@ -145,11 +145,11 @@ class CKSoftmax : public IKernelExplorer {
     ORT_THROW_IF_ERROR(ops_[selected_op_](&params_));
   }
 
-  std::vector<std::string> ListOps() const {
+  std::vector<std::string> ListOps() const override {
     return type_strings_;
   }
 
-  bool SelectOp(const std::string& name) {
+  bool SelectOp(const std::string& name) override {
     for (size_t i = 0; i < ops_.size(); i++) {
       if (type_strings_[i] == name) {
         selected_op_ = i;
@@ -171,14 +171,9 @@ class CKSoftmax : public IKernelExplorer {
 };
 #endif  // USE_COMPOSABLE_KERNEL
 
-#define REGISTER_OP(name, type, vec_size)                                    \
-  py::class_<name<type, vec_size>>(m, #name "_" #type "_" #vec_size)         \
-      .def(py::init<DeviceArray&, DeviceArray&, int, int, int, int, bool>()) \
-      .def("SetRepeats", &name<type, vec_size>::SetRepeats)                  \
-      .def("Profile", &name<type, vec_size>::Profile)                        \
-      .def("Run", &name<type, vec_size>::Run)                                \
-      .def("ListOps", &name<type, vec_size>::ListOps)                        \
-      .def("SelectOp", &name<type, vec_size>::SelectOp);
+#define REGISTER_OP(tpl, dtype, vec_size)                                                                      \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, #tpl "_" #dtype "_" #vec_size, TEMPLATED_TYPENAME(tpl<dtype, vec_size>)) \
+      .def(py::init<DeviceArray&, DeviceArray&, int, int, int, int, bool>());
 
 #define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type) \
   REGISTER_OP(name, type, 1)                     \
@@ -187,14 +182,9 @@ class CKSoftmax : public IKernelExplorer {
   REGISTER_OP(name, type, 8)                     \
   REGISTER_OP(name, type, 16)
 
-#define REGISTER_OP_TYPED(name, type)                                        \
-  py::class_<name<type>>(m, #name "_" #type)                                 \
-      .def(py::init<DeviceArray&, DeviceArray&, int, int, int, int, bool>()) \
-      .def("SetRepeats", &name<type>::SetRepeats)                            \
-      .def("Profile", &name<type>::Profile)                                  \
-      .def("Run", &name<type>::Run)                                          \
-      .def("ListOps", &name<type>::ListOps)                                  \
-      .def("SelectOp", &name<type>::SelectOp);
+#define REGISTER_OP_TYPED(tpl, dtype)                                                  \
+  KE_REGISTER_SELECTABLE_OP_COMMON(m, #tpl "_" #dtype, TEMPLATED_TYPENAME(tpl<dtype>)) \
+      .def(py::init<DeviceArray&, DeviceArray&, int, int, int, int, bool>())
 
 KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_VEC_SIZE(SoftmaxBlockwise, half);
