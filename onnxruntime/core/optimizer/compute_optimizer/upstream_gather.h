@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// TODO(pengwa): rename to upstream_gather.h later, keep original name for now to make diff easier to review.
-
 // The optimization here ideally is applicable to both training and inferencing,
 // while so far we mainly validate on training during cooking the optimization.
 #ifdef ENABLE_TRAINING_CORE
