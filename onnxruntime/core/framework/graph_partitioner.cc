@@ -364,7 +364,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
   // TODO: when the graph contains a function node, and user passes in the dll which could
   // run the function by SessionOption, we should create a function kernel for it and
   // delegate the compute to the functions inside the dlls.
-  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault)];
+  AllocatorPtr allocator = allocators[current_ep.GetOrtDeviceByMemType(OrtMemTypeDefault)];
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),
@@ -590,7 +590,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  AllocatorPtr allocator = allocators[current_ep.GetMemoryInfo(OrtMemTypeDefault)];
+  AllocatorPtr allocator = allocators[current_ep.GetOrtDeviceByMemType(OrtMemTypeDefault)];
   // clang-format off
   const auto get_capability_params = GetCapabilityForEPParams{
       std::ref(graph),

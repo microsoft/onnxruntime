@@ -302,11 +302,7 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
-void IExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  return g_host->IExecutionProvider__RegisterAllocator(this, allocator_manager);
-}
-
-InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+const std::vector<AllocatorPtr>& IExecutionProvider::CreatePreferredAllocators() const {
   return g_host->IExecutionProvider__CreatePreferredAllocators(this);
 }
 

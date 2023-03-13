@@ -82,7 +82,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
 
   TensorShape shape(std::vector<int64_t>{2, 3});
   OrtValue& mlvalue0 = *frame.GetMutableNodeInputOrOutputMLValue(start_index);
-  const auto& memory_info = execution_providers.Get(xp_typ)->GetMemoryInfo(OrtMemTypeDefault);
+  const auto& memory_info = execution_providers.Get(xp_typ)->GetOrtDeviceByMemType(OrtMemTypeDefault);
   ASSERT_STATUS_OK(frame.AllocateMLValueTensorSelfOwnBuffer(mlvalue0, start_index, DataTypeImpl::GetType<float>(),
                                                             memory_info, shape));
 

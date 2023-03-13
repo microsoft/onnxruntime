@@ -11,13 +11,6 @@
 
 namespace onnxruntime {
 
-namespace {
-// It assumes max(OrtMemType) <= 1, min(OrtMemType) = -2
-inline int MakeKey(int id, OrtMemType mem_type) {
-  return id << 2 | (mem_type + 2);
-}
-}  // namespace
-
 std::vector<std::unique_ptr<ComputeCapability>>
 IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
                                   const IKernelLookup& kernel_lookup) const {
@@ -34,72 +27,31 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-// Update allocator in the provider if already present; ignore if not.
-// We match using the device id, OrtMemType and OrtDevice info.
-// We ignore the allocator name, and OrtAllocatorType (whether internally an arena is used or not).
-// TODO: We should remove OrtAllocatorType from OrtMemoryInfo as it's an implementation detail of the allocator.
-void IExecutionProvider::ReplaceAllocator(AllocatorPtr allocator) {
-  const auto& info = allocator->Info();
-
-  // TODO: This only works on allocators that are stored in this class. If a derived class overrides GetAllocator
-  // (e.g. the CUDA EP) and stores AllocatorPtr instances in the derived class we know nothing about them.
-  // In theory we could call GetAllocator instead of allocators_.find, however the CUDA EP does things this way to
-  // return a per-thread allocator from the GetAllocator override, and it's not clear if that could/should be replaced.
-  auto iter = allocators_.find(MakeKey(info.id, info.mem_type));
-  if (iter != allocators_.end()) {
-    // check device as mem_type is relative to the device
-    // e.g. OrtMemTypeDefault is CPU for a CPU EP and GPU for a CUDA EP. An individual EP will only have one
-    // allocator for an OrtMemType value, so this check is to ensure we don't replace with an incompatible allocator.
-    if (iter->second->Info().device == info.device) {
-      IAllocator* existing_alloc = iter->second.get();
-      for (auto& entry : allocator_list_) {
-        if (entry.get() == existing_alloc) {
-          entry = allocator;
-          break;
-        }
-      }
-
-      iter->second = allocator;
-    }
-  }
-}
-
 void IExecutionProvider::InsertAllocator(AllocatorPtr allocator) {
   const OrtMemoryInfo& info = allocator->Info();
-  const int key = MakeKey(info.id, info.mem_type);
 
-  auto iter = allocators_.find(key);
-  if (iter != allocators_.end()) {
+  auto it = std::find_if(allocator_list_.begin(), allocator_list_.end(), [&](AllocatorPtr ptr) {
+    return ptr->Info() == allocator->Info();
+  });
+
+  if (it != allocator_list_.end()) {
     ORT_THROW("Duplicate allocator for OrtMemType:", info.mem_type, " device:", info.device.ToString(),
-              " Existing allocator: ", iter->second->Info().name,
+              " Existing allocator: ", (*it)->Info().name,
               " New allocator: ", allocator->Info().name);
   } else {
-    allocators_.insert({key, allocator});
     allocator_list_.push_back(allocator);
   }
 }
 
-void IExecutionProvider::RegisterAllocator(AllocatorManager&) {
-}
-
-OrtDevice IExecutionProvider::GetMemoryInfo(OrtMemType mem_type) const {
-  OrtDevice::DeviceType device_type = OrtDevice::CPU;
-  OrtDevice::MemoryType memory_type = OrtDevice::MemType::DEFAULT;
+OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   if (mem_type == OrtMemTypeCPUInput || mem_type == OrtMemTypeCPUOutput) {
-    if (type_ == onnxruntime::kCpuExecutionProvider)
-      memory_type = OrtDevice::MemType::DEFAULT;
-    else if (type_ == onnxruntime::kCpuExecutionProvider)
-      memory_type = OrtDevice::MemType::CUDA_PINNED;  // TODO: keep only one pinned enum?
-  } else if (type_ == "CUDAExecutionProvider" || type_ == "ROCMExecutionProvider") {
-    device_type = OrtDevice::GPU;
+    return OrtDevice();  // default return CPU device.
   }
-  int device_id = GetDeviceId();
-
-  return OrtDevice(device_type, memory_type, static_cast<int16_t>(device_id));
+  return default_device_;
 }
 
-InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
-  return InlinedHashMap<OrtDevice, AllocatorPtr>();
+const std::vector<AllocatorPtr>& IExecutionProvider::CreatePreferredAllocators() const {
+  return allocator_list_;
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

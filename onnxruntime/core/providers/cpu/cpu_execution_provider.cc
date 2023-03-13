@@ -26,41 +26,19 @@ struct KernelRegistryAndStatus {
 namespace onnxruntime {
 CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info, bool delay_allocator_registration)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {
-  if (!delay_allocator_registration) {
-    AllocatorManager mgr;  // needed only to call RegisterAllocator
-    RegisterAllocator(mgr);
-  }
-}
-
-void CPUExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  ORT_UNUSED_PARAMETER(allocator_manager);
-//  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-//  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-//  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
-//  if (!cpu_alloc) {
-//    // use shared allocator if available
-//    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-//
-//    if (!cpu_alloc) {
-//      // create our allocator
-//      bool create_arena = info_.create_arena;
-//#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-//      // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-//      create_arena = false;
-//#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-//      // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-//      create_arena = false;
-//#endif
-//      AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-//                                        DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
-//
-//      cpu_alloc = CreateAllocator(device_info);
-//      // enable sharing of our allocator
-//      allocator_manager.InsertAllocator(cpu_alloc);
-//    }
-//
-//    InsertAllocator(cpu_alloc);
-//  }
+  ORT_UNUSED_PARAMETER(delay_allocator_registration);
+  // create our allocator
+  bool create_arena = info_.create_arena;
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  // JEMalloc/mimalloc already have memory pool, so just use device allocator.
+  create_arena = false;
+#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
+  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
+  create_arena = false;
+#endif
+  AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
+                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
+  InsertAllocator(CreateAllocator(device_info));
 }
 
 // Forward declarations of op kernels
@@ -1893,65 +1871,65 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, GatherND)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, Pad)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceL1)>,
+                                                                          ReduceL1)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceL1)>,
+                                                                          ReduceL1)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceL2)>,
+                                                                          ReduceL2)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceL2)>,
+                                                                          ReduceL2)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceLogSum)>,
+                                                                          ReduceLogSum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceLogSum)>,
+                                                                          ReduceLogSum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceLogSumExp)>,
+                                                                          ReduceLogSumExp)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, double,
-                                                                ReduceLogSumExp)>,
+                                                                          ReduceLogSumExp)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceLogSumExp)>,
+                                                                          ReduceLogSumExp)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, double,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int64_t,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int8_t,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, uint8_t,
-                                                                ReduceMax)>,
+                                                                          ReduceMax)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceMean)>,
+                                                                          ReduceMean)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, double,
-                                                                ReduceMean)>,
+                                                                          ReduceMean)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceMean)>,
+                                                                          ReduceMean)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, double,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int64_t,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int8_t,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, uint8_t,
-                                                                ReduceMin)>,
+                                                                          ReduceMin)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceProd)>,
+                                                                          ReduceProd)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceProd)>,
+                                                                          ReduceProd)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int64_t,
-                                                                ReduceProd)>,
+                                                                          ReduceProd)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, float,
-                                                                ReduceSumSquare)>,
+                                                                          ReduceSumSquare)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, int32_t,
-                                                                ReduceSumSquare)>,
+                                                                          ReduceSumSquare)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17, double,
-                                                                ReduceSumSquare)>,
+                                                                          ReduceSumSquare)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, float,
                                                                 ReduceSum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, int32_t,
@@ -1961,13 +1939,13 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, int64_t,
                                                                 ReduceSum)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17,
-                                                                float, Resize)>,
+                                                                          float, Resize)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17,
-                                                                int32_t, Resize)>,
+                                                                          int32_t, Resize)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17,
-                                                                int8_t, Resize)>,
+                                                                          int8_t, Resize)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 17,
-                                                                uint8_t, Resize)>,
+                                                                          uint8_t, Resize)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 15, Loop)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, 15, If)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 13, Hardmax)>,
@@ -2208,7 +2186,7 @@ Status RegisterOnnxOperatorKernels(KernelRegistry& kernel_registry) {
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 18, OptionalHasElement)>,
     BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kCpuExecutionProvider, kOnnxDomain, 18, OptionalGetElement)>,
 #endif
-};
+  };
 
   for (auto& function_table_entry : function_table) {
     KernelCreateInfo info = function_table_entry();
@@ -2418,26 +2396,6 @@ std::shared_ptr<KernelRegistry> CPUExecutionProvider::GetKernelRegistry() const 
 
 std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
-}
-
-InlinedHashMap<OrtDevice, AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  InlinedHashMap<OrtDevice, AllocatorPtr> ret;
-  ret.reserve(1);
-  if (!allocator_) {
-    bool create_arena = info_.create_arena;
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-    // JEMalloc/mimalloc already have memory pool, so just use device allocator.
-    create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64))
-    // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-    create_arena = false;
-#endif
-    AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
-                                      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena}; 
-    allocator_ = CreateAllocator(device_info);
-  }
-  ret[OrtDevice()] = allocator_;
-  return ret;
 }
 
 }  // namespace onnxruntime

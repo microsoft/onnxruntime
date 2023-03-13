@@ -91,7 +91,7 @@ void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
 
-OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device) {
+OrtMemoryInfo GetOrtDeviceByMemTypePerDeviceType(const OrtDevice& ort_device) {
   OrtMemoryInfo mem_info;
   if (ort_device.Type() == OrtDevice::CPU) {
     mem_info = GetAllocator()->Info();

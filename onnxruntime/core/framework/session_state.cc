@@ -86,33 +86,16 @@ SessionState::SessionState(Graph& graph,
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-  //  SetupAllocators();
+  // The allocator registration rule:
+  // Each location (OrtDevice) will only have 1 allocator used for whole session.
+  // The EP which is registered first will have higher priority
   for (auto ep : execution_providers_) {
-    InlinedHashMap<OrtDevice, AllocatorPtr> preferedAllocators = ep->CreatePreferredAllocators();
-    for (auto it : preferedAllocators) {
-      allocators_.insert({it.first, it.second});    // DONT overwrite existing key
+    auto& preferedAllocators = ep->CreatePreferredAllocators();
+    for (auto& alloc : preferedAllocators) {
+      allocators_.insert({alloc->Info().device, alloc});  // DONT overwrite existing key
     }
   }
 }
-
-// void SessionState::SetupAllocators() {
-//   for (const auto& provider : execution_providers_) {
-//     for (const auto& allocator : provider->GetAllocators()) {
-//       const OrtMemoryInfo& memory_info = allocator->Info();
-//       if (allocators_.find(memory_info) != allocators_.end()) {
-//         // EPs are ordered by priority so ignore the duplicate allocator for this memory location.
-//         LOGS(logger_, INFO) << "Allocator already registered for " << allocator->Info()
-//                             << ". Ignoring allocator from " << provider->Type();
-//       } else {
-//         // slightly weird indirection to go back to the provider to get the allocator each time it's needed
-//         // in order to support scenarios such as the CUDA EP's per-thread allocator.
-//         allocators_[memory_info] = [&provider](OrtMemType mem_type) {
-//           return provider->GetAllocator(mem_type);
-//         };
-//       }
-//     }
-//   }
-// }
 
 AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noexcept {
   return GetAllocator(location.device);
@@ -1448,7 +1431,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   session_state_utils::MemoryProfileFunction memory_profile_func = nullptr;
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   memory_profile_func = [this](ITensorAllocator& planner) {
-    GetMemoryProfiler()->GetMemoryInfo().RecordPatternInfo(
+    GetMemoryProfiler()->GetOrtDeviceByMemType().RecordPatternInfo(
         planner.GetMemPatterns(), MemoryInfo::MapType::Initializer);
     GetMemoryProfiler()->CreateEvents(
         "initializer_" + std::to_string(GetMemoryProfiler()->GetMemoryInfo().GetIteration()),

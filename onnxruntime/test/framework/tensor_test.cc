@@ -126,7 +126,7 @@ TEST(TensorTest, CPUUInt64TensorOffsetTest) {
 
 TEST(TensorTest, EmptyTensorTest) {
   auto type = DataTypeImpl::GetType<float>();
-  Tensor t(type, TensorShape({1, 0}), nullptr, OrtMemoryInfo("cpu", OrtDeviceAllocator, TestCPUExecutionProvider()->GetMemoryInfo(OrtMemTypeDefault)));
+  Tensor t(type, TensorShape({1, 0}), nullptr, OrtMemoryInfo("cpu", OrtDeviceAllocator, TestCPUExecutionProvider()->GetOrtDeviceByMemType(OrtMemTypeDefault)));
   auto& shape = t.Shape();
   EXPECT_EQ(shape.Size(), 0);
   EXPECT_EQ(t.DataType(), type);

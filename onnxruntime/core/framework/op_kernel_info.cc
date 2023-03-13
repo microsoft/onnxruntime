@@ -29,7 +29,7 @@ OpKernelInfo::OpKernelInfo(const OpKernelInfo& other)
                    other.ort_value_name_idx_map_, other.data_transfer_mgr_) {}
 
 const OrtDevice OpKernelInfo::GetDevice(OrtMemType mem_type) const {
-  return execution_provider_->GetMemoryInfo(mem_type);
+  return execution_provider_->GetOrtDeviceByMemType(mem_type);
 }
 
 const KernelDef& OpKernelInfo::GetKernelDef() const {

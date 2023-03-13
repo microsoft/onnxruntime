@@ -60,7 +60,11 @@ enum class DataLayout {
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type, bool use_metadef_id_creator = false)
-      : type_{type} {
+      : IExecutionProvider(type, OrtDevice(), use_metadef_id_creator) {
+  }
+
+  IExecutionProvider(const std::string& type, OrtDevice device, bool use_metadef_id_creator = false)
+      : type_{type}, default_device_(device) {
     if (use_metadef_id_creator) {
       metadef_id_generator_ = std::make_unique<ModelMetadefIdGenerator>();
     }
@@ -68,13 +72,6 @@ class IExecutionProvider {
 
  public:
   virtual ~IExecutionProvider() = default;
-
-  /**
-     Get all IAllocators for <*this> execution provider.
-  */
-  const std::vector<AllocatorPtr>& GetAllocators() const {
-    return allocator_list_;
-  }
 
   /**
    * Returns a data transfer object that implements methods to copy to and
@@ -208,7 +205,6 @@ class IExecutionProvider {
   virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
 
   void InsertAllocator(AllocatorPtr allocator);
-  void ReplaceAllocator(AllocatorPtr allocator);
 
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;
@@ -275,12 +271,6 @@ class IExecutionProvider {
    */
   virtual int GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const;
 
-  /**
-     Register allocators for EP, potentially re-using existing allocators for a device from allocator_manager.
-     If the EP implements this it should generally delay creating any allocators until this is called.
-  */
-  virtual void RegisterAllocator(AllocatorManager& /*allocator_manager*/);
-
   virtual std::unique_ptr<profiling::EpProfiler> GetProfiler() {
     return {};
   }
@@ -304,26 +294,22 @@ class IExecutionProvider {
     return nullptr;
   }
 
-  virtual InlinedHashMap<OrtDevice, AllocatorPtr> CreatePreferredAllocators();
+  virtual const std::vector<AllocatorPtr>& CreatePreferredAllocators() const;
 
-  OrtDevice GetMemoryInfo(OrtMemType mem_type) const;
+  virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const;
 
  private:
   const std::string type_;
 
-  // allocator lookup is done by combining the device id and OrtMemType.
-  // there's also an implicit connection to the underlying OrtDevice involved that is dependent on the EP.
-  // e.g. for a CPU based EP, 'default' memory is a CPU device, and for a GPU based EP 'default' memory is a
-  // GPU device.
-  using AllocatorMap = std::unordered_map<int, AllocatorPtr>;
-  AllocatorMap allocators_;
-
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
+
+ protected:
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time
   // contains the same instances as allocators_
   std::vector<AllocatorPtr> allocator_list_;
 
+ private:
   // helper to generate ids that are unique to model and deterministic, even if the execution provider is shared across
   // multiple sessions.
   class ModelMetadefIdGenerator {
@@ -336,5 +322,8 @@ class IExecutionProvider {
   };
 
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
+
+ protected:
+  OrtDevice default_device_;
 };
 }  // namespace onnxruntime

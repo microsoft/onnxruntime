@@ -39,7 +39,7 @@ class DeviceStreamCollectionImpl {
     for (auto& stream : owned_streams_) {
       if (stream) {
         for (auto& ep : eps_) {
-          auto& allocators = ep->GetAllocators();
+          auto& allocators = ep->CreatePreferredAllocators();
           for (auto& alloc : allocators) {
             if (alloc->Info().device == stream->GetDevice() &&
                 alloc->Info().alloc_type == OrtArenaAllocator) {

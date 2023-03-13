@@ -299,11 +299,7 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
-  void IExecutionProvider__RegisterAllocator(IExecutionProvider* p, AllocatorManager& allocator_manager) override {
-    return p->IExecutionProvider::RegisterAllocator(allocator_manager);
-  }
-
-  InlinedHashMap<OrtDevice, AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) {
+  const std::vector<AllocatorPtr>& IExecutionProvider__CreatePreferredAllocators(const IExecutionProvider* p) override {
     return p->IExecutionProvider::CreatePreferredAllocators();
   }
 
@@ -1932,7 +1928,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
   auto factory = onnxruntime::DnnlProviderFactoryCreator::Create(dnnl_options);
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL,
-                    "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
+                                 "SessionOptionsAppendExecutionProvider_Dnnl: Failed to load shared library");
   }
 
   options->provider_factories.push_back(factory);

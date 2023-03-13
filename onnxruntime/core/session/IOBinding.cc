@@ -128,7 +128,7 @@ AllocatorPtr IOBinding::GetCPUAllocator(onnxruntime::ProviderType provider_type)
   auto& exec_providers = session_state_.GetExecutionProviders();
   auto* p_provider = exec_providers.Get(provider_type);
   ORT_ENFORCE(p_provider);
-  auto allocator = session_state_.GetAllocator(p_provider->GetMemoryInfo(OrtMemTypeCPU));
+  auto allocator = session_state_.GetAllocator(p_provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
 
   // if the provider does not implement CPU allocator, fall back to CPU
   if (allocator)

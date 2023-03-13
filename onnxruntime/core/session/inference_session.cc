@@ -1023,7 +1023,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1289,12 +1289,12 @@ common::Status InferenceSession::Initialize() {
 
     // Ensure all registered EPs have created their allocators and shared them where possible.
     // Allocator creation may be delayed until IExecutionProvider::RegisterAllocator is called.
-//    {
-//      AllocatorManager allocator_manager;
-//      for (const auto& provider : execution_providers_) {
-//        provider->RegisterAllocator(allocator_manager);
-//      }
-//    }
+    //    {
+    //      AllocatorManager allocator_manager;
+    //      for (const auto& provider : execution_providers_) {
+    //        provider->RegisterAllocator(allocator_manager);
+    //      }
+    //    }
 
     // At this time we know all the providers that will be part of this session.
     // Read shared allocators from the environment and update them in the respective providers.
@@ -1467,7 +1467,7 @@ common::Status InferenceSession::Initialize() {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-      AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetMemoryInfo(OrtMemTypeDefault));
+      AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetOrtDeviceByMemType(OrtMemTypeDefault));
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_, allocator));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1574,13 +1574,14 @@ common::Status InferenceSession::Initialize() {
 // This method should be called from within Initialize() only and before the creation of the session state.
 // This ensures all providers have been registered in the session and the session state is consistent with the providers.
 void InferenceSession::UpdateProvidersWithSharedAllocators() {
-  const auto& provider_ids = execution_providers_.GetIds();
-  for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
-    for (const auto& id : provider_ids) {
-      auto* provider_ptr = execution_providers_.Get(id);
-      provider_ptr->ReplaceAllocator(one_shared_alloc);
-    }
-  }
+  ORT_ENFORCE(false);
+  // const auto& provider_ids = execution_providers_.GetIds();
+  // for (const auto& one_shared_alloc : environment_.GetRegisteredSharedAllocators()) {
+  //   for (const auto& id : provider_ids) {
+  //     auto* provider_ptr = execution_providers_.Get(id);
+  //     provider_ptr->ReplaceAllocator(one_shared_alloc);
+  //   }
+  // }
 }
 
 int InferenceSession::GetCurrentNumRuns() const {
@@ -2472,7 +2473,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
                   ? SatApplyContextVariant{SatRuntimeOptimizationSaveContext{
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
-          AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetMemoryInfo(OrtMemTypeDefault));
+          AllocatorPtr allocator = session_state_->GetAllocator(cpu_ep.GetOrtDeviceByMemType(OrtMemTypeDefault));
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, allocator,
                                                                       optimizers_to_disable_);
         }

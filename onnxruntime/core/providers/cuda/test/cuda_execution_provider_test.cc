@@ -21,9 +21,7 @@ bool TestDeferredRelease() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
-  // Initialize allocators in EP.
-  onnxruntime::AllocatorManager allocator_manager;
-  ep.RegisterAllocator(allocator_manager);
+
   AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
@@ -55,22 +53,7 @@ bool TestDeferredReleaseWithoutArena() {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
-  // Initialize allocators in EP.
-  onnxruntime::AllocatorManager allocator_manager;
 
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-  // Create allocator without BFCArena
-  AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
-      },
-      pinned_device.Id(),
-      false /* no arena */);
-  auto cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
-  allocator_manager.InsertAllocator(cuda_pinned_alloc);
-  // Use existing allocator in allocator_manager.
-  // Also register new allocator created by this EP in allocator_manager.
-  ep.RegisterAllocator(allocator_manager);
   AllocatorPtr gpu_alloctor = ep.GetAllocator(OrtMemType::OrtMemTypeDefault);
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.

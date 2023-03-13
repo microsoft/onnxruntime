@@ -36,43 +36,14 @@ InternalTestingExecutionProvider::InternalTestingExecutionProvider(const std::un
       preferred_layout_{preferred_layout} {
 }
 
-//AllocatorPtr InternalTestingExecutionProvider::GetAllocator(OrtMemType mem_type) const {
-//  // replicate setup that some EPs have with a local allocator
-//  if (mem_type == OrtMemTypeDefault) {
-//    return local_allocator_;
-//  } else {
-//    return IExecutionProvider::GetAllocator(mem_type);
-//  }
-//}
-
-// implement RegisterAllocator to test/validate sharing the CPU EP's allocator
-void InternalTestingExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manager) {
-  OrtDevice cpu_device{OrtDevice::CPU, OrtDevice::MemType::DEFAULT, DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
-
-  // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = local_allocator_;//GetAllocator(OrtMemTypeDefault);
-  if (!cpu_alloc) {
-    // use shared allocator if available
-    cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);
-
-    if (!cpu_alloc) {
-      // create our allocator
-      AllocatorCreationInfo allocator_info(
-          [](int) {
-            return std::make_unique<CPUAllocator>(OrtMemoryInfo(INTERNAL_TESTING_EP,
-                                                                OrtAllocatorType::OrtDeviceAllocator));
-          });
-
-      cpu_alloc = CreateAllocator(allocator_info);
-
-      // enable sharing of our allocator
-      allocator_manager.InsertAllocator(cpu_alloc);
-    }
-
-    local_allocator_ = cpu_alloc;
-    InsertAllocator(cpu_alloc);
-  }
-}
+// AllocatorPtr InternalTestingExecutionProvider::GetAllocator(OrtMemType mem_type) const {
+//   // replicate setup that some EPs have with a local allocator
+//   if (mem_type == OrtMemTypeDefault) {
+//     return local_allocator_;
+//   } else {
+//     return IExecutionProvider::GetAllocator(mem_type);
+//   }
+// }
 
 InternalTestingExecutionProvider::~InternalTestingExecutionProvider() {}
 

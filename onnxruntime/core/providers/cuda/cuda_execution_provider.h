@@ -27,9 +27,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
   explicit CUDAExecutionProvider(const CUDAExecutionProviderInfo& info);
   virtual ~CUDAExecutionProvider();
 
-//  AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
-  InlinedHashMap<int32_t, AllocatorPtr> CreatePreferredAllocators() override;
-
   Status Sync() const override;
 
   Status OnRunStart() override;
@@ -56,6 +53,17 @@ class CUDAExecutionProvider : public IExecutionProvider {
   template <typename T>
   const T* GetConstOnes(size_t count, cudaStream_t stream) {
     return GetPerThreadContext().template GetConstOnes<T>(count, stream);
+  }
+
+  // !!!! TODO: this is a temporary workaround for GetScratchBuffer
+  // We should remove the GetScratchBuffer method and let the kernel get it from OpKernelContext
+  // !!!! Make sure remove this before merge.
+  AllocatorPtr GetAllocator(OrtMemType mem_type) const {
+    auto device = GetOrtDeviceByMemType(mem_type);
+    auto it = std::find_if(allocator_list_.begin(), allocator_list_.end(), [&](AllocatorPtr ptr) {
+      return ptr->Info().device.Hash() == device.Hash();
+    });
+    return it != allocator_list_.end() ? *it : nullptr;
   }
 
   // GPU scratch buffer need to be allocated on stream
@@ -102,7 +110,6 @@ class CUDAExecutionProvider : public IExecutionProvider {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  void RegisterAllocator(AllocatorManager& allocator_manager) override;
   static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                           CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
 
@@ -116,6 +123,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   Status ReplayGraph() override;
 #endif
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
  private:
   CUDAExecutionProviderInfo info_;

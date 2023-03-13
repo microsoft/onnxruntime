@@ -25,9 +25,6 @@ class InternalTestingExecutionProvider : public IExecutionProvider {
   DataLayout GetPreferredLayout() const override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
-  //AllocatorPtr GetAllocator(OrtMemType mem_type) const override;
-  void RegisterAllocator(AllocatorManager& /*allocator_manager*/) override;
-
   InternalTestingExecutionProvider& SetDebugOutput(bool debug_output) {
     debug_output_ = debug_output;
     return *this;
