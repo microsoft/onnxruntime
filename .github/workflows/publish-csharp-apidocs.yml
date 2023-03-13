@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   publish:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     - name: Setup .NET
@@ -28,9 +28,8 @@ jobs:
     - name: Download DocFX
       run: |
         mkdir -p build/docfx
-        Invoke-WebRequest -Uri "https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx.zip" -OutFile "build/docfx/docfx.zip"
-        [System.IO.Compression.ZipFile]::ExtractToDirectory("build/docfx/docfx.zip", "build/docfx" )
-        cd build/docfx
+        curl https://github.com/dotnet/docfx/releases/download/v${env:DOCFXVERSION}/docfx.zip > build/docfx/docfx.zip
+        unzip build/docfx/docfx.zip -d build/docfx
       env:
         DOCFXVERSION: 2.59.3
     - name: Install NuGet
