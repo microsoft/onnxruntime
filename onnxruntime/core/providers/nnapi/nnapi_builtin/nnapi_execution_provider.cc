@@ -68,7 +68,7 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
       });
 
   InsertAllocator(CreateAllocator(cpu_memory_info));
-  // it should works for both Android and x86 wrapper
+
   nnapi_handle_ = NnApiImplementation();
   ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 
@@ -84,7 +84,7 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
     target_device_option_ = (nnapi::TargetDeviceOption::CPU_ONLY);
   }
 
-  // May we could just mark it as unavailable instead of throwing an error
+  // May we could just mark this EP as unavailable instead of throwing an error
   ORT_THROW_IF_ERROR(GetTargetDevices(*nnapi_handle_, target_device_option_, nnapi_target_devices_));
 
   LOGS_DEFAULT(VERBOSE) << "Found devices [" << nnapi::GetDevicesDescription(nnapi_target_devices_) << "] in NNAPI";
