@@ -16,8 +16,6 @@ MODEL_CLASSES = [
 # List of pretrained models: https://huggingface.co/transformers/pretrained_models.html
 # Pretrained model name to a tuple of input names, opset_version, use_external_data_format, optimization model type
 MODELS = {
-    "google/vit-base-patch16-224": (["input_ids"], 12, False, "bert"),
-
     # BERT
     "bert-base-uncased": (
         ["input_ids", "attention_mask", "token_type_ids"],
@@ -160,4 +158,7 @@ MODELS = {
     ),
     # "google/pegasus-xsum": (["input_ids"], 11, False, "bert"),
     # "google/pegasus-large": (["input_ids"], 11, False, "bert"),
+
+    # ViT
+    "google/vit-base-patch16-224": (["input_ids"], 12, False, "bert"),
 }
