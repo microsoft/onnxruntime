@@ -105,16 +105,16 @@ class ModelBuilder {
 
   int32_t GetEffectiveFeatureLevel() const { return nnapi_effective_feature_level_; }
 
-  // Just for Debugging
-  void SetDebugTrackNode(const size_t node_index) {
 #ifndef NDEBUG
+  // Set the node index to be tracked for debugging
+  // For now, NNAPI is a black box, LOGs are limited and it's hard to debug.
+  // ONNX node and NNAPI node are not a 1:1 mapping, like batch-normalization.
+  // We use this to track a specific onnx node which we are processing and record the detail mapping relationship.
+  // So we can log out each NNAPI OP status during model-building and compiling.
+  void SetDebugTrackNode(const size_t node_index) {
     track_node_index_ = node_index;
-#else
-    // ORT_UNUSED_PARAMETER minimal build
-    (void)(node_index);
-#endif
   }
-
+#endif
  private:
   const NnApi& nnapi_;
   const GraphViewer& graph_viewer_;
