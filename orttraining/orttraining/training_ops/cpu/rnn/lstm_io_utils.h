@@ -47,7 +47,7 @@ struct LSTMInputs {
 template <typename T>
 struct LSTMOutputs {
   LSTMOutputs(OpKernelContext* context, const int directions, const int sequence_length,
-              const int batch_size, const int hidden_size, const int input_size);
+              const int batch_size, const int hidden_size);
 
   LSTMOutputs() = delete;
 

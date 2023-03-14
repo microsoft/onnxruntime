@@ -216,7 +216,7 @@ LSTMInputs<T>::LSTMInputs(OpKernelContext* context, const int directions, const 
 
 template <typename T>
 LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, const int sequence_length,
-                            const int batch_size, const int hidden_size, const int input_size) {
+                            const int batch_size, const int hidden_size) {
   const TensorShape HAll_shape{sequence_length, directions, batch_size, hidden_size};      // [seq_length, directions, batch_size, hidden_size]
   Tensor* HAll = context->Output(0, HAll_shape);                                           // all hidden states
   const TensorShape Ht_shape{directions, batch_size, hidden_size};                         // [directions, batch_size, hidden_size]
