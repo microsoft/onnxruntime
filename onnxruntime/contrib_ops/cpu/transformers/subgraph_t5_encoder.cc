@@ -73,11 +73,10 @@ Status T5EncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgraph_i
   constexpr auto float32_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT;
   constexpr auto float16_type = ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16;
 
-  //
-  // ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-  //              "encoder subgraph input 0 (encoder_input_ids) shall have int32 type");
-  //ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
-  //              "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[0]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "encoder subgraph input 0 (encoder_input_ids) shall have int32 type");
+  ORT_RETURN_IF(subgraph_inputs[1]->TypeAsProto()->tensor_type().elem_type() != int32_type,
+                "encoder subgraph input 1 (encoder_attention_mask) shall have int32 type");
   ORT_RETURN_IF(subgraph_inputs[2]->TypeAsProto()->tensor_type().elem_type() != int32_type,
                 "encoder subgraph input 2 (decoder_input_ids) shall have int32 type");
 
