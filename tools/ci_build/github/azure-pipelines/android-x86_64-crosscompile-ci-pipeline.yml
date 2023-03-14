@@ -192,7 +192,7 @@ stages:
   jobs:
   - job: Test_CPU_EP
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     workspace:
       clean: all
     condition: succeeded()
@@ -261,7 +261,7 @@ stages:
 
   - job: Test_NNAPI_EP
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     timeoutInMinutes: 90
     workspace:
       clean: all
@@ -354,7 +354,7 @@ stages:
   jobs:
   - job: NNAPI_EP_MASTER
     pool:
-      vmImage: 'macOS-11'
+      vmImage: 'macOS-12'
     timeoutInMinutes: 180
     workspace:
       clean: all

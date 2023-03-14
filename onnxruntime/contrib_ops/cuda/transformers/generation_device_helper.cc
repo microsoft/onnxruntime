@@ -997,8 +997,8 @@ Status UpdateDecoderFeeds(
     for (int i = 0; i < num_present_tensors; ++i) {
       next_inputs[t5_decoder_first_past_input_idx + i] =
           last_outputs[t5_decoder_first_present_output_idx + i];
-      return Status::OK();
     }
+    return Status::OK();
   }
 
   return PickT5PastState<T>(last_outputs, next_inputs, num_present_tensors, beam_indices, allocator,

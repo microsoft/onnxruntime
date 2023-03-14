@@ -4,3 +4,4 @@ jobs:
     AllowReleasedOpsetOnly: 0
     BuildForAllArchs: false
     AdditionalBuildFlags: --enable_training
+    WithCache: true

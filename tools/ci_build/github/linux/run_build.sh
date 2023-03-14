@@ -21,8 +21,6 @@ y) YOCTO_VERSION=${OPTARG};;
 esac
 done
 
-export PATH=$PATH:/usr/local/gradle/bin
-
 if [ $BUILD_OS = "yocto" ]; then
     YOCTO_FOLDER="4.19-warrior"
     if [ $YOCTO_VERSION = "4.14" ]; then
@@ -67,4 +65,3 @@ else
             --config Release $COMMON_BUILD_ARGS $BUILD_EXTR_PAR
     fi
 fi
-
