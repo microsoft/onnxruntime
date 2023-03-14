@@ -24,8 +24,9 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.query_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.query));
     p.key_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.key));
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
-    p.cu_seqlens_q_ptr = params.cu_seqlens_q;
-    p.cu_seqlens_k_ptr = params.cu_seqlens_k;
+    p.attn_bias_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.attn_bias));
+    p.seqstart_q_ptr = params.cu_seqlens_q;
+    p.seqstart_k_ptr = params.cu_seqlens_k;
 
     p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward
     p.output_ptr = reinterpret_cast<T*>(params.output);
@@ -42,17 +43,20 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.head_dim = params.qk_head_size;
     p.head_dim_value = params.v_head_size;
 
+    p.scale = params.scale;
+
     // When params.cu_seqlens_q is provided, num_queries is max_seq_q and num_keys will be set inside the kernel
     p.num_queries = params.sequence_length;
     p.num_keys = params.kv_sequence_length;
 
-    p.causal = params.causal;
+    if (params.causal) {
+      p.custom_mask_type = Attention::CausalFromTopLeft;
+    }
 
     // Input format is BxSxNxH, output is BxSxNxH
     p.q_strideH = params.qk_head_size;
     p.k_strideH = params.qk_head_size;
     p.v_strideH = params.v_head_size;
-    p.o_strideH = params.v_head_size;
 
     p.q_strideM = params.num_heads * params.qk_head_size;
     p.k_strideM = params.num_heads * params.qk_head_size;
@@ -61,9 +65,6 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
     p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
     p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
-    p.o_strideB = static_cast<int64_t>(params.num_heads) * params.v_head_size * params.sequence_length;
-
-    p.causal = params.causal;
   }
 
   constexpr auto kernel_fn = attention_kernel_batched_impl<Attention>;

@@ -658,6 +658,9 @@ Status QkvToContext(
     return Status::OK();
   }
 
+  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
+                                               : parameters.scale;
+
 #if USE_FLASH_ATTENTION
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
@@ -684,11 +687,13 @@ Status QkvToContext(
     p.qk_head_size = parameters.head_size;
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
+    p.scale = scale;
     p.cu_seqlens_q = nullptr;
     p.cu_seqlens_k = nullptr;
     p.query = query;
     p.key = key;
     p.value = value;
+    p.attn_bias = data.relative_position_bias;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
@@ -713,8 +718,6 @@ Status QkvToContext(
   float zero = 0.f;
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
-  const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
-                                               : parameters.scale;
   float alpha = use_raw_attention_mask ? one : scale;
 
   cublasSetStream(cublas, stream);
