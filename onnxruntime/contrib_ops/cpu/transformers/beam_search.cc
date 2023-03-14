@@ -34,6 +34,7 @@
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
@@ -62,7 +63,8 @@ void BeamSearch::Init(const OpKernelInfo& info) {
 
   // Model_type could be either 0 (GPT-2) or 1 (encoder-decoder like T5)
   ORT_ENFORCE(parameters_.model_type == IGenerationParameters::kModelTypeGpt ||
-              parameters_.model_type == IGenerationParameters::kModelTypeT5);
+              parameters_.model_type == IGenerationParameters::kModelTypeT5 ||
+              parameters_.model_type == IGenerationParameters::kModelTypeWhisper);
 
   ONNX_NAMESPACE::GraphProto proto;
 
@@ -122,6 +124,37 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
       ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
                   "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
       t5_encoder_subgraph_ = std::make_unique<T5EncoderSubgraph>(node,
+                                                                 attribute_name,
+                                                                 subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));
+      encoder_feeds_fetches_manager_ = t5_encoder_subgraph_->GetFeedsFetchesManager();
+
+      if (parameters_.decoder_start_token_id < 0) {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 2,
+                      "Encoder subgraph shall have 2 inputs when decoder_start_token_id attribute is empty");
+      } else {
+        ORT_RETURN_IF(t5_encoder_subgraph_->num_subgraph_inputs != 3,
+                      "Encoder subgraph shall have 3 inputs when decoder_start_token_id attribute is available");
+      }
+    } else if (attribute_name == "decoder") {
+      ORT_ENFORCE(t5_decoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_decoder_subgraph_ = std::make_unique<T5DecoderSubgraph>(node,
+                                                                 attribute_name,
+                                                                 subgraph_session_state.GetGraphViewer());
+      ORT_RETURN_IF_ERROR(t5_decoder_subgraph_->Setup(session_state, subgraph_session_state));
+      decoder_feeds_fetches_manager_ = t5_decoder_subgraph_->GetFeedsFetchesManager();
+      parameters_.SetSubgraphParameters(t5_decoder_subgraph_->vocab_size,
+                                        t5_decoder_subgraph_->num_heads,
+                                        t5_decoder_subgraph_->head_size,
+                                        t5_decoder_subgraph_->num_layers);
+    }
+  }
+  else if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
+    if (attribute_name == "encoder") {
+      ORT_ENFORCE(t5_encoder_subgraph_ == nullptr,
+                  "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+      t5_encoder_subgraph_ = std::make_unique<WhisperEncoderSubgraph>(node,
                                                                  attribute_name,
                                                                  subgraph_session_state.GetGraphViewer());
       ORT_RETURN_IF_ERROR(t5_encoder_subgraph_->Setup(session_state, subgraph_session_state));

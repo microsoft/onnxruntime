@@ -413,11 +413,17 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   auto& input_ids_dims = input_ids_shape.dim();
   auto model_type_attr = ctx.getAttribute("model_type");
   int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
-  if (model_type ==  onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper && input_ids_dims.size() != 3) {
-    fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+  if (model_type ==  onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper) {
+     if (input_ids_dims.size() != 3)
+     {
+      fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+     }
+    if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value() && input_ids_dims[2].has_dim_value())) {
+      return;
+    }
   }
   else if (input_ids_dims.size() != 2) {
-    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+    fail_shape_inference("Inputs 0 shall be 2 dimensions", model_type);
   }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;

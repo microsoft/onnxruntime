@@ -47,8 +47,8 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
   ORT_RETURN_IF((static_cast<int>(subgraph_outputs.size()) - first_present_output_index_) % 4 != 0,
                 "number of outputs expected to be 2 + 4 * layers, got:", num_subgraph_outputs);
 
-  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_features",
-                "encoder subgraph input 0 shall be named as encoder_input_features, got: ", subgraph_inputs[0]->Name());
+  ORT_RETURN_IF(subgraph_inputs[0]->Name() != "encoder_input_ids",
+                "encoder subgraph input 0 shall be named as encoder_input_ids, got: ", subgraph_inputs[0]->Name());
   ORT_RETURN_IF(subgraph_inputs[1]->Name() != "encoder_attention_mask",
                 "encoder subgraph input 1 shall be named as encoder_attention_mask, got: ", subgraph_inputs[1]->Name());
   ORT_RETURN_IF(subgraph_inputs[2]->Name() != "decoder_input_ids",
