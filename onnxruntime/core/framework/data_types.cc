@@ -831,8 +831,8 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn);    \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn);  \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);      \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn);
 
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
@@ -884,13 +884,13 @@ const char* DataTypeImpl::ToString(MLDataType type) {
         return "float16";
       case TensorProto_DataType_BFLOAT16:
         return "bfloat16";
-      case TensorProto_DataType_Float8E4M3FN:
+      case TensorProto_DataType_FLOAT8E4M3FN:
         return "Float8E4M3FN";
-      case TensorProto_DataType_Float8E4M3FNUZ:
+      case TensorProto_DataType_FLOAT8E4M3FNUZ:
         return "Float8E4M3FNUZ";
-      case TensorProto_DataType_Float8E5M2:
+      case TensorProto_DataType_FLOAT8E5M2:
         return "Float8E5M2";
-      case TensorProto_DataType_Float8E5M2FNUZ:
+      case TensorProto_DataType_FLOAT8E5M2FNUZ:
         return "Float8E5M2FNUZ";
       default:
         break;
@@ -947,13 +947,13 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<MLFloat16>()->AsTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
-    case TensorProto_DataType_Float8E4M3FN:
+    case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetTensorType<Float8E4M3FN>()->AsTensorType();
-    case TensorProto_DataType_Float8E4M3FNUZ:
+    case TensorProto_DataType_FLOAT8E4M3FNUZ:
       return DataTypeImpl::GetTensorType<Float8E4M3FNUZ>()->AsTensorType();
-    case TensorProto_DataType_Float8E5M2:
+    case TensorProto_DataType_FLOAT8E5M2:
       return DataTypeImpl::GetTensorType<Float8E5M2>()->AsTensorType();
-    case TensorProto_DataType_Float8E5M2FNUZ:
+    case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
@@ -990,13 +990,13 @@ const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int t
       return DataTypeImpl::GetSequenceTensorType<MLFloat16>()->AsSequenceTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsSequenceTensorType();
-    case TensorProto_DataType_Float8E4M3FN:
+    case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetSequenceTensorType<Float8E4M3FN>()->AsSequenceTensorType();
-    case TensorProto_DataType_Float8E4M3FNUZ:
+    case TensorProto_DataType_FLOAT8E4M3FNUZ:
       return DataTypeImpl::GetSequenceTensorType<Float8E4M3FNUZ>()->AsSequenceTensorType();
-    case TensorProto_DataType_Float8E5M2:
+    case TensorProto_DataType_FLOAT8E5M2:
       return DataTypeImpl::GetSequenceTensorType<Float8E5M2>()->AsSequenceTensorType();
-    case TensorProto_DataType_Float8E5M2FNUZ:
+    case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetSequenceTensorType<Float8E5M2FNUZ>()->AsSequenceTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sequence tensor type ", type, " is not supported");
@@ -1034,13 +1034,13 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       return DataTypeImpl::GetSparseTensorType<MLFloat16>()->AsSparseTensorType();
     case TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetSparseTensorType<BFloat16>()->AsSparseTensorType();
-    case TensorProto_DataType_Float8E4M3FN:
+    case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>()->AsSparseTensorType();
-    case TensorProto_DataType_Float8E4M3FNUZ:
+    case TensorProto_DataType_FLOAT8E4M3FNUZ:
       return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>()->AsSparseTensorType();
-    case TensorProto_DataType_Float8E5M2:
+    case TensorProto_DataType_FLOAT8E5M2:
       return DataTypeImpl::GetSparseTensorType<Float8E5M2>()->AsSparseTensorType();
-    case TensorProto_DataType_Float8E5M2FNUZ:
+    case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>()->AsSparseTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
@@ -1076,7 +1076,9 @@ ORT_REGISTER_PRIM_TYPE(uint64_t);
 ORT_REGISTER_PRIM_TYPE(MLFloat16);
 ORT_REGISTER_PRIM_TYPE(BFloat16);
 ORT_REGISTER_PRIM_TYPE(Float8E4M3FN);
+ORT_REGISTER_PRIM_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_PRIM_TYPE(Float8E5M2);
+ORT_REGISTER_PRIM_TYPE(Float8E5M2FNUZ);
 
 namespace {
 template <typename... ElementTypes>

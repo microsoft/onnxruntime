@@ -53,7 +53,7 @@ struct Round<float, Float8E5M2> {
 template <>
 struct Round<float, Float8E5M2FNUZ> {
   __device__ __forceinline__ Float8E5M2FNUZ operator()(float v, float scale, Float8E5M2FNUZ zero_point) const {
-    return Float8E5M2(v / scale);
+    return Float8E5M2FNUZ(v / scale);
   }
 };
 

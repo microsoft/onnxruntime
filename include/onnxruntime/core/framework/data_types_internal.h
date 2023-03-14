@@ -146,7 +146,7 @@ namespace utils {
       retval = function<BFloat16>(__VA_ARGS__);                            \
       break;                                                               \
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:                \
-      function<Float8E4M3FN>(__VA_ARGS__);                                 \
+      retval = function<Float8E4M3FN>(__VA_ARGS__);                        \
       break;                                                               \
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:              \
       retval = function<Float8E4M3FNUZ>(__VA_ARGS__);                      \

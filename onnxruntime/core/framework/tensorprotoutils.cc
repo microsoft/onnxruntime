@@ -110,7 +110,7 @@ TensorProto ToTensor<onnxruntime::Float8E4M3FN>(const std::vector<onnxruntime::F
 }
 
 template <>
-TensorProto ToTensor<onnxruntime::Float8E4M3FNUIZ>(const std::vector<onnxruntime::Float8E4M3FNUZ>& values) {
+TensorProto ToTensor<onnxruntime::Float8E4M3FNUZ>(const std::vector<onnxruntime::Float8E4M3FNUZ>& values) {
   TensorProto t;
   t.clear_int32_data();
   t.set_data_type(TensorProto_DataType_FLOAT8E4M3FNUZ);
@@ -1021,10 +1021,10 @@ ONNXTensorElementDataType CApiElementTypeFromProtoType(int type) {
     CASE_TYPE(COMPLEX64)
     CASE_TYPE(COMPLEX128)
     CASE_TYPE(BFLOAT16)
-    CASE_TYPE(FLOAT8E4M3FN, Float8E4M3FN);
-    CASE_TYPE(FLOAT8E4M3FNUZ, Float8E4M3FNUZ);
-    CASE_TYPE(FLOAT8E5M2, Float8E5M2);
-    CASE_TYPE(FLOAT8E5M2FNUZ, Float8E5M2FNUZ);
+    CASE_TYPE(FLOAT8E4M3FN)
+    CASE_TYPE(FLOAT8E4M3FNUZ)
+    CASE_TYPE(FLOAT8E5M2)
+    CASE_TYPE(FLOAT8E5M2FNUZ)
     default:
       return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   }
