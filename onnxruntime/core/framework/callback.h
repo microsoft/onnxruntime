@@ -40,6 +40,7 @@ struct OrtCallbackInvoker {
  */
 class ScopedOrtCallbackInvoker {
  public:
+  ScopedOrtCallbackInvoker() {}
   explicit ScopedOrtCallbackInvoker(OrtCallback callback) noexcept
       : callback_(callback) {}
 
@@ -69,6 +70,6 @@ class ScopedOrtCallbackInvoker {
 
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ScopedOrtCallbackInvoker);
-  OrtCallback callback_;
+  OrtCallback callback_{};
 };
 }  // namespace onnxruntime
