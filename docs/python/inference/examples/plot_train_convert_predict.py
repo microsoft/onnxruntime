@@ -13,9 +13,6 @@ This example demonstrates an end to end scenario
 starting with the training of a machine learned model
 to its use in its converted from.
 
-.. contents::
-    :local:
-
 Train a logistic regression
 +++++++++++++++++++++++++++
 

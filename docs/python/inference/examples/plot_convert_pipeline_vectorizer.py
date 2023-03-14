@@ -11,9 +11,6 @@ which takes as inputs not a regular vector but a
 dictionary ``{ int: float }`` as its first step is a
 `DictVectorizer <http://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.DictVectorizer.html>`_.
 
-.. contents::
-    :local:
-
 Train a pipeline
 ++++++++++++++++
 

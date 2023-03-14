@@ -3,9 +3,6 @@
 API
 ===
 
-.. contents::
-    :local:
-
 API Overview
 ============
 

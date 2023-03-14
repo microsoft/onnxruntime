@@ -844,9 +844,6 @@ def onnx_documentation_folder(
                 main,
                 "=" * len(main),
                 "",
-                ".. contents::",
-                "    :local:",
-                "",
                 doc,
             ]
 
