@@ -50,7 +50,7 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                 "Input B must have shape {", directions, ", ", 8 * hidden_size, "}. Actual:", B_shape);
   }
 
-  ORT_ENFORCE(!SL, "Varying sequence lengths is not supported yet for LSTMInternal and LSTMGrad.");
+  ORT_ENFORCE(!SL, "Varying sequence lengths is not supported yet for LSTMTraining and LSTMGrad.");
 
   if (H0 != nullptr) {
     auto& H0_shape = H0->Shape();
@@ -207,11 +207,11 @@ LSTMInputs<T>::LSTMInputs(OpKernelContext* context, const int directions, const 
 
   weights = LoadWeights<T>(W, 0);
   recurrence_weights = LoadWeights<T>(R, 0);
-  bias = B != nullptr ? B->DataAsSpan<T>() : gsl::span<const T>();
-  sequence_lengths = SL != nullptr ? SL->DataAsSpan<int>() : gsl::span<const int>();
-  initial_hidden_state = H0 != nullptr ? H0->DataAsSpan<T>() : gsl::span<const T>();
-  initial_cell_state = C0 != nullptr ? C0->DataAsSpan<T>() : gsl::span<const T>();
-  peephole_weights = P != nullptr ? P->DataAsSpan<T>() : gsl::span<const T>();
+  bias = B ? B->DataAsSpan<T>() : gsl::span<const T>();
+  sequence_lengths = SL ? SL->DataAsSpan<int>() : gsl::span<const int>();
+  initial_hidden_state = H0 ? H0->DataAsSpan<T>() : gsl::span<const T>();
+  initial_cell_state = C0 ? C0->DataAsSpan<T>() : gsl::span<const T>();
+  peephole_weights = P ? P->DataAsSpan<T>() : gsl::span<const T>();
 }
 
 template <typename T>
@@ -228,11 +228,24 @@ LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, cons
   const TensorShape iofc_shape{sequence_length, directions, batch_size, 4 * hidden_size};  // [seq_length, directions, batch_size, 4 * hidden_size]
   Tensor* IOFC = context->Output(4, iofc_shape);                                           // iofc gate computations
 
-  all_hidden_states = HAll != nullptr ? HAll->MutableDataAsSpan<T>() : gsl::span<T>();
-  final_hidden_state = Ht ? Ht->MutableDataAsSpan<T>() : gsl::span<T>();
-  final_cell_state = Ct ? Ct->MutableDataAsSpan<T>() : gsl::span<T>();
-  all_cell_states = CAll ? CAll->MutableDataAsSpan<T>() : gsl::span<T>();
-  iofc = IOFC ? IOFC->MutableDataAsSpan<T>() : gsl::span<T>();
+  AllocatorPtr alloc;
+  ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  all_hidden_states = HAll ? HAll->MutableDataAsSpan<T>()
+                           : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * hidden_size,
+                                                   hall_ptr_, true, static_cast<T>(0));
+  final_hidden_state = Ht ? Ht->MutableDataAsSpan<T>()
+                          : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
+                                                  h_final_ptr_, true, static_cast<T>(0));
+  final_cell_state = Ct ? Ct->MutableDataAsSpan<T>()
+                        : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
+                                                c_final_ptr_, true, static_cast<T>(0));
+  all_cell_states = CAll ? CAll->MutableDataAsSpan<T>()
+                         : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * hidden_size,
+                                                 call_ptr_, true, static_cast<T>(0));
+  iofc = IOFC ? IOFC->MutableDataAsSpan<T>()
+              : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * 4 * hidden_size,
+                                      iofc_ptr_, true, static_cast<T>(0));
 }
 
 template <typename T>
@@ -256,7 +269,6 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
   ValidateLSTMInputs(X, W, R, B, SL, H0, C0, P, directions, hidden_size);
   ValidateLSTMGradInputs(X, HAll, CAll, IOFC, grad_HAll, grad_Ht, grad_Ct, directions, hidden_size);
 
-  // Allocator in case we need to allocate memory for a nullptr input/output
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
@@ -303,7 +315,6 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   const TensorShape dP_shape{directions, 3 * hidden_size};               // [directions, 3 * hidden_size]
   Tensor* dP = context->Output(6, dP_shape);                             // gradient w.r.t to the peephole weights
 
-  // Allocator in case we need to allocate memory for a nullptr input/output
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 

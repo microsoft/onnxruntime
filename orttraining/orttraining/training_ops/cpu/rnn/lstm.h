@@ -9,9 +9,9 @@
 namespace onnxruntime::contrib {
 
 template <typename T>
-class LSTMInternal final : public OpKernel {
+class LSTMTraining final : public OpKernel {
  public:
-  LSTMInternal(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
+  LSTMTraining(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
   }
 
   Status Compute(OpKernelContext* context) const override;

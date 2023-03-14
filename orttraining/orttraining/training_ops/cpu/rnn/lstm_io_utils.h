@@ -56,6 +56,13 @@ struct LSTMOutputs {
   gsl::span<T> final_cell_state;
   gsl::span<T> all_cell_states;
   gsl::span<T> iofc;
+
+ private:
+  IAllocatorUniquePtr<T> hall_ptr_;
+  IAllocatorUniquePtr<T> h_final_ptr_;
+  IAllocatorUniquePtr<T> c_final_ptr_;
+  IAllocatorUniquePtr<T> call_ptr_;
+  IAllocatorUniquePtr<T> iofc_ptr_;
 };
 
 template <typename T>
