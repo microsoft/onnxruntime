@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/providers/nnapi/nnapi_builtin/builders/model_builder.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
-#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/common/logging/logging.h"
 
 #ifdef __ANDROID__
@@ -104,6 +104,8 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
   // and nnapi internally skip the last device if it has already found one.
   // 2) we can easily exclude nnapi-reference when not strict excluding CPU.
   // 3) we can easily log the detail of how op was assigned on NNAPI devices which is helpful for debugging.
+  // refer to https://source.android.com/docs/core/interaction/neural-networks#cpu-usage
+  // and https://android.googlesource.com/platform/frameworks/ml/+/master/nn/runtime/ExecutionPlan.cpp#2303
   if (cpu_index != -1 && cpu_index != static_cast<int32_t>(devices.size()) - 1) {
     std::swap(devices[devices.size() - 1], devices[cpu_index]);
   }

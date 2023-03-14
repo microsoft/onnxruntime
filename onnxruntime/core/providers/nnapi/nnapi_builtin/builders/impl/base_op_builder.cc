@@ -53,7 +53,9 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const NodeU
   };
   ORT_RETURN_IF_NOT(IsOpSupported(model_builder.GetInitializerTensors(), node_unit, params),
                     "Unsupported operator ", node_unit.OpType());
+#ifndef NDEBUG
   model_builder.SetDebugTrackNode(node_unit.Index());
+#endif
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node_unit));
   LOGS_DEFAULT(VERBOSE) << "Operator name: [" << node_unit.Name()
                         << "] type: [" << node_unit.OpType() << "] was added";

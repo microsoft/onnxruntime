@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "model_builder.h"
+
 #include <unordered_map>
 
 #include "core/common/common.h"
@@ -552,9 +553,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "The model cannot run using current set of target devices, ",
                              GetDevicesDescription(nnapi_target_devices_));
-    // workaround for bugs in Android OS. sometimes ops are passed checking but failed at compilation.
     }
-    // else // no else after return
+
+    // workaround for bugs in NNAPI drives on some phones.
+    // sometimes ops are passed checking but failed at compilation.
     if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       use_create_for_devices = true;
     }
@@ -576,7 +578,7 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       const auto* node(graph_viewer_.GetNode(onnx_node_idx));
       auto stat_name = node->OpType() + ".nnapi_op_" + std::to_string(nnapi_idx);
 
-      if (!supported_ops[idx]) {
+      if (supported_ops[idx]) {
         optype_support_status[stat_name].first++;
       } else {
         optype_support_status[stat_name].second++;
