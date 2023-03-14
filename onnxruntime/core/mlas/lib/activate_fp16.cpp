@@ -480,19 +480,19 @@ MLAS_HALF_GEMM_ACTIVATION_PROCESSOR::Process(
             break;
         }
 
-            /* case MlasTanhActivation : {
-                        if (N == ldc) {
-                            MlasComputeTanh(Buffer, Buffer, M * N);
-                        } else {
-                            while (M-- > 0) {
-                                MlasComputeTanh(Buffer, Buffer, N);
-                                Buffer += ldc;
-                            }
-                        }
+/* case MlasTanhActivation : {
+            if (N == ldc) {
+                MlasComputeTanh(Buffer, Buffer, M * N);
+            } else {
+                while (M-- > 0) {
+                    MlasComputeTanh(Buffer, Buffer, N);
+                    Buffer += ldc;
+                }
+            }
 
-                        break;
-                    }
-            */
+            break;
+        }
+*/
 
         default:
             // Tanh activation not supported.

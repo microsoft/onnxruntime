@@ -16,8 +16,12 @@ Abstract:
 
 #include "mlasi.h"
 
-size_t MLASCALL
-MlasQLinearSafePaddingElementCount(size_t ElementSize, size_t ElementCount)
+size_t
+MLASCALL
+MlasQLinearSafePaddingElementCount(
+    size_t ElementSize,
+    size_t ElementCount
+    )
 {
     if (!(ElementSize == 1 || ElementSize == 2 || ElementSize == 4 || ElementSize == 8 ||
           ElementSize == 16)) {
@@ -29,7 +33,11 @@ MlasQLinearSafePaddingElementCount(size_t ElementSize, size_t ElementCount)
 
 MLAS_FORCEINLINE
 float
-CheckQLinearGlobalAveragePoolScaleAndSize(float ScaleInput, float ScaleOutput, size_t ImageSize)
+CheckQLinearGlobalAveragePoolScaleAndSize(
+    float ScaleInput,
+    float ScaleOutput,
+    size_t ImageSize
+    )
 {
     if (ImageSize >= 0x1000000) {
         MLAS_THROW_EX(std::invalid_argument, "QLinearGlobalAveragePool ImageSize too large!");
