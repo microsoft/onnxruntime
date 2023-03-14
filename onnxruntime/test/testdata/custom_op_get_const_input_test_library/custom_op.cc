@@ -22,7 +22,9 @@ TestCustomKernel::TestCustomKernel(const OrtKernelInfo* info)
     ORT_ENFORCE(is_constant == 1);
 }
 
-void TestCustomKernel::Compute(OrtKernelContext* context) {}
+void TestCustomKernel::Compute(OrtKernelContext* context) {
+    ORT_UNUSED_PARAMETER(context);
+}
 
 //
 // TestCustomOp 
@@ -31,5 +33,6 @@ void TestCustomKernel::Compute(OrtKernelContext* context) {}
 TestCustomOp::TestCustomOp() {}
 
 void* TestCustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { 
+    ORT_UNUSED_PARAMETER(api);
     return new TestCustomKernel(info);
 }
