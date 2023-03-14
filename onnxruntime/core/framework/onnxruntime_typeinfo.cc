@@ -22,8 +22,8 @@ using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
 using onnxruntime::Float8E4M3FN;
 using onnxruntime::Float8E4M3FNUZ;
-using onnxruntime::FloatE5M2;
-using onnxruntime::FloatE5M2FNUZ;
+using onnxruntime::Float8E5M2;
+using onnxruntime::Float8E5M2FNUZ;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif

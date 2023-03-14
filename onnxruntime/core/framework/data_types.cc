@@ -618,7 +618,9 @@ ORT_REGISTER_TENSOR_TYPE(uint64_t);
 ORT_REGISTER_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_TENSOR_TYPE(Float8E4M3FN);
+ORT_REGISTER_TENSOR_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_TENSOR_TYPE(Float8E5M2);
+ORT_REGISTER_TENSOR_TYPE(Float8E5M2FNUZ);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int32_t);
@@ -667,7 +669,9 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(std::string);
 ORT_REGISTER_SEQ_TENSOR_TYPE(MLFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(BFloat16);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E4M3FN);
+ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E5M2);
+ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E5M2FNUZ);
 
 #if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
@@ -690,7 +694,9 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);   \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);    \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FN);    \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2);
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FNUZ);  \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2FNUZ);
 
 ORT_REGISTER_OPTIONAL_ORT_TYPE(Tensor)
 ORT_REGISTER_OPTIONAL_ORT_TYPE(TensorSeq)
@@ -748,7 +754,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(BFloat16, reg_fn);
   REGISTER_TENSOR_PROTO(Float8E4M3FN, reg_fn);
+  REGISTER_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_TENSOR_PROTO(Float8E5M2, reg_fn);
+  REGISTER_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
@@ -766,7 +774,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(BFloat16, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E4M3FN, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
 #endif
 
 #if !defined(DISABLE_ML_OPS)
@@ -795,7 +805,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(MLFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(BFloat16, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float8E4M3FN, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float8E5M2, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
 
 #if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
@@ -819,7 +831,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FN, reg_fn);    \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn);
 
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(Tensor, reg_fn);
   REGISTER_OPTIONAL_PROTO_ORT_TYPE(TensorSeq, reg_fn);
@@ -872,8 +886,12 @@ const char* DataTypeImpl::ToString(MLDataType type) {
         return "bfloat16";
       case TensorProto_DataType_Float8E4M3FN:
         return "Float8E4M3FN";
+      case TensorProto_DataType_Float8E4M3FNUZ:
+        return "Float8E4M3FNUZ";
       case TensorProto_DataType_Float8E5M2:
         return "Float8E5M2";
+      case TensorProto_DataType_Float8E5M2FNUZ:
+        return "Float8E5M2FNUZ";
       default:
         break;
     }
@@ -931,8 +949,12 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
     case TensorProto_DataType_Float8E4M3FN:
       return DataTypeImpl::GetTensorType<Float8E4M3FN>()->AsTensorType();
+    case TensorProto_DataType_Float8E4M3FNUZ:
+      return DataTypeImpl::GetTensorType<Float8E4M3FNUZ>()->AsTensorType();
     case TensorProto_DataType_Float8E5M2:
       return DataTypeImpl::GetTensorType<Float8E5M2>()->AsTensorType();
+    case TensorProto_DataType_Float8E5M2FNUZ:
+      return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>()->AsTensorType();
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
   }
@@ -970,8 +992,12 @@ const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int t
       return DataTypeImpl::GetSequenceTensorType<BFloat16>()->AsSequenceTensorType();
     case TensorProto_DataType_Float8E4M3FN:
       return DataTypeImpl::GetSequenceTensorType<Float8E4M3FN>()->AsSequenceTensorType();
+    case TensorProto_DataType_Float8E4M3FNUZ:
+      return DataTypeImpl::GetSequenceTensorType<Float8E4M3FNUZ>()->AsSequenceTensorType();
     case TensorProto_DataType_Float8E5M2:
       return DataTypeImpl::GetSequenceTensorType<Float8E5M2>()->AsSequenceTensorType();
+    case TensorProto_DataType_Float8E5M2FNUZ:
+      return DataTypeImpl::GetSequenceTensorType<Float8E5M2FNUZ>()->AsSequenceTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sequence tensor type ", type, " is not supported");
   }
@@ -1010,8 +1036,12 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       return DataTypeImpl::GetSparseTensorType<BFloat16>()->AsSparseTensorType();
     case TensorProto_DataType_Float8E4M3FN:
       return DataTypeImpl::GetSparseTensorType<Float8E4M3FN>()->AsSparseTensorType();
+    case TensorProto_DataType_Float8E4M3FNUZ:
+      return DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>()->AsSparseTensorType();
     case TensorProto_DataType_Float8E5M2:
       return DataTypeImpl::GetSparseTensorType<Float8E5M2>()->AsSparseTensorType();
+    case TensorProto_DataType_Float8E5M2FNUZ:
+      return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>()->AsSparseTensorType();
     default:
       ORT_NOT_IMPLEMENTED("sparse tensor type ", type, " is not supported");
   }

@@ -29,6 +29,10 @@ ToONNXTensorElementDataType(ONNX_NAMESPACE::TensorProto_DataType data_type) {
     case TensorType::TensorProto_DataType_COMPLEX64:       { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64;    }   // complex with float32 real and imaginary components
     case TensorType::TensorProto_DataType_COMPLEX128:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;   }   // complex with float64 real and imaginary components
     case TensorType::TensorProto_DataType_BFLOAT16:        { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;     }   // Non-IEEE floating-point format based on IEEE754 single-precision
+    case TensorType::TensorProto_DataType_FLOAT8E4M3FN:    { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; }   // Non-IEEE floating-point format based on IEEE754 single-precision
+    case TensorType::TensorProto_DataType_FLOAT8E4M3FNUZ:  { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ; } // Non-IEEE floating-point format based on IEEE754 single-precision
+    case TensorType::TensorProto_DataType_FLOAT8E5M2:      { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;   }   // Non-IEEE floating-point format based on IEEE754 single-precision
+    case TensorType::TensorProto_DataType_FLOAT8E5M2FNUZ:  { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; } // Non-IEEE floating-point format based on IEEE754 single-precision
     default:                                               { return ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;    }
   }
 }
