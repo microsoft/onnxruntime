@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <variant>
-
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
