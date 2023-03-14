@@ -61,7 +61,8 @@ void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
 
 Status ModelBuilder::Prepare() {
   RETURN_STATUS_ON_ERROR(nnapi_.ANeuralNetworksModel_create(&nnapi_model_->model_));
-  // uncomment the following line to set the execution preference to [low power, fast single answer, low latency]
+  // Uncomment the following line to set the execution preference to
+  // [PREFER_SUSTAINED_SPEED, PREFER_FAST_SINGLE_ANSWER, PREFER_LOW_POWER]
   // SetExecutePreference(android::nn::wrapper::ExecutePreference::PREFER_SUSTAINED_SPEED);
   PreprocessNodeUnits();
   GetAllQuantizedOpInputs();
@@ -542,21 +543,23 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
     bool all_ops_supported = std::all_of(supported_ops, supported_ops + num_nnapi_ops_,
                                          [](bool is_supported) { return is_supported; });
-    // TODO allowing fall back to cpu if it's not strict CPU_DISABLED mode
+    // TODO, To allow fallback to CPU if it's not strict CPU_DISABLED mode
     if (!all_ops_supported) {
       // There are some ops not supported by the list of the target devices
       // Fail the Compile
       //
       // TODO, add some logic to not fail for some cases
-      // Such as, if there are some acceptable fall back to cpu (nnapi-reference)
-      // and cpu is not in the target devices list
+      // Such as, if there are some acceptable fall back to CPU (nnapi-reference)
+      // and CPU is not in the target devices list
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                             "The model cannot run using current set of target devices, ",
+                             "The model cannot run using the current set of target devices, ",
                              GetDevicesDescription(nnapi_target_devices_));
     }
 
-    // workaround for bugs in NNAPI drives on some phones.
-    // sometimes ops are passed checking but failed at compilation.
+    // Workaround bugs in NNAPI drives on some phones
+    // where ops are passed checking by 'ANeuralNetworksModel_getSupportedOperationsForDevices'
+    // but failed at compilation.
+    // ANeuralNetworksCompilation_create allows falling back to CPU if compilation fails
     if (target_device_option_ != TargetDeviceOption::ALL_DEVICES) {
       use_create_for_devices = true;
     }
@@ -599,11 +602,12 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
     LOGS_DEFAULT(VERBOSE) << total_ops << " Ops [" << fallback_op_detail << "] out of " << num_nnapi_ops_
                           << " are falling-back to " << kNnapiCpuDeviceName << ", and ["
-                          << normal_op_detail << "] are running in accelerators.";
+                          << normal_op_detail << "] is running in accelerators.";
   }
 #endif
-  // When calling ANeuralNetworksCompilation_createForDevices,
-  // the CPU implementation is not used to handle the failure cases for model compilation and execution.
+  // If an op is supported and assigned to a device, it will be compiled by that device.
+  // An internal compiling error will lead to the whole compilation process failure.
+  // However, ANeuralNetworksCompilation_create will fall back to CPU if compilation fails.
   if (use_create_for_devices) {
     RETURN_STATUS_ON_ERROR_WITH_NOTE(
         nnapi_.ANeuralNetworksCompilation_createForDevices(

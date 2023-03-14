@@ -106,10 +106,10 @@ class ModelBuilder {
   int32_t GetEffectiveFeatureLevel() const { return nnapi_effective_feature_level_; }
 
 #ifndef NDEBUG
-  // Set the node index to be tracked for debugging
-  // For now, NNAPI is a black box, LOGs are limited and it's hard to debug.
+  // Set the node index to be tracked
+  // For now, NNAPI is a black box, LOGs are limited and this EP is hard to debug.
   // ONNX node and NNAPI node are not a 1:1 mapping, like batch-normalization.
-  // We use this to track a specific onnx node which we are processing and record the detail mapping relationship.
+  // We use this to track a specific ONNX node which we are processing and record the detail mapping relationship.
   // So we can log out each NNAPI OP status during model-building and compiling.
   void SetDebugTrackNode(const size_t node_index) {
     track_node_index_ = node_index;
@@ -159,20 +159,22 @@ class ModelBuilder {
   gsl::span<const DeviceWrapper> nnapi_target_devices_;
 
   const TargetDeviceOption target_device_option_;
-  // feature_level, to decide if we can run this node on NNAPI
+  // The effective feature_level, which decides if we can run this node on NNAPI
+  // We are not gonna use CPU even it has a higher feature level
   int32_t nnapi_effective_feature_level_ = 0;
   // The number of nnapi operations in this model
   size_t num_nnapi_ops_ = 0;
   uint32_t next_index_ = 0;
 
 #ifndef NDEBUG
-  // tracking current node index for debugging
+  // To track and record current node index for debugging
   size_t track_node_index_ = 0;
-  // recording onnx node index and nnapi operation index.
-  // An onnx node might be decomposed into multiple nnapi operations
+  // <ONNX node index ,nnapi operation index>
+  // An ONNX node might be decomposed into multiple nnapi operations
+  // <1,1> <1,2> <1,3>
   InlinedVector<std::pair<size_t, int32_t>> operations_recorder_;
 #endif
-  // Convert the onnx model to ANeuralNetworksModel
+  // Convert the ONNX model to ANeuralNetworksModel
   common::Status Prepare();
 
   // If a NNAPI operation will use initializers directly, we will add the initializers to the skip list
