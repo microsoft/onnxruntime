@@ -120,7 +120,7 @@ std::string GetDevicesDescription(gsl::span<const DeviceWrapper> devices) {
   return nnapi_target_devices_detail;
 }
 
-// Get devices-set first and then get the max feature level supported by target devices
+// Get target devices first and then get the max feature level supported by target devices
 // return -1 if failed.  It's not necessary to handle the error here, because level=-1 will refuse all ops
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option) {
   InlinedVector<DeviceWrapper> nnapi_target_devices;
