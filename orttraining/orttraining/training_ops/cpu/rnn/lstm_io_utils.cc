@@ -318,9 +318,9 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   grad_peephole_weights = dP ? dP->MutableDataAsSpan<T>() : gsl::span<T>();
 }
 
-template class LSTMInputs<float>;
-template class LSTMOutputs<float>;
-template class LSTMGradInputs<float>;
-template class LSTMGradOutputs<float>;
+template struct LSTMInputs<float>;
+template struct LSTMOutputs<float>;
+template struct LSTMGradInputs<float>;
+template struct LSTMGradOutputs<float>;
 
 }  // namespace onnxruntime::lstm

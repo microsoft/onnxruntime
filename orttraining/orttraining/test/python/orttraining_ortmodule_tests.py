@@ -150,7 +150,7 @@ def run_pytorch_export_contrib_ops_tests(cwd, log):
     run_subprocess(command, cwd=cwd, log=log).check_returncode()
 
 
-def run_lstm_training_ops_tests(cwd, log):
+def run_lstm_training_op_tests(cwd, log):
     log.debug("Running: LSTM Training Ops Tests")
 
     command = [sys.executable, "-m", "pytest", "-sv", "orttraining_test_lstm.py"]
