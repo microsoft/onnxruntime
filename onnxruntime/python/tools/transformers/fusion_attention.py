@@ -586,10 +586,8 @@ class FusionAttention(Fusion):
                 ],
                 output_name_to_node,
             )
-#        if mask_nodes is None:
-#            logger.debug("fuse_attention: failed to match mask path")
-#            return
 
+        # ViT models have no mask nodes, so only do them for models that have them
         if mask_nodes is not None and len(mask_nodes) > 1 and mask_nodes[0].op_type == "Mul":
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
