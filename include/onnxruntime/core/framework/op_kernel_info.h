@@ -43,8 +43,8 @@ class OpKernelInfo : public OpNodeProtoHelper<ProtoHelperNodeContext> {
 
   const onnxruntime::Node& node() const noexcept;
 
-  bool IsConstantInput(int input_index) const;
   bool TryGetConstantInput(int input_index, const Tensor** constant_input_value) const;
+
   bool TryGetConstantInput(int input_index, const OrtValue** constant_input_value) const;
 
  private:
