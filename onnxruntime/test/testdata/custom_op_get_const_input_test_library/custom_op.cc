@@ -3,7 +3,7 @@
 #include "custom_op.h"
 #include "common.h"
 
-void assert(const bool cond, const std::string& text)
+void simple_assert(const bool cond, const std::string& text)
 {
     if (!cond)
     {
@@ -21,13 +21,13 @@ TestCustomKernel::TestCustomKernel(const OrtKernelInfo* info)
         Ort::ConstValue const_input = kinfo.GetTensorConstantInput(i, &is_constant);
         if (is_constant) {
             const float* value  = const_input.GetTensorData<float>();
-            assert(value[0] == 1.0, "wrong value");
-            assert(value[1] == 2.0, "wrong value");
-            assert(value[2] == 3.0, "wrong value");
-            assert(value[3] == 4.0, "wrong value");
+            simple_assert(value[0] == 1.0, "wrong value");
+            simple_assert(value[1] == 2.0, "wrong value");
+            simple_assert(value[2] == 3.0, "wrong value");
+            simple_assert(value[3] == 4.0, "wrong value");
         }
     }
-    assert(is_constant == 1, "should be constant input");
+    simple_assert(is_constant == 1, "should be constant input");
 }
 
 void TestCustomKernel::Compute(OrtKernelContext* context) {
