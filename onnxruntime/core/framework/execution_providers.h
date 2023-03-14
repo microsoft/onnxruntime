@@ -65,6 +65,11 @@ class ExecutionProviders {
     return exec_providers_[it->second].get();
   }
 
+  IExecutionProvider* Get(int index) const {
+    assert(index >= 0 && index < exec_providers_.size());
+    return exec_providers_[index].get();
+  }
+
   bool Empty() const { return exec_providers_.empty(); }
 
   size_t NumProviders() const { return exec_providers_.size(); }

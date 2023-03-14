@@ -529,6 +529,10 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
   return execution_providers_.Add(provider_type, p_exec_provider);
 }
 
+IExecutionProvider* InferenceSession::GetExecutionProviderFromEnv(int index) { 
+    return environment_.GetExecutionProvider(index); 
+}
+
 // Custom Op support
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 common::Status InferenceSession::AddCustomOpDomains(gsl::span<OrtCustomOpDomain* const> op_domains) {

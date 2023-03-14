@@ -494,6 +494,8 @@ class InferenceSession {
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
 
+  IExecutionProvider* GetExecutionProviderFromEnv(int index);
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 

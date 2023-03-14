@@ -798,12 +798,20 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                        const ProviderOptionsMap& provider_options_map) {
-  ORT_UNUSED_PARAMETER(provider_options_map);
-
   for (const std::string& type : provider_types) {
-    auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
-    if (ep)
-      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
+    int ep_global_index = -1;
+    ProviderOptionsMap::const_iterator it = provider_options_map.find(type);
+    ProviderOptions::const_iterator it2 = it->second.find("UseGlobal");  // TODO: Need to do this for C API as well
+    if (it2 != it->second.end()) {
+      ep_global_index = std::stoi(it2->second);
+    }
+    if (ep_global_index >= 0) {
+      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::shared_ptr<onnxruntime::IExecutionProvider>(sess->GetExecutionProviderFromEnv(ep_global_index))));
+    } else {
+      auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
+      if (ep)
+        OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
+    }
   }
 }
 
@@ -940,11 +948,14 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-  m.def(
-      "register_execution_provider", [&env](const SessionOptions& session_options, const std::string& type, const ProviderOptionsMap& provider_options_map) -> void {
+  m.def(  // TODO: Get rid of session_option as parameter?
+      "register_execution_provider", [&env](const SessionOptions& session_options, const std::string& type, const ProviderOptionsMap& provider_options_map) -> int {
         auto ep = CreateExecutionProviderInstance(session_options, type, provider_options_map);
-        if (ep)
+        if (ep) {
             env.AddExecutionProvider(std::move(ep));
+            return static_cast<int>(env.GetExecutionProviderCount()-1);
+        }
+        return -1;
       });
 
 #ifdef USE_OPENVINO

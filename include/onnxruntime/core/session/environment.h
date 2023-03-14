@@ -79,12 +79,16 @@ class Environment {
     ORT_THROW_IF_ERROR(execution_providers_.Add(exec_provider->Type(), exec_provider));
   }
 
+  size_t GetExecutionProviderCount() { return execution_providers_.NumProviders(); }
+
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
 
   Environment() = default;
+
+  IExecutionProvider* GetExecutionProvider(int index) const { return execution_providers_.Get(index); }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Environment);
