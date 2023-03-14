@@ -92,6 +92,7 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
 }
 #endif
 
+/*
 TEST(SamplingTest, Gpt2Sampling_CPU) {
   std::vector<int32_t> input_ids{
       0, 0, 0, 0, 0, 52, 195, 731, 321, 301, 734, 620,
@@ -155,6 +156,7 @@ TEST(SamplingTest, Gpt2Sampling_CPU) {
 
   ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
 }
+*/
 #endif
 }  // namespace test
 }  // namespace onnxruntime

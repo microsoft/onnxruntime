@@ -10,6 +10,7 @@ import onnx
 import sympy
 from onnx import helper, numpy_helper, shape_inference
 from packaging import version
+import pdb
 
 assert version.parse(onnx.__version__) >= version.parse("1.8.0")
 
@@ -316,6 +317,9 @@ class SymbolicShapeInference:
             if self.auto_merge_:
                 unique_dims = list(set(dims))
                 is_int = [is_literal(d) for d in unique_dims]
+                print(unique_dims)
+                #if sum(is_int) > 1:
+                #    pdb.set_trace()
                 assert sum(is_int) <= 1  # if there are more than 1 unique ints, something is wrong
                 if sum(is_int) == 1:
                     int_dim = is_int.index(1)
@@ -852,6 +856,8 @@ class SymbolicShapeInference:
             dims = [self._get_shape(node, i_idx)[d] for i_idx in range(len(node.input)) if self._get_shape(node, i_idx)]
             if all([d == dims[0] for d in dims]):
                 continue
+            #if (node.name == "/model/model/decoder/layers.0/self_attn/Concat_2"):
+            #    pdb.set_trace()
             merged = self._merge_symbols(dims)
             if type(merged) == str:
                 sympy_shape[d] = self.symbolic_dims_[merged] if merged else None
@@ -2298,8 +2304,16 @@ class SymbolicShapeInference:
             assert all([i in self.known_vi_ for i in node.input if i])
             self._onnx_infer_single_node(node)
             known_aten_op = False
+            print(node.name)
             if node.op_type in self.dispatcher_:
-                self.dispatcher_[node.op_type](node)
+                try:
+                    self.dispatcher_[node.op_type](node)
+                except Exception as e:
+                    print(node.op_type)
+                    print(node.name)
+                    print(e)
+                    print("HYere!")
+                    raise e
             elif node.op_type in ["ConvTranspose"]:
                 # onnx shape inference ops like ConvTranspose may have empty shape for symbolic input
                 # before adding symbolic compute for them
@@ -2426,8 +2440,10 @@ class SymbolicShapeInference:
                                         idx = out_shape.index(self._is_shape_contains_none_dim(out_shape))
                                     dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
                                     # only support auto merge for MatMul for dim < rank-2 when rank > 2
+                                    print("Here")
                                     assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
                                     assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
+                                    print("END")
                         elif node.op_type == "Expand":
                             # auto merge for cases like Expand([min(batch, 1), min(seq, 512)], [batch, seq])
                             shapes = [

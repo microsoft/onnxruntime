@@ -31,7 +31,12 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
   ORT_ENFORCE(context != nullptr);
   const Tensor* input_ids = context->Input<Tensor>(0);
   const auto& dims = input_ids->Shape().GetDims();
-  ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  if (this->model_type == IGenerationParameters::kModelTypeWhisper){
+    ORT_ENFORCE(dims.size() == 3, "input_features shall have 3 dimensions. Got ", dims.size());
+  }
+  else {
+    ORT_ENFORCE(dims.size() == 2, "input_ids shall have 2 dimensions. Got ", dims.size());
+  }
   batch_size = static_cast<int>(dims[0]);
 
   // For T5, output sequence starts with decoder_start_token_id, so its sequence length is 1

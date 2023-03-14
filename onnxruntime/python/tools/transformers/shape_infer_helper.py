@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from typing import Dict
-
+import pdb
 # In ORT Package the symbolic_shape_infer.py is in ../tools
 file_path = os.path.dirname(__file__)
 if os.path.exists(os.path.join(file_path, "../tools/symbolic_shape_infer.py")):
@@ -49,9 +49,11 @@ class SymbolicShapeInferenceHelper(SymbolicShapeInference):
 
         count = 0
         while self.run_:
+            print("Here")
             logger.debug(f"shape infer run {count}")
             self.all_shapes_inferred_ = self._infer_impl()
             count += 1
+            print("Done")
             if max_runs > 0 and count >= max_runs:
                 break
 

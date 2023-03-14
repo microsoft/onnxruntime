@@ -39,9 +39,9 @@ class OnnxModel:
             try:
                 if self.shape_infer_helper.infer(dynamic_axis_mapping):
                     return self.shape_infer_helper
-            except:  # noqa
+            except Exception as e:  # noqa
                 self.enable_shape_infer = False  # disable shape inference to suppress same error message.
-                print("failed in shape inference", sys.exc_info()[0])
+                print("failed ina shape inference", sys.exc_info()[0])
 
         return None
 
