@@ -11,11 +11,13 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
+namespace {
+
 /**
  * @brief Compare the input shape with the fully broadcasted output shape.
  *
  * @param full_broadcasted_shape Full broadcasted shape as a baseline to compare.
- * @param target_shape Shape to compare, can have dim value be 1 for broad-cast-able dimension.
+ * @param target_shape Shape to compare, can have a dim value be 1 for broad-cast-able dimension.
  * @return A vector of type DimCompareRet. The size of the vector is the same as full_broadcasted_shape.
  */
 std::vector<DimCompareRet> CompareInputShapeWithOutputShape(const TensorShapeProto* full_broadcasted_shape,
@@ -62,9 +64,10 @@ std::vector<DimCompareRet> CompareInputShapeWithOutputShape(const TensorShapePro
 
   return rets;
 }
+}  // namespace
 
 /**
- * @brief From given TensorShape, update specified dimension with given value.
+ * @brief From the given TensorShape, update the specified dimension with the given value.
  * If no new_dim is provided, the dimension will be removed.
  *
  * @param shape TensorShape used as base shape to modify.
@@ -103,8 +106,7 @@ TensorShapeProto CreateNewShapeWithMergedTwoLeadingDims(const TensorShapeProto* 
 template <bool AreAllOutputShapesEqual>
 bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     const Graph& /*graph*/, const Node& current_node, const ReshapeInfo& info,
-    const std::vector<int>& allowed_input_indices,
-    const logging::Logger& logger,
+    const std::vector<int>& allowed_input_indices, const logging::Logger& logger,
     std::unordered_map<int, std::vector<DimCompareRet>>& propagate_input_config,
     std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name());
@@ -116,13 +118,13 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
   // input_has_dim_1_for_axis = false;
   propagate_input_config.reserve(current_node.InputDefs().size());
 
-  // Here we extend all input shape to have same length as the output shape (e.g. fully broadcasted shape).
+  // Here we extend all input shapes to have the same length as the output shape (e.g. fully broadcasted shape).
   // For each input, we check
   //   1). besides the first two dims, all other dims are equal, and
   //   2). the first two dims are compatible with the output shape.
   //
   // The dims are compatible as long as it meets one of the following conditions:
-  // 1. The first two dims does not exist (e.g. input shape is [1024] and output shape is [2, 16, 1024])
+  // 1. The first two dims do not exist (e.g. input shape is [1024] and output shape is [2, 16, 1024])
   // 2. The first two dims exist, and are equal (e.g. input shape is [2, 16, 1024] and output shape is [2, 16, 1024])
   // 3. [Not Supported] The first two dims exist, and the first dim is 1 (e.g. input shape is [1, 16, 1024] and output
   //    shape is [2, 16, 1024])
@@ -147,7 +149,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     }
 
     if (ret[0] == DimCompareRet::NotExist && ret[1] == DimCompareRet::NotExist) {
-      // Don't need propagate Reshape since the two leading dims to flatten does not ext.
+      // Don't need to propagate Reshape since the two leading dims to flatten do not ext.
       LOG_DEBUG_INFO(logger, "In SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                  ": skip propagating for the input because the merged dims does not exist.");
       continue;
@@ -169,7 +171,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     }
 
     if (AreAllOutputShapesEqual) {
-      // Make sure once Reshape is moved before target node, all its outputs can be correctly be reshaped.
+      // Make sure once Reshape is moved before the target node, all its outputs can be correctly reshaped.
       std::unordered_map<int, int> output_indices;
       for (size_t output_idx = 0; output_idx < current_node.OutputDefs().size(); ++output_idx) {
         if (static_cast<int>(output_idx) == current_node_output_index) {
@@ -190,9 +192,9 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
       }
 
       shape_update_func = [&info](Node& node) -> void {
-        // Loop all outputs of target node, update the shape accordingly.
+        // Loop all outputs of the target node, and update the shape accordingly.
         // For cases AreAllOutputShapesEqual is True, which is handling elementwise ops like (Dropout/Add),
-        // if they have multiple outputs, the output shape are same.
+        // if they have multiple outputs, the output shape is same.
         // We can set the shape for every output easily.
         // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
         for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
@@ -218,7 +220,8 @@ bool MatMulReshapeActor::PreCheck(
   if (allowed_input_indices.size() > 0 && std::find(allowed_input_indices.begin(), allowed_input_indices.end(), 0) !=
                                               allowed_input_indices.end()) {
     LOG_DEBUG_INFO(logger, "Fail MatMulReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": only support propagating reshape for the first input, but it is dis-allowed by intention.");
+                               ": only support propagating reshape for the first input, " +
+                               "but it is dis-allowed by intention.");
     return false;
   }
 
@@ -229,7 +232,7 @@ bool MatMulReshapeActor::PreCheck(
   propagate_input_config.reserve(current_node.InputDefs().size());
 
   // Check limited input shape combinations, supported cases:
-  // 1. First input have rank = 3, second input have rank = 2.
+  // 1. The first input have rank = 3, second input has rank = 2.
   //     Example: [2, 16, 1024] * [1024, 1024], having output shape [2, 16, 1024], merging the first two dims.
 
   auto lhs_input_shape = current_node.InputDefs()[0]->Shape();
@@ -269,14 +272,15 @@ bool LayerNormalizationReshapeActor::PreCheck(
   if (allowed_input_indices.size() > 0 && std::find(allowed_input_indices.begin(), allowed_input_indices.end(), 0) !=
                                               allowed_input_indices.end()) {
     LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
-                               ": only support propagating reshape for the first input, but it is dis-allowed by intention.");
+                               ": only support propagating reshape for the first input, " +
+                               "but it is dis-allowed by intention.");
     return false;
   }
 
   auto axis = static_cast<int64_t>(current_node.GetAttributes().at("axis").i());
   axis = axis < 0 ? axis + current_node.InputDefs()[0]->Shape()->dim_size() : axis;
 
-  // Make sure layer norm's reduction happens after the axis we want to slice.
+  // Make sure the layer norm's reduction happens after the axis we want to slice.
   if (axis < 2) {
     LOG_DEBUG_INFO(logger, "Fail LayerNormalizationReshapeActor::PreCheck for node " + current_node.Name() +
                                ": axis is " + std::to_string(axis) + ", which blocks merging leading two dims.");

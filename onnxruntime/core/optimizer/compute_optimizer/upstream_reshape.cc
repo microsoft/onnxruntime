@@ -12,14 +12,41 @@
 using namespace onnxruntime::optimizer::compute_optimizer;
 namespace onnxruntime {
 
+UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
+    const InlinedHashSet<std::string_view>& compatible_execution_providers) noexcept
+    : UpStreamGraphTransformerBase("UpStreamReshapeGraphTransformer", compatible_execution_providers) {
+  allowed_passthrough_ops_.insert({
+      // Things to consider when more operators are added here:
+      // 1. Whether the operator is safe to pass through in terms of computing equivalence.
+      //    If optype is not enough to guarantee the equivalence, we need to add a customized pre-check function.
+      // 2. Should all inputs be allowed when tracking back further (bottom-up);
+      //    if not, add the input index restriction.
+      {GetFullQualifiedOpName("Add", kOnnxDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_14_13_7_6_1)},
+      {GetFullQualifiedOpName("BiasGelu", kMSDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
+      {GetFullQualifiedOpName("Cast", kOnnxDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
+      {GetFullQualifiedOpName("Dropout", kOnnxDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
+      {// Be noted, this is our own implementation of ONNX domain op.
+       GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<LayerNormalizationReshapeActor>(), opset_1)},
+      {GetFullQualifiedOpName("MatMul", kOnnxDomain),
+       OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
+           {}, std::make_shared<MatMulReshapeActor>(), opset_13_9_1)},
+  });
+}
+
 bool UpStreamReshapeGraphTransformer::UpStreamInternal(
-    Graph& graph,
-    std::deque<ReshapeInfo>& queue,
-    Node& current_node,
-    ReshapeInfo& info,
+    Graph& graph, std::deque<ReshapeInfo>& queue, Node& current_node, ReshapeInfo& info,
     const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
-    const logging::Logger& logger,
-    const std::string& entry_node_name) const {
+    const logging::Logger& logger, const std::string& entry_node_name) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
   std::unordered_map<int, std::vector<DimCompareRet>> candidate_input_indices;
@@ -99,13 +126,8 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
 }
 
 ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
-    Graph& graph,
-    Node& reshape_node,
-    Node& current_node,
-    int current_node_input_index,
-    ReshapeInfo& info,
-    std::vector<DimCompareRet>& dim_compare_rets,
-    const logging::Logger& logger) const {
+    Graph& graph, Node& reshape_node, Node& current_node, int current_node_input_index,
+    ReshapeInfo& info, std::vector<DimCompareRet>& dim_compare_rets, const logging::Logger& logger) const {
   LOG_DEBUG_INFO(logger, "PropagateReshapeForInput for Node " + current_node.Name() + "(" + current_node.OpType() +
                              ") with input index " + std::to_string(current_node_input_index));
 
@@ -121,7 +143,7 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   // The first reshape op's data input should be current_node's current_node_input_index-th input.
   input_args.push_back(current_node.MutableInputDefs()[current_node_input_index]);
 
-  // Prepare the target shape initializer. (Currently only constant target shape is supported.)
+  // Prepare the target shape initializer. (Currently, only constant target shape is supported.)
   std::vector<int64_t> new_shape;
   new_shape.push_back(-1);
   auto input_shape = current_node.MutableInputDefs()[current_node_input_index]->Shape();
@@ -165,7 +187,7 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
 
   new_reshape_node->SetExecutionProviderType(reshape_node.GetExecutionProviderType());
 
-  // Set correct shape for new created node.
+  // Set the correct shape for newly created node.
   auto new_reshape_out_arg = new_reshape_node->MutableOutputDefs()[new_reshape_output_index_to_connect];
   new_reshape_out_arg->SetShape(CreateNewShapeWithMergedTwoLeadingDims(new_reshape_out_arg->Shape(),
                                                                        info.last_dim));
@@ -174,11 +196,8 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   return new_reshape_info;
 }
 
-Status UpStreamReshapeGraphTransformer::RemoveOriginReshapeOp(Graph& graph,
-                                                              Node& reshape_node,
-                                                              Node& current_node,
-                                                              const logging::Logger& logger,
-                                                              ReshapeInfo& info) const {
+Status UpStreamReshapeGraphTransformer::RemoveOriginReshapeOp(
+    Graph& graph, Node& reshape_node, Node& current_node, const logging::Logger& logger, ReshapeInfo& info) const {
   LOG_DEBUG_INFO(logger, "RemoveOriginReshapeOp target_node " + current_node.Name() + "(" + current_node.OpType() +
                              ") reshape_node " + reshape_node.Name() + "(" + reshape_node.OpType() + ")");
 
@@ -208,9 +227,7 @@ Status UpStreamReshapeGraphTransformer::RemoveOriginReshapeOp(Graph& graph,
 }
 
 std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstream(
-    Graph& graph,
-    Node& node,
-    const logging::Logger& logger) const {
+    Graph& graph, Node& node, const logging::Logger& logger) const {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
     return std::nullopt;
   }

@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// The optimization here ideally is applicable to both training and inferencing,
-// while so far we mainly validate on training during cooking the optimization.
+// The optimization here ideally applies to both training and inference,
+// while so far we mainly validate training during cooking the optimization.
 #ifdef ENABLE_TRAINING_CORE
 #pragma once
 
@@ -13,8 +13,9 @@ namespace onnxruntime::optimizer::compute_optimizer {
 /**
  * @brief Struct to hold the information of the reshape operations.
  *
- * Initially, an instance of this class for entry node is created, as the Reshape op propagates to entry node's inputs,
- * more instances of this class are created. The propagation stops when the all inputs are not supported to be reshaped.
+ * Initially, an instance of this class for the entry node is created, as the Reshape op propagates
+ * to the entry node's inputs, more instances of this class are created. The propagation stops when
+ * all inputs are not supported to be reshaped.
  */
 struct ReshapeInfo : public UpstreamOperatorInfoBase {
   static constexpr int kDataInputIndex = 0;
@@ -56,13 +57,13 @@ enum class DimCompareRet {
 };
 
 /**
- * @brief Base class for all pass through actors.
+ * @brief Base class for all passthrough actors.
  *
- * Each actors defines rules to determine whether a node can be passed through, and post
- * process after pass through.
+ * Each actor defines rules to determine whether a node can be passed through, and post
+ * process after passthrough.
  * PreCheck is the interface to check whether a node can be passed through.
- * The pass through is done transparently, without any interface required to implemented.
- * PostProcess is the interface to do some adaptor work after the pass through.
+ * The passthrough is done transparently, without any interface required to implement.
+ * PostProcess is the interface to do some adaptor work after the passthrough.
  */
 class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
  public:
@@ -77,8 +78,8 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
    * @param graph The graph that the node belongs to.
    * @param current_node The node to be checked.
    * @param info The reshape info of the Reshape node.
-   * @param allowed_input_indices The input indices explicitly specified of the current_node
-   * that are allowed to do pass through.
+   * @param allowed_input_indices The input indices explicitly specified the current_node
+   * that are allowed to pass through.
    * @param propagate_input_config: Used as a return value - a map of input index to the input's dim compare result.
    *  The key is an integer, which is the index of the input of the current_node.
    *  The value is a vector of DimCompareRet.
@@ -91,12 +92,12 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
                         std::function<void(Node& node)>& shape_update_func) = 0;
 
   /**
-   * @brief After reshape op pass through all inputs, do some post process work.
+   * @brief After the reshape op pass through all inputs, do some post-process work.
    *
    * Be noted: at this point, reshape op is already removed, so we cannot access ReshapeInfo directly, instead,
    * we pass important infos as parameters of this function.
    *
-   * So far, we don't have requirements override PostProcess function.
+   * So far, we don't have requirements to override PostProcess function.
    *
    */
   bool PostProcess(Graph& /*graph*/, Node& /*current_node*/, int /*current_node_output_index*/,
@@ -108,8 +109,8 @@ class UpStreamReshapeOperatorActorBase : public UpStreamOperatorActorBase {
   }
 };
 
-// The inputs are broad-cast-able. The outputs should have same shape (fully broadcasted shape)
-// If an operator cannot meet this requirements, we need add specialized actor for it.
+// The inputs are broad-cast-able. The outputs should have the same shape (fully broadcasted shape)
+// If an operator cannot meet these requirements, we need to add specialized actor for it.
 template <bool AreAllOutputShapesEqual>
 class SimplePointwiseReshapeActor : public UpStreamReshapeOperatorActorBase {
  public:
@@ -148,7 +149,7 @@ class LayerNormalizationReshapeActor : public UpStreamReshapeOperatorActorBase {
 };
 
 /**
- * @brief From given TensorShape, update specified dimension with given value.
+ * @brief From the given TensorShape, update the specified dimension with the given value.
  * If no new_dim is provided, the dimension will be removed.
  *
  * @param shape TensorShape used as base shape to modify.
