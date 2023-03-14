@@ -122,16 +122,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     const int batches = attn.batch_size * attn.num_heads;
     const int present_size_per_batch = attn.total_sequence_length * attn.head_size;
     ORT_RETURN_IF_ERROR(
-      LaunchConcatPastToPresent(Stream(context),
-                                attn.total_sequence_length,
-                                attn.sequence_length,
-                                attn.batch_size,
-                                attn.head_size,
-                                attn.num_heads,
-                                device_prop.maxThreadsPerBlock,
-                                nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
-                                k_buffer,
-                                reinterpret_cast<HipT*>(present->MutableDataRaw())));
+        LaunchConcatPastToPresent(Stream(context),
+                                  attn.total_sequence_length,
+                                  attn.sequence_length,
+                                  attn.batch_size,
+                                  attn.head_size,
+                                  attn.num_heads,
+                                  device_prop.maxThreadsPerBlock,
+                                  nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
+                                  k_buffer,
+                                  reinterpret_cast<HipT*>(present->MutableDataRaw())));
 
     // update pointers to present_k and present_v.
     k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
