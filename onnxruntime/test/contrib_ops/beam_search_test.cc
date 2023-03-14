@@ -13,7 +13,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-/*
 TEST(BeamSearchTest, GptBeamSearchFp32) {
   std::vector<int64_t> input_ids_shape{3, 12};
   std::vector<int32_t> input_ids{
@@ -350,7 +349,5 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
     ASSERT_TRUE(std::equal(expected_output.cbegin(), expected_output.cend(), result_span.begin(), result_span.end()));
   }
 }
-*/
-
 }  // namespace test
 }  // namespace onnxruntime
