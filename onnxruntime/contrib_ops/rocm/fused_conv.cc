@@ -23,11 +23,12 @@ miopenStatus_t _miopenAddTensor(
     void* C,
     const void* zero_scalar) {
   const miopenTensorOp_t tensorOp = miopenTensorOpAdd;
-  // opnd2 = Add ( 0.0 * opnd0, alpha * opnd1 ) + alpha * opnd2
+  // Using miopenOpTensor to implement Add operator.
+  // opnd2 = Add ( 0.0 * opnd0, alpha * opnd1 ) + beta * opnd2
   return miopenOpTensor(handle, tensorOp,
                         zero_scalar, cDesc, C,
                         alpha, aDesc, A,
-                        alpha, cDesc, C);
+                        beta, cDesc, C);
 }
 
 }  // namespace
