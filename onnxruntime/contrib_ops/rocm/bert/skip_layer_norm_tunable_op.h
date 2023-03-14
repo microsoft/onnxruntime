@@ -85,28 +85,32 @@ Status SkipLayerNormStaticSelection(const SkipLayerNormParams<T>* params) {
         params->ld, params->input, params->skip, params->beta, params->gamma, params->bias, \
         maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output, \
         hasBias, hasSkipInputBiasAdditionOutput);                                           \
-    return HIP_CALL(hipPeekAtLastError());                                                  \
+    break;                                                                                  \
   }
   if (0 == (params->ld % 4)) {
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(32, 32, 1)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(64, 32, 2)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(128, 32, 4)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(384, 96, 4)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(768, 192, 4)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(1024, 256, 4)
+    do {
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(32, 32, 1)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(64, 32, 2)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(128, 32, 4)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(384, 96, 4)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(768, 192, 4)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(1024, 256, 4)
 
-    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
-        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-        maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
+      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
+          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
+    } while (0);
   } else {
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(32, 32, 1)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(64, 64, 1)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(128, 128, 1)
-    LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(384, 384, 1)
+    do {
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(32, 32, 1)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(64, 64, 1)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(128, 128, 1)
+      LAUNCH_SKIPLAYERNORM_SMALL_FORWARD(384, 384, 1)
 
-    SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
-        params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
-        maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
+      SkipLayerNormKernel<T, block_size><<<grid_size, block_size, 0, params->stream>>>(
+          params->ld, params->input, params->skip, params->beta, params->gamma, params->bias,
+          maybe2half<T>(params->epsilon), params->output, params->skip_input_bias_add_output);
+    } while (0);
   }
   return HIP_CALL(hipPeekAtLastError());
 }  // namespace rocm
