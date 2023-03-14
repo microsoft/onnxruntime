@@ -151,12 +151,12 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLogisticActivation> {
         // then replace result with 1 - f[-z] if x >= 0.
         const float16x8_t vz = vabsq_f16(vx);
 
-        // Compute reduced argument n := round(-z / log(2)).
-        // We do it by adding a large number (magic bias) to the product z * (-1/log(2)), which
+        // Compute reduced argument n := round(-z / ln2).
+        // We do it by adding a large number (magic bias) to the product z * (-1/ln2), which
         // cause rounding of the result to an integer, then subtracing the large number back. The
         // first addition is combined with multiplication by -log2e into a single FMA instruction.
         // The trick with adding large number is valid only within certain bounds
-        // (|-x / log(2)| <= 2**9, i.e. |z| <= 0x1.630p+8 = 355.0), but that is acceptable, because
+        // (|-x / ln2| <= 2**9, i.e. |z| <= 0x1.630p+8 = 355.0), but that is acceptable, because
         // inputs outside of [-9.703125, 8.3125] (i.e. z outside [0, 9.703125]) underflow or
         // saturate sigmoidh(x). We fixup the result for such inputs at the very end of the
         // algorithm.
@@ -166,12 +166,12 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLogisticActivation> {
         // underflow, i.e. -9.703125 <= -z <= 0.0, and -14 <= n <= 0 accordingly.
         const float16x8_t vs = vreinterpretq_f16_s16(vshlq_n_s16(vreinterpretq_s16_f16(vn), 10));
 
-        // Subtract the large number back to get the final n := round(-z / log(2)) as a
+        // Subtract the large number back to get the final n := round(-z / ln2) as a
         // floating-point number.
         vn = vsubq_f16(vn, vmagic_bias_16x8);
 
         // Compute reduced argument t := z - n * log(2). Note that -t = -z - n * log(2).
-        // Use Cody-Waite range reduction method (note two constants to represent -log(2)) to
+        // Use Cody-Waite range reduction method (note two constants to represent -ln(2)) to
         // improve accuracy.
         float16x8_t vt = vfmaq_f16(vz, vn, vln2_hi_16x8);
         vt = vfmaq_f16(vt, vn, vln2_lo_16x8);
@@ -218,12 +218,12 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLogisticActivation> {
         // then replace result with 1 - f[-z] if x >= 0.
         const float16x4_t vz = vabs_f16(vx);
 
-        // Compute reduced argument n := round(-z / log(2)).
-        // We do it by adding a large number (magic bias) to the product z * (-1/log(2)), which
+        // Compute reduced argument n := round(-z / ln2).
+        // We do it by adding a large number (magic bias) to the product z * (-1/ln2), which
         // cause rounding of the result to an integer, then subtracing the large number back. The
         // first addition is combined with multiplication by -log2e into a single FMA instruction.
         // The trick with adding large number is valid only within certain bounds
-        // (|-x / log(2)| <= 2**9, i.e. |z| <= 0x1.630p+8 = 355.0), but that is acceptable, because
+        // (|-x / ln2| <= 2**9, i.e. |z| <= 0x1.630p+8 = 355.0), but that is acceptable, because
         // inputs outside of [-9.703125, 8.3125] (i.e. z outside [0, 9.703125]) underflow or
         // saturate sigmoidh(x). We fixup the result for such inputs at the very end of the
         // algorithm.
@@ -233,12 +233,12 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLogisticActivation> {
         // underflow, i.e. -9.703125 <= -z <= 0.0, and -14 <= n <= 0 accordingly.
         const float16x4_t vs = vreinterpret_f16_s16(vshl_n_s16(vreinterpret_s16_f16(vn), 10));
 
-        // Subtract the large number back to get the final n := round(-z / log(2)) as a
+        // Subtract the large number back to get the final n := round(-z / ln2) as a
         // floating-point number.
         vn = vsub_f16(vn, vmagic_bias_16x4);
 
         // Compute reduced argument t := z - n * log(2). Note that -t = -z - n * log(2).
-        // Use Cody-Waite range reduction method (note two constants to represent -log(2)) to
+        // Use Cody-Waite range reduction method (note two constants to represent -ln2) to
         // improve accuracy.
         float16x4_t vt = vfma_f16(vz, vn, vln2_hi_16x4);
         vt = vfma_f16(vt, vn, vln2_lo_16x4);
