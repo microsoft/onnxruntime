@@ -10,10 +10,12 @@ import sys
 from pathlib import Path
 
 import numpy
+import requests
 import torch
 from affinity_helper import AffinitySetting
 from benchmark_helper import OptimizerInfo, Precision, create_onnxruntime_session
 from huggingface_models import MODEL_CLASSES
+from PIL import Image
 from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
 from transformers import AutoConfig, AutoModelForImageClassification, AutoTokenizer, LxmertConfig, TransfoXLConfig
