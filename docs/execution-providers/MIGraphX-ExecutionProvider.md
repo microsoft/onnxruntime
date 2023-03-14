@@ -30,6 +30,7 @@ Pre-built binaries of ONNX Runtime with MIGraphX EP are published for most langu
 |ONNX Runtime|MIGraphX|
 |---|---|
 |main|5.4|
+|1.14|5.4|
 |1.13|5.4|
 |1.13|5.3.2|
 |1.12|5.2.3|
