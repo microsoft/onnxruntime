@@ -23,7 +23,7 @@ class LSTM:
     - backward_np: computes the LSTM backward pass using numpy
     - backward_ort: computes the LSTM backward pass using ORT
     and two onnx model generation methods:
-    - forward_graph: generates the LSTM forward onnx graph (with the LSTMInternal node)
+    - forward_graph: generates the LSTM forward onnx graph (with the LSTMTraining node)
     - backward_graph: generates the LSTM backward onnx graph (with the LSTMGrad node)
     """
 
@@ -260,7 +260,7 @@ class LSTM:
         )
 
         lstm = helper.make_node(
-            "LSTMInternal",
+            "LSTMTraining",
             inputs=[
                 "X",
                 "W",

@@ -94,7 +94,7 @@ class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1,
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, FakeQuantGrad);
 
 // RNN Kernels
-class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMInternal);
+class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining);
 class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad);
 
 // the kernels within the following ifdef are not included in a build with
@@ -218,7 +218,7 @@ Status RegisterCpuTrainingKernels(KernelRegistry& kernel_registry) {
           kCpuExecutionProvider, kMSDomain, 1, float, FakeQuantGrad)>,
 
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
-          kCpuExecutionProvider, kMSDomain, 1, float, LSTMInternal)>,
+          kCpuExecutionProvider, kMSDomain, 1, float, LSTMTraining)>,
       BuildKernelCreateInfo<ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME(
           kCpuExecutionProvider, kMSDomain, 1, float, LSTMGrad)>,
 

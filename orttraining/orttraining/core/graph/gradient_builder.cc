@@ -1896,24 +1896,24 @@ IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
-  // Add inputs of the LSTMInternal node as inputs of the LSTMGrad node
+  // Add inputs of the LSTMTraining node as inputs of the LSTMGrad node
   std::vector<ArgDef> input_args({I(0), I(1), I(2)});
   for (int i = 3; i < GetSrcNodeInputSize(); i++) {
     input_args.push_back(I(i));
   }
 
-  // Add HAll, CAll, IOFC outputs of the LSTMInternal node as inputs of the LSTMGrad node
-  input_args.push_back(O(0));  // all hidden states output of the LSTMInternal node
-  input_args.push_back(O(3));  // all cell states output of the LSTMInternal node
-  input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMInternal node
+  // Add HAll, CAll, IOFC outputs of the LSTMTraining node as inputs of the LSTMGrad node
+  input_args.push_back(O(0));  // all hidden states output of the LSTMTraining node
+  input_args.push_back(O(3));  // all cell states output of the LSTMTraining node
+  input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMTraining node
 
-  // Add gradients of the outputs of the LSTMInternal node as inputs to the LSTMGrad node
-  // Gradients of the outputs of the LSTMInternal node include grad_HAll, grad_HFinal, grad_CFinal
+  // Add gradients of the outputs of the LSTMTraining node as inputs to the LSTMGrad node
+  // Gradients of the outputs of the LSTMTraining node include grad_HAll, grad_HFinal, grad_CFinal
   for (int o = 0; o < 3; ++o) {
     input_args.push_back(GO(o));
   }
 
-  // Add gradients of the LSTMInternal inputs as outputs of the LSTMGrad node
+  // Add gradients of the LSTMTraining inputs as outputs of the LSTMGrad node
   // Outputs are gradients of:
   //   1) X (input tensor)
   //   2) W (weight tensor)

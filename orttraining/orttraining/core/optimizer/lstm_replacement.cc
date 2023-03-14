@@ -41,14 +41,14 @@ Status LSTMReplacement::Apply(Graph& graph, Node& lstm_node, RewriteRuleEffect& 
   NodeArg& iofc = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("iofc"), lstm_input_type);
   lstm_outputs.push_back(&iofc);
 
-  // LSTMInternal should have
+  // LSTMTraining should have 5 outputs
   ORT_ENFORCE(lstm_node.OutputDefs().size() == 5U);
 
   auto lstm_attributes = lstm_node.GetAttributes();
   lstm_attributes.erase("layout");
 
   Node& lstm_internal_node = graph.AddNode(graph.GenerateNodeName(lstm_node.Name() + "_training"),
-                                           "LSTMInternal",
+                                           "LSTMTraining",
                                            "LSTM with extra outputs for needed for gradient computation.",
                                            lstm_inputs,
                                            lstm_outputs,

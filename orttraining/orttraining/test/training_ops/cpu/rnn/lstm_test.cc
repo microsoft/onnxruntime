@@ -12,7 +12,7 @@ TEST(LSTMTest, ForwardCompute) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
   providers.emplace_back(DefaultCpuExecutionProvider());
 
-  OpTester test("LSTMInternal", 1, onnxruntime::kMSDomain);
+  OpTester test("LSTMTraining", 1, onnxruntime::kMSDomain);
 
   const int sequence_length = 2;
   const int batch_size = 2;

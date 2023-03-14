@@ -4282,12 +4282,12 @@ Return true if all elements are true and false otherwise.
         propagateShapeAndTypeFromFirstInput(ctx);
       });
 
-  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMInternal)
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMTraining)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "LSTMInternal is for computing the LSTM cell keeping training in mind. The difference between this "
-          "and the LSTM cell is the extra outputs that LSTMInternal generates: a) all cell states over all sequence steps."
+          "LSTMTraining is for computing the LSTM cell keeping training in mind. The difference between this "
+          "and the LSTM cell is the extra outputs that LSTMTraining generates: a) all cell states over all sequence steps."
           "b) intermediate iofc gate outputs.")
       .Attr(
           "activations",
@@ -4451,9 +4451,9 @@ Return true if all elements are true and false otherwise.
       .Input(5, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
       .Input(6, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
       .Input(7, "P", "Input peephole weight parameters to the LSTM cell.", "T", OpSchema::Optional)
-      .Input(8, "HAll", "Hidden states over all sequence steps output from LSTMInternal.", "T", OpSchema::Optional)
-      .Input(9, "CAll", "Cell states over all sequence steps output from LSTMInternal.", "T", OpSchema::Optional)
-      .Input(10, "iofc", "Intermediate gate computations for all sequence steps output from LSTMInternal.", "T", OpSchema::Optional)
+      .Input(8, "HAll", "Hidden states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(9, "CAll", "Cell states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(10, "iofc", "Intermediate gate computations for all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
       .Input(11, "dHAll", "Gradient of loss with respect to the output Y of the LSTM cell", "T", OpSchema::Optional)
       .Input(12, "dHFinal", "Gradient of loss with respect to the output Y_h of the LSTM cell", "T", OpSchema::Optional)
       .Input(13, "dCFinal", "Gradient of loss with respect to the output Y_c of the LSTM cell", "T", OpSchema::Optional)

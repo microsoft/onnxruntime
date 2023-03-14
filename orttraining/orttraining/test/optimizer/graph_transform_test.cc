@@ -986,7 +986,7 @@ TEST_F(GraphTransformationTests, LSTMReplacement) {
 
   std::map<std::string, int> op_to_count1 = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count1.count("LSTM") && op_to_count1["LSTM"] == 1);
-  ASSERT_FALSE(op_to_count1.count("LSTMInternal"));
+  ASSERT_FALSE(op_to_count1.count("LSTMTraining"));
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("LSTMReplacement");
   ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<LSTMReplacement>()));
@@ -995,7 +995,7 @@ TEST_F(GraphTransformationTests, LSTMReplacement) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count2 = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count2.count("com.microsoft.LSTMInternal") && op_to_count2["com.microsoft.LSTMInternal"] == 1);
+  ASSERT_TRUE(op_to_count2.count("com.microsoft.LSTMTraining") && op_to_count2["com.microsoft.LSTMTraining"] == 1);
 }
 
 class QDQFusionTestsParameterized : public GraphTransformationTests,

@@ -12,9 +12,9 @@ namespace onnxruntime {
 
 This transformer is used when an LSTM model is used for training. Training requires
 extra set of outputs from the LSTM cell that it needs to use during gradient computation.
-So, this transformer will replace the existing LSTM cell with the LSTMInternal cell.
+So, this transformer will replace the existing LSTM cell with the LSTMTraining cell.
 
-The extra set of arguments that the LSTMInternal generates are:
+The extra set of arguments that the LSTMTraining generates are:
 1). Cell states over all the sequence steps needed for gradient computation.
 2). IOFC intermediate gate computations needed for gradient computation.
 
