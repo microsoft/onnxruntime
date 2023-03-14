@@ -18,16 +18,21 @@ Status CheckInputs(const T* query,
                    const T* bias,
                    const T* key_padding_mask,
                    const T* relative_position_bias,
+                   const T* past_key,
+                   const T* past_value,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
+                   float scale,
                    int max_threads_per_block) {
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
+  //     past_key                   : (B, N, S*, H)
+  //     past_value                 : (B, N, S*, H)
   // When no packing for q/k/v:
   //     query            (Q)       : (B, S, D)
-  //     key              (K)       : (B, L, D)
-  //     value            (V)       : (B, L, D_v)
+  //     key              (K)       : (B, L, D) or (B, N, S*, H)
+  //     value            (V)       : (B, L, D_v) or (B, N, S*, H)
   //     bias             (Q/K/V)   : (D + D + D_v)
   // When packed kv is used:
   //     query            (Q)       : (B, S, D)
@@ -39,6 +44,7 @@ Status CheckInputs(const T* query,
   //     key              (K)       : None
   //     value            (V)       : None
   //     bias             (Q/K/V)   : None
+
 
   const auto& query_dims = query->Shape().GetDims();
   if (query_dims.size() != 3 && query_dims.size() != 5) {
@@ -52,6 +58,63 @@ Status CheckInputs(const T* query,
   int head_size = static_cast<int>(hidden_size) / num_heads;
   int kv_sequence_length = sequence_length;
 
+  int past_sequence_length = 0;
+  if (past_key != nullptr && past_value != nullptr) {
+    const auto& past_key_dims = past_key->Shape().GetDims();
+    const auto& past_value_dims = past_value->Shape().GetDims();
+
+    if (past_key_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' is expected to have 4 dimensions, got ",
+                             past_key_dims.size());
+    }
+    if (past_value_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' is expected to have 4 dimensions, got ",
+                             past_value_dims.size());
+    }
+
+    if (past_key_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 0 should be batch_size, got ",
+                             past_key_dims[0]);
+    }
+    if (past_value_dims[0] != batch_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 0 should be batch_size, got ",
+                             past_value_dims[0]);
+    }
+
+    if (past_key_dims[1] != num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 1 should be same as number of heads, got ",
+                             past_key_dims[1]);
+    }
+    if (past_value_dims[1] != num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 1 should be same as number of heads, got ",
+                             past_value_dims[1]);
+    }
+    if (past_key_dims[2] != past_value_dims[2]) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' and 'past_value' shall have same dim 2 (past_sequence_length)");
+    }
+    if (past_key_dims[3] != head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_key' dimension 3 should be same as head_size, got ",
+                             past_key_dims[3]);
+    }
+    if (past_value_dims[3] != head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Input 'past_value' dimension 3 should be same as head_size, got ",
+                             past_value_dims[3]);
+    }
+    past_sequence_length = static_cast<int>(past_key_dims[2]);
+  } else if (past_key != nullptr || past_value != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input 'past_key' and 'past_value' shall be both present or both absent");
+  }
+
   if (key != nullptr) {
     if (query_dims.size() != 3) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 3 dimensions when key is given, got ",
@@ -59,8 +122,8 @@ Status CheckInputs(const T* query,
     }
 
     const auto& key_dims = key->Shape().GetDims();
-    if (key_dims.size() != 3 && key_dims.size() != 5) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3 or 5 dimensions, got ",
+    if (key_dims.size() != 3 && key_dims.size() != 4 && key_dims.size() != 5) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'key' is expected to have 3, 4, or 5 dimensions, got ",
                              key_dims.size());
     }
     if (query_dims[0] != key_dims[0]) {
@@ -73,8 +136,9 @@ Status CheckInputs(const T* query,
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'query' and 'key' shall have same dim 2 (hidden_size)");
       }
-    } else  // if (key_dims.size() == 5)
-    {
+
+      kv_sequence_length = static_cast<int>(key_dims[1]);
+    } else if (key_dims.size() == 5) {
       if (static_cast<int>(key_dims[2]) != num_heads || static_cast<int>(key_dims[3]) != 2 || static_cast<int>(key_dims[4]) != head_size) {
         return ORT_MAKE_STATUS(
             ONNXRUNTIME, INVALID_ARGUMENT,
@@ -83,9 +147,17 @@ Status CheckInputs(const T* query,
       if (value != nullptr) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Expect 'value' be none when 'key' has packed kv format.");
       }
-    }
 
-    kv_sequence_length = static_cast<int>(key_dims[1]);
+      kv_sequence_length = static_cast<int>(key_dims[1]);
+    } else { // key_dims.size() == 4 (cross-attention with past_key)
+      if (static_cast<int>(key_dims[1]) != num_heads || static_cast<int>(key_dims[3]) != head_size) {
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "Expect 'key' shape (batch_size, num_heads, kv_sequence_length, head_size) for past_key");
+      }
+
+      kv_sequence_length = static_cast<int>(key_dims[2]);
+    }
   } else {  // packed QKV
     if (query_dims.size() != 5) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'query' is expected to have 5 dimensions when key is empty, got ",
@@ -128,11 +200,13 @@ Status CheckInputs(const T* query,
     }
   }
 
+  // NOTE: In Cross-Attention, we pass the past key and value to 'key' and 'value' instead of 'past_key' and 'past_value'.
+  bool pass_past_in_kv = false;
   int v_hidden_size = hidden_size;
   if (value != nullptr) {
     const auto& value_dims = value->Shape().GetDims();
-    if (value_dims.size() != 3) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 dimensions, got ",
+    if (value_dims.size() != 3 && value_dims.size() != 4) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'value' is expected to have 3 or 4 dimensions, got ",
                              value_dims.size());
     }
 
@@ -141,13 +215,24 @@ Status CheckInputs(const T* query,
                              "Input 'query' and 'value' shall have same dim 0 (batch_size)");
     }
 
-    if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'key' and 'value' shall have same same dim 1 (kv_sequence_length)");
+    if (value_dims.size() == 3) {
+      if (static_cast<int64_t>(kv_sequence_length) != value_dims[1]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'key' and 'value' shall have the same dim 1 (kv_sequence_length)");
+      }
+      v_hidden_size = static_cast<int>(value_dims[2]);
+    } else { // value_dims.size() == 4
+      if (static_cast<int64_t>(kv_sequence_length) != value_dims[2]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input 'past_key' and 'past_value' shall have the same dim 2 (kv_sequence_length)");
+      }
+      v_hidden_size = static_cast<int>(value_dims[1]) * static_cast<int>(value_dims[3]);
+      pass_past_in_kv = true;
     }
-    v_hidden_size = static_cast<int>(value_dims[2]);
   }
 
+  int total_sequence_length = past_sequence_length + kv_sequence_length;
+  bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -161,6 +246,9 @@ Status CheckInputs(const T* query,
                              "Input 'relative_position_bias' dimension 0 should be batch_size or 1, got ",
                              relative_position_bias_dims[0]);
     }
+    if (relative_position_bias_dims[0] == 1) {
+      broadcast_res_pos_bias = true;
+    }
     if (relative_position_bias_dims[1] != num_heads) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 1 should be same as number of heads, got ",
@@ -171,7 +259,7 @@ Status CheckInputs(const T* query,
                              "Input 'relative_position_bias' dimension 2 should be same as sequence_length, got ",
                              relative_position_bias_dims[2]);
     }
-    if (relative_position_bias_dims[3] != kv_sequence_length) {
+    if (relative_position_bias_dims[3] != total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'relative_position_bias' dimension 3 should be same as total_sequence_length, got ",
                              relative_position_bias_dims[3]);
@@ -182,9 +270,9 @@ Status CheckInputs(const T* query,
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->sequence_length = sequence_length;
-    output_parameters->past_sequence_length = 0;
+    output_parameters->past_sequence_length = past_sequence_length;
     output_parameters->kv_sequence_length = kv_sequence_length;
-    output_parameters->total_sequence_length = kv_sequence_length;
+    output_parameters->total_sequence_length = total_sequence_length;
     output_parameters->max_sequence_length = 0;
     output_parameters->input_hidden_size = 0;
     output_parameters->hidden_size = hidden_size;
@@ -196,7 +284,9 @@ Status CheckInputs(const T* query,
     output_parameters->past_present_share_buffer = false;
     output_parameters->mask_filter_value = mask_filter_value;
     output_parameters->mask_type = mask_type;
-    output_parameters->scale = 0.0f;
+    output_parameters->scale = scale;
+    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    output_parameters->pass_past_in_kv = pass_past_in_kv;
   }
 
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
