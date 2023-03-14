@@ -23,7 +23,7 @@ parameters:
   default: false
 
 stages:
-- stage: MacOS_C_API_Packaging_CPU_individual
+- stage: MacOS_C_API_Packaging_CPU
   dependsOn: []
   jobs:
   - template: mac-packing-jobs.yml
