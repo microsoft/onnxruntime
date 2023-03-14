@@ -245,6 +245,39 @@ Status SessionState::CreateKernels(const KernelRegistryManager& kernel_registry_
   return Status::OK();
 }
 
+void SessionState::PruneRemovableAttributes() {
+  InlinedVector<std::string> removable_attributes;
+  for (size_t i = 0; i < session_kernels_.size(); ++i) {
+    if (session_kernels_[i].get() == nullptr)
+      continue;
+    auto status = session_kernels_[i].get()->GetRemovableAttributes(removable_attributes);
+    if (!status.IsOK()) {
+      const Node& node_const = session_kernels_[i].get()->Node();
+      LOGS(logger_, WARNING) << "failed at retrieving the removable attributes"
+                             << "for node '" << node_const.Name() << "' ('" << node_const.OpType() << "').";
+      continue;
+    }
+    if (removable_attributes.empty())
+      continue;
+    auto index = session_kernels_[i].get()->Node().Index();
+    Node* node = graph_.GetNode(index);
+    int n_removed = node->PruneRemovableAttributes(removable_attributes);
+    if (n_removed == 0)
+      continue;
+    LOGS(logger_, INFO) << "removed " << n_removed << " removable attributes "
+                        << "for node '" << node->Name() << "' ('" << node->OpType() << "'), "
+                        << "among attributes: " << [removable_attributes]() -> std::string{
+                          std::ostringstream os;
+                          for(auto it = removable_attributes.cbegin(); it != removable_attributes.cend(); ++it) {
+                            if (it != removable_attributes.cbegin())
+                              os << ", ";
+                            os << *it;
+                          }
+                          return os.str();
+                        }() << ".";
+  }
+}
+
 const SequentialExecutionPlan* SessionState::GetExecutionPlan() const {
   if (!p_seq_exec_plan_.has_value()) {
     return nullptr;
@@ -1377,10 +1410,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
 
-// Record the allocation plan
+  // Record the allocation plan
 
-// Uncomment the below to dump the allocation plan to std::cout
-// LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // Uncomment the below to dump the allocation plan to std::cout
+  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());

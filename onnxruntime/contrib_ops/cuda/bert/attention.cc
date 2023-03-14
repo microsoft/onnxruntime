@@ -67,9 +67,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
+  // Use the second dimension from weight for bias to get q_hidden_size when bias is nullptr
+  std::vector<int64_t> bias_dims{weights->Shape().GetDims()[1]};
+  const TensorShape bias_shape{bias_dims};
   ORT_RETURN_IF_ERROR(CheckInputs(input->Shape(),
                                   weights->Shape(),
-                                  bias->Shape(),
+                                  bias != nullptr ? bias->Shape() : bias_shape,
                                   mask_index,
                                   past,
                                   relative_position_bias,
@@ -200,18 +203,22 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
-  data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.bias = nullptr == bias ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = nullptr;
   data.key = nullptr;
   data.value = nullptr;
   data.mask_index = (nullptr == mask_index) ? nullptr : mask_index->Data<int>();
   data.mask_index_dims = (nullptr == mask_index) ? gsl::span<const int64_t>() : mask_index->Shape().GetDims();
   data.past = (nullptr == past) ? nullptr : reinterpret_cast<const CudaT*>(past->Data<T>());
+  data.past_key = nullptr;
+  data.past_value = nullptr;
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = (nullptr == present) ? nullptr : reinterpret_cast<CudaT*>(present->MutableData<T>());
+  data.present_key = nullptr;
+  data.present_value = nullptr;
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = nullptr;
   data.use_memory_efficient_attention = use_memory_efficient_attention;

@@ -403,6 +403,7 @@ Status SoftmaxCrossEntropyLossGrad<T1, T2>::Compute(OpKernelContext* context) co
   ONNX_OPERATOR_TWO_TYPED_KERNEL_EX(OpName, kMSDomain, 1, T1, T2, kCpuExecutionProvider,              \
                                     KernelDefBuilder()                                                \
                                         .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())       \
+                                        .TypeConstraint("TOut", DataTypeImpl::GetTensorType<T1>())    \
                                         .TypeConstraint("Tind", DataTypeImpl::GetTensorType<T2>())    \
                                         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>()), \
                                     ClassName<T1, T2>);

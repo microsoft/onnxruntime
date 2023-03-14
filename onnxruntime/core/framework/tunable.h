@@ -190,6 +190,10 @@ class TunableOp {
     this->ops_.emplace_back(std::move(op));
   }
 
+  int NumberOfOps() {
+    return this->ops_.size();
+  }
+
   void RegisterNestedTunableOp(TunableOp<ParamsT, TimerT>* op_ptr) {
     nested_tunable_ops_.insert(op_ptr);
 

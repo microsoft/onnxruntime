@@ -42,6 +42,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
   disable_fused_self_attention_ = sizeof(T) != 2 ||
                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
@@ -73,6 +75,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* past_key = context->Input<Tensor>(6);
+  const Tensor* past_value = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -82,9 +86,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       bias,
                                                                       key_padding_mask,
                                                                       relative_position_bias,
+                                                                      past_key,
+                                                                      past_value,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
+                                                                      scale_,
                                                                       device_prop.maxThreadsPerBlock));
 
   int sequence_length = parameters.sequence_length;
@@ -94,6 +101,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[1] = static_cast<int64_t>(sequence_length);
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
+
+  std::vector<int64_t> present_dims{
+    parameters.batch_size, parameters.num_heads, parameters.total_sequence_length, parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
 
   MHARunner* fused_runner = nullptr;
 
@@ -107,6 +120,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
                                    nullptr == relative_position_bias &&
+                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                                    key != nullptr &&
                                    (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
@@ -128,6 +142,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           fused_cross_attention_kernel == nullptr &&
                           nullptr == relative_position_bias &&
                           (value != nullptr || key == nullptr) &&
+                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -195,16 +210,22 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.gemm_buffer = nullptr;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = (nullptr == key) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = (nullptr == value) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.key = (nullptr == key || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (nullptr == value || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
+  data.past_key = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                                               : (nullptr == past_key) ? nullptr : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(value->Data<T>())
+                                                 : (nullptr == past_value) ? nullptr : reinterpret_cast<const CudaT*>(past_value->Data<T>());
   data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
   data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
+  data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+  data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
