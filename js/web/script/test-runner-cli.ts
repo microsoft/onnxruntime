@@ -18,6 +18,7 @@ import {Test} from '../test/test-types';
 import {parseTestRunnerCliArgs, TestRunnerCliArgs} from './test-runner-cli-args';
 
 async function main() {
+  // use dynamic import so that we can use ESM only libraries in commonJS.
   const {globbySync} = await import('globby');
   const stripJsonComments = (await import('strip-json-comments')).default;
 
@@ -168,7 +169,11 @@ async function main() {
           let found = false;
           for (const testGroup of nodeTest) {
             found = found ||
-                testGroup.tests.some(test => minimatch(test.modelUrl, path.join('**', testCaseName, '*.+(onnx|ort)')));
+                testGroup.tests.some(
+                    test => minimatch(
+                        test.modelUrl,
+                        path.join('**', testCaseName, '*.+(onnx|ort)').replace(/\\/g, '/'),
+                        ));
           }
           if (!found) {
             throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
@@ -216,7 +221,9 @@ async function main() {
       let times: number|undefined;
       if (testlist) {
         const matches = testlist.filter(
-            p => minimatch(path.join(suiteRootFolder, test), path.join('**', typeof p === 'string' ? p : p.name)));
+            p => minimatch(
+                path.join(suiteRootFolder, test),
+                path.join('**', typeof p === 'string' ? p : p.name).replace(/\\/g, '/')));
         if (matches.length === 0) {
           times = 0;
         } else if (matches.length === 1) {
