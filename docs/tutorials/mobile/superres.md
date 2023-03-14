@@ -1,6 +1,7 @@
 ---
-title: Mobile super resolution
+title: Improve image resolution on mobile
 description: Build Android and iOS applications for improving image resolution with built-in pre and post processing
+image: /images/tutorial-superres-og-image.png
 parent: Deploy on mobile
 grand_parent: Tutorials
 nav_order: 3
@@ -33,13 +34,13 @@ We provide a convenient Python script that exports the PyTorch model into ONNX f
 
     ```bash
     pip install torch
+    pip install pillow
     pip install onnx
     pip install onnxruntime
-    pip install onnxruntime-extensions
-    pip install pillow
+    pip install --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ onnxruntime-extensions
     ```
-
-   A note on versions: the best super resolution results are achieved with ONNX opset 18 (with its support for the Resize operator with anti-aliasing), which is supported by onnx 1.13.0 and onnxruntime 1.14.0 and later.
+  
+    A note on versions: the best super resolution results are achieved with ONNX opset 18 (with its support for the Resize operator with anti-aliasing), which is supported by onnx 1.13.0 and onnxruntime 1.14.0 and later. The onnxruntime-extensions package is a pre-release version. The release version will be available soon.
 
 2. Then download the script and test image from the onnxruntime-extensions GitHub repository (if you have not already cloned this repository):
 
@@ -102,8 +103,7 @@ Add the following dependencies to the app `build.gradle`:
 
 ```gradle
 implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
-// TODO: update with released version aar package when available
-implementation files('libs/onnxruntime-extensions-android-0.6.0.aar')
+implementation 'com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.release'
 ```
 
 #### Project resources

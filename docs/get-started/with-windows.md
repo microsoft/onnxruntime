@@ -3,7 +3,7 @@ title: Windows
 parent: Get Started
 toc: true
 description: Get Started with Onnx Runtime with Windows. Windows OS Integration and requirements to install and build ORT for Windows are given.  
-nav_order: 8
+nav_order: 9
 ---
 
 

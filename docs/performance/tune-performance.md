@@ -531,7 +531,7 @@ api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*
 
 
 // Create IO bound inputs and outputs.
-Ort::Session session(*ort_env, L"matmul_2.onnx", session_options);
+Ort::Session session(*ort_env, ORT_TSTR("matmul_2.onnx"), session_options);
 Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
 Ort::Allocator cuda_allocator(session, info_cuda);
 
