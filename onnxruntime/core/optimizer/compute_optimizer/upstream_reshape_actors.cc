@@ -129,13 +129,14 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
   // 4. [Not Supported] The first two dims exist, and the second dim is 1 (e.g. input shape is [2, 1, 1024] and output
   //    shape is [2, 16, 1024])
   // 5. [Not Supported] The first dim does not exist, and the second dim exist (can be 1 or not).
-  for (int i = 0; i < static_cast<int>(current_node.InputDefs().size()); ++i) {
+  for (int input_idx = 0; input_idx < static_cast<int>(current_node.InputDefs().size()); ++input_idx) {
     if (allowed_input_indices.size() > 0 &&
-        std::find(allowed_input_indices.begin(), allowed_input_indices.end(), i) == allowed_input_indices.end()) {
+        std::find(allowed_input_indices.begin(), allowed_input_indices.end(), input_idx) ==
+            allowed_input_indices.end()) {
       continue;
     }
 
-    auto input_shape = current_node.InputDefs()[i]->Shape();
+    auto input_shape = current_node.InputDefs()[input_idx]->Shape();
     auto ret = CompareInputShapeWithOutputShape(data_input_arg->Shape(),
                                                 input_shape);
 
@@ -151,7 +152,7 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
                                  ": skip propagating for the input because the merged dims does not exist.");
       continue;
     } else if (ret[0] == DimCompareRet::Equal && ret[1] == DimCompareRet::Equal) {
-      propagate_input_config[i] = ret;
+      propagate_input_config[input_idx] = ret;
     } else {
       LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                  ": not supported cases for two leading dims check.");
@@ -159,8 +160,8 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     }
 
     // All other dims should be equal
-    for (int j = 2; j < static_cast<int>(ret.size()); ++j) {
-      if (ret[j] != DimCompareRet::Equal) {
+    for (int dim_index = 2; dim_index < static_cast<int>(ret.size()); ++dim_index) {
+      if (ret[dim_index] != DimCompareRet::Equal) {
         LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                    ": unflatten dims should all be equal to full broadcast shape.");
         return false;
@@ -170,17 +171,17 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
     if (AreAllOutputShapesEqual) {
       // Make sure once Reshape is moved before target node, all its outputs can be correctly be reshaped.
       std::unordered_map<int, int> output_indices;
-      for (size_t i = 0; i < current_node.OutputDefs().size(); ++i) {
-        if (static_cast<int>(i) == current_node_output_index) {
+      for (size_t output_idx = 0; output_idx < current_node.OutputDefs().size(); ++output_idx) {
+        if (static_cast<int>(output_idx) == current_node_output_index) {
           continue;
         }
 
-        auto ret = CompareInputShapeWithOutputShape(data_input_arg->Shape(),
-                                                    current_node.OutputDefs()[i]->Shape());
+        auto out_cmp_ret = CompareInputShapeWithOutputShape(data_input_arg->Shape(),
+                                                            current_node.OutputDefs()[output_idx]->Shape());
 
         // All dims should be equal
-        for (int j = 0; j < static_cast<int>(ret.size()); ++j) {
-          if (ret[j] != DimCompareRet::Equal) {
+        for (int dim_index = 0; dim_index < static_cast<int>(out_cmp_ret.size()); ++dim_index) {
+          if (out_cmp_ret[dim_index] != DimCompareRet::Equal) {
             LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
                                        ": output shapes not equal.");
             return false;
@@ -194,9 +195,9 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
         // if they have multiple outputs, the output shape are same.
         // We can set the shape for every output easily.
         // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
-        for (size_t i = 0; i < node.MutableOutputDefs().size(); ++i) {
-          node.MutableOutputDefs()[i]->SetShape(
-              CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[i]->Shape(), info.last_dim));
+        for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
+          node.MutableOutputDefs()[output_idx]->SetShape(
+              CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), info.last_dim));
         }
       };
     } else {

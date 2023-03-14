@@ -4,7 +4,7 @@ from onnx import OperatorSetIdProto, TensorProto, helper
 # inputs and outputs
 hidden = 1024
 head = 16
-vocab_size=30522
+vocab_size = 30522
 inputs = [
     helper.make_tensor_value_info("input", TensorProto.FLOAT, ["batch_size", "sequence_length", hidden]),
     helper.make_tensor_value_info("attention_mask", TensorProto.INT64, ["batch_size", "sequence_length"]),
@@ -149,7 +149,13 @@ nodes = [
     # helper.make_node("Identity", ["a10_out"], ["output-0"], "identity_output0"),
     helper.make_node("Reshape", ["a10_out", "shape5"], ["reshape5_out"], "reshape5"),
     helper.make_node("Cast", ["reshape5_out"], ["c10_out"], name="c10", to=1),
-    helper.make_node("SoftmaxCrossEntropyLossInternal", ["c10_out", "labels", "", "padding_idx"], ["sce_out0", "sce_out1"], "sceloss0", domain="com.microsoft"),
+    helper.make_node(
+        "SoftmaxCrossEntropyLossInternal",
+        ["c10_out", "labels", "", "padding_idx"],
+        ["sce_out0", "sce_out1"],
+        "sceloss0",
+        domain="com.microsoft",
+    ),
     helper.make_node("Identity", ["sce_out0"], ["output-1"], "identity_output1"),
 ]
 
