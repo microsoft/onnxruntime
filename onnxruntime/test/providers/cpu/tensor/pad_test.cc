@@ -815,20 +815,20 @@ TEST(PadOpTest, ConstantPadAxes) {
                           1, 1});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
   test.AddInput<int32_t>("value", {1}, {0});
-#if defined(USE_COREML) && defined(__APPLE__)
-  test.AddInput<int64_t>("axes", {2}, {1, 3}, true /*axes_is_initializer*/);
-#else
   test.AddInput<int32_t>("axes", {2}, {1, 3});
-#endif
   test.AddOutput<int32_t>("output", {1, 2, 2, 4},
                           {0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 1, 1, 0});
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // CoreML EP requires axes if provided to be a constant initializer, skip this test for CoreML EP here.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 }
 
-TEST(PadOpTest, ConstantPadAxesWithLast2Dim) {
+TEST(PadOpTest, ConstantPadAxes_1) {
+  // CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
+  // added the following test case (can be taken by CoreML):
+  // Given a provided axes input with last two dimensions specified.
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
   test.AddInput<int32_t>("data", {1, 2, 2, 2},
@@ -838,12 +838,7 @@ TEST(PadOpTest, ConstantPadAxesWithLast2Dim) {
                           1, 1});
   test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
   test.AddInput<int32_t>("value", {1}, {0});
-#if defined(USE_COREML) && defined(__APPLE__)
-  // input test case is supported by CoreML EP
-  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /*axes_is_initializer*/);
-#else
-  test.AddInput<int32_t>("axes", {2}, {2, 3});
-#endif
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
   test.AddOutput<int32_t>("output", {1, 2, 2, 4},
                           {0, 1, 1, 0,
                            0, 1, 1, 0,
@@ -852,7 +847,10 @@ TEST(PadOpTest, ConstantPadAxesWithLast2Dim) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(PadOpTest, ConstantPadAxesWithLast2Dim_2) {
+TEST(PadOpTest, ConstantPadAxes_2) {
+  // CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
+  // added the following test case (can be taken by CoreML):
+  // Given a provided axes input with last two dimensions specified.
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
   test.AddInput<int32_t>("data", {1, 2, 2, 2},
@@ -862,12 +860,7 @@ TEST(PadOpTest, ConstantPadAxesWithLast2Dim_2) {
                           1, 1});
   test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1});
   test.AddInput<int32_t>("value", {1}, {0});
-#if defined(USE_COREML) && defined(__APPLE__)
-  // input test case is supported by CoreML EP
-  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /*axes_is_initializer*/);
-#else
-  test.AddInput<int32_t>("axes", {2}, {2, 3});
-#endif
+  test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
   test.AddOutput<int32_t>("output", {1, 2, 4, 4},
                           {0, 0, 0, 0,
                            0, 1, 1, 0,
