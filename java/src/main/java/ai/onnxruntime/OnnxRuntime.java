@@ -1,5 +1,9 @@
 /*
+<<<<<<< HEAD
  * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+=======
+ * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+>>>>>>> 98b8e2e31 (More fixes, tests now pass.)
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -38,6 +42,13 @@ final class OnnxRuntime {
   private static final int ORT_API_VERSION_8 = 8;
   // Post 1.10 builds of the ORT API
   private static final int ORT_API_VERSION_11 = 11;
+  // Post 1.12 builds of the ORT API
+  private static final int ORT_API_VERSION_13 = 13;
+  // Post 1.13 builds of the ORT API
+  private static final int ORT_API_VERSION_14 = 14;
+
+  // The initial release of the ORT training API.
+  private static final int ORT_TRAINING_API_VERSION_1 = 1;
 
   /**
    * The name of the system property which when set gives the path on disk where the ONNX Runtime
@@ -80,6 +91,12 @@ final class OnnxRuntime {
 
   /** The API handle. */
   static long ortApiHandle;
+
+  /** The Training API handle. */
+  static long ortTrainingApiHandle;
+
+  /** Is training enabled in the native library */
+  static boolean trainingEnabled;
 
   /** The available runtime providers */
   static EnumSet<OrtProvider> providers;
@@ -142,10 +159,13 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_11);
+      ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
-        throw new IllegalStateException("Failed to load native library");
+        throw new IllegalStateException(
+            "There is a mismatch between the ORT class files and the ORT native library, and the native library could not be loaded");
       }
+      ortTrainingApiHandle = initialiseTrainingAPIBase(ortApiHandle, ORT_API_VERSION_14);
+      trainingEnabled = ortTrainingApiHandle != 0L;
       providers = initialiseProviders(ortApiHandle);
       version = initialiseVersion();
       loaded = true;
@@ -442,6 +462,15 @@ final class OnnxRuntime {
    * @return A pointer to the API struct.
    */
   private static native long initialiseAPIBase(int apiVersionNumber);
+
+  /**
+   * Get a reference to the training API struct.
+   *
+   * @param apiHandle The ORT API struct pointer.
+   * @param apiVersionNumber The API version to use.
+   * @return A pointer to the training API struct.
+   */
+  private static native long initialiseTrainingAPIBase(long apiHandle, int apiVersionNumber);
 
   /**
    * Gets the array of available providers.

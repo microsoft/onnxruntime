@@ -2,25 +2,26 @@
 // Licensed under the MIT License.
 
 #ifdef ENABLE_TRAINING_CORE
-#include <onnx/defs/attr_proto_util.h>
 
-#include "core/common/safeint.h"
+#include <onnx/defs/attr_proto_util.h>
+// #include "core/common/safeint.h"
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
-#include "core/optimizer/compute_optimizer/passthrough_actors.h"
-#include "core/optimizer/compute_optimizer/compute_optimizer.h"
+#include "core/optimizer/compute_optimizer/upstream_gather_actors.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
 namespace onnxruntime::optimizer::compute_optimizer {
 
-enum class DimCompareRet {
+// Put some utils in anonymous namespace
+namespace {
+enum class ShapeCompareRet {
   ExactEqual = 0,
   BroadcastableEqual = 1,
   RankTooLow = 2,
   NotEqual = 3,
-  DimCompareRetMax = 4,
+  ShapeCompareRetMax = 4,
 };
 
 /**
@@ -32,7 +33,7 @@ enum class DimCompareRet {
  * @return A pair of bool, bool. The first bool is true if the dimensions are exactly same before and include axis.
  * The second bool is true if the dimension of target_shape has dim value be 1 on axis.
  */
-std::pair<DimCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
+std::pair<ShapeCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
     const TensorShapeProto* full_broadcasted_shape, const int axis,
     const TensorShapeProto* target_shape) {
   int full_rank = full_broadcasted_shape->dim_size();
@@ -45,7 +46,7 @@ std::pair<DimCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
   if (target_rank < minimum_rank_to_handle) {
     // Skip if target node's input rank is less than minimum rank to handle.
     // Essentially this means the input did not affect the Gather axis.
-    return std::make_pair(DimCompareRet::RankTooLow, false);
+    return std::make_pair(ShapeCompareRet::RankTooLow, false);
   }
 
   bool exact_equal = true;
@@ -83,11 +84,11 @@ std::pair<DimCompareRet, bool> AreDimsCompatibleBeforeAxisInternal(
   }
 
   if (exact_equal) {
-    return std::make_pair(DimCompareRet::ExactEqual, dim_be_1_on_axis);
+    return std::make_pair(ShapeCompareRet::ExactEqual, dim_be_1_on_axis);
   } else if (broadcastable_equal) {
-    return std::make_pair(DimCompareRet::BroadcastableEqual, dim_be_1_on_axis);
+    return std::make_pair(ShapeCompareRet::BroadcastableEqual, dim_be_1_on_axis);
   } else {
-    return std::make_pair(DimCompareRet::NotEqual, dim_be_1_on_axis);
+    return std::make_pair(ShapeCompareRet::NotEqual, dim_be_1_on_axis);
   }
 }
 
@@ -183,15 +184,15 @@ std::optional<int> CheckInputForPassThrough(const NodeArg* current_node_output_a
   auto ret_pair = AreDimsCompatibleBeforeAxisInternal(current_node_output_arg_to_gather->Shape(),
                                                       info.non_negative_axis,
                                                       arg_to_compare->Shape());
-  if (ret_pair.first == DimCompareRet::ExactEqual) {
+  if (ret_pair.first == ShapeCompareRet::ExactEqual) {
     return info.non_negative_axis;
-  } else if (ret_pair.first == DimCompareRet::RankTooLow) {
+  } else if (ret_pair.first == ShapeCompareRet::RankTooLow) {
     LOG_DEBUG_INFO(logger, "Skip " + arg_to_compare->Name() + " because its rank is too low.");
     return std::nullopt;
-  } else if (ret_pair.first == DimCompareRet::NotEqual) {
+  } else if (ret_pair.first == ShapeCompareRet::NotEqual) {
     fatal_error_found = true;
     return std::nullopt;
-  } else if (ret_pair.first == DimCompareRet::BroadcastableEqual) {
+  } else if (ret_pair.first == ShapeCompareRet::BroadcastableEqual) {
     if (ret_pair.second) {
       LOG_DEBUG_INFO(logger, "Skip " + arg_to_compare->Name() +
                                  ", whose dim on axis is 1, no need to Gather from.");
@@ -241,108 +242,6 @@ TensorShapeProto CreateNewShapeWithUpdatedDim(const TensorShapeProto* shape, con
   }
 
   return output_shape;
-}
-
-bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const TensorShapeProto_Dimension& output_dim_on_axis) {
-  ORT_ENFORCE(reverse_axis < 0, " reverse_axis should be negative, representing the index from right to left.");
-  const TensorShapeProto* shape = arg_to_update.Shape();
-  int rank = shape->dim_size();
-  if (rank < -reverse_axis) {
-    return false;
-  }
-
-  int axis_to_update = rank + reverse_axis;
-  TensorShapeProto new_output_shape = CreateNewShapeWithUpdatedDim(shape, axis_to_update, output_dim_on_axis);
-  arg_to_update.SetShape(new_output_shape);
-  return true;
-}
-
-Node* InsertIntermediateNodeOnDestInput(Graph& graph,
-                                        Node& dest_node, int dest_in_index,
-                                        int new_node_input_index,
-                                        int new_node_output_index,
-                                        const std::string& name, const std::string& op_type,
-                                        const std::string& description,
-                                        const InlinedVector<NodeArg*>& input_args,
-                                        const InlinedVector<NodeArg*>& output_args,
-                                        const onnxruntime::NodeAttributes& attributes,
-                                        const std::string& domain,
-                                        const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "Inserting " + op_type + " node on " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input " +
-                             dest_node.InputDefs()[dest_in_index]->Name() + ", and connect inserted node's " +
-                             std::to_string(new_node_output_index) + "th output to " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input.");
-
-  ORT_ENFORCE(dest_in_index < static_cast<int>(dest_node.InputDefs().size()));
-  ORT_ENFORCE(new_node_input_index < static_cast<int>(input_args.size()), "new_node_input_index is out of range.");
-  ORT_ENFORCE(new_node_output_index < static_cast<int>(output_args.size()), "new_node_output_index is out of range.");
-  ORT_ENFORCE(dest_node.MutableInputDefs()[dest_in_index] == input_args[new_node_input_index],
-              "input_args[new_node_input_index] is not the same as dest_node.MutableInputDefs()[dest_in_index].",
-              dest_node.MutableInputDefs()[dest_in_index]->Name(), " vs ", input_args[new_node_input_index]->Name());
-
-  // Prepare Input and Outputs for the duplicated Gather/GatherND node.
-  NodeArg* src_node_arg = dest_node.MutableInputDefs()[dest_in_index];
-
-  // Create the duplicated Gather/GatherND node.
-  Node& new_node = graph.AddNode(name, op_type, description, input_args, output_args, &attributes, domain);
-  ORT_ENFORCE(graph.SetOpSchemaFromRegistryForNode(new_node), "Failed to set op schema for " + new_node.Name());
-
-  // Connect dest_node's input node to duplicated node.
-  // Update new node producer and consumer map.
-  for (size_t j = 0; j < new_node.MutableOutputDefs().size(); ++j) {
-    graph.UpdateProducerNode(new_node.MutableOutputDefs()[j]->Name(), new_node.Index());
-  }
-  graph.AddConsumerNode(src_node_arg->Name(), &new_node);
-  const Node* src_node = graph.GetProducerNode(src_node_arg->Name());
-  if (src_node) {
-    int src_out_index = optimizer_utils::IndexOfNodeOutput(*src_node, *src_node_arg);
-    graph.AddEdge(src_node->Index(), new_node.Index(), src_out_index, new_node_input_index);
-  }
-
-  // Remove edge between dest_node and src_node.
-  // Be noted, this will remove dest_node's input edges to src_node
-  // (and also the src_node's output edges to dest_node).
-  std::vector<graph_utils::GraphEdge> input_edge_to_remove;
-  input_edge_to_remove.reserve(1);
-  for (auto it = dest_node.InputEdgesBegin(), end = dest_node.InputEdgesEnd(); it != end; ++it) {
-    LOG_DEBUG_INFO(logger, "dest_node " + dest_node.Name() + " input edge: " + it->GetNode().Name() +
-                               " output index: " + std::to_string(it->GetSrcArgIndex()) + " input index: " +
-                               std::to_string(it->GetDstArgIndex()));
-    if (it->GetDstArgIndex() == dest_in_index) {
-      input_edge_to_remove.push_back(graph_utils::GraphEdge::CreateGraphEdge(dest_node, *it, true));
-      break;
-    }
-  }
-
-  // If the input is graph input or initializer, no edge will be removed.
-  if (input_edge_to_remove.size() > 0) {
-    graph_utils::GraphEdge::RemoveGraphEdges(graph, input_edge_to_remove);
-
-    // Remove target node from target input arg's consumer list.
-    const std::string& src_node_arg_name = src_node_arg->Name();
-    int input_use_count_by_dest_node = 0;
-    for (size_t i = 0; i < dest_node.InputDefs().size(); ++i) {
-      if (dest_node.InputDefs()[i]->Name().compare(src_node_arg_name) == 0) {
-        ++input_use_count_by_dest_node;
-      }
-    }
-
-    if (input_use_count_by_dest_node == 1) {
-      graph.RemoveConsumerNode(src_node_arg_name, &dest_node);
-    }
-  }
-
-  // Connect duplicated gather node to target node's input.
-  dest_node.MutableInputDefs()[dest_in_index] = new_node.MutableOutputDefs()[new_node_output_index];
-  // Add new edge connecting the duplicated gather with the target node directly.
-  // This also updates the destination node's input node args
-  graph.AddEdge(new_node.Index(), dest_node.Index(), new_node_output_index, dest_in_index);
-  graph.AddConsumerNode(new_node.MutableOutputDefs()[new_node_output_index]->Name(), &dest_node);
-  LOG_DEBUG_INFO(logger, "Inserted " + op_type + " node on " + dest_node.Name() + " 's " +
-                             std::to_string(dest_in_index) + "th input " +
-                             dest_node.InputDefs()[dest_in_index]->Name());
-  return &new_node;
 }
 
 TensorShapeProto CreateTensorShapeInsertDimAtAxis(const TensorShapeProto* src_shape, int axis, int64_t dim_value) {
@@ -395,6 +294,21 @@ int GetONNXOpSetVersion(const Graph& graph) {
       ORT_THROW("ONNX domain not found in this model");
   }
   return onnx_opset;
+}
+}  // namespace
+
+bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const TensorShapeProto_Dimension& output_dim_on_axis) {
+  ORT_ENFORCE(reverse_axis < 0, " reverse_axis should be negative, representing the index from right to left.");
+  const TensorShapeProto* shape = arg_to_update.Shape();
+  int rank = shape->dim_size();
+  if (rank < -reverse_axis) {
+    return false;
+  }
+
+  int axis_to_update = rank + reverse_axis;
+  TensorShapeProto new_output_shape = CreateNewShapeWithUpdatedDim(shape, axis_to_update, output_dim_on_axis);
+  arg_to_update.SetShape(new_output_shape);
+  return true;
 }
 
 void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int current_node_output_index,
@@ -511,14 +425,14 @@ void AdaptInputAndOutputForScalarSlice(Graph& graph, Node& current_node, int cur
   current_node.MutableOutputDefs()[0]->SetShape(CreateTensorShapeInsertDimAtAxis(matmul_out_shape, slice_axis, 1));
 }
 
-bool DefaultOperatorPassThroughActorBase::PostProcess(
+bool DefaultUpStreamGatherOperatorActorBase::PostProcess(
     Graph& graph, Node& current_node, int current_node_output_index,
     int slice_axis, bool is_slice_scalar, bool input_has_dim_1_for_axis,
     const ONNX_NAMESPACE::TensorShapeProto_Dimension& /*output_dim_on_axis*/,
     const std::string& entry_node_name,
     const std::unordered_map<int, SliceInfo>& new_gather_infos,
     const logging::Logger& logger) {
-  LOG_DEBUG_INFO(logger, "Enter DefaultOperatorPassThroughActorBase::PostProcess for Node " + current_node.Name() +
+  LOG_DEBUG_INFO(logger, "Enter DefaultUpStreamGatherOperatorActorBase::PostProcess for Node " + current_node.Name() +
                              "(" + current_node.OpType() + ")");
   if (is_slice_scalar && input_has_dim_1_for_axis) {
     AdaptInputAndOutputForScalarSlice(graph, current_node, current_node_output_index, slice_axis,

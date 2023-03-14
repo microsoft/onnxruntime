@@ -135,8 +135,8 @@ struct Module {
   bool accumulate_gradient_ = false;
   const std::unordered_map<std::string, std::shared_ptr<Parameter>>& named_parameters_;
   std::string eval_model_path_;
-  size_t train_user_input_count_;
-  size_t eval_user_input_count_;
+  size_t train_user_input_count_ = 0U;
+  size_t eval_user_input_count_ = 0U;
 };
 
 }  // namespace api

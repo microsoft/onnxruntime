@@ -2606,7 +2606,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
 }
 
-// Preventing resize tranformer issue:
+// Preventing resize transformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857
 #ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, crop_and_resize) {

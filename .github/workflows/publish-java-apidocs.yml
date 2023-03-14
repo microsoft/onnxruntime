@@ -3,7 +3,16 @@ on:
   push:
     branches:
       - main
+    paths:
+      - java
   workflow_dispatch:
+
+concurrency:
+  group: "apidocs-java"
+  cancel-in-progress: true
+
+permissions:
+  contents: write
 
 jobs:
   publish:
@@ -16,33 +25,21 @@ jobs:
         with:
           java-version: '11'
           distribution: 'adopt'
-      - name: Install gradle wrapper
-        run: |
-          cd java
-          gradle wrapper
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
           build-root-directory: java
+          gradle-executable: java/gradlew
           arguments: javadoc
-      - name: Set commit ID
+      - name: Get source commit
         id: vars
         run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
-      - uses: actions/checkout@v2
+      - name: Log source commit
+        run: echo $(git rev-parse --short HEAD) > java/build/docs/javadoc/version.txt
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          ref: gh-pages
-          clean: false
-      - name: Move API docs into target area
-        run: |
-          rm -rf docs/api/java
-          mv java/build/docs/javadoc docs/api/java
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v3
-        with:
-          branch: gh-pages-pr
-          base: gh-pages
-          title: '[Automated]: Update Java API docs'
-          commit-message: 'Update Java API docs to commit ${{ steps.vars.outputs.sha_short }}'
-          add-paths: docs/api/java
+          branch: gh-pages
+          folder: java/build/docs/javadoc
+          target-folder: docs/api/java
+          clean: true

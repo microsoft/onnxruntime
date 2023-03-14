@@ -27,14 +27,7 @@ set(contrib_ops_excluded_files
   "bert/tensorrt_fused_multihead_attention/*"
   "bert/transformer_common.h"
   "bert/transformer_common.cc"
-  "diffusion/group_norm.h"
-  "diffusion/group_norm.cc"
   "diffusion/group_norm_impl.cu"
-  "diffusion/group_norm_impl.h"
-  "diffusion/bias_split_gelu_impl.h"
-  "diffusion/bias_split_gelu_impl.cu"
-  "diffusion/bias_split_gelu.h"
-  "diffusion/bias_split_gelu.cc"
   "diffusion/nhwc_conv.cc"
   "math/complex_mul.cc"
   "math/complex_mul.h"
@@ -93,6 +86,13 @@ set(contrib_ops_excluded_files
   "cuda_contrib_kernels.h"
   "inverse.cc"
   "fused_conv.cc"
+  "decoder/decoder_masked_multihead_attention.h"
+  "decoder/decoder_masked_multihead_attention.cc"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention.h"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.cu"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_64.cu"
+  "decoder/fastertransformer_decoder_attention/decoder_masked_multihead_attention_128.cu"
 )
 
 if (NOT onnxruntime_ENABLE_ATEN)

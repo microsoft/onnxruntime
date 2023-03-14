@@ -927,6 +927,10 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
+          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
+          list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
+        endif()
         message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
         add_custom_command(
           TARGET ${test_data_target} POST_BUILD
@@ -1478,9 +1482,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
           # On windows ctest requires a test to be an .exe(.com) file
-          # So there are two options 1) Install Chocolatey and its gradle package
-          # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
-          # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+          # With gradle wrapper we get gradlew.bat. We delegate execution to a separate .cmake file
           # That can handle both .exe and .bat
           add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
             -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
@@ -1491,8 +1493,15 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
         else()
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
-                WORKING_DIRECTORY ${REPO_ROOT}/java)
+          if (onnxruntime_ENABLE_TRAINING_APIS)
+            message(STATUS "Running Java inference and training tests")
+            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS} -DENABLE_TRAINING=1
+                          WORKING_DIRECTORY ${REPO_ROOT}/java)
+          else()
+            message(STATUS "Running Java inference tests only")
+            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+                          WORKING_DIRECTORY ${REPO_ROOT}/java)
+          endif()
         endif()
         set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
     endif()

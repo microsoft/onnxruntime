@@ -59,10 +59,6 @@ public class InferenceTest {
 
   private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
 
-  public static Path getResourcePath(String path) {
-    return new File(InferenceTest.class.getResource(path).getFile()).toPath();
-  }
-
   @Test
   public void environmentTest() {
     // Checks that the environment instance is the same.
