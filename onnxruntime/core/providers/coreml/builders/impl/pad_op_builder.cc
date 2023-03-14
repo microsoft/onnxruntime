@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <core/common/safeint.h>
+
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/coreml/builders/helper.h"
@@ -39,6 +41,28 @@ class PadOpBuilder : public BaseOpBuilder {
   }
 };
 
+// Helper function
+// Use axes initializer data if `axes` input provided or create default axes vector.
+InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& initializers,
+                                          const Node& node, const size_t& input_rank) {
+  InlinedVector<int64_t> axes_tensor_data;
+  const auto& input_defs = node.InputDefs();
+
+  if (input_defs.size() > 3) {
+    // optional input axes is provided, use axes initializer data
+    const ONNX_NAMESPACE::TensorProto& axes_tensor = *initializers.at(input_defs[3]->Name());
+    Initializer axes_initializer(axes_tensor);
+    const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
+    axes_tensor_data.assgin(axes_data_span.begin(), axes_data_span.end());
+  } else {
+    // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
+    InlinedVector<int64_t> default_axes(input_rank);
+    std::iota(std::begin(default_axes), std::end(default_axes), 0);
+    axes_tensor_data = std::move(default_axes);
+  }
+  return axes_tensor_data;
+}
+
 // Add operator related
 
 #ifdef __APPLE__
@@ -73,19 +97,9 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Initializer pads_initializer(pads_tensor);
   auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
-  InlinedVector<int64_t> axes_tensor_data;
-  if (input_defs.size() > 3) {
-    // optional input axes is provided, use axes initializer data
-    const ONNX_NAMESPACE::TensorProto& axes_tensor = *model_builder.GetInitializerTensors().at(input_defs[3]->Name());
-    Initializer axes_initializer(axes_tensor);
-    const auto* axes_data = axes_initializer.data<int64_t>();
-    InlinedVector<int64_t> axes_tensor_data(axes_data, axes_data + axes_initializer.size());
-  } else {
-    // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
-    InlinedVector<int64_t> default_axes(input_rank);
-    std::iota(std::begin(default_axes), std::end(default_axes), 0);
-    axes_tensor_data = default_axes;
-  }
+  std::cout << "before get padding axes data: " << std::endl;
+  InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node, input_rank);
+  std::cout << "after get padding axes data: " << std::endl;
   int64_t num_axes = axes_tensor_data.size();
 
   // Add padding
@@ -115,8 +129,11 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {
+  std::cout << "enter isopsupportedimpl " << std::endl;
   const auto& input_defs = node.InputDefs();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
+
+  std::cout << "enter isopsupportedimpl " << std::endl;
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
@@ -171,24 +188,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     // Check that only supports padding on last two dimensions - [H,W].
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = input_shape.size();
-    InlinedVector<int64_t> axes_tensor_data;
-    if (input_defs.size() > 3) {
-      // optional axes input is provided, use axes initializer data
-      const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
-      if (axes_initializer_it == initializers.end()) {
-        LOGS(logger, VERBOSE) << "If provided, axes must be a constant initializer.";
-        return false;
-      }
-      const ONNX_NAMESPACE::TensorProto& axes_tensor = *axes_initializer_it->second;
-      Initializer axes_initializer(axes_tensor);
-      const auto* axes_data = axes_initializer.data<int64_t>();
-      InlinedVector<int64_t> axes_tensor_data(axes_data, axes_data + axes_initializer.size());
-    } else {
-      // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
-      InlinedVector<int64_t> default_axes(input_rank);
-      std::iota(std::begin(default_axes), std::end(default_axes), 0);
-      axes_tensor_data = default_axes;
-    }
+    InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initializers, node, input_rank);
     int64_t num_axes = axes_tensor_data.size();
 
     for (int64_t i = 0; i < num_axes; i++) {
@@ -208,6 +208,8 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
     return false;
   }
+
+  std::cout << "exit isopsupportedimpl " << std::endl;
 
   return true;
 }

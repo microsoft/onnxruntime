@@ -821,15 +821,12 @@ TEST(PadOpTest, ConstantPadAxes) {
                            0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 1, 1, 0});
-  // CoreML EP requires axes if provided to be a constant initializer and only supports padding specified on last two
-  // dimensions, skip this test for CoreML EP here.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
+// added the following test cases (can be taken by CoreML):
 TEST(PadOpTest, ConstantPadAxes_1) {
-  // CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
-  // added the following test case (can be taken by CoreML):
-  // Given a provided axes input with last two dimensions specified.
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
   test.AddInput<int32_t>("data", {1, 2, 2, 2},
@@ -849,9 +846,6 @@ TEST(PadOpTest, ConstantPadAxes_1) {
 }
 
 TEST(PadOpTest, ConstantPadAxes_2) {
-  // CoreML EP only supports padding on last two dimensions and requires axes to be an initializer if provided,
-  // added the following test case (can be taken by CoreML):
-  // Given a provided axes input with last two dimensions specified.
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
   test.AddInput<int32_t>("data", {1, 2, 2, 2},
@@ -871,6 +865,63 @@ TEST(PadOpTest, ConstantPadAxes_2) {
                            0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxes_3) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {1, 2, 2, 2},
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1});
+  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
+                          {0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxes_outoforder) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {1, 2, 2, 2},
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
+  test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0});
+  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<int64_t>("axes", {2}, {3, 2}, true /* axes_is_initializer */);
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
+                          {0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(PadOpTest, ConstantPadAxes_one_dimension_specified) {
+  OpTester test("Pad", 18);
+  test.AddAttribute("mode", "constant");
+  test.AddInput<int32_t>("data", {1, 2, 2, 2},
+                         {1, 1,
+                          1, 1,
+                          1, 1,
+                          1, 1});
+  test.AddInput<int64_t>("pads", {2}, {1, 1});
+  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<int64_t>("axes", {1}, {3}, true /* axes_is_initializer */);
+  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
+                          {0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0,
+                           0, 1, 1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
