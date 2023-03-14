@@ -97,9 +97,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   Initializer pads_initializer(pads_tensor);
   auto pads_span = pads_initializer.DataAsSpan<int64_t>();
 
-  std::cout << "before get padding axes data: " << std::endl;
   InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(model_builder.GetInitializerTensors(), node, input_rank);
-  std::cout << "after get padding axes data: " << std::endl;
   int64_t num_axes = axes_tensor_data.size();
 
   // Add padding
@@ -129,11 +127,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                      const logging::Logger& logger) const {
-  std::cout << "enter isopsupportedimpl " << std::endl;
   const auto& input_defs = node.InputDefs();
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
-
-  std::cout << "enter isopsupportedimpl " << std::endl;
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
@@ -208,8 +203,6 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
     return false;
   }
-
-  std::cout << "exit isopsupportedimpl " << std::endl;
 
   return true;
 }
