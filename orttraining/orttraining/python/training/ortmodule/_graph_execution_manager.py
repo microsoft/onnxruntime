@@ -78,7 +78,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._debug_options = debug_options
         self._fallback_manager = fallback_manager
 
-        # Original and flattened (tranformed) output module
+        # Original and flattened (transformed) output module
         self._flattened_module = module
 
         # onnx models

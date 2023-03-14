@@ -141,6 +141,15 @@ class GemmNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// Input: DQ nodes for input, scale, and B
+// Output: Q node for output
+class InstanceNormalizationNodeGroupSelector : public NodeGroupSelector {
+ private:
+  bool Check(const GraphViewer& graph_viewer, const Node& node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
@@ -230,6 +239,14 @@ class GemmSelector : public BaseSelector {
       : BaseSelector(std::make_unique<GemmNodeGroupSelector>()) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;
+};
+
+// Input: DQ nodes for input, scale, and B (bias)
+// Output: Q node for output
+class InstanceNormalizationSelector : public BaseSelector {
+ public:
+  InstanceNormalizationSelector()
+      : BaseSelector(std::make_unique<InstanceNormalizationNodeGroupSelector>()) {}
 };
 
 }  // namespace QDQ
