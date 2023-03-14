@@ -1552,6 +1552,46 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
 endif()
 
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+
+  file(GLOB_RECURSE custom_op_get_const_input_test_library_src 
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.h"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.cc"
+  )
+
+  # Use of ORT_ENFORCE introduces a dependency on GetStackTrace.
+  # Currently, we just use an empty implementation to avoid bringing in other dependencies.
+  if(WIN32)
+     list(APPEND custom_op_get_const_input_test_library_src "${ONNXRUNTIME_ROOT}/core/platform/windows/stacktrace.cc")
+  else()
+     list(APPEND custom_op_get_const_input_test_library_src "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc")
+  endif()
+
+  onnxruntime_add_shared_library_module(custom_op_get_const_input_test_library ${custom_op_get_const_input_test_library_src})
+
+  onnxruntime_add_include_to_target(custom_op_get_const_input_test_library onnxruntime_common GTest::gtest GTest::gmock)
+  target_include_directories(custom_op_get_const_input_test_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session
+                                                                            ${REPO_ROOT}/include/onnxruntime/core/common)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG 
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.def")
+  endif()
+
+  set_property(TARGET custom_op_get_const_input_test_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
+  set_property(TARGET custom_op_get_const_input_test_library APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-unused-parameter -Wno-unused-variable")
+endif()
+
 if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
                                                                         onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
   onnxruntime_add_shared_library_module(custom_op_openvino_wrapper_library
