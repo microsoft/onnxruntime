@@ -32,7 +32,7 @@ jobs:
     CCACHE_DIR: $(Pipeline.Workspace)/ccache
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   timeoutInMinutes:  300
   steps:
     - checkout: self
@@ -74,7 +74,7 @@ jobs:
         export ONNX_ML=1
         export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
         python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-        sudo xcode-select --switch /Applications/Xcode_12.4.app/Contents/Developer
+        sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
       displayName: 'Install dependencies'
 
     - script: |

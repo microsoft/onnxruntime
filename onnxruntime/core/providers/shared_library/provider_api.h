@@ -66,8 +66,10 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_COMPLEX64 = 14,
   TensorProto_DataType_COMPLEX128 = 15,
   TensorProto_DataType_BFLOAT16 = 16,
-  TensorProto_DataType_FLOATE4M3 = 17,
-  TensorProto_DataType_FLOATE5M2 = 18
+  TensorProto_DataType_FLOAT8E4M3FN = 17,
+  TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
+  TensorProto_DataType_FLOAT8E5M2 = 19
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 19
 };
 
 enum TensorProto_DataLocation : int {
@@ -153,7 +155,7 @@ struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
 struct Tensor;
 struct SparseTensor;
-struct TensorSeq;
+class TensorSeq;
 class SessionState;
 
 class If;
@@ -246,6 +248,7 @@ constexpr const char* kOpenVINOExecutionProvider = "OpenVINOExecutionProvider";
 constexpr const char* kRocmExecutionProvider = "ROCMExecutionProvider";
 constexpr const char* kTensorrtExecutionProvider = "TensorrtExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
+constexpr const char* kQnnExecutionProvider = "QNNExecutionProvider";
 constexpr const char* kCpuExecutionProvider = "CPUExecutionProvider";
 constexpr const char* kAzureExecutionProvider = "AzureExecutionProvider";
 
@@ -320,9 +323,13 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<int64_t>() { re
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<uint64_t>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64; }
 template <>
-constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<FloatE4M3>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE4M3; }
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FN>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN; }
 template <>
-constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<FloatE5M2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE5M2; }
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E4M3FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2; }
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>() { return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ; }
 }  // namespace utils
 
 // This is a replacement for Ort::InitApi() to be called before any other onnxruntime API calls.

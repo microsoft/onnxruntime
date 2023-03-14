@@ -997,9 +997,13 @@ inline bool Tensor::IsDataType<MLFloat16>() const { return g_host->Tensor__IsDat
 template <>
 inline bool Tensor::IsDataType<BFloat16>() const { return g_host->Tensor__IsDataType_BFloat16(this); }
 template <>
-inline bool Tensor::IsDataType<FloatE4M3>() const { return g_host->Tensor__IsDataType_FloatE4M3(this); }
+inline bool Tensor::IsDataType<Float8E4M3FN>() const { return g_host->Tensor__IsDataType_Float8E4M3FN(this); }
 template <>
-inline bool Tensor::IsDataType<FloatE5M2>() const { return g_host->Tensor__IsDataType_FloatE5M2(this); }
+inline bool Tensor::IsDataType<Float8E4M3FNUZ>() const { return g_host->Tensor__IsDataType_Float8E4M3FNUZ(this); }
+template <>
+inline bool Tensor::IsDataType<Float8E5M2>() const { return g_host->Tensor__IsDataType_Float8E5M2(this); }
+template <>
+inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__IsDataType_Float8E5M2FNUZ(this); }
 
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
@@ -1028,9 +1032,13 @@ inline BFloat16* Tensor::MutableData<BFloat16>() { return g_host->Tensor__Mutabl
 template <>
 inline MLFloat16* Tensor::MutableData<MLFloat16>() { return g_host->Tensor__MutableData_MLFloat16(this); }
 template <>
-inline FloatE4M3* Tensor::MutableData<FloatE4M3>() { return g_host->Tensor__MutableData_FloatE4M3(this); }
+inline Float8E4M3FN* Tensor::MutableData<Float8E4M3FN>() { return g_host->Tensor__MutableData_Float8E4M3FN(this); }
 template <>
-inline FloatE5M2* Tensor::MutableData<FloatE5M2>() { return g_host->Tensor__MutableData_FloatE5M2(this); }
+inline Float8E4M3FN* Tensor::MutableData<Float8E4M3FNUZ>() { return g_host->Tensor__MutableData_Float8E4M3FNUZ(this); }
+template <>
+inline Float8E5M2* Tensor::MutableData<Float8E5M2>() { return g_host->Tensor__MutableData_Float8E5M2(this); }
+template <>
+inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Tensor__MutableData_Float8E5M2FNUZ(this); }
 
 template <>
 inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
@@ -1059,9 +1067,13 @@ inline const BFloat16* Tensor::Data<BFloat16>() const { return g_host->Tensor__D
 template <>
 inline const MLFloat16* Tensor::Data<MLFloat16>() const { return g_host->Tensor__Data_MLFloat16(this); }
 template <>
-inline const FloatE4M3* Tensor::Data<FloatE4M3>() const { return g_host->Tensor__Data_FloatE4M3(this); }
+inline const Float8E4M3FN* Tensor::Data<Float8E4M3FN>() const { return g_host->Tensor__Data_Float8E4M3FN(this); }
 template <>
-inline const FloatE5M2* Tensor::Data<FloatE5M2>() const { return g_host->Tensor__Data_FloatE5M2(this); }
+inline const Float8E4M3FNUZ* Tensor::Data<Float8E4M3FNUZ>() const { return g_host->Tensor__Data_Float8E4M3FNUZ(this); }
+template <>
+inline const Float8E5M2* Tensor::Data<Float8E5M2>() const { return g_host->Tensor__Data_Float8E5M2(this); }
+template <>
+inline const Float8E5M2FNUZ* Tensor::Data<Float8E5M2FNUZ>() const { return g_host->Tensor__Data_Float8E5M2FNUZ(this); }
 
 // SparseTensor
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -1072,11 +1084,15 @@ struct SparseTensor final {
 #endif
 
 // TensorSeq
-struct TensorSeq final {
+class TensorSeq final {
+public:
   MLDataType DataType() const noexcept { return g_host->TensorSeq__DataType(this); }
   void SetType(MLDataType elem_type) { g_host->TensorSeq__SetType(this, elem_type); }
   size_t Size() const noexcept { return g_host->TensorSeq__Size(this); }
   const Tensor& Get(size_t i) const { return g_host->TensorSeq__Get(this, i); }
+  const OrtValue& GetAt(size_t i) const { return g_host->TensorSeq__GetAt(this, i); }
+  void Add(const OrtValue& tensor) { g_host->TensorSeq__Add(this, tensor); }
+  void Add(OrtValue&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Add(Tensor&& tensor) { g_host->TensorSeq__Add(this, std::move(tensor)); }
   void Reserve(size_t capacity) { g_host->TensorSeq__Reserve(this, capacity); }
 };

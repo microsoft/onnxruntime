@@ -23,7 +23,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   M:    max_sequence_length
   //   T:    total_sequence_length = past_sequence_length + kv_sequence_length
   //   N:    num_heads
-  //   H:    head size for Q and K, aka q_head_size or v_head_size or qk_head_size
+  //   H:    head size for Q and K, aka q_head_size or k_head_size or qk_head_size
   //   H_v:  v_head_size
   //   D_i:  input hidden size
   //   D:    hidden size for Q and K (D = N * H), aka q_hidden_size or k_hidden_size or qk_hidden_size
@@ -125,6 +125,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   }
 
   int64_t past_sequence_length = 0;
+  int64_t original_past_sequence_length = 0;
   if (past != nullptr) {  // past is optional
     if (k_hidden_size != v_hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'past' expect k_hidden_size == v_hidden_size");
@@ -157,6 +158,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
     if (!past_present_share_buffer_) {
       past_sequence_length = past_dims[3];
+      original_past_sequence_length = past_sequence_length;
     } else {
       if (past_seq_len == nullptr || !onnxruntime::IsScalarOr1ElementVector(past_seq_len)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -191,6 +193,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
+  bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -200,10 +203,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                              relative_position_bias_dims.size());
     }
 
-    if (relative_position_bias_dims[0] != batch_size) {
+    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size, got ",
+                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
                              relative_position_bias_dims[0]);
+    }
+    if (relative_position_bias_dims[0] == 1) {
+      broadcast_res_pos_bias = true;
     }
     if (relative_position_bias_dims[1] != num_heads_) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -237,6 +243,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->batch_size = static_cast<int>(batch_size);
     output_parameters->sequence_length = static_cast<int>(sequence_length);
     output_parameters->past_sequence_length = static_cast<int>(past_sequence_length);
+    output_parameters->original_past_sequence_length = static_cast<int>(original_past_sequence_length);
     output_parameters->kv_sequence_length = static_cast<int>(kv_sequence_length);
     output_parameters->total_sequence_length = static_cast<int>(total_sequence_length);
     output_parameters->max_sequence_length = static_cast<int>(max_sequence_length);
@@ -248,9 +255,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->num_heads = num_heads_;
     output_parameters->is_unidirectional = is_unidirectional_;
     output_parameters->past_present_share_buffer = (past_present_share_buffer_ != 0 && past != nullptr);
+    output_parameters->do_rotary = do_rotary_;
     output_parameters->mask_filter_value = mask_filter_value_;
     output_parameters->scale = scale_;
     output_parameters->mask_type = mask_type;
+    output_parameters->broadcast_res_pos_bias = broadcast_res_pos_bias;
+    output_parameters->pass_past_in_kv = false;
   }
 
   return Status::OK();

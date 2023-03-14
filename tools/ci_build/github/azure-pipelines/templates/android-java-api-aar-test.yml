@@ -20,7 +20,7 @@ jobs:
   workspace:
     clean: all
   pool:
-    vmImage: 'macOS-11'
+    vmImage: 'macOS-12'
   variables:
   - name: runCodesignValidationInjection
     value: false
@@ -37,15 +37,19 @@ jobs:
       artifactName: '${{parameters.artifactName}}'
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
-  - template: use-android-ndk.yml
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
 
-  - script: /bin/bash tools/ci_build/github/android/setup_gradle_wrapper.sh $(Build.SourcesDirectory)
-    displayName: Setup gradle wrapper to use gradle 6.8.3
+  - template: use-android-ndk.yml
 
   - script: |
       python3 $(Build.SourcesDirectory)/tools/python/run_android_emulator.py \
         --android-sdk-root ${ANDROID_SDK_ROOT} \
-        --create-avd --system-image "system-images;android-30;google_apis;x86_64" \
+        --create-avd --system-image "system-images;android-31;default;x86_64" \
         --start --emulator-extra-args="-partition-size 4096" \
         --emulator-pid-file $(Build.BinariesDirectory)/emulator.pid
     displayName: Start Android emulator
@@ -58,7 +62,7 @@ jobs:
       cd ./android
       mkdir -p app/libs
       cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-mobile.aar
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest
+      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
     displayName: Run E2E test using Emulator
     workingDirectory: $(Build.BinariesDirectory)
 

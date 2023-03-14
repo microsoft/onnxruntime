@@ -100,7 +100,7 @@ bool IsSoftwareAdapter(IDXGIAdapter1* adapter) {
     auto isBasicRenderDriverVendorId = desc.VendorId == 0x1414;
     auto isBasicRenderDriverDeviceId = desc.DeviceId == 0x8c;
     auto isSoftwareAdapter = desc.Flags == DXGI_ADAPTER_FLAG_SOFTWARE;
-    
+
     return isSoftwareAdapter || (isBasicRenderDriverVendorId && isBasicRenderDriverDeviceId);
 }
 

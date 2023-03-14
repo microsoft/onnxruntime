@@ -21,8 +21,10 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-using onnxruntime::FloatE4M3;
-using onnxruntime::FloatE5M2;
+using onnxruntime::Float8E4M3FN;
+using onnxruntime::Float8E4M3FNUZ;
+using onnxruntime::Float8E5M2;
+using onnxruntime::Float8E5M2FNUZ;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
@@ -101,11 +103,17 @@ constexpr ONNXTensorElementDataType TensorDataTypeToOnnxRuntimeTensorElementData
     case o::TensorProto_DataType_DOUBLE:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE;
       break;
-    case o::TensorProto_DataType_FLOATE4M3:
-      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE4M3;
+    case o::TensorProto_DataType_FLOAT8E4M3FN:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
       break;
-    case o::TensorProto_DataType_FLOATE5M2:
-      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE5M2;
+    case o::TensorProto_DataType_FLOAT8E4M3FNUZ:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+      break;
+    case o::TensorProto_DataType_FLOAT8E5M2:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+      break;
+    case o::TensorProto_DataType_FLOAT8E5M2FNUZ:
+      type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
       break;
     case o::TensorProto_DataType_FLOAT16:
       type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;

@@ -101,22 +101,42 @@ struct ToBFloat16<float> {
 };
 
 template <typename T>
-struct ToFloatE4M3;
+struct ToFloat8E4M3FN;
 
 template <>
-struct ToFloatE4M3<float> {
+struct ToFloat8E4M3FN<float> {
   uint8_t operator()(float f) const {
-    return FloatE4M3(f).val;
+    return Float8E4M3FN(f).val;
   }
 };
 
 template <typename T>
-struct ToFloatE5M2;
+struct ToFloat8E4M3FNUZ;
 
 template <>
-struct ToFloatE5M2<float> {
+struct ToFloat8E4M3FNUZ<float> {
   uint8_t operator()(float f) const {
-    return FloatE5M2(f).val;
+    return Float8E4M3FNUZ(f).val;
+  }
+};
+
+template <typename T>
+struct ToFloat8E5M2;
+
+template <>
+struct ToFloat8E5M2<float> {
+  uint8_t operator()(float f) const {
+    return Float8E5M2(f).val;
+  }
+};
+
+template <typename T>
+struct ToFloat8E5M2FNUZ;
+
+template <>
+struct ToFloat8E5M2FNUZ<float> {
+  uint8_t operator()(float f) const {
+    return Float8E5M2FNUZ(f).val;
   }
 };
 

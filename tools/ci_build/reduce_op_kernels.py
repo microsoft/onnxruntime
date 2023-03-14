@@ -325,7 +325,7 @@ if __name__ == "__main__":
         type=str,
         help="Path to configuration file. "
         "Create with <ORT root>/tools/python/create_reduced_build_config.py and edit if needed. "
-        "See https://onnxruntime.ai/docs/reference/reduced-operator-config-file.html for more "
+        "See https://onnxruntime.ai/docs/reference/operators/reduced-operator-config-file.html for more "
         "information.",
     )
 

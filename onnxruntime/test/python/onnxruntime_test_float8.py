@@ -31,13 +31,13 @@ class TestInferenceSession(unittest.TestCase):
         check_model(onnx_model)
         return onnx_model
 
-    @unittest.skipIf(not hasattr(TensorProto, "FLOATE4M3"), reason="needs onnx>=1.4.0")
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.4.0")
     def test_model_cast_cast(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
 
         expected = {
-            TensorProto.FLOATE4M3: np.array(
+            TensorProto.FLOAT8E4M3FN: np.array(
                 [
                     0.000000e00,
                     -1.000000e00,
@@ -50,7 +50,23 @@ class TestInferenceSession(unittest.TestCase):
                 ],
                 dtype=np.float32,
             ),
-            TensorProto.FLOATE5M2: np.array(
+            TensorProto.FLOAT8E4M3FNUZ: np.array(
+                [
+                    0.000000e00,
+                    -1.000000e00,
+                    1.015625e-01,
+                    1.000000e00,
+                    2.000000e00,
+                    1.000000e01,
+                    1.040000e02,
+                    4.480000e02,
+                ],
+                dtype=np.float32,
+            ),
+            TensorProto.FLOAT8E5M2: np.array(
+                [0.000e00, -1.000e00, 9.375e-02, 1.000e00, 2.000e00, 1.000e01, 9.600e01, 1.024e03], dtype=np.float32
+            ),
+            TensorProto.FLOAT8E5M2FNUZ: np.array(
                 [0.000e00, -1.000e00, 9.375e-02, 1.000e00, 2.000e00, 1.000e01, 9.600e01, 1.024e03], dtype=np.float32
             ),
         }

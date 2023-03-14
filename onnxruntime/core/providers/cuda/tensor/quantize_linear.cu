@@ -30,16 +30,30 @@ struct Round<float, uint8_t> {
 };
 
 template <>
-struct Round<float, FloatE4M3> {
-  __device__ __forceinline__ FloatE4M3 operator()(float v, float scale, FloatE4M3 zero_point) const {
-    return FloatE4M3(v / scale);
+struct Round<float, Float8E4M3FN> {
+  __device__ __forceinline__ Float8E4M3FN operator()(float v, float scale, Float8E4M3FN zero_point) const {
+    return Float8E4M3FN(v / scale);
   }
 };
 
 template <>
-struct Round<float, FloatE5M2> {
-  __device__ __forceinline__ FloatE5M2 operator()(float v, float scale, FloatE5M2 zero_point) const {
-    return FloatE5M2(v / scale);
+struct Round<float, Float8E4M3FNUZ> {
+  __device__ __forceinline__ Float8E4M3FNUZ operator()(float v, float scale, Float8E4M3FNUZ zero_point) const {
+    return Float8E4M3FNUZ(v / scale);
+  }
+};
+
+template <>
+struct Round<float, Float8E5M2> {
+  __device__ __forceinline__ Float8E5M2 operator()(float v, float scale, Float8E5M2 zero_point) const {
+    return Float8E5M2(v / scale);
+  }
+};
+
+template <>
+struct Round<float, Float8E5M2FNUZ> {
+  __device__ __forceinline__ Float8E5M2FNUZ operator()(float v, float scale, Float8E5M2FNUZ zero_point) const {
+    return Float8E5M2(v / scale);
   }
 };
 
@@ -124,15 +138,19 @@ template Status CudaQuantizeLinear<int8_t, float>(cudaStream_t stream, const flo
 template Status CudaQuantizeLinear<uint8_t, float>(cudaStream_t stream, const float* input, uint8_t* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
 template Status CudaQuantizeLinear<int8_t, half>(cudaStream_t stream, const half* input, int8_t* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaQuantizeLinear<uint8_t, half>(cudaStream_t stream, const half* input, uint8_t* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
-template Status CudaQuantizeLinear<FloatE4M3, float>(cudaStream_t stream, const float* input, FloatE4M3* output, const float* scale, const FloatE4M3* zero_point, size_t num_of_element);
-template Status CudaQuantizeLinear<FloatE5M2, float>(cudaStream_t stream, const float* input, FloatE5M2* output, const float* scale, const FloatE5M2* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<Float8E4M3FN, float>(cudaStream_t stream, const float* input, Float8E4M3FN* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<Float8E4M3FNUZ, float>(cudaStream_t stream, const float* input, Float8E4M3FNUZ* output, const float* scale, const Float8E4M3FNUZ* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<Float8E5M2, float>(cudaStream_t stream, const float* input, Float8E5M2* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element);
+template Status CudaQuantizeLinear<Float8E5M2FNUZ, float>(cudaStream_t stream, const float* input, Float8E5M2FNUZ* output, const float* scale, const Float8E5M2FNUZ* zero_point, size_t num_of_element);
 
 template Status CudaDequantizeLinear<int8_t, float>(cudaStream_t stream, const int8_t* input, float* output, const float* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinear<uint8_t, float>(cudaStream_t stream, const uint8_t* input, float* output, const float* scale, const uint8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinear<int8_t, half>(cudaStream_t stream, const int8_t* input, half* output, const half* scale, const int8_t* zero_point, size_t num_of_element);
 template Status CudaDequantizeLinear<uint8_t, half>(cudaStream_t stream, const uint8_t* input, half* output, const half* scale, const uint8_t* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinear<FloatE4M3, float>(cudaStream_t stream, const FloatE4M3* input, float* output, const float* scale, const FloatE4M3* zero_point, size_t num_of_element);
-template Status CudaDequantizeLinear<FloatE5M2, float>(cudaStream_t stream, const FloatE5M2* input, float* output, const float* scale, const FloatE5M2* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<Float8E4M3FN, float>(cudaStream_t stream, const Float8E4M3FN* input, float* output, const float* scale, const Float8E4M3FN* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<Float8E4M3FNUZ, float>(cudaStream_t stream, const Float8E4M3FNUZ* input, float* output, const float* scale, const Float8E4M3FNUZ* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<Float8E5M2, float>(cudaStream_t stream, const Float8E5M2* input, float* output, const float* scale, const Float8E5M2* zero_point, size_t num_of_element);
+template Status CudaDequantizeLinear<Float8E5M2FNUZ, float>(cudaStream_t stream, const Float8E5M2FNUZ* input, float* output, const float* scale, const Float8E5M2FNUZ* zero_point, size_t num_of_element);
 
 }  // namespace cuda
 }  // namespace onnxruntime

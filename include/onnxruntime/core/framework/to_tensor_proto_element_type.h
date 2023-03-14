@@ -77,12 +77,12 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<BFloat16
   return ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16;
 }
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<FloatE4M3>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3;
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E4M3FN>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN;
 }
 template <>
-constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<FloatE5M2>() {
-  return ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2;
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E4M3FN>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2;
 }
 }  // namespace utils
 }  // namespace onnxruntime

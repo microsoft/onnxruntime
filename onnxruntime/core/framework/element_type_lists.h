@@ -56,8 +56,10 @@ using All =
 using All_float8 =
     boost::mp11::mp_push_back<
         All,
-        FloatE4M3,
-        FloatE5M2>;
+        Float8E4M3FN,
+        Float8E4M3FNUZ,
+        Float8E5M2,
+        Float8E5M2FNUZ>;
 
 using AllIeeeFloatExceptHalf =
     TypeList<
@@ -69,8 +71,10 @@ using AllIeeeFloat =
         float,
         double,
         MLFloat16,
-        FloatE4M3,
-        FloatE5M2>;
+        Float8E4M3FN,
+        Float8E4M3FNUZ,
+        Float8E5M2,
+        Float8E5M2FNUZ>;
 
 using AllNumeric =
     TypeList<

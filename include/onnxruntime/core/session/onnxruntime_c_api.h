@@ -170,8 +170,10 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64,   // complex with float32 real and imaginary components
   ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128,  // complex with float64 real and imaginary components
   ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16,    // Non-IEEE floating-point format based on IEEE754 single-precision
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE4M3,   // Non-IEEE floating-point format based on IEEE754 single-precision
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOATE5M2    // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,   // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ, // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,     // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ  // Non-IEEE floating-point format based on IEEE754 single-precision
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -299,8 +301,8 @@ typedef void(ORT_API_CALL* OrtLoggingFunction)(
 
 /** \brief Graph optimization level
  *
- * Refer to https://www.onnxruntime.ai/docs/resources/graph-optimizations.html
- * for an in-depth understanding of Graph Optimizations
+ * Refer to https://www.onnxruntime.ai/docs/performance/graph-optimizations.html#graph-optimization-levels
+ * for an in-depth understanding of the Graph Optimization Levels.
  */
 typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
@@ -912,7 +914,7 @@ struct OrtApi {
 
   /** \brief Set the optimization level to apply when loading a graph
    *
-   * Please see https://www.onnxruntime.ai/docs/resources/graph-optimizations.html for an in-depth explanation
+   * Please see https://onnxruntime.ai/docs/performance/graph-optimizations.html for an in-depth explanation
    * \param[in,out] options The session options object
    * \param[in] graph_optimization_level The optimization level
    *
@@ -2337,7 +2339,7 @@ struct OrtApi {
    * Lifetime of the created allocator will be valid for the duration of the environment.
    * Returns an error if an allocator with the same ::OrtMemoryInfo is already registered.
    *
-   * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+   * See https://onnxruntime.ai/docs/get-started/with-c.html for details.
    *
    * \param[in] env ::OrtEnv instance
    * \param[in] mem_info
@@ -2665,7 +2667,7 @@ struct OrtApi {
    *
    * Create the configuration of an arena that can eventually be used to define an arena based allocator's behavior.
    *
-   * Supported keys are (See https://onnxruntime.ai/docs/reference/api/c-api.html for details on what the
+   * Supported keys are (See https://onnxruntime.ai/docs/get-started/with-c.html for details on what the
    * following parameters mean and how to choose these values.):
    * "max_mem": Maximum memory that can be allocated by the arena based allocator.
    *  Use 0 for ORT to pick the best value. Default is 0.
@@ -2821,7 +2823,7 @@ struct OrtApi {
 
   /** \brief Set options in a TensorRT Execution Provider.
    *
-   * Please refer to https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example
+   * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
    * and value should be its related range.
    *
@@ -2882,7 +2884,7 @@ struct OrtApi {
    * The behavior of this is exactly the same as OrtApi::CreateAndRegisterAllocator except
    * instead of ORT creating an allocator based on provided info, in this case
    * ORT uses the user-provided custom allocator.
-   * See https://onnxruntime.ai/docs/reference/api/c-api.html for details.
+   * See https://onnxruntime.ai/docs/get-started/with-c.html for details.
    *
    * \param[in] env
    * \param[in] allocator User provided allocator
@@ -3494,11 +3496,17 @@ struct OrtApi {
    * \param[in] num_keys - number of keys passed in
    *
    * Currently supported providers:
+   *   QNN
    *   SNPE
    *   XNNPACK
    *
    * Note: If an execution provider has a dedicated SessionOptionsAppendExecutionProvider_<provider name> function
    *       that should be used to add it.
+   *
+   * QNN supported keys:
+   *   "backend_path": file path to QNN backend library.
+   *   "profiling_level": QNN profiling level, options: "basic", "detailed".
+   *   "rpc_control_latency": QNN RPC control latency.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

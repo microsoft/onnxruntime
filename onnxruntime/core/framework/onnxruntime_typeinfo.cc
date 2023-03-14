@@ -20,8 +20,10 @@
 using onnxruntime::BFloat16;
 using onnxruntime::DataTypeImpl;
 using onnxruntime::MLFloat16;
-using onnxruntime::FloatE4M3;
+using onnxruntime::Float8E4M3FN;
+using onnxruntime::Float8E4M3FNUZ;
 using onnxruntime::FloatE5M2;
+using onnxruntime::FloatE5M2FNUZ;
 #if !defined(DISABLE_SPARSE_TENSORS)
 using onnxruntime::SparseTensor;
 #endif
@@ -221,10 +223,14 @@ const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
       return DataTypeImpl::GetType<MLFloat16>();
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       return DataTypeImpl::GetType<BFloat16>();
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3:
-      return DataTypeImpl::GetType<FloatE4M3>();
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2:
-      return DataTypeImpl::GetType<FloatE5M2>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN:
+      return DataTypeImpl::GetType<Float8E4M3FN>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ:
+      return DataTypeImpl::GetType<Float8E4M3FNUZ>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2:
+      return DataTypeImpl::GetType<Float8E5M2>();
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:
+      return DataTypeImpl::GetType<Float8E5M2FNUZ>();
 
     default:
       ORT_NOT_IMPLEMENTED(__FUNCTION__, ":tensor type ", type, " is not supported");

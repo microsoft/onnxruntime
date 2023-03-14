@@ -78,11 +78,17 @@ TensorProto ToTensor(double value, TensorProto_DataType elem_type) {
     case TensorProto_DataType::TensorProto_DataType_BFLOAT16:
       t.add_int32_data(onnxruntime::BFloat16((float)value).val);
       break;
-    case TensorProto_DataType::TensorProto_DataType_FLOATE4M3:
-      t.add_int32_data(onnxruntime::FloatE4M3((float)value).val);
+    case TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FN:
+      t.add_int32_data(onnxruntime::Float8E4M3FN((float)value).val);
       break;
-    case TensorProto_DataType::TensorProto_DataType_FLOATE5M2:
-      t.add_int32_data(onnxruntime::FloatE5M2((float)value).val);
+    case TensorProto_DataType::TensorProto_DataType_FLOAT8E4M3FNUZ:
+      t.add_int32_data(onnxruntime::Float8E4M3FNUZ((float)value).val);
+      break;
+    case TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2:
+      t.add_int32_data(onnxruntime::Float8E5M2((float)value).val);
+      break;
+    case TensorProto_DataType::TensorProto_DataType_FLOAT8E5M2FNUZ:
+      t.add_int32_data(onnxruntime::Float8E5M2FNUZ((float)value).val);
       break;
     default:
       assert(false);

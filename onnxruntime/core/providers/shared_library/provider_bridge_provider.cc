@@ -156,9 +156,13 @@ MLDataType DataTypeImpl::GetType<BFloat16>() { return Provider_GetHost()->DataTy
 template <>
 MLDataType DataTypeImpl::GetType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetType_MLFloat16(); }
 template <>
-MLDataType DataTypeImpl::GetType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetType_FloatE4M3(); }
+MLDataType DataTypeImpl::GetType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E4M3FN(); }
 template <>
-MLDataType DataTypeImpl::GetType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_FloatE5M2(); }
+MLDataType DataTypeImpl::GetType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2FNUZ(); }
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
 template <>
@@ -188,9 +192,13 @@ MLDataType DataTypeImpl::GetTensorType<BFloat16>() { return Provider_GetHost()->
 template <>
 MLDataType DataTypeImpl::GetTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_MLFloat16(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_FloatE4M3(); }
+MLDataType DataTypeImpl::GetTensorType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E4M3FN(); }
 template <>
-MLDataType DataTypeImpl::GetTensorType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_FloatE5M2(); }
+MLDataType DataTypeImpl::GetTensorType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2FNUZ(); }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -222,9 +230,13 @@ MLDataType DataTypeImpl::GetSparseTensorType<BFloat16>() { return Provider_GetHo
 template <>
 MLDataType DataTypeImpl::GetSparseTensorType<MLFloat16>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_MLFloat16(); }
 template <>
-MLDataType DataTypeImpl::GetSparseTensorType<FloatE4M3>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_FloatE4M3(); }
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E4M3FN>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E4M3FN(); }
 template <>
-MLDataType DataTypeImpl::GetSparseTensorType<FloatE5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_FloatE5M2(); }
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E4M3FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E4M3FNUZ(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2(); }
+template <>
+MLDataType DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetSparseTensorType_Float8E5M2FNUZ(); }
 #endif
 
 Status IDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {

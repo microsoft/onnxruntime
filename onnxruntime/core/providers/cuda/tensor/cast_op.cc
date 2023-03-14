@@ -27,8 +27,10 @@ const std::vector<MLDataType>& CastOpTypeConstraints() {
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<uint64_t>(),
       DataTypeImpl::GetTensorType<bool>(),
-      DataTypeImpl::GetTensorType<FloatE4M3>(),
-      DataTypeImpl::GetTensorType<FloatE5M2>()};
+      DataTypeImpl::GetTensorType<Float8E4M3FN>(),
+      DataTypeImpl::GetTensorType<Float8E4M3FNUZ>(),
+      DataTypeImpl::GetTensorType<Float8E5M2>(),
+      DataTypeImpl::GetTensorType<Float8E5M2FNUZ>()};
   return types;
 }
 
@@ -108,8 +110,10 @@ Status Cast<SrcT>::ComputeInternal(OpKernelContext* context) const {
     CASE(TensorProto_DataType_UINT32, uint32_t)
     CASE(TensorProto_DataType_UINT64, uint64_t)
     CASE(TensorProto_DataType_BOOL, bool)
-    CASE(TensorProto_DataType_FLOATE4M3, FloatE4M3)
-    CASE(TensorProto_DataType_FLOATE5M2, FloatE5M2)
+    CASE(TensorProto_DataType_FLOAT8E4M3FN, Float8E4M3FN)
+    CASE(TensorProto_DataType_FLOAT8E4M3FNUZ, Float8E4M3FNUZ)
+    CASE(TensorProto_DataType_FLOAT8E5M2, Float8E5M2)
+    CASE(TensorProto_DataType_FLOAT8E5M2FNUZ, Float8E5M2FNUZ)
     case TensorProto_DataType_STRING:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Casting to and from strings is not supported yet.");
     case TensorProto_DataType_UNDEFINED:
@@ -154,8 +158,10 @@ SPECIALIZE_IMPL(BFloat16)
   REGISTER_KERNEL_TYPED_19(T) \
   template Status Cast<T>::ComputeInternal(OpKernelContext* context) const;
 
-SPECIALIZE_IMPL_19(FloatE4M3)
-SPECIALIZE_IMPL_19(FloatE5M2)
+SPECIALIZE_IMPL_19(Float8E4M3FN)
+SPECIALIZE_IMPL_19(Float8E4M3FNUZ)
+SPECIALIZE_IMPL_19(Float8E5M2)
+SPECIALIZE_IMPL_19(Float8E5M2FNUZ)
 
 }  // namespace cuda
 }  // namespace onnxruntime

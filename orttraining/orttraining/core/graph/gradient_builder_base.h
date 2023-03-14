@@ -269,12 +269,20 @@ class GradientBuilderBase {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
 
-    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3) {
-      return ConstantScalarNode(FloatE4M3(value), {1}, arg_name);
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
+      return ConstantScalarNode(Float8E4M3FN(value), {1}, arg_name);
     }
 
-    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2) {
-      return ConstantScalarNode(FloatE5M2(value), {1}, arg_name);
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ) {
+      return ConstantScalarNode(Float8E4M3FNUZ(value), {1}, arg_name);
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2) {
+      return ConstantScalarNode(Float8E5M2(value), {1}, arg_name);
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ) {
+      return ConstantScalarNode(Float8E5M2FNUZ(value), {1}, arg_name);
     }
 
     return ConstantScalarNode(value, {1}, arg_name);
@@ -289,12 +297,20 @@ class GradientBuilderBase {
       return ScalarTensorProto(BFloat16(value), {1});
     }
 
-    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE4M3) {
-      return ScalarTensorProto(FloatE4M3(value), {1});
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
+      return ScalarTensorProto(Float8E4M3FN(value), {1});
     }
 
-    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOATE5M2) {
-      return ScalarTensorProto(FloatE5M2(value), {1});
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FNUZ) {
+      return ScalarTensorProto(Float8E4M3FNUZ(value), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2) {
+      return ScalarTensorProto(Float8E5M2(value), {1});
+    }
+
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ) {
+      return ScalarTensorProto(Float8E5M2FNUZ(value), {1});
     }
 
     return ScalarTensorProto(value, {1});
