@@ -2524,4 +2524,63 @@ namespace OperatorHelper
         return outputShapes;
     }
 
+    std::vector<EdgeShapes> MultiHeadAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 8);
+
+        auto queryShape = shapeInfo.GetInputTensorShape(0);
+        auto keyShape = shapeInfo.GetInputTensorShape(1);
+        auto valueShape = shapeInfo.GetInputTensorShape(2);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3 || queryShape.size() == 5);
+
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        uint32_t kvSequenceLength = 0;
+        uint32_t vHiddenSize = 0;
+        uint32_t headSize = 0;
+
+        if (shapeInfo.IsInputValid(2))
+        {
+            ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+            ML_CHECK_VALID_ARGUMENT(valueShape.size() == 3);
+            kvSequenceLength = valueShape[1];
+            vHiddenSize = valueShape[2];
+            headSize = queryShape[2] / gsl::narrow_cast<uint32_t>(m_numHeads);
+        }
+        else if (shapeInfo.IsInputValid(1))
+        {
+            ML_CHECK_VALID_ARGUMENT(keyShape.size() == 5);
+            kvSequenceLength = keyShape[1];
+            vHiddenSize = keyShape[2];
+            headSize = keyShape[4];
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(queryShape.size() == 5);
+            kvSequenceLength = queryShape[1];
+            vHiddenSize = queryShape[2];
+            headSize = queryShape[4];
+        }
+
+        std::vector<EdgeShapes> outputShapes(3);
+        outputShapes[0] = EdgeShapes({batchSize, sequenceLength, vHiddenSize});
+
+        if (shapeInfo.IsOutputValid(1))
+        {
+            outputShapes[1] = EdgeShapes({batchSize, gsl::narrow_cast<uint32_t>(m_numHeads), kvSequenceLength, headSize});
+        }
+
+        if (shapeInfo.IsOutputValid(2))
+        {
+            outputShapes[2] = EdgeShapes({batchSize, gsl::narrow_cast<uint32_t>(m_numHeads), kvSequenceLength, headSize});
+        }
+
+        return outputShapes;
+    }
+
+    void MultiHeadAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_numHeads = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads);
+    }
+
 } // namespace OperatorHelper

@@ -1405,6 +1405,22 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class MultiHeadAttentionHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    MultiHeadAttentionHelper(const Info_t& info, const Shape_t& shapeInfo)
+    {
+        Initialize(KernelInformationAdapter(info));
+    }
+
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+
+private:
+    void Initialize(const IKernelInformationAdapter& kernelInformation);
+    int64_t m_numHeads;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1522,6 +1538,7 @@ using ShapeInferenceHelper_QuantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_DequantizeLinear = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_QLinearSigmoid = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_Attention = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_MultiHeadAttention = MultiHeadAttentionHelper;
 using ShapeInferenceHelper_Sign = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_IsNaN = GetBroadcastedOutputShapeHelper;
 using ShapeInferenceHelper_Erf = GetBroadcastedOutputShapeHelper;

@@ -31,7 +31,8 @@ static void RunMultiHeadAttentionTest(
     bool use_float16 = false,
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
-    bool disable_rocm = true)  // not supported in rocm right now.
+    bool disable_rocm = true,  // not supported in rocm right now.
+    bool disable_dml = false)
 {
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
 
@@ -40,7 +41,7 @@ static void RunMultiHeadAttentionTest(
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
 
-  if (enable_cpu || enable_cuda || enable_rocm) {
+  if (enable_cpu || enable_cuda || enable_rocm || disable_dml) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
@@ -176,7 +177,8 @@ static void RunMultiHeadAttentionKernel(
     bool use_float16 = true,
     bool disable_cpu = true,  // not supported in cpu right now.
     bool disable_cuda = false,
-    bool disable_rocm = true) {
+    bool disable_rocm = true,
+    bool disable_dml = false) {
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     ScopedEnvironmentVariables scoped_env_vars{
         EnvVarMap{
@@ -187,7 +189,7 @@ static void RunMultiHeadAttentionKernel(
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, kv_data, qkv_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
+        use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
     return;
   }
 
@@ -201,7 +203,7 @@ static void RunMultiHeadAttentionKernel(
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, kv_data, qkv_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
+        use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
     return;
   }
 
@@ -215,7 +217,7 @@ static void RunMultiHeadAttentionKernel(
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, kv_data, qkv_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
+        use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
     return;
   }
 
@@ -230,7 +232,7 @@ static void RunMultiHeadAttentionKernel(
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, kv_data, qkv_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
+        use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
     return;
   }
 #endif
@@ -245,7 +247,7 @@ static void RunMultiHeadAttentionKernel(
     RunMultiHeadAttentionTest(
         query_data, key_data, value_data, kv_data, qkv_data, bias_data, key_padding_mask_data, mask_type, output_data,
         num_heads, batch_size, sequence_length, kv_sequence_length, hidden_size, v_hidden_size,
-        use_float16, disable_cpu, disable_cuda, disable_rocm);
+        use_float16, disable_cpu, disable_cuda, disable_rocm, disable_dml);
   }
 }
 
@@ -317,7 +319,7 @@ static void RunMultiHeadAttentionTests(AttentionTestData& data) {
   }
 }
 
-#ifndef _MSC_VER
+#if !defined(_MSC_VER) || defined(USE_DML)
 // Test fused cross attention kernel
 // It requires head_size > 32 and head_size <= 64 for T4 GPU; hidden_size == v_hidden_size.
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
