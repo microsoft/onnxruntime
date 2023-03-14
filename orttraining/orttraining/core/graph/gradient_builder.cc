@@ -1903,9 +1903,9 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   }
 
   // Add HAll, CAll, IOFC outputs of the LSTMInternal node as inputs of the LSTMGrad node
-  input_args.push_backl(O(0));  // all hidden states output of the LSTMInternal node
-  input_args.push_backl(O(3));  // all cell states output of the LSTMInternal node
-  input_args.push_backl(O(4));  // i, o, f, c gate computations output of the LSTMInternal node
+  input_args.push_back(O(0));  // all hidden states output of the LSTMInternal node
+  input_args.push_back(O(3));  // all cell states output of the LSTMInternal node
+  input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMInternal node
 
   // Add gradients of the outputs of the LSTMInternal node as inputs to the LSTMGrad node
   // Gradients of the outputs of the LSTMInternal node include grad_HAll, grad_HFinal, grad_CFinal

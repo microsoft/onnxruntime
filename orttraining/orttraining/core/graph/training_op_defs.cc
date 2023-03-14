@@ -4499,7 +4499,6 @@ Return true if all elements are true and false otherwise.
           updateOutputShape(ctx, 2, {num_directions, hidden_size_x4, hidden_size});
 
         if (num_outputs > 3) {
-          const auto num_inputs = ctx.getNumInputs();
           TensorShapeProto::Dimension hidden_size_x8;
           if (hasInputShape(ctx, 3)) {
             auto& bias_shape = getInputShape(ctx, 3);
