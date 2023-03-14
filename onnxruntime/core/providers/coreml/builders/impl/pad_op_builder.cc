@@ -75,7 +75,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   InlinedVector<int64_t> axes_tensor_data;
   if (input_defs.size() > 3) {
-    // optional input axes is provided
+    // optional input axes is provided, use axes initializer data
     const ONNX_NAMESPACE::TensorProto& axes_tensor = *model_builder.GetInitializerTensors().at(input_defs[3]->Name());
     Initializer axes_initializer(axes_tensor);
     const auto* axes_data = axes_initializer.data<int64_t>();
@@ -173,7 +173,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     const auto input_rank = input_shape.size();
     InlinedVector<int64_t> axes_tensor_data;
     if (input_defs.size() > 3) {
-      // optional axes input is provided
+      // optional axes input is provided, use axes initializer data
       const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
       if (axes_initializer_it == initializers.end()) {
         LOGS(logger, VERBOSE) << "If provided, axes must be a constant initializer.";

@@ -821,7 +821,8 @@ TEST(PadOpTest, ConstantPadAxes) {
                            0, 1, 1, 0,
                            0, 1, 1, 0,
                            0, 1, 1, 0});
-  // CoreML EP requires axes if provided to be a constant initializer, skip this test for CoreML EP here.
+  // CoreML EP requires axes if provided to be a constant initializer and only supports padding specified on last two
+  // dimensions, skip this test for CoreML EP here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kCoreMLExecutionProvider});
 }
 
