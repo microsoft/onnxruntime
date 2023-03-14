@@ -119,11 +119,6 @@ def build_dynamic_axes(example_inputs, outputs_flatten):
     return dynamic_axes, output_names
 
 def build_dynamic_axes_vit(example_inputs, outputs_flatten):
-    # dynamic_axes={
-    #     'pixel_values': {0: 'batch_size', 1: 'num_channels', 2: 'height', 3:'width'},
-    #     'logits': {0: 'batch_size', 1: 'sequence_length'}
-    # }
-
     dynamic_axes = {key: {0: "pixel_values"} for key in example_inputs.keys()}
     output_names = ["logits"]
     return dynamic_axes, output_names
@@ -311,6 +306,9 @@ def modelclass_dispatcher(model_name, custom_model_class):
 
 
 def load_pretrained_model(model_name, config, cache_dir, custom_model_class, is_tf_model=False):
+    if config.model_type=="vit":
+        return AutoModelForImageClassification.from_pretrained(model_name, config=config, cache_dir=cache_dir)
+
     model_class_name = modelclass_dispatcher(model_name, custom_model_class)
 
     if model_class_name == "GPT2ModelNoPastState":
@@ -488,34 +486,26 @@ def export_onnx_model_from_pt(
     # config, model = load_pt_model_from_tf(model_name)
     model.cpu()
 
-    """
-    tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-    max_input_size = (
-        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-    )
+    if config.model_type == "vit":
+        max_input_size = 1024 # What to use for ViT?
 
-    example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
+        example_inputs = inputs = { 'pixel_values' : torch.rand(2,3,224,224) }
+        example_outputs = model(**example_inputs)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
+        max_input_size = (
+            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+        )
 
-    example_inputs = filter_inputs(example_inputs, input_names)
-    """
+        example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
-    # url = 'http://images.cocodataset.org/val2017/000000039769.jpg' # Egyptian cats
-    # image = Image.open(requests.get(url, stream=True).raw)
-    # processor = ViTImageProcessor.from_pretrained(model_name)
-    # model = ViTForImageClassification.from_pretrained(model_name)
-    model = AutoModelForImageClassification.from_pretrained(model_name)
+        example_inputs = filter_inputs(example_inputs, input_names)
 
-    # example_inputs = processor(images=image, return_tensors="pt")
-
-    max_input_size = 1024 # What to use for ViT?
-
-    example_inputs = inputs = { 'pixel_values' : torch.rand(2,3,224,224) }
-    example_outputs = model(**example_inputs)
-
-    # assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
+        example_outputs = model(**example_inputs)
+        assert isinstance(example_outputs, (list, tuple)), f"type of output is not list or tuple: {type(example_outputs)}"
 
     # Flatten is needed for gpt2 and distilgpt2.
-    example_outputs_flatten = flatten(example_outputs['logits'])
+    example_outputs_flatten = flatten(example_outputs)
     example_outputs_flatten = update_flatten_list(example_outputs_flatten, [])
 
     onnx_model_path = get_onnx_file_path(
@@ -533,8 +523,10 @@ def export_onnx_model_from_pt(
         logger.info("Exporting ONNX model to {}".format(onnx_model_path))
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
-        # dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
-        dynamic_axes, output_names = build_dynamic_axes_vit(example_inputs, example_outputs_flatten)
+        if config.model_type == "vit":
+            dynamic_axes, output_names = build_dynamic_axes_vit(example_inputs, example_outputs_flatten)
+        else:
+            dynamic_axes, output_names = build_dynamic_axes(example_inputs, example_outputs_flatten)
 
         replace_torch_functions()
         torch_onnx_export(

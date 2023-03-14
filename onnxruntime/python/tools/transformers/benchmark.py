@@ -334,15 +334,15 @@ def run_pytorch(
             cache_dir=cache_dir,
             custom_model_class=model_class,
         )
-        """
-        tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
-        """
+        if config.model_type == "vit":
+            max_input_size = 1024 # What to use for ViT?
+        else:
+            tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = 1024 # What to use for ViT?
+            max_input_size = (
+                tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
+            )
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -364,18 +364,19 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                # logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, 3, 224, 224]))
-                input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float, device=device)
-                """
-                input_ids = torch.randint(
-                    low=0,
-                    high=config.vocab_size - 1,
-                    size=(batch_size, sequence_length),
-                    dtype=torch.long,
-                    device=device,
-                )
-                """
+                if config.model_type == "vit":
+                    logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, 3, 224, 224]))
+                    input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float, device=device)
+                else:
+                    logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                    input_ids = torch.randint(
+                        low=0,
+                        high=config.vocab_size - 1,
+                        size=(batch_size, sequence_length),
+                        dtype=torch.long,
+                        device=device,
+                    )
+
                 try:
                     inference = (
                         torch.jit.trace(model, input_ids) if torchscript else torch.compile(model) if torch2 else model
