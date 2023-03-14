@@ -1560,14 +1560,6 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
         "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.cc"
   )
 
-  # Use of ORT_ENFORCE introduces a dependency on GetStackTrace.
-  # Currently, we just use an empty implementation to avoid bringing in other dependencies.
-  if(WIN32)
-     list(APPEND custom_op_get_const_input_test_library_src "${ONNXRUNTIME_ROOT}/core/platform/windows/stacktrace.cc")
-  else()
-     list(APPEND custom_op_get_const_input_test_library_src "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc")
-  endif()
-
   onnxruntime_add_shared_library_module(custom_op_get_const_input_test_library ${custom_op_get_const_input_test_library_src})
 
   onnxruntime_add_include_to_target(custom_op_get_const_input_test_library onnxruntime_common GTest::gtest GTest::gmock)
