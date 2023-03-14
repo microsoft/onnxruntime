@@ -53,7 +53,7 @@ InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& initialize
     const ONNX_NAMESPACE::TensorProto& axes_tensor = *initializers.at(input_defs[3]->Name());
     Initializer axes_initializer(axes_tensor);
     const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
-    axes_tensor_data.assgin(axes_data_span.begin(), axes_data_span.end());
+    axes_tensor_data.assign(axes_data_span.begin(), axes_data_span.end());
   } else {
     // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
     InlinedVector<int64_t> default_axes(input_rank);
