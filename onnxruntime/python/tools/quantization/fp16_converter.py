@@ -2,17 +2,12 @@ import itertools
 import logging
 from typing import Dict
 
-import numpy as np
 import onnx
 import packaging.version as pv
 from onnx import AttributeProto, GraphProto, ModelProto, NodeProto, TensorProto, ValueInfoProto, helper, numpy_helper
-
-from python.tools.quantization.onnx_model_converter_base import ConverterBase, parse_arguments
+from python.tools.quantization.onnx_model_converter_base import ConverterBase
 
 logger = logging.getLogger(__name__)
-
-
-# from onnx import onnx_pb as onnx_pb
 
 
 class InitializerTracker:
@@ -34,79 +29,11 @@ class FP16Converter(ConverterBase):
     def __init__(self, model=None, allow_list=None):
         super().__init__(model, allow_list)
 
-    @staticmethod
-    def __make_value_info_from_tensor(tensor: TensorProto) -> ValueInfoProto:
-        if not isinstance(tensor, TensorProto):
-            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
-        shape = numpy_helper.to_array(tensor).shape
-        return helper.make_tensor_value_info(tensor.name, tensor.data_type, shape)
-
-    @staticmethod
-    def __convert_np_float16_to_int(np_array: np.ndarray(shape=(), dtype=np.float16)) -> list[int]:
-        """
-        Convert numpy float16 to python int.
-
-        :param np_array: numpy float16 list
-        :return int_list: python int list
-        """
-        return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_array]
-
-    @staticmethod
-    def __convert_np_float_to_float16(
-        np_array: np.ndarray(shape=(), dtype=np.float32),
-    ) -> np.ndarray(shape=(), dtype=np.float16):
-        """
-        Convert float32 numpy array to float16 without changing sign or finiteness.
-        Positive values less than min_positive_val are mapped to min_positive_val.
-        Positive finite values greater than max_finite_val are mapped to max_finite_val.
-        Similar for negative values. NaN, 0, inf, and -inf are unchanged.
-        """
-
-        min_positive_val = 5.96e-08
-        max_finite_val = 65504.0
-
-        def between(a, b, c):
-            return np.logical_and(a < b, b < c)
-
-        np_array = np.where(between(0, np_array, min_positive_val), min_positive_val, np_array)
-        np_array = np.where(between(-min_positive_val, np_array, 0), -min_positive_val, np_array)
-        np_array = np.where(between(max_finite_val, np_array, float("inf")), max_finite_val, np_array)
-        np_array = np.where(between(float("-inf"), np_array, -max_finite_val), -max_finite_val, np_array)
-        return np.float16(np_array)
-
-    def __convert_tensor_float_to_float16(self, tensor: TensorProto) -> TensorProto:
-        """Convert tensor float to float16.
-
-        Args:
-            tensor (TensorProto): the tensor to convert.
-        Raises:
-            ValueError: input type is not TensorProto.
-
-        Returns:
-            TensorProto: the converted tensor.
-        """
-
-        if not isinstance(tensor, TensorProto):
-            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
-        if tensor.data_type == TensorProto.FLOAT16:
-            return tensor
-
-        tensor.data_type = TensorProto.FLOAT16
-        # convert float_data (float type) to float16 and write to int32_data
-        if tensor.float_data:
-            float16_data = self.__convert_np_float_to_float16(np.array(tensor.float_data))
-            int_list = self.__convert_np_float16_to_int(float16_data)
-            tensor.int32_data[:] = int_list
-            tensor.float_data[:] = []
-        # convert raw_data (bytes type)
-        if tensor.raw_data:
-            # convert n.raw_data to float
-            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
-            # convert float to float16
-            float16_list = self.__convert_np_float_to_float16(float32_list)
-            # convert float16 to bytes and write back to raw_data
-            tensor.raw_data = float16_list.tobytes()
-        return tensor
+    def process(self, keep_io_types=True):
+        if self.model is None:
+            return False
+        self.model = self.__convert_model_float_to_float16(self.model, keep_io_types=keep_io_types)
+        return True
 
     def __convert_model_float_to_float16(
         self,
@@ -253,16 +180,16 @@ class FP16Converter(ConverterBase):
                     next_level.append(model_.g)
                     for graph in model_.graphs:
                         next_level.append(graph)
-                    model_.t.CopyFrom(self.__convert_tensor_float_to_float16(model_.t))
+                    model_.t.CopyFrom(self._convert_tensor_float_to_float16(model_.t))
                     for tensor in model_.tensors:
-                        self.__convert_tensor_float_to_float16(tensor)
+                        self._convert_tensor_float_to_float16(tensor)
                 # if model_ is graph, process graph.initializer(TensorProto), input, output and value_info (
                 # ValueInfoProto)
                 if isinstance(model_, GraphProto):
                     for initializer in model_.initializer:  # TensorProto type
                         if initializer.data_type == TensorProto.FLOAT:
-                            initializer = self.__convert_tensor_float_to_float16(initializer)
-                            value_info_list.append(self.__make_value_info_from_tensor(initializer))
+                            initializer = self._convert_tensor_float_to_float16(initializer)
+                            value_info_list.append(self._make_value_info_from_tensor(initializer))
                     # for all ValueInfoProto with tensor(float) type in input, output and value_info, convert them to
                     # tensor(float16) except map and seq(map). And save them in value_info_list for further processing
                     for val_info in itertools.chain(model_.input, model_.output, model_.value_info):
@@ -275,8 +202,8 @@ class FP16Converter(ConverterBase):
             # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32
             # nodes.
             if force_fp16_initializers or value.fp16_nodes:
-                value.initializer = self.__convert_tensor_float_to_float16(value.initializer)
-                value_info_list.append(self.__make_value_info_from_tensor(value.initializer))
+                value.initializer = self._convert_tensor_float_to_float16(value.initializer)
+                value_info_list.append(self._make_value_info_from_tensor(value.initializer))
                 if value.fp32_nodes and not force_fp16_initializers:
                     logger.info(
                         f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:"
@@ -343,12 +270,6 @@ class FP16Converter(ConverterBase):
 
         return model
 
-    def process(self, keep_io_types=True):
-        if self.model is None:
-            return False
-        self.model = self.__convert_model_float_to_float16(self.model, keep_io_types=keep_io_types)
-        return True
-
     @staticmethod
     def convert_model(model, keep_io_types=True, op_allow_list=None):
         FP16Converter(model, op_allow_list).process(keep_io_types)
@@ -362,7 +283,7 @@ class FP16Converter(ConverterBase):
 
 
 def main():
-    args = parse_arguments()
+    args = FP16Converter.parse_arguments()
     FP16Converter.convert_model_file(args.input, args.output, args.use_external_data_format, args.allow_list)
 
 

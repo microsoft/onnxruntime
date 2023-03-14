@@ -1,10 +1,11 @@
-import onnx
+import argparse
 
+import onnx
 from python.tools.quantization.onnx_model import ONNXModel
 
 
 class ONNXModelProcessorBase(object):
-    model: ONNXModel = None
+    model = None
 
     def __init__(self, model=None):
         self.set_model(model)
@@ -31,3 +32,18 @@ class ONNXModelProcessorBase(object):
 
     def process(self):
         raise NotImplementedError
+
+    @staticmethod
+    def get_parser():
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--input", required=True, type=str, help="input onnx model path")
+        parser.add_argument("--output", required=True, type=str, help="optimized onnx model path")
+        parser.add_argument(
+            "--use_external_data_format",
+            required=False,
+            action="store_true",
+            default=False,
+            help="use external data format to store large model (>2GB)",
+        )
+
+        return parser
