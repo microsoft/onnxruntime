@@ -4,20 +4,23 @@
 #pragma once
 
 #include "contrib_ops/cpu/transformers/subgraph_base.h"
+#include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace transformers {
 
-// A class for T5 encoder subgraph inputs and outputs preparation.
+// A class for whisper encoder subgraph with validation to support float inputs.
 class WhisperEncoderSubgraph : public T5EncoderSubgraph {
  public:
   WhisperEncoderSubgraph(
       const onnxruntime::Node& node_in,
       const std::string& attribute_name,
-      const GraphViewer& subgraph_in) : Subgraph(node_in, attribute_name, subgraph_in) {
-    first_present_output_index_ = 2;
-  }
+      const GraphViewer& subgraph_in) : T5EncoderSubgraph(node_in, attribute_name, subgraph_in) {}
+
+  Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,
+                  const std::vector<const NodeArg*>& subgraph_outputs) override;
+};
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -34,7 +34,6 @@
 #include "contrib_ops/cpu/transformers/beam_search_scorer.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_gpt.h"
 #include "contrib_ops/cpu/transformers/beam_search_impl_t5.h"
-#include "contrib_ops/cpu/transformers/beam_search_impl_whisper.h"
 #include "contrib_ops/cpu/transformers/greedy_search_impl_gpt.h"
 
 using namespace ONNX_NAMESPACE;
@@ -263,7 +262,7 @@ Status BeamSearch::Compute(OpKernelContext* ctx) const {
   // Change the CreateEncoderInputs function for Whisper shapes
   if (parameters_.model_type == IGenerationParameters::kModelTypeWhisper) {
     // Subgraph has constraint that the output is either float or float16
-    if (!whisper_decoder_subgraph_->IsOutputFloat16()) {
+    if (!t5_decoder_subgraph_->IsOutputFloat16()) {
       BeamSearchT5<float> impl{
           *ctx_internal, *encoder_session_state, *decoder_session_state, *t5_encoder_subgraph_,
           *t5_decoder_subgraph_, thread_pool, ctx->GetComputeStream(), dumper_, parameters,

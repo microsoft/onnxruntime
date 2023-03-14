@@ -17,6 +17,7 @@
 #include "core/graph/op.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 #include "onnx/defs/function.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
@@ -410,9 +411,14 @@ void BeamSearchShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   }
   auto& input_ids_shape = getInputShape(ctx, 0);
   auto& input_ids_dims = input_ids_shape.dim();
-  //if (input_ids_dims.size() != 2) {
-  //  fail_shape_inference("Inputs 0 shall be 2 dimensions");
- // }
+  auto model_type_attr = ctx.getAttribute("model_type");
+  int64_t model_type = model_type_attr ? static_cast<int64_t>(model_type_attr->i()) : -1;
+  if (model_type ==  onnxruntime::contrib::transformers::IGenerationParameters::kModelTypeWhisper && input_ids_dims.size() != 3) {
+    fail_shape_inference("Inputs 0 shall be 3 dimensions in whisper graph");
+  }
+  else if (input_ids_dims.size() != 2) {
+    fail_shape_inference("Inputs 0 shall be 2 dimensions");
+  }
   if (!(input_ids_dims[0].has_dim_value() && input_ids_dims[1].has_dim_value())) {
     return;
   }

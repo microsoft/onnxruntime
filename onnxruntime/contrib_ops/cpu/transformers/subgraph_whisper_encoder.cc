@@ -8,6 +8,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/common/gsl.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_encoder.h"
+#include "contrib_ops/cpu/transformers/subgraph_whisper_encoder.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -93,60 +94,6 @@ Status WhisperEncoderSubgraph::Validate(const std::vector<const NodeArg*>& subgr
 
   return Status::OK();
 }
-
-// Create inputs for first inference of subgraph.
-Status T5EncoderSubgraph::CreateInitialFeeds(
-    const Tensor& original_encoder_input_ids,
-    const OrtValue* attn_mask_value,
-    const std::vector<const OrtValue*>& implicit_inputs,
-    int pad_token_id,
-    int start_token_id,
-    std::vector<OrtValue>& feeds,
-    const GenerationDeviceHelper::CreateEncoderInputsFunc& create_encoder_inputs_func,
-    const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
-    IAllocatorUniquePtr<char>& buffer,
-    OrtValue& decoder_input_ids,
-    Stream* ort_stream) {
-  ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
-
-  // The ordering is the same as used in Setup.
-  feeds.reserve(static_cast<size_t>(num_subgraph_inputs) + static_cast<size_t>(num_implicit_inputs));
-
-  // Allocate subgraph inputs to be same device as encoder_input_ids.
-  AllocatorPtr cpu_allocator = session_state_->GetAllocator(original_encoder_input_ids.Location());
-  if (cpu_allocator == nullptr) {
-    const IExecutionProvider* provider = GetProvider();
-    cpu_allocator = provider->GetAllocator(OrtMemTypeDefault);
-  }
-  ORT_RETURN_IF(cpu_allocator == nullptr, "cpu_allocator shouldn't be nullptr");
-
-  // TODO(tianleiwu): expand the outputs instead of inputs to save computation.
-  OrtValue encoder_input_ids;
-  OrtValue encoder_attention_mask;
-  ORT_RETURN_IF_ERROR(create_encoder_inputs_func(&original_encoder_input_ids,
-                                                 attn_mask_value,
-                                                 pad_token_id,
-                                                 start_token_id,
-                                                 cpu_allocator,
-                                                 encoder_input_ids,
-                                                 encoder_attention_mask,
-                                                 decoder_input_ids));
-
-  const IExecutionProvider* provider = GetProvider();
-  ORT_RETURN_IF_ERROR(add_to_feeds_func(
-      provider,
-      ort_stream,
-      {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
-      feeds,
-      buffer));
-
-  for (const auto* entry : implicit_inputs) {
-    feeds.push_back(*entry);
-  }
-
-  return Status::OK();
-}
-
 }  // namespace transformers
 }  // namespace contrib
 }  // namespace onnxruntime

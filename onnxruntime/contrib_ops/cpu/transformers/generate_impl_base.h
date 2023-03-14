@@ -130,7 +130,6 @@ class GenerateBase {
                              "Input 'input_features' is expected to have 3 dimensions, got ", dims.size());
 
     }
-    }
     else if (dims.size() != 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Input 'input_ids' is expected to have 2 dimensions, got ", dims.size());
@@ -181,7 +180,7 @@ class GenerateBase {
 
     if (attention_mask != nullptr) {
       const auto& dims_attn = attention_mask->Shape().GetDims();
-      if (parameters->model_type == kModelTypeWhisper && dims_attn.size() != 3) {
+      if (parameters->model_type == IGenerationParameters::kModelTypeWhisper && dims_attn.size() != 3) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "Input 'attention_mask' is expected to have 3 dimensions, got ", dims_attn.size());
       }
