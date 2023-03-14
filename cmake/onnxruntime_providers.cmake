@@ -488,39 +488,6 @@ if (onnxruntime_USE_CUDA)
   endif()
 
   add_dependencies(onnxruntime_providers_cuda onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
-
-  if (onnxruntime_ENABLE_FT)
-    file(GLOB_RECURSE onnxruntime_custom_op_ft_wrapper_srcs
-       "${ONNXRUNTIME_ROOT}/custom_ops/cuda/*.cc"
-       "${ONNXRUNTIME_ROOT}/custom_ops/cuda/*.h"
-    )
-    onnxruntime_add_shared_library_module(custom_op_ft_wrapper_library ${onnxruntime_custom_op_ft_wrapper_srcs})
-
-    target_include_directories(custom_op_ft_wrapper_library PRIVATE ${ONNXRUNTIME_ROOT}/include/onnxruntime/core/session 
-                                                                    ${onnxruntime_FT_HOME}
-                                                                    ${onnxruntime_CUDNN_HOME}/include
-                                                                    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-
-    set(FT_VIT_LIBS 
-      ${onnxruntime_FT_HOME}/build/lib/libViTINT8.so
-      ${onnxruntime_FT_HOME}/build/lib/libtrt_fused_multi_head_attention.a 
-      ${onnxruntime_FT_HOME}/build/lib/libvit_kernels.a 
-      ${onnxruntime_FT_HOME}/build/lib/libcublasINT8MMWrapper.a 
-      ${onnxruntime_FT_HOME}/build/lib/libnvtx_utils.a 
-      ${onnxruntime_FT_HOME}/build/lib/libmemory_utils.a
-      ${onnxruntime_FT_HOME}/build/lib/libcuda_utils.a
-    )
-    MESSAGE(STATUS "FT ViT libs: ${FT_VIT_LIBS}")
-    target_link_libraries(custom_op_ft_wrapper_library PRIVATE ${FT_VIT_LIBS} cublas cublasLt cudart cudnn m)
-
-    string(CONCAT ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG
-           "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/custom_ops/cuda/ft_custom_op_lib.lds "
-           "-Xlinker --gc-sections -z noexecstack")
-
-    set_property(TARGET custom_op_ft_wrapper_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_FT_WRAPPER_LIB_LINK_FLAG})
-    set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter -Wno-unused-variable -Wno-unused-but-set-variable")
-  endif()
-
   target_link_libraries(onnxruntime_providers_cuda PRIVATE cublasLt cublas cudnn curand cufft ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
   if(onnxruntime_CUDNN_HOME)
     target_include_directories(onnxruntime_providers_cuda PRIVATE ${onnxruntime_CUDNN_HOME}/include)

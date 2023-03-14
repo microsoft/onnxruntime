@@ -681,15 +681,6 @@ def parse_arguments():
         help="enable rocm kernel profiling.",
     )
 
-    # link FasterTransformer libs
-    parser.add_argument(
-        "--enable_ft",
-        action="store_true",
-        help="enable and link FasterTransformer libs",
-    )
-
-    parser.add_argument("--ft_home", help="Path to FasterTransformer home.")
-
     parser.add_argument("--use_xnnpack", action="store_true", help="Enable xnnpack EP.")
     parser.add_argument("--use_azure", action="store_true", help="Enable azure EP.")
 
@@ -1346,15 +1337,6 @@ def generate_build_tree(
                     "-DVERSION_PRIVATE_PART={}{}".format(MM, DD),
                     "-DVERSION_STRING={}.{}.{}.{}".format(ort_major, ort_minor, build_number, source_version[0:7]),
                 ]
-
-    if args.use_cuda and args.enable_ft:
-        if is_windows():
-            log.warning("FasterTransformer doesn't support Windows now.")
-        else:
-            cmake_args += [
-                "-Donnxruntime_ENABLE_FT=ON",
-                "-Donnxruntime_FT_HOME=" + args.ft_home,
-            ]
 
     for config in configs:
         config_build_dir = get_config_build_dir(build_dir, config)
