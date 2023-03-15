@@ -216,7 +216,10 @@ class TransposeGatherActor : public UpStreamGatherOperatorActorBase {
                    const std::unordered_map<int, SliceInfo>& new_gather_infos) override;
 };
 
-class MatMulGatherActor : public UpStreamGatherOperatorActorBase {
+/**
+ * Inherit from SimplePointwiseGatherActor<false> to leverage its PreCheck when slicing on batch dims.
+ */
+class MatMulGatherActor : public SimplePointwiseGatherActor<false> {
  public:
   MatMulGatherActor() = default;
   ~MatMulGatherActor() = default;
@@ -240,12 +243,11 @@ class MatMulGatherActor : public UpStreamGatherOperatorActorBase {
  * @brief Update the dim value using given new dim value at specified axis.
  *
  * @param arg_to_update The NodeArg to be updated.
- * @param reverse_axis A negative axis MUST be given here. This is to make sure if arg_to_update has less rank
- *   than expected value, the update will be ignored.
- * @param output_dim_on_axis New dim value to be updated.
+ * @param axis A non-negative axis MUST be given here.
+ * @param output_dim_on_axis The new dimension value. If not provided, the dimension will be removed.
  * @return true if the update is done.
  */
-bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis,
+bool UpdateSliceOutputShape(NodeArg& arg_to_update, int axis,
                             const ONNX_NAMESPACE::TensorShapeProto_Dimension& new_dim_value);
 
 /**

@@ -11,10 +11,6 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime::optimizer::compute_optimizer {
 
-namespace {
-
-}  // namespace
-
 /**
  * @brief From the given TensorShape, update the specified dimension with the given value.
  * If no new_dim is provided, the dimension will be removed.
@@ -123,49 +119,51 @@ bool SimplePointwiseReshapeActor<AreAllOutputShapesEqual>::PreCheck(
         return false;
       }
     }
+  }
 
-    if (AreAllOutputShapesEqual) {
-      // Make sure once Reshape is moved before the target node, all its outputs can be correctly reshaped.
-      std::unordered_map<int, int> output_indices;
-      for (size_t output_idx = 0; output_idx < current_node.OutputDefs().size(); ++output_idx) {
-        if (static_cast<int>(output_idx) == current_node_output_index) {
-          continue;
-        }
-
-        auto [success, out_cmp_ret] = CompareInputShapeWithOutputShape(data_input_arg->Shape(),
-                                                                       current_node.OutputDefs()[output_idx]->Shape());
-
-        if (!success) {
-          LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                     ": reshape's data input rank < passthrough node's output rank");
-          return false;
-        }
-
-        // All dims should be equal
-        for (int dim_index = 0; dim_index < static_cast<int>(out_cmp_ret.size()); ++dim_index) {
-          if (out_cmp_ret[dim_index] != DimCompareRet::Equal) {
-            LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
-                                       ": output shapes not equal.");
-            return false;
-          }
-        }
+  if (AreAllOutputShapesEqual) {
+    // Make sure once Reshape is moved before the target node, all its outputs can be correctly reshaped.
+    std::unordered_map<int, int> output_indices;
+    for (size_t output_idx = 0; output_idx < current_node.OutputDefs().size(); ++output_idx) {
+      if (static_cast<int>(output_idx) == current_node_output_index) {
+        continue;
       }
 
-      shape_update_func = [&info](Node& node) -> void {
-        // Loop all outputs of the target node, and update the shape accordingly.
-        // For cases AreAllOutputShapesEqual is True, which is handling elementwise ops like (Dropout/Add),
-        // if they have multiple outputs, the output shape is the same.
-        // We can set the shape for every output easily.
-        // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
-        for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-          node.MutableOutputDefs()[output_idx]->SetShape(
-              CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), info.last_dim));
+      auto [success, out_cmp_ret] = CompareInputShapeWithOutputShape(data_input_arg->Shape(),
+                                                                     current_node.OutputDefs()[output_idx]->Shape());
+
+      if (!success) {
+        LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
+                                   ": reshape's data input rank < passthrough node's output rank");
+        return false;
+      }
+
+      // All dims should be equal
+      for (int dim_index = 0; dim_index < static_cast<int>(out_cmp_ret.size()); ++dim_index) {
+        if (out_cmp_ret[dim_index] != DimCompareRet::Equal) {
+          LOG_DEBUG_INFO(logger, "Fail SimplePointwiseReshapeActor::PreCheck for node " + current_node.Name() +
+                                     ": output shapes not equal.");
+          return false;
         }
-      };
-    } else {
-      ORT_THROW("AreAllOutputShapesEqual is false, a custom shape update function should be provided.");
+      }
     }
+
+    shape_update_func = [&info](Node& node) -> void {
+      // Loop all outputs of the target node, and update the shape accordingly.
+      // For cases AreAllOutputShapesEqual is True, which is handling elementwise ops like (Dropout/Add),
+      // if they have multiple outputs, the output shape is the same.
+      // We can set the shape for every output easily.
+      // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
+      for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
+        node.MutableOutputDefs()[output_idx]->SetShape(
+            CreateNewShapeWithMergedTwoLeadingDims(node.MutableOutputDefs()[output_idx]->Shape(), info.last_dim));
+      }
+    };
+  } else {
+    ORT_ENFORCE(shape_update_func,
+                "AreAllOutputShapesEqual is false, a custom shape update function should be provided.");
   }
+
   return propagate_input_indices.size() > 0;
 }
 

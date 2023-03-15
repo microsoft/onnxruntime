@@ -181,8 +181,7 @@ SliceInfo UpStreamGatherGraphTransformer::PropagateSlicingForInput(
 
   // Set the correct shape for the newly created node.
   auto new_slice_out_arg = new_slice_node->MutableOutputDefs()[new_slice_output_index_to_connect];
-  int reversed_axis = new_axis - new_slice_out_arg->Shape()->dim_size();
-  UpdateSliceOutputShape(*new_slice_out_arg, reversed_axis, info.output_dim_on_axis);
+  UpdateSliceOutputShape(*new_slice_out_arg, new_axis, info.output_dim_on_axis);
 
   auto new_slice_info = SliceInfo(graph, new_slice_node, info.is_scalar_slice, info.axis_attr_name, new_axis);
   new_slice_info.entry_node_name = info.entry_node_name;

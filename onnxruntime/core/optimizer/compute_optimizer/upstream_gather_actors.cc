@@ -108,15 +108,12 @@ int GetONNXOpSetVersion(const Graph& graph) {
 }
 }  // namespace
 
-bool UpdateSliceOutputShape(NodeArg& arg_to_update, int reverse_axis, const TensorShapeProto_Dimension& output_dim_on_axis) {
-  ORT_ENFORCE(reverse_axis < 0, " reverse_axis should be negative, representing the index from right to left.");
+bool UpdateSliceOutputShape(NodeArg& arg_to_update, int axis_to_update,
+                            const TensorShapeProto_Dimension& output_dim_on_axis) {
   const TensorShapeProto* shape = arg_to_update.Shape();
   int rank = shape->dim_size();
-  if (rank < -reverse_axis) {
-    return false;
-  }
+  ORT_ENFORCE(axis_to_update >= 0 && axis_to_update < rank, " axis should be non-negative, representing the index from left to right.");
 
-  int axis_to_update = rank + reverse_axis;
   TensorShapeProto new_output_shape = CreateNewShapeWithUpdatedDim(shape, axis_to_update, output_dim_on_axis);
   arg_to_update.SetShape(new_output_shape);
   return true;
@@ -245,8 +242,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
                                                                    std::function<void(Node& node)>& shape_update_func) {
   LOG_DEBUG_INFO(logger, "Enter SimplePointwiseGatherActor::PreCheck for node " + current_node.Name());
 
-  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
-  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[current_node_output_index];
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.slice_data_producer_output_index];
   const auto& data_input_shape = gather_data_input_arg->Shape();
 
   propagate_input_indices.clear();
@@ -376,7 +372,7 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
     // Make sure once Gather is moved before the target node, all its outputs can be correctly sliced.
     std::unordered_map<int, int> output_indices;
     for (size_t output_idx = 1; output_idx < current_node.OutputDefs().size(); ++output_idx) {
-      if (static_cast<int>(output_idx) == current_node_output_index) {
+      if (static_cast<int>(output_idx) == info.slice_data_producer_output_index) {
         continue;
       }
 
@@ -404,17 +400,17 @@ bool SimplePointwiseGatherActor<AreAllOutputShapesEqual>::PreCheck(const Graph& 
       // We can set the shape for every output easily.
       // For cases AreAllOutputShapesEqual is False, a customized shape update function should be provided.
       for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-        auto output_rank = node.MutableOutputDefs()[output_idx]->Shape()->dim_size();
-        UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis - output_rank,
+        UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                                info.output_dim_on_axis);
       }
     };
 
-    return propagate_input_indices.size() > 0;
-
   } else {
-    ORT_THROW("SimplePointwiseGatherActor<false>::PreCheck requires a custom shape update function provided.");
+    ORT_ENFORCE(shape_update_func,
+                "SimplePointwiseGatherActor<false>::PreCheck requires a custom shape update function provided.");
   }
+
+  return propagate_input_indices.size() > 0;
 }
 
 template <bool AreAllOutputShapesEqual>
@@ -462,8 +458,7 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
     return false;
   }
 
-  int current_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
-  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[current_node_output_index];
+  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[info.slice_data_producer_output_index];
   const auto& gather_data_input_shape = gather_data_input_arg->Shape();
 
   // Only handle the case where the first input is 3D.
@@ -489,10 +484,11 @@ bool LayerNormalizationGatherActor::PreCheck(const Graph& /* graph */,
   all_input_cmp_rets[0] = std::move(ret);
 
   shape_update_func = [&info](Node& node) -> void {
-    // Be noted: LayerNorm's 2nd and 3rd output have shape [batch, sequence, 1].
+    // Be noted: LayerNorm's 2nd and 3rd output have shape [batch, sequence, 1]. The dim is still kept even
+    // for reduced axes.
+    // So the slicing axis is same with the 1st output.
     for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-      auto output_rank = node.MutableOutputDefs()[output_idx]->Shape()->dim_size();
-      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis - output_rank,
+      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                              info.output_dim_on_axis);
     }
   };
@@ -513,8 +509,8 @@ bool SoftmaxGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
     return false;
   }
 
-  return SimplePointwiseGatherActor::PreCheck(graph, current_node, info, logger,
-                                              propagate_input_indices, all_input_cmp_rets, shape_update_func);
+  return SimplePointwiseGatherActor<true>::PreCheck(graph, current_node, info, logger,
+                                                    propagate_input_indices, all_input_cmp_rets, shape_update_func);
 }
 
 bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
@@ -596,8 +592,7 @@ bool ReshapeGatherActor::PreCheck(const Graph& graph, const Node& current_node, 
 
     shape_update_func = [&info](Node& node) -> void {
       for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-        auto output_rank = node.MutableOutputDefs()[output_idx]->Shape()->dim_size();
-        UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis - output_rank,
+        UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                                info.output_dim_on_axis);
       }
     };
@@ -615,7 +610,8 @@ bool ReshapeGatherActor::PostProcess(
     const std::unordered_map<int, std::vector<DimCompareRet>>& /* all_input_cmp_rets */,
     const std::unordered_map<int, SliceInfo>& /* new_gather_infos */
 ) {
-  LOG_DEBUG_INFO(logger, "ReshapePostProcess for Node " + current_node.Name() + "(" + current_node.OpType() + ")");
+  LOG_DEBUG_INFO(logger, "ReshapeGatherActor::PostProcess for Node " + current_node.Name() +
+                             "(" + current_node.OpType() + ")");
   InlinedVector<int64_t> new_shape_const_values;
   optimizer_utils::AppendTensorFromInitializer(graph, *current_node.InputDefs()[1], new_shape_const_values, true);
   const int slice_axis = info_without_node.non_negative_axis;
@@ -690,8 +686,7 @@ bool TransposeGatherActor::PreCheck(const Graph& /* graph */, const Node& curren
 
   shape_update_func = [&info](Node& node) -> void {
     for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-      auto output_rank = node.MutableOutputDefs()[output_idx]->Shape()->dim_size();
-      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis - output_rank,
+      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                              info.output_dim_on_axis);
     }
   };
@@ -717,7 +712,7 @@ bool TransposeGatherActor::PostProcess(
   return true;
 }
 
-bool MatMulGatherActor::PreCheck(const Graph& /* graph */, const Node& current_node, const SliceInfo& info,
+bool MatMulGatherActor::PreCheck(const Graph& graph, const Node& current_node, const SliceInfo& info,
                                  const logging::Logger& logger,
                                  std::unordered_map<int, int>& propagate_input_indices,
                                  std::unordered_map<int, std::vector<DimCompareRet>>& all_input_cmp_rets,
@@ -733,18 +728,17 @@ bool MatMulGatherActor::PreCheck(const Graph& /* graph */, const Node& current_n
 
   shape_update_func = [&info](Node& node) -> void {
     for (size_t output_idx = 0; output_idx < node.MutableOutputDefs().size(); ++output_idx) {
-      auto output_rank = node.MutableOutputDefs()[output_idx]->Shape()->dim_size();
-      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis - output_rank,
+      UpdateSliceOutputShape(*node.MutableOutputDefs()[output_idx], info.non_negative_axis,
                              info.output_dim_on_axis);
     }
   };
 
   propagate_input_indices.clear();
   all_input_cmp_rets.clear();
+
   if (info.non_negative_axis == info.input_rank - 1) {
     propagate_input_indices[1] = rhs_rank - 1;
     all_input_cmp_rets[1] = {};
-
     return true;
   } else if (info.non_negative_axis == info.input_rank - 2) {
     propagate_input_indices[0] = lhs_rank - 2;
@@ -753,62 +747,9 @@ bool MatMulGatherActor::PreCheck(const Graph& /* graph */, const Node& current_n
   }
 
   // Gather on batch dimensions, the logic is very similar to SimplePointwiseGatherActor's PreCheck.
-
-  int target_node_output_index = optimizer_utils::IndexOfNodeOutput(current_node, *info.node_ptr->InputDefs()[0]);
-  const NodeArg* gather_data_input_arg = current_node.OutputDefs()[target_node_output_index];
-
-  for (size_t input_idx = 0; input_idx < current_node.InputDefs().size(); ++input_idx) {
-    auto input_shape = current_node.InputDefs()[input_idx]->Shape();
-
-    auto [success, ret] = CompareInputShapeWithOutputShape(gather_data_input_arg->Shape(), input_shape);
-    if (!success) {
-      LOG_DEBUG_INFO(logger, "Fail MatMulGatherActor::PreCheck for node " + current_node.Name() +
-                                 ": gather's data input rank < passthrough node's input rank");
-      return false;
-    }
-
-    // Make sure the fully broadcasted shape has rank >= slice axis.
-    if (ret.size() < static_cast<size_t>(info.non_negative_axis)) {
-      LOG_DEBUG_INFO(logger, "Fail MatMulGatherActor::PreCheck for node " + current_node.Name() +
-                                 ": full broadcasted shape has rank < slice axis." + std::to_string(ret.size()) +
-                                 " < " + std::to_string(info.non_negative_axis));
-      return false;
-    }
-
-    bool ld_dims_exactly_same = true;
-    bool ld_dims_broadcasted_equal = true;
-    // Check the leading dimensions
-    for (size_t dim_idx = 0; dim_idx <= static_cast<size_t>(info.non_negative_axis); ++dim_idx) {
-      const auto& lhs_dim_ret = ret[dim_idx];
-      if (lhs_dim_ret != DimCompareRet::Equal) {
-        ld_dims_exactly_same = false;
-      }
-
-      if (lhs_dim_ret != DimCompareRet::Equal && lhs_dim_ret != DimCompareRet::BroadCast &&
-          lhs_dim_ret != DimCompareRet::NotExist) {
-        ld_dims_broadcasted_equal = false;
-      }
-    }
-
-    if (!ld_dims_exactly_same && !ld_dims_broadcasted_equal) {
-      LOG_DEBUG_INFO(logger, "Fail SimplePointwiseGatherActor::PreCheck for node " + current_node.Name() +
-                                 "leading dims until slice axis(inclusive) are not equal or broadcasted equal.");
-      return false;
-    }
-
-    if (ret[info.non_negative_axis] == DimCompareRet::BroadCast ||
-        ret[info.non_negative_axis] == DimCompareRet::NotExist) {
-      // Don't need to propagate.
-      continue;
-    }
-
-    ORT_ENFORCE(ret[info.non_negative_axis] == DimCompareRet::Equal);
-
-    propagate_input_indices[static_cast<int>(input_idx)] = info.non_negative_axis;
-    all_input_cmp_rets[static_cast<int>(input_idx)] = std::move(ret);
-  }
-
-  return propagate_input_indices.size() > 0;
+  return SimplePointwiseGatherActor<false>::PreCheck(graph, current_node, info, logger,
+                                                     propagate_input_indices, all_input_cmp_rets,
+                                                     shape_update_func);
 }
 
 bool MatMulGatherActor::PostProcess(
