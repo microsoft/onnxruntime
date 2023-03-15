@@ -154,6 +154,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasLogisticActivation,
     MlasClipActivation,
     MlasHardSigmoidActivation,
+    MlasActivationKindCount,
 };
 
 struct MLAS_ACTIVATION {
@@ -1047,6 +1048,15 @@ MLASCALL
 MlasTranspose(
     const int8_t* Input,
     int8_t* Output,
+    size_t M,
+    size_t N
+    );
+
+void
+MLASCALL
+MlasTranspose(
+    const uint16_t* Input,
+    uint16_t* Output,
     size_t M,
     size_t N
     );

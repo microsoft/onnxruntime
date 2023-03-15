@@ -57,6 +57,23 @@ void RegisterCollectiveOps() {
           *output_type->mutable_tensor_type()->mutable_shape() = shape;
         }
       });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(AllToAll)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("group_size",
+            "total size in the group that need to participate.",
+            AttributeProto::INT,
+            static_cast<int64_t>(1))
+      .Input(0, "input", "tensors to be sent", "T", OpSchema::Variadic)
+      .Output(0, "output", "collected tensors", "T", OpSchema::Variadic)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        propagateShapeAndTypeFromFirstInput(ctx);
+      });
 }
 
 }  // namespace contrib

@@ -3,7 +3,7 @@
 #include "core/framework/execution_steps.h"
 #include "core/framework/sequential_executor.h"
 namespace onnxruntime {
-BarrierStep::BarrierStep(size_t id) : SequentialExecutionPlan::ExecutionStep(),
+BarrierStep::BarrierStep(size_t id, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                       barrier_id_{id} {}
 
 Status BarrierStep::Execute(StreamExecutionContext& ctx,
@@ -19,11 +19,9 @@ std::string BarrierStep::ToString() const {
   return ::onnxruntime::MakeString("Set a barrier with id: ",
                                    barrier_id_, ", count: ", 2, ".");
 }
-#ifdef ENABLE_TRAINING
-bool BarrierStep::IsBarrier() const { return true; }
-#endif
+
 WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
-                           NotificationIndex idx) : SequentialExecutionPlan::ExecutionStep(),
+                           NotificationIndex idx, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                                     wait_handle_(handle),
                                                     notification_idx_(idx) {}
 
@@ -48,8 +46,7 @@ std::string WaitOnEPStep::ToString() const {
                                    notification_idx_, ". ");
 }
 
-LaunchKernelStep::LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(),
-                                                      node_index_{index} {}
+LaunchKernelStep::LaunchKernelStep(NodeIndex index) : SequentialExecutionPlan::ExecutionStep(index) {}
 
 Status LaunchKernelStep::Execute(StreamExecutionContext& ctx,
                                  size_t stream_idx,
@@ -74,7 +71,7 @@ std::string LaunchKernelStep::ToString() const {
 }
 
 ActivateNotificationStep::ActivateNotificationStep(
-    NotificationIndex notification_index) : SequentialExecutionPlan::ExecutionStep(),
+    NotificationIndex notification_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                             notification_idx_(notification_index) {}
 
 Status ActivateNotificationStep::Execute(StreamExecutionContext& ctx,
@@ -96,7 +93,7 @@ std::string ActivateNotificationStep::ToString() const {
                                    notification_idx_, ". ");
 }
 
-TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index) : SequentialExecutionPlan::ExecutionStep(),
+TriggerDownstreamStep::TriggerDownstreamStep(size_t trigger_point_index, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
                                                                            trigger_point_index_(trigger_point_index) {}
 
 Status TriggerDownstreamStep::Execute(StreamExecutionContext& ctx,
@@ -113,5 +110,4 @@ std::string TriggerDownstreamStep::ToString() const {
   return ::onnxruntime::MakeString("TriggerDownstreamStep: trigger downstream of trigger point: ",
                                    trigger_point_index_, ".");
 }
-
 }  // namespace onnxruntime

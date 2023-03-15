@@ -250,6 +250,15 @@ def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
     model_group.set_defaults(past_present_share_buffer=False)
 
     model_group.add_argument(
+        "--use_decoder_masked_multihead_attention",
+        required=False,
+        action="store_true",
+        help="Uses `DecoderMaskedMultiheadAttention` to optimize the unidirectional decoding Attention computation. "
+        "Must be used with `past_present_share_buffer`. Currently, only Attention head sizes of 64 and 128 are supported.",
+    )
+    model_group.set_defaults(use_decoder_masked_multihead_attention=False)
+
+    model_group.add_argument(
         "--prefix_vocab_mask",
         required=False,
         action="store_true",
@@ -697,13 +706,12 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
-    layer_count = (input_count - 3) // 4
+    layer_count = (input_count - 2) // 4
     assert layer_count >= 1
 
     # Expect inputs:
     #   input_ids: int32 (B, 1)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
-    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
     #   past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
     #   past_value_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -714,7 +722,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     #   ... (for each cross attention layer)
 
     # TODO: encoder_hidden_states is optional
-    expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
+    expected_inputs = ["input_ids", "encoder_attention_mask"]
     for i in range(layer_count):
         expected_inputs.append(f"past_key_self_{i}")
         expected_inputs.append(f"past_value_self_{i}")
@@ -1066,6 +1074,40 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     return subg
 
 
+def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg) -> bool:
+    """Update the Attention nodes to DecoderMaskedMultiheadAttention.
+
+    Args:
+        subg (GraphProto): GraphProto of the decoder subgraph
+    """
+    decoder_masked_attention_supported_attr = [
+        "past_present_share_buffer",
+        "num_heads",
+        "scale",
+        "domain",
+    ]
+    new_nodes = []
+    for node in subg.node:
+        if node.op_type == "Attention":
+            kwargs = kwargs_of(node)
+            for k in kwargs.copy():
+                # The Attention operator does not support different qkv hidden sizes when past/present
+                # input/output exists (GPT2 model). Hence, we should never run into this.
+                # But, if we do, do not go ahead with the optimization.
+                if k == "qkv_hidden_sizes":
+                    return False
+
+                if k not in decoder_masked_attention_supported_attr:
+                    del kwargs[k]
+            nis = []
+            nis.extend(node.input)
+            node = onnx.helper.make_node("DecoderMaskedMultiheadAttention", nis, node.output, name=node.name, **kwargs)
+        new_nodes.extend([node])
+    subg.ClearField("node")
+    subg.node.extend(new_nodes)
+    return True
+
+
 def update_input_shapes_for_gpt2_decoder_model(decoder_onnx_path: str, use_external_data_format: bool = True):
     """Update the input shapes for the inputs "input_ids" and "position_ids" and make the sequence length dim value 1 for each of them.
        The decoder model will be over-written.
@@ -1363,6 +1405,43 @@ def generate_gpt2_init_decoder(
     return True
 
 
+def make_dim_proto_numeric_t5(model, config):
+    """Make dim_proto numeric.
+
+    Args:
+        model: T5 encoder and decoder model.
+        config: T5 config.
+    """
+    sequence_length = str(1)
+    num_heads = str(config.num_heads)
+    hidden_size = str(config.d_model)
+    head_size = str(config.d_kv)
+
+    for tensor in model.graph.output:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
+
+    for tensor in model.graph.input:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
+
+
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
@@ -1643,6 +1722,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             # )
             # initializers.extend(moved_initializers)
 
+        make_dim_proto_numeric_t5(encoder_model, config)
+        make_dim_proto_numeric_t5(decoder_model, config)
+
         node.attribute.extend(
             [
                 onnx.helper.make_attribute("encoder", encoder_model.graph),
@@ -1663,6 +1745,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
+            # Update for init decoder subgraph
             if past_present_share_buffer:
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
                 update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
@@ -1672,9 +1755,28 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
+        # Update for non-init decoder subgraph
         if past_present_share_buffer:
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
+
+        # If at all, the user requests the use of `use_decoder_masked_multihead_attention`,
+        # we can only use it in the decoder subgraph - it cannot be used in the init_decoder subgraph
+        # as the kernel only supports the decoding use-case (i.e.) when input sequence length is 1.
+        if args.use_decoder_masked_multihead_attention:
+            logger.info("Update decoder subgraph to use DecoderMaskedMultiheadAttention")
+
+            if not past_present_share_buffer:
+                raise ValueError(
+                    "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
+                )
+
+            if not args.use_gpu:
+                raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
+
+            if not update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph):
+                raise ValueError("Could not update the decoder subgraph to use DecoderMaskedMultiheadAttention")
+
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 
     # graph inputs

@@ -373,4 +373,6 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " /MP")
     # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
+elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    add_compile_definitions("_GNU_SOURCE")
 endif()
