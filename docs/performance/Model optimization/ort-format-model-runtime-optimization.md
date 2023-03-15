@@ -1,7 +1,9 @@
 ---
 title: ORT Format Model Runtime Optimization
-parent: Performance
+grand_parent: Performance
+parent: Model Optimization
 nav_order: 4
+redirect_from: /docs/performance/ort-format-model-runtime-optimization
 ---
 {::options toc_levels="2" /}
 

@@ -1,7 +1,9 @@
 ---
 title: Create Float16 and Mixed Precision Models
-parent: How to
-nav_order: 4
+grand_parent: Performance
+parent: Model Optimization
+nav_order: 2
+redirect_from: /docs/performance/float16
 ---
 # Create Float16 and Mixed Precision Models
 {: .no_toc }

@@ -1,8 +1,11 @@
 ---
 title: Quantize ONNX Models
-parent: Performance
-nav_order: 3
-redirect_from: /docs/how-to/quantization
+grand_parent: Performance
+parent: Model Optimization
+nav_order: 1
+redirect_from: 
+  - /docs/how-to/quantization
+  - /docs/performance/quantization
 ---
 # Quantize ONNX Models
 {: .no_toc }
