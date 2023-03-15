@@ -42,6 +42,146 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#include "onnx/defs/data_type_utils.h"
+#include "onnx/defs/function.h"
+#include "onnx/defs/math/utils.h"
+#include "onnx/defs/schema.h"
+#include "onnx/defs/tensor_proto_util.h"
+
+namespace ONNX_NAMESPACE {
+
+    template <typename T>
+    static T get_scalar_value_from_tensor(const ONNX_NAMESPACE::TensorProto* t) {
+    if (t == nullptr) {
+        return T{};
+    }
+
+    auto data_type = t->data_type();
+    switch (data_type) {
+        case ONNX_NAMESPACE::TensorProto::FLOAT:
+        return static_cast<T>(ONNX_NAMESPACE::ParseData<float>(t).at(0));
+        case ONNX_NAMESPACE::TensorProto::DOUBLE:
+        return static_cast<T>(ONNX_NAMESPACE::ParseData<double>(t).at(0));
+        case ONNX_NAMESPACE::TensorProto::INT32:
+        return static_cast<T>(ONNX_NAMESPACE::ParseData<int32_t>(t).at(0));
+        case ONNX_NAMESPACE::TensorProto::INT64:
+        return static_cast<T>(ONNX_NAMESPACE::ParseData<int64_t>(t).at(0));
+        default:
+        fail_shape_inference("Unsupported input data type of ", data_type);
+    }
+    }
+
+    void OverrideSTFT()
+    {
+        auto schema = const_cast<onnx::OpSchema*>(onnx::OpSchemaRegistry::Schema("STFT", 17));
+        schema->TypeAndShapeInferenceFunction([=](onnx::InferenceContext& ctx) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 0);
+
+          // Get signal size
+          // The signal size is needed to perform inference because the size of the signal
+          // is needed to compute the number of DFTs in the output.
+          //
+          // 1) Check if shape exists, return if not
+          // 2) Get the shape
+          // 3) Check if signal dim value exists, return if not
+          if (!hasInputShape(ctx, 0)) {
+            return;
+          }
+
+          auto& input_shape = getInputShape(ctx, 0);
+          auto signal_dim = input_shape.dim(1);
+          if (!signal_dim.has_dim_value()) {
+            return;
+          }
+          auto signal_size = signal_dim.dim_value();
+
+          // The frame step is a required input.
+          // Its value is needed to compute the number output nDFTs, so return early is missing.
+          const auto* frame_step = ctx.getInputData(1);
+          if (nullptr == frame_step) {
+            return;
+          }
+          auto frame_step_value = get_scalar_value_from_tensor<int64_t>(frame_step);
+
+          // Determine the size of the DFT based on the 2 optional inputs window and frame_length.
+          // One must be set.
+          int64_t dft_size = -1;
+          const TensorProto* frame_length = nullptr;
+          if (ctx.hasInput(3)) {
+            frame_length = ctx.getInputData(3);
+            if (frame_length == nullptr) {
+              // If we cannot read the frame_length, we cannot infer shape
+              // return...
+              return;
+            }
+          }
+
+          const TensorShapeProto* window_shape = nullptr;
+          if (ctx.getNumInputs() >= 3) {
+            window_shape = getOptionalInputShape(ctx, 2);
+          } else {
+            window_shape = nullptr;
+          }
+
+          if (window_shape == nullptr && frame_length == nullptr) {
+            // STFT expects to have at least one of these inputs set: [window, frame_length],
+            // but they may not be available at shape inference time
+            return;
+          } else if (window_shape != nullptr && frame_length != nullptr) {
+            if (frame_length->dims_size() != 0) {
+              fail_shape_inference("frame_length input must be scalar.");
+            }
+            auto frame_length_value = get_scalar_value_from_tensor<int64_t>(frame_length);
+
+            // Ensure that the window length and the dft_length match.
+            if (window_shape->dim_size() != 1) {
+              fail_shape_inference("window input must have rank = 1.");
+            }
+            if (window_shape->dim(0).has_dim_value()) {
+              auto window_length = window_shape->dim(0).dim_value();
+              if (window_length != frame_length_value) {
+                fail_type_inference(
+                    "If STFT has both a window input and frame_length specified, the dimension of the window must match the frame_length specified!");
+              }
+            }
+
+            dft_size = frame_length_value;
+          } else if (window_shape != nullptr) {
+            // Ensure that the window length and the dft_length match.
+            if (window_shape->dim_size() != 1) {
+              fail_shape_inference("window input must have rank = 1.");
+            }
+            if (window_shape->dim(0).has_dim_value()) {
+              dft_size = window_shape->dim(0).dim_value();
+            } else {
+              // Cannot determine the window size, and there is no frame_length,
+              // So shape inference cannot proceed.
+              return;
+            }
+          } else if (frame_length != nullptr) {
+            if (frame_length->dims_size() != 0) {
+              fail_shape_inference("frame_length input must be scalar.");
+            }
+            dft_size = get_scalar_value_from_tensor<int64_t>(frame_length);
+          }
+
+          bool is_onesided = static_cast<bool>(getAttribute(ctx, "onesided", 0));
+          int64_t dft_unique_bins = is_onesided ? ((dft_size >> 1) + 1) : dft_size;
+
+          auto n_dfts = static_cast<int64_t>((signal_size - dft_size) / static_cast<float>(frame_step_value)) + 1;
+
+          // The output has the following shape: [batch_size][frames][dft_unique_bins][2]
+          ONNX_NAMESPACE::TensorShapeProto result_shape_proto;
+          result_shape_proto.add_dim()->set_dim_value(input_shape.dim(0).dim_value()); // batch size
+          result_shape_proto.add_dim()->set_dim_value(n_dfts);
+          result_shape_proto.add_dim()->set_dim_value(dft_unique_bins);
+          result_shape_proto.add_dim()->set_dim_value(2);
+          updateOutputShape(ctx, 0, result_shape_proto);
+        });
+    }
+}
+
+
 namespace onnxruntime {
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -250,6 +390,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       dml::RegisterDmlSchemas();
 #endif
       RegisterOnnxOperatorSetSchema();
+      ONNX_NAMESPACE::OverrideSTFT();
 
 #ifndef DISABLE_ML_OPS
       RegisterOnnxMLOperatorSetSchema();
