@@ -795,13 +795,9 @@ class SymbolicShapeInference:
             return type(l[0]) in value_types and type(l[1]) in value_types
             
         funcs = {
-            "Add": lambda l: int(l[0] + l[1])
-            if check_value_types(l) 
-            else l[0] + l[1],
+            "Add": lambda l: int(l[0] + l[1]) if check_value_types(l) else l[0] + l[1],
             # integer div in sympy
-            "Div": lambda l: int(l[0] // l[1]) 
-            if check_value_types(l) 
-            else l[0] // l[1],
+            "Div": lambda l: int(l[0] // l[1]) if check_value_types(l) else l[0] // l[1],
             "Equal": lambda l: l[0] == l[1],
             "Floor": lambda l: sympy.floor(l[0]),
             "Max": lambda l: l[1]
@@ -810,12 +806,8 @@ class SymbolicShapeInference:
             "Min": lambda l: l[1]
             if is_literal(l[0]) and int(l[0]) > self.int_max_
             else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
-            "Mul": lambda l: int(l[0] * l[1]) 
-            if check_value_types(l) 
-            else l[0] * l[1],
-            "Sub": lambda l: int(l[0] - l[1])
-            if check_value_types(l) 
-            else l[0] - l[1],
+            "Mul": lambda l: int(l[0] * l[1]) if check_value_types(l) else l[0] * l[1],
+            "Sub": lambda l: int(l[0] - l[1]) if check_value_types(l) else l[0] - l[1],
             "Where": lambda l: l[1] if l[0] else l[2],
             "Neg": lambda l: -l[0],
         }
