@@ -46,7 +46,10 @@ stages:
         AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
         WithCache: ${{ parameters.WithCache }}
   - job: MacOS_C_API_Package_Publish_All
-    dependsOn: MacOS_C_API_Packaging_CPU_x86_64, MacOS_C_API_Packaging_CPU_arm64, MacOS_C_API_Packaging_CPU_universal2
+    dependsOn:
+    - MacOS_C_API_Packaging_CPU_x86_64
+    - MacOS_C_API_Packaging_CPU_arm64
+    - MacOS_C_API_Packaging_CPU_universal2
     condition: and(succeeded(), eq('${{ parameters.BuildForAllArchs }}', 'true'))
     pool:
       vmImage: 'macOS-12'
