@@ -37,8 +37,10 @@ HRESULT CreateFeatureDescriptors(
                             engine_factory->UseOrtApi());
 
     OrtTypeInfo* type_info;
-    RETURN_HR_IF_NOT_OK_MSG(feature_helpers->GetTypeInfo(ort_model, i, &type_info),
-                            engine_factory->UseOrtApi());
+    auto status = feature_helpers->GetTypeInfo(ort_model, i, &type_info);
+    if (status != nullptr) {
+      continue;
+    }
 
     descriptor.type_info_ = UniqueOrtTypeInfo(type_info, ort_api->ReleaseTypeInfo);
 
@@ -373,7 +375,7 @@ STDMETHODIMP OnnruntimeModel::JoinModel(_In_ IModel* other_model,
                                         _In_ const char* const join_node_prefix) {
   auto winml_adapter_api = engine_factory_->UseWinmlAdapterApi();
   auto ort_api = engine_factory_->UseOrtApi();
-  
+
   RETURN_HR_IF_NOT_OK_MSG(winml_adapter_api->JoinModels(ort_model_.get(),
                                                        static_cast<OnnruntimeModel*>(other_model)->ort_model_.get(),
                                                        output_names,
