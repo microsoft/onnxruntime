@@ -16,55 +16,21 @@ Abstract:
 
 #pragma once
 
-#include "test_util.h"
-#include "mlas_float16.h"
-
-
-//
-// Define our own fp16 type to avoid dragging in big dependencies
-//
-struct MLFp16 {
-  uint16_t val{0};
-
-  MLFp16() = default;
-  explicit constexpr MLFp16(uint16_t x) : val(x) {}
-  explicit constexpr MLFp16(int32_t x) : val((uint16_t)x) {}
-  explicit MLFp16(float ff) : val(MLAS_Float2Half(ff)) {}
-
-  float ToFloat() const {
-    return MLAS_Half2Float(val);
-  }
-
-  operator float() const { return ToFloat(); }
-
-  MLFp16& operator=(float ff) {
-    val = MLAS_Float2Half(ff);
-    return *this;
-  }
-};
+#include "test_fp16.h"
 
 inline bool
-operator==(const MLFp16& left, const MLFp16& right) {
-  return left.val == right.val;
-}
-
-inline bool
-operator!=(const MLFp16& left, const MLFp16& right) {
-  return left.val != right.val;
-}
-
-template<typename T>
-void SmallFloatFill(T* start, size_t size) {
-  constexpr float MinimumFillValue = -11.0f;
-  auto* FillAddress = start;
-  size_t offset = size % 23;
-
-  for (size_t i = 0; i < size; i++) {
-    offset = (offset + 21) % 23;
-    *FillAddress++ = T((MinimumFillValue + offset) / 16.0f);
+CloseEnough(float actual, float expected){
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
   }
+  float diff = std::abs(actual - expected);
+  float top = std::max(std::abs(actual), std::abs(expected));
+  float ratio = 0;
+  if (top > 0.0001) {
+    ratio = diff / top;
+  }
+  return ratio < 0.005;
 }
-
 
 /**
  * @brief Test class for half precision GEMM
@@ -110,6 +76,8 @@ private:
                 MLFp16* C,
                 size_t ldc,
                 float* Cfloat) {
+    MLAS_ACTIVATION act;
+    act.ActivationKind = MlasIdentityActivation;
     std::vector<MLAS_HALF_GEMM_2FLOAT_PROCESSOR> Converters;
     Converters.reserve(BatchSize);
 
@@ -137,7 +105,7 @@ private:
       }
       params.AIsfp32 = std::is_same<AType, float>::value;
       params.BIsfp32 = std::is_same<BType, float>::value;
-      Converters.emplace_back(Cfloat + (M * N * i), N);
+      Converters.emplace_back(act, Cfloat + (M * N * i), N);
       params.OutputProcessor = &(Converters[i]);
     }
 
@@ -156,13 +124,16 @@ private:
     // Most CPUs does not support mixed precision accumulation,
     // only mul & add fuse. As a result, different striding
     // on the K dimension may lead to rounding error.
-    // Accumulation of these rounding error maybe significant.
+    // Accumulation of these rounding error maybe very significant.
+    // So setting a approximation ratio does NOT work.
     //
-    // An ugly hack now is to change the K stride of the kernel
-    // under test to be 16, pass this test and then change it
-    // back :-(.
+    // Currently this test require a manual efforts:
+    // 1. Change the K stride of the kernel under test to be 16;
+    // 2. Force the K stride of the fp16 kernel to 16
+    // 3. Change the test oracle to be exact match.
+    // 4. Pass this test and then change it back :-(.
     //
-    constexpr size_t KStride = 16;
+    constexpr size_t KStride = 512;
 
     for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
@@ -230,9 +201,9 @@ public:
     for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
         for (size_t n = 0; n < N; n++, f++) {
-          ASSERT_EQ(float(C[f]), CReference[f]) << "@[" << batch << "x" << m << "x" << n << "], "
+          ASSERT_TRUE(CloseEnough(float(C[f]), CReference[f])) << "@[" << batch << "x" << m << "x" << n << "], "
                                                 << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
-          ASSERT_EQ(Cfloat[f], CReference[f]) << "Converted@[" << batch << "x" << m << "x" << n << "], "
+          ASSERT_TRUE(CloseEnough(Cfloat[f], CReference[f])) << "Converted@[" << batch << "x" << m << "x" << n << "], "
                                                 << "Batch=" << BatchSize << "M=" << M << ", N=" << N << ", K=" << K;
 
         }

@@ -27,6 +27,7 @@ Subgraph::Subgraph(
       vocab_size(0),
       num_layers(0),
       past_present_share_buffer_(false),
+      has_decoder_masked_multihead_attention_(false),
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -48,6 +49,13 @@ Subgraph::Subgraph(
   subgraph_output_names.reserve(num_subgraph_outputs);
   for (int i = 0; i < num_subgraph_outputs; ++i) {
     subgraph_output_names.push_back(subgraph_outputs[i]->Name());
+  }
+
+  for (const auto& n : subgraph.Nodes()) {
+    if (n.OpType() == "DecoderMaskedMultiheadAttention") {
+      has_decoder_masked_multihead_attention_ = true;
+      break;
+    }
   }
 }
 

@@ -44,10 +44,13 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"GlobalAveragePool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
+          {"ReduceMin", {}},
           {"Relu", {}},
           {"Sigmoid", {}},
+          {"Slice", {}},
           {"Softmax", {}},
-          {"Sqrt", {}}};
+          {"Sqrt", {}},
+          {"Tanh", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
@@ -70,6 +73,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
 }
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
+  return {{"InstanceNormalization", {}}};
 }
 
 /* Selector rules registration related */
@@ -130,6 +136,13 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
+  /* register selector for InstanceNormalization op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetInstanceNormalizationOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
@@ -139,6 +152,7 @@ void SelectorManager::CreateSelectors() {
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
+  RegisterInstanceNormalizationSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

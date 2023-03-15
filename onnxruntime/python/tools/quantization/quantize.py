@@ -11,7 +11,7 @@ from .calibrate import CalibrationDataReader, CalibrationMethod, create_calibrat
 from .onnx_quantizer import ONNXQuantizer
 from .qdq_quantizer import QDQQuantizer
 from .quant_utils import QuantFormat, QuantizationMode, QuantType, load_model, model_has_pre_process_metadata
-from .registry import IntegerOpsRegistry, QLinearOpsRegistry
+from .registry import IntegerOpsRegistry, QDQRegistry, QLinearOpsRegistry
 
 
 class QuantConfig:
@@ -339,7 +339,9 @@ def quantize_static(
     mode = QuantizationMode.QLinearOps
 
     if not op_types_to_quantize or len(op_types_to_quantize) == 0:
-        op_types_to_quantize = list(QLinearOpsRegistry.keys())
+        q_linear_ops = list(QLinearOpsRegistry.keys())
+        qdq_ops = list(QDQRegistry.keys())
+        op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
     model = load_model(Path(model_input), optimize_model)
 

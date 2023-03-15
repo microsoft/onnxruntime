@@ -11,37 +11,44 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, bool is_log_softmax>
+template <typename T, typename TOut, bool is_log_softmax>
 Status SoftMaxComputeHelper(
     cudaStream_t stream,
     const T* X,
     const TensorShape& input_shape,
-    T* Y,
+    TOut* Y,
     int64_t axis) {
-  typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<T>::MappedType CudaT_IN;
+  typedef typename ToCudaType<TOut>::MappedType CudaT_OUT;
+  typedef typename ToCudaType<T>::MappedType CudaT_ACCUM;
 
   int64_t N = input_shape.SizeToDimension(axis);
   int64_t D = input_shape.SizeFromDimension(axis);
-  auto Y_data = reinterpret_cast<CudaT*>(Y);
-  auto X_data = reinterpret_cast<const CudaT*>(X);
+  auto Y_data = reinterpret_cast<CudaT_OUT*>(Y);
+  auto X_data = reinterpret_cast<const CudaT_IN*>(X);
 
   if (D <= 1024 && D * sizeof(T) <= 4096) {
-    return dispatch_warpwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+    return dispatch_warpwise_softmax_forward<
+        CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));
   }
-  return dispatch_blockwise_softmax_forward<CudaT, CudaT, AccumulationType_t<CudaT>, is_log_softmax>(
+
+  return dispatch_blockwise_softmax_forward<CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
       stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D),
       gsl::narrow_cast<int>(N));
 }
 
-#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T)                                                                                           \
-  template Status SoftMaxComputeHelper<T, false>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis); \
-  template Status SoftMaxComputeHelper<T, true>(cudaStream_t stream, const T* input, const TensorShape& shape, T* Y, int64_t axis);
+#define SPECIALIZED_SOFTMAX_HELPER_IMPL(T, TOut)                                                         \
+  template Status SoftMaxComputeHelper<T, TOut, false>(cudaStream_t stream, const T* input,              \
+                                                       const TensorShape& shape, TOut* Y, int64_t axis); \
+  template Status SoftMaxComputeHelper<T, TOut, true>(cudaStream_t stream, const T* input,               \
+                                                      const TensorShape& shape, TOut* Y, int64_t axis);
 
-SPECIALIZED_SOFTMAX_HELPER_IMPL(float)
-SPECIALIZED_SOFTMAX_HELPER_IMPL(double)
-SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16)
-SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, float)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(float, float)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(double, double)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(MLFloat16, MLFloat16)
+SPECIALIZED_SOFTMAX_HELPER_IMPL(BFloat16, BFloat16)
 
 #define REGISTER_KERNEL_TYPED(T)                                                           \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                 \
@@ -170,13 +177,13 @@ Status Softmax<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Status status;
   if (log_softmax_) {
-    status = SoftMaxComputeHelper<T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                           is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                 : static_cast<int64_t>(axis));
+    status = SoftMaxComputeHelper<T, T, true>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                              is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                    : static_cast<int64_t>(axis));
   } else {
-    status = SoftMaxComputeHelper<T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
-                                            is_transpose_required ? static_cast<int64_t>(rank) - 1
-                                                                  : static_cast<int64_t>(axis));
+    status = SoftMaxComputeHelper<T, T, false>(Stream(ctx), X_data, *compute_input_shape, Y_data,
+                                               is_transpose_required ? static_cast<int64_t>(rank) - 1
+                                                                     : static_cast<int64_t>(axis));
   }
 
   if (!status.IsOK())

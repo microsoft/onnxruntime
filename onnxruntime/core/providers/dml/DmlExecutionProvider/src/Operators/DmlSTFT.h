@@ -416,7 +416,9 @@ public:
         std::array<DML_BINDING_DESC, 2> inputBindings;
         uint32_t inputBindingsCount = 1;
 
-        std::array<D3D12_RESOURCE_BARRIER, 3> barriers;
+        // NOTE: avoiding std::array for barriers to avoid buggy code analysis thinking
+        // barrierCount is outside the valid range.
+        D3D12_RESOURCE_BARRIER barriers[3];
         uint32_t barrierCount = 0;
 
         ComPtr<ID3D12Resource> signalResource = DmlSTFTHelpers::GetInputResourceFromKernelContext(context, DmlSTFTKernelInputIndex::Signal);
@@ -464,7 +466,7 @@ public:
         }
 
         // Transition resources COMMON -> UAV
-        commandList->ResourceBarrier(barrierCount, barriers.data());
+        commandList->ResourceBarrier(barrierCount, barriers);
 
         m_framingOperator.commandRecorder->RecordDispatch(
             commandList,
@@ -478,7 +480,7 @@ public:
             std::swap(barriers[barrierIndex].Transition.StateBefore, barriers[barrierIndex].Transition.StateAfter);
         }
 
-        commandList->ResourceBarrier(barrierCount, barriers.data());
+        commandList->ResourceBarrier(barrierCount, barriers);
     }
 };
 

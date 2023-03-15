@@ -40,6 +40,7 @@ try:
         get_all_providers,
         get_available_providers,
         get_device,
+        get_version_string,
         set_default_logger_severity,
         set_default_logger_verbosity,
         set_seed,
