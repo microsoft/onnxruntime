@@ -8,7 +8,8 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/utils.h"
 #include "core/optimizer/compute_optimizer/shared_utils.h"
-
+using namespace ONNX_NAMESPACE;
+using namespace ::onnxruntime::common;
 namespace onnxruntime::optimizer::compute_optimizer {
 
 Node* InsertIntermediateNodeOnDestInput(Graph& graph,
@@ -97,6 +98,54 @@ Node* InsertIntermediateNodeOnDestInput(Graph& graph,
                              std::to_string(dest_in_index) + "th input " +
                              dest_node.InputDefs()[dest_in_index]->Name());
   return &new_node;
+}
+
+std::pair<bool, std::vector<DimCompareRet>> CompareInputShapeWithOutputShape(
+    const ONNX_NAMESPACE::TensorShapeProto* full_broadcasted_shape,
+    const ONNX_NAMESPACE::TensorShapeProto* target_shape) {
+  int full_rank = full_broadcasted_shape->dim_size();
+  int target_rank = target_shape->dim_size();
+
+  if (target_rank > full_rank) {
+    return std::make_pair<bool, std::vector<DimCompareRet>>(false, {});
+  }
+
+  std::vector<DimCompareRet> rets(full_rank);
+  for (int i = -1; i >= -full_rank; --i) {
+    int idx = full_rank + i;
+    if (i < -target_rank) {
+      rets[idx] = DimCompareRet::NotExist;
+      continue;
+    }
+
+    auto& dim = full_broadcasted_shape->dim(idx);
+    auto& target_dim = target_shape->dim(target_rank + i);
+    if (dim.has_dim_value() && target_dim.has_dim_value()) {
+      if (dim.dim_value() != target_dim.dim_value()) {
+        if (target_dim.dim_value() == 1) {
+          rets[idx] = DimCompareRet::BroadCast;
+        } else {
+          rets[idx] = DimCompareRet::NotEqual;
+        }
+      } else {
+        rets[idx] = DimCompareRet::Equal;
+      }
+    } else if (dim.has_dim_param() && target_dim.has_dim_param()) {
+      if (dim.dim_param() != target_dim.dim_param()) {
+        rets[idx] = DimCompareRet::NotEqual;
+      } else {
+        rets[idx] = DimCompareRet::Equal;
+      }
+    } else {
+      if (target_dim.has_dim_value() && target_dim.dim_value() == 1) {
+        rets[idx] = DimCompareRet::BroadCast;
+      } else {
+        rets[idx] = DimCompareRet::NotEqual;
+      }
+    }
+  }
+
+  return std::make_pair<bool, std::vector<DimCompareRet>>(true, std::move(rets));
 }
 
 }  // namespace onnxruntime::optimizer::compute_optimizer

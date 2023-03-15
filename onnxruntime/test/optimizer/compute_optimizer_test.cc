@@ -1428,7 +1428,7 @@ TEST(ComputeOptimizerTests, GatherReshape_SlicingOnSeqlenDim2) {
 
 TEST(ComputeOptimizerTests, GatherRobertaE2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  // Be noted, all dropout have ratio be 0.0, to make it easier to compare when running with session.
+  // Be noted, all dropouts have ratio be 0.0, to make it easier to compare when running with the session.
   // This did not affect the transformer tests, because we did not remove the Dropout of ratio 0. in the middle.
   auto model_uri = MODEL_FOLDER "computation_reduction/gather/gather_roberta_e2e.onnx";
   std::shared_ptr<Model> model;
@@ -1436,7 +1436,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
   Graph& graph = model->MainGraph();
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{4};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<UpStreamGatherGraphTransformer>(),
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<CommonSubexpressionElimination>(),
@@ -1525,7 +1525,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
     EXPECT_EQ(consumers[0]->OpType(), "Squeeze");
   }
 
-  // Check result diff after the re-order
+  // Check the result diff after the re-order
   onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("compute_optimizer_test_tmp_dir")};
   PathString new_model_uri{ConcatPathComponent<PathChar>(tmp_dir.Path(),
                                                          ORT_TSTR("gather_roberta_e2e_optimized.onnx"))};
@@ -1592,7 +1592,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
     // "expected 0.793675 (3f4b2e44), got 0.79232 (3f4ad584), diff: 0.00135422, tol=0.000179367 idx=4276.
     // 1713 of 8192 differ"
-    // Loose the atol a bit because we see the MatMuls results differs once we move Gather before it.
+    // Loose the atol a bit because we see the MatMuls results differ once we move Gather before it.
     constexpr double per_sample_tolerance = 2e-3;
     constexpr double relative_per_sample_tolerance = 2e-3;
     for (size_t i = 0; i < expected_ort_values.size(); i++) {
@@ -1605,7 +1605,7 @@ TEST(ComputeOptimizerTests, GatherRobertaE2E) {
 
 TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
   const logging::Logger* logger = &logging::LoggingManager::DefaultLogger();
-  // Be noted, all dropout have ratio be 0.0, to make it easier to compare when running with session.
+  // Be noted all dropout have a ratio be 0.0, to make it easier to compare when running with the session.
   // This did not affect the transformer tests, because we did not remove the Dropout of ratio 0. in the middle.
   auto model_uri = MODEL_FOLDER "computation_reduction/reshape/mlm_bert_e2e.onnx";
   std::shared_ptr<Model> model;
@@ -1619,7 +1619,7 @@ TEST(ComputeOptimizerTests, ReshapeMlmBertE2E) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
 
   /*
-   Reshape node can be moved from original place up to LayerNorm node generating "layernorm1_out".
+   Reshape node can be moved from the original place up to LayerNorm node generating "layernorm1_out".
 
                         LayerNorm
                      (layernorm1_out)

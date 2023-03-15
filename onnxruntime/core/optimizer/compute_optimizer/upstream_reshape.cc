@@ -23,48 +23,49 @@ UpStreamReshapeGraphTransformer::UpStreamReshapeGraphTransformer(
       //    if not, add the input index restriction.
       {GetFullQualifiedOpName("Add", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_14_13_7_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_14_13_7_6_1)},
       {GetFullQualifiedOpName("BiasGelu", kMSDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_1)},
       {GetFullQualifiedOpName("Cast", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_9_6_1)},
       {GetFullQualifiedOpName("Dropout", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
+           std::make_shared<SimplePointwiseReshapeActor<true>>(), opset_13_12_10_7_6_1)},
       {// Be noted, this is our own implementation of ONNX domain op.
        GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<LayerNormalizationReshapeActor>(), opset_1)},
+           std::make_shared<LayerNormalizationReshapeActor>(), opset_1)},
       {GetFullQualifiedOpName("MatMul", kOnnxDomain),
        OpPassThroughConfig<UpStreamReshapeOperatorActorBase>(
-           {}, std::make_shared<MatMulReshapeActor>(), opset_13_9_1)},
+           std::make_shared<MatMulReshapeActor>(), opset_13_9_1)},
   });
 }
 
 bool UpStreamReshapeGraphTransformer::UpStreamInternal(
     Graph& graph, std::deque<ReshapeInfo>& queue, Node& current_node, ReshapeInfo& info,
     const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
-    const logging::Logger& logger, const std::string& entry_node_name) const {
+    const logging::Logger& logger) const {
   const std::string op_type = GetFullQualifiedOpName(current_node.OpType(), current_node.Domain());
 
-  std::unordered_map<int, std::vector<DimCompareRet>> candidate_input_indices;
+  std::vector<int> propagate_input_indices;
+  std::unordered_map<int, std::vector<DimCompareRet>> all_input_cmp_rets;
   std::function<void(Node & node)> shape_update_func;
-  if (!pass_through_config.actor->PreCheck(graph, current_node, info, pass_through_config.input_indices, logger,
-                                           candidate_input_indices, shape_update_func)) {
+  if (!pass_through_config.actor->PreCheck(current_node, info, logger, propagate_input_indices,
+                                           all_input_cmp_rets, shape_update_func)) {
     LOG_DEBUG_INFO(logger, "Pre-check failed for " + current_node.Name() + "(" + op_type + ")");
     return false;
   }
 
-  if (candidate_input_indices.empty()) {
+  if (propagate_input_indices.empty()) {
     LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
                                ") because the requirement is not met.");
     return false;
   }
 
-  for (auto pair : candidate_input_indices) {
-    auto candidate_input_shape = current_node.InputDefs()[pair.first]->Shape();
+  for (const int& input_idx : propagate_input_indices) {
+    auto candidate_input_shape = current_node.InputDefs()[input_idx]->Shape();
     if (candidate_input_shape->dim_size() != 3) {
       LOG_DEBUG_INFO(logger, "Skip handling current node " + current_node.Name() + "(" + op_type +
                                  ") because not all candidate inputs have rank = 3.");
@@ -92,32 +93,31 @@ bool UpStreamReshapeGraphTransformer::UpStreamInternal(
 
   // Reshape infos that are populated into current_node's inputs.
   std::vector<ReshapeInfo> populated_reshape_infos;
-  populated_reshape_infos.reserve(candidate_input_indices.size());
+  populated_reshape_infos.reserve(propagate_input_indices.size());
   std::unordered_map<int, ReshapeInfo> new_reshape_infos;
-  for (auto pair : candidate_input_indices) {
-    auto input_index = pair.first;  // input index of current_node
+  for (auto input_index : propagate_input_indices) {
     if (current_node.InputDefs()[input_index]->Shape()->dim_size() != 3) {
       // If the input is already initialized, we don't need to propagate reshape.
       continue;
     }
+
+    ORT_ENFORCE(all_input_cmp_rets.find(input_index) != all_input_cmp_rets.end(),
+                "all_input_cmp_rets should be a superset of propagate_input_indices");
+
     ReshapeInfo reshape_info = PropagateReshapeForInput(graph, *info.node_ptr, current_node, input_index, info,
-                                                        pair.second, logger);
+                                                        all_input_cmp_rets.at(input_index), logger);
 
     ORT_ENFORCE(reshape_info.node_ptr, "New added Reshape node should not be null.");
     populated_reshape_infos.push_back(reshape_info);
     new_reshape_infos.insert({{input_index, reshape_info}});
   }
 
-  int index_of_output = optimizer_utils::IndexOfNodeOutput(current_node,
-                                                           *info.node_ptr->InputDefs()[info.GetDataInputIndex()]);
-  ORT_ENFORCE(RemoveOriginReshapeOp(graph, *info.node_ptr, current_node, logger, info).IsOK());
+  ORT_ENFORCE(RemoveOriginalReshapeNode(graph, *info.node_ptr, current_node, logger, info).IsOK());
 
   shape_update_func(current_node);
 
-  if (!pass_through_config.actor->PostProcess(graph, current_node, index_of_output,
-                                              info.last_dim,
-                                              entry_node_name, new_reshape_infos,
-                                              logger)) {
+  if (!pass_through_config.actor->PostProcess(graph, current_node, info, logger, propagate_input_indices,
+                                              all_input_cmp_rets, new_reshape_infos)) {
     ORT_THROW("Post-process failed for " + current_node.Name() + "(" + op_type + ")");
   }
 
@@ -191,21 +191,22 @@ ReshapeInfo UpStreamReshapeGraphTransformer::PropagateReshapeForInput(
   auto new_reshape_out_arg = new_reshape_node->MutableOutputDefs()[new_reshape_output_index_to_connect];
   new_reshape_out_arg->SetShape(CreateNewShapeWithMergedTwoLeadingDims(new_reshape_out_arg->Shape(),
                                                                        info.last_dim));
-  auto new_reshape_info = ReshapeInfo(new_reshape_node, false);
+  auto new_reshape_info = ReshapeInfo(graph, new_reshape_node, false);
+  new_reshape_info.entry_node_name = info.entry_node_name;
   new_reshape_info.entry_reshape_arg_name = info.entry_reshape_arg_name;
   return new_reshape_info;
 }
 
-Status UpStreamReshapeGraphTransformer::RemoveOriginReshapeOp(
+Status UpStreamReshapeGraphTransformer::RemoveOriginalReshapeNode(
     Graph& graph, Node& reshape_node, Node& current_node, const logging::Logger& logger, ReshapeInfo& info) const {
-  LOG_DEBUG_INFO(logger, "RemoveOriginReshapeOp target_node " + current_node.Name() + "(" + current_node.OpType() +
+  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode target_node " + current_node.Name() + "(" + current_node.OpType() +
                              ") reshape_node " + reshape_node.Name() + "(" + reshape_node.OpType() + ")");
 
   auto data_input_arg = reshape_node.MutableInputDefs()[info.GetDataInputIndex()];
   int output_index = optimizer_utils::IndexOfNodeOutput(current_node, *data_input_arg);
   auto output_arg = reshape_node.MutableOutputDefs()[info.GetOutputIndex()];
 
-  LOG_DEBUG_INFO(logger, "RemoveOriginReshapeOp Replace all usage of output " + output_arg->Name() + ":0" +
+  LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Replace all usage of output " + output_arg->Name() + ":0" +
                              " with " + current_node.MutableOutputDefs()[output_index]->Name() + ":" +
                              std::to_string(output_index));
 
@@ -216,7 +217,7 @@ Status UpStreamReshapeGraphTransformer::RemoveOriginReshapeOp(
   reshape_op_consumers.reserve(reshape_origin_consumer_nodes.size());
   for (auto& consumer_node : reshape_origin_consumer_nodes) {
     reshape_op_consumers.push_back(graph.GetNode(consumer_node->Index()));
-    LOG_DEBUG_INFO(logger, "RemoveOriginReshapeOp Reshape's consumer node " + consumer_node->Name() + "(" +
+    LOG_DEBUG_INFO(logger, "RemoveOriginalReshapeNode Reshape's consumer node " + consumer_node->Name() + "(" +
                                consumer_node->OpType() + ")");
   }
   graph.UpdateConsumerNodes(current_node.OutputDefs()[output_index]->Name(), reshape_op_consumers);
@@ -262,7 +263,7 @@ std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstre
     return std::nullopt;
   }
 
-  return ReshapeInfo(&node, true);
+  return ReshapeInfo(graph, &node, true);
 }
 
 }  // namespace onnxruntime

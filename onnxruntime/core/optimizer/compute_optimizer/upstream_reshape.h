@@ -37,8 +37,7 @@ class UpStreamReshapeGraphTransformer
   bool UpStreamInternal(Graph& graph, std::deque<ReshapeInfo>& queue,
                         Node& current_node, ReshapeInfo& info,
                         const OpPassThroughConfig<UpStreamReshapeOperatorActorBase>& pass_through_config,
-                        const logging::Logger& logger,
-                        const std::string& entry_node_name) const override;
+                        const logging::Logger& logger) const override;
 
  private:
   /**
@@ -71,7 +70,7 @@ class UpStreamReshapeGraphTransformer
    *                         output [M*N, K]
    *
    * Be noted: Reshape1 and Reshape2 are inserted on Add's two inputs.
-   * Reshape0's removal and Add's output shape update are done in RemoveOriginReshapeOp.
+   * Reshape0's removal and Add's output shape update are done in RemoveOriginalReshapeNode.
    *
    *
    * @param graph Graph to iterate.
@@ -110,8 +109,8 @@ class UpStreamReshapeGraphTransformer
    * @param info reshape_node's ReshapeInfo.
    * @return
    */
-  Status RemoveOriginReshapeOp(Graph& graph, Node& reshape_node, Node& current_node,
-                               const logging::Logger& logger, ReshapeInfo& info) const;
+  Status RemoveOriginalReshapeNode(Graph& graph, Node& reshape_node, Node& current_node,
+                                   const logging::Logger& logger, ReshapeInfo& info) const;
 };
 
 }  // namespace onnxruntime
