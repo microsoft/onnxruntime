@@ -69,7 +69,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
     p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
     p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.kv_sequence_length;
-    p.bias_strideB = params.num_heads * p.num_queries * p.num_keys;
+    p.bias_strideB = 0;
   }
 
   constexpr auto kernel_fn = attention_kernel_batched_impl<Attention>;
