@@ -8,7 +8,6 @@
 #include "contrib_ops/cuda/bert/attention.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include <iostream>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -55,7 +54,6 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
-  // std::cout << "Computing attention..." << std::endl;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
