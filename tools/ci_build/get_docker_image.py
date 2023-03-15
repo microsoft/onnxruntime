@@ -44,7 +44,11 @@ def parse_args():
 
     parser.add_argument("--manylinux-src", default="manylinux", help="Path to manylinux src folder")
 
-    parser.add_argument("--multiple_repos", action="store_true", help="used in packaging pipeline, which couldn't use get-docker-images-steps.yml")
+    parser.add_argument(
+        "--multiple_repos",
+        action="store_true",
+        help="used in packaging pipeline, which couldn't use get-docker-images-steps.yml",
+    )
 
     return parser.parse_args()
 
