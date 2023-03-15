@@ -11,6 +11,8 @@ jobs:
     - script: |
         brew install ccache
         echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+        which clang
+        clang --version
       displayName: Install ccache
 
     - task: Cache@2
@@ -41,7 +43,6 @@ jobs:
 
     - script: |
         sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
-        set CCACHE_WRAPPER_PATH=/usr/local/opt/ccache/libexec
         python3 $(Build.SourcesDirectory)/tools/ci_build/build.py \
           --skip_submodule_sync \
           --build_dir $(Build.BinariesDirectory)/iOS \
@@ -56,9 +57,11 @@ jobs:
           --config RelWithDebInfo \
           --build_apple_framework \
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
-          --use_cache \
           --parallel
       displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+      env:
+        CC: clang
+        CXX: clang++
 
     - script: |
         ccache -s
