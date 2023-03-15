@@ -73,6 +73,7 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
   ORT_ENFORCE(nnapi_handle_ != nullptr, "Failed to get NnApiImplementation");
 
   bool cpu_disabled = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED;
+  bool cpu_disabled_soft = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT;
   bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
 
   ORT_ENFORCE((cpu_disabled && cpu_only) == false, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
@@ -82,6 +83,8 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
     target_device_option_ = (nnapi::TargetDeviceOption::CPU_DISABLED);
   } else if (cpu_only) {
     target_device_option_ = (nnapi::TargetDeviceOption::CPU_ONLY);
+  } else if (cpu_disabled_soft) {
+    target_device_option_ = nnapi::TargetDeviceOption::CPU_DISABLED_SOFT;
   }
 
   // May we could just mark this EP as unavailable instead of throwing an error

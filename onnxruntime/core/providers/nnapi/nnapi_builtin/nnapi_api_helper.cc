@@ -96,6 +96,7 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
     // https://developer.android.com/ndk/reference/group/neural-networks#aneuralnetworksdevice_gettype
     bool device_is_cpu = device_type == ANEURALNETWORKS_DEVICE_CPU;
     if ((target_device_option == TargetDeviceOption::CPU_DISABLED && device_is_cpu) ||
+        (target_device_option == TargetDeviceOption::CPU_DISABLED_SOFT && device_is_cpu) ||
         (target_device_option == TargetDeviceOption::CPU_ONLY && !device_is_cpu)) {
       continue;
     }

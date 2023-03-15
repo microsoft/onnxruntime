@@ -29,7 +29,9 @@ enum class TargetDeviceOption : int8_t {
   EXCLUDED_DEVICES,   // Exclude one or more devices (must be given)
    */
 
-  CPU_DISABLED,  // use all available target devices except CPU
+  CPU_DISABLED,       // use all available target devices except CPU
+  CPU_DISABLED_SOFT,  // try best to use all target devices except CPU or fallback to CPU
+                      // if there is a op not supported by the other devices
   CPU_ONLY,      // use CPU only
 };
 
