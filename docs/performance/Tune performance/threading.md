@@ -1,7 +1,7 @@
 ---
 title: Thread management
 grand_parent: Performance
-parent: Model Optimization
+parent: Tune performance
 nav_order: 3
 ---
 

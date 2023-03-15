@@ -1,7 +1,7 @@
 ---
 title: Reduce memory consumption
 grand_parent: Performance
-parent: Model Optimization
+parent: Tune performance
 nav_order: 2
 ---
 

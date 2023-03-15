@@ -1,7 +1,7 @@
 ---
 title: Profiling Tools 
 grand_parent: Performance
-parent: Model Optimization
+parent: Tune performance
 nav_order: 1
 ---
 
