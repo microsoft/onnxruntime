@@ -27,9 +27,6 @@ jobs:
       displayName: Install protobuf
 
     - script: |
-        echo $PATH
-        which clang
-        clang --version
         ccache -s
         ccache -z
       displayName: Show Cache stats and Clear protolbuf stats
@@ -63,6 +60,7 @@ jobs:
       env:
         CC: clang
         CXX: clang++
+        CCACHE_SLOPPINESS: modules
 
     - script: |
         ccache -s
