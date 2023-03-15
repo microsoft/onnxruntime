@@ -829,99 +829,99 @@ TEST(PadOpTest, ConstantPadAxes) {
 TEST(PadOpTest, ConstantPadAxes_1) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
-  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1});
-  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {0, 1, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-                          {0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0});
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, ConstantPadAxes_2) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
-  test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1});
-  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 1, 1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<int32_t>("output", {1, 2, 4, 4},
-                          {0, 0, 0, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 0, 0, 0,
-                           0, 0, 0, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 0, 0, 0});
+  test.AddOutput<float>("output", {1, 2, 4, 4},
+                        {0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 0.0f, 0.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, ConstantPadAxes_3) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
-  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1});
-  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {8}, {0, 0, 0, 1, 0, 0, 0, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {4}, {0, 1, 2, 3}, true /* axes_is_initializer */);
-  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-                          {0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0});
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, ConstantPadAxes_outoforder) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
-  test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0});
-  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {4}, {1, 0, 1, 0}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {2}, {3, 2}, true /* axes_is_initializer */);
-  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-                          {0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0});
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
 TEST(PadOpTest, ConstantPadAxes_one_dimension_specified) {
   OpTester test("Pad", 18);
   test.AddAttribute("mode", "constant");
-  test.AddInput<int32_t>("data", {1, 2, 2, 2},
-                         {1, 1,
-                          1, 1,
-                          1, 1,
-                          1, 1});
-  test.AddInput<int64_t>("pads", {2}, {1, 1});
-  test.AddInput<int32_t>("value", {1}, {0});
+  test.AddInput<float>("data", {1, 2, 2, 2},
+                       {1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f,
+                        1.0f, 1.0f});
+  test.AddInput<int64_t>("pads", {2}, {1, 1}, true /* pads_is_initializer */);
+  test.AddInput<float>("value", {1}, {0.0f}, true /* value_is_initializer */);
   test.AddInput<int64_t>("axes", {1}, {3}, true /* axes_is_initializer */);
-  test.AddOutput<int32_t>("output", {1, 2, 2, 4},
-                          {0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0,
-                           0, 1, 1, 0});
+  test.AddOutput<float>("output", {1, 2, 2, 4},
+                        {0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f,
+                         0.0f, 1.0f, 1.0f, 0.0f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
