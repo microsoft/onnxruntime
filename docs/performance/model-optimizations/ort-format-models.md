@@ -2,7 +2,7 @@
 title: ORT model format
 description: Define the ORT format and show how to convert an ONNX model to ORT format to run on mobile or web
 grand_parent: Performance
-parent: Model Optimizations
+parent: Model optimizations
 nav_order: 4
 redirect_from: 
   - /docs/tutorials/mobile/model-conversion

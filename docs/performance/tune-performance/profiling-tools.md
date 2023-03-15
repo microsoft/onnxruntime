@@ -1,5 +1,5 @@
 ---
-title: Profiling Tools 
+title: Profiling tools 
 grand_parent: Performance
 parent: Tune performance
 nav_order: 1

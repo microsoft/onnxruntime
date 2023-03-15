@@ -1,7 +1,7 @@
 ---
 title: Float16 and mixed precision models
 grand_parent: Performance
-parent: Model Optimizations
+parent: Model optimizations
 nav_order: 2
 redirect_from: /docs/performance/float16
 ---

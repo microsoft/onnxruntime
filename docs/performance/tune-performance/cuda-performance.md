@@ -56,7 +56,7 @@ By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optim
 
 Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
-* <details markdown="block">
+<details markdown="block">
     <summary>Python</summary>
     
     ```python
@@ -65,9 +65,9 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
     sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx", sess_options=sess_options, providers=providers)
     ```
 
-    </details>
+ </details>
 
-* <details>
+<details>
     <summary>C/C++</summary>
 
     ```c++
@@ -85,9 +85,10 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
     // Finally, don't forget to release the provider options
     ReleaseCUDAProviderOptions(cuda_options);
     ```
-    </details>
 
-* <details>
+ </details>
+
+<details>
     <summary>C#</summary>
 
     ```csharp
@@ -100,7 +101,7 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
 
     SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
     ```
-    </details>
+</details>
 
 ## Convolution Input Padding
 

@@ -1,7 +1,7 @@
 ---
 title: Quantize ONNX models
 grand_parent: Performance
-parent: Model Optimizations
+parent: Model optimizations
 nav_order: 1
 redirect_from: 
   - /docs/how-to/quantization

@@ -1,7 +1,7 @@
 ---
 title: Graph optimizations
 parent: Performance
-grand_parent: Model Optimizations
+grand_parent: Model optimizations
 nav_order: 3
 redirect_from: 
 - /docs/how-to/graph-optimizations
