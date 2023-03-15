@@ -445,6 +445,14 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
     DUMP_TENSOR_D("value", data.value, batch_size * kv_sequence_length, num_heads, v_head_size);
     DUMP_TENSOR_D("value_bias", data.bias + 2 * num_heads * qk_head_size, num_heads, v_head_size);
 
+    if (data.relative_position_bias != nullptr && parameters.broadcast_res_pos_bias) {
+      DUMP_TENSOR_D("relative_position_bias", data.relative_position_bias, num_heads, sequence_length, kv_sequence_length);
+    }
+
+    if (data.mask_index != nullptr && parameters.mask_type == AttentionMaskType::MASK_1D_KEY_QUERY_LEN) {
+      DUMP_TENSOR_D("mask_index", data.mask_index, 2 * batch_size + 1, 1);
+    }
+
     if (data.fused_cross_attention_kernel != nullptr) {
       assert(qk_head_size == v_head_size);
 
@@ -742,7 +750,6 @@ Status QkvToContext(
   if (data.use_memory_efficient_attention) {
     // We only enable fused cross attention when there is no key padding mask.
     // Otherwise, key have effective batch size 2 * batch_size, which is different from batch_size of query.
-    assert(data.mask_index == nullptr);
     assert(qkv_format == AttentionQkvFormat::Q_K_V_BSNH);
 
     const void* query = q;
@@ -765,17 +772,17 @@ Status QkvToContext(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
     p.scale = scale;
-    p.cu_seqlens_q = nullptr;
-    p.cu_seqlens_k = nullptr;
+    p.cu_seqlens_q = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.cu_seqlens_k = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
     p.query = query;
     p.key = key;
     p.value = value;
-    p.attn_bias = data.relative_position_bias;
+    p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;
     run_memory_efficient_attention(p);
-
     DUMP_TENSOR("cutlass output", data.output, batch_size * sequence_length, num_heads, v_head_size);
     return Status::OK();
   }
