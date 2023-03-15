@@ -41,7 +41,7 @@ parameters:
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
-  AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
+    AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
 
 - template: mac-cpu-packaging-pipeline.yml
   parameters:
