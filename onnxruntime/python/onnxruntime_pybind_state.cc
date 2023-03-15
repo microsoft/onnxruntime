@@ -808,6 +808,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
       }
     }
     if (ep_global_index >= 0) {
+      std::cout<<"Get global EP from Env with index:"<<ep_global_index<<std::endl;
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::shared_ptr<onnxruntime::IExecutionProvider>(sess->GetExecutionProviderFromEnv(ep_global_index))));
     } else {
       auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
@@ -962,13 +963,6 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
         return -1;
       });
-  m.def("test_dict", [](const SessionOptions& session_options, const ProviderOptions& provider_option)->int{
-    std::cout<<"introduce session:"<<session_options.enable_mem_pattern<<std::endl;
-    for(const auto& [k, v] : provider_option) {
-      std::cout<<"key:"<<k<<",v:"<<v<<std::endl;
-    }
-    return -1;
-  });
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1505,7 +1499,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([&env](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
                            bool load_config_from_model = false) {
-        std::cout<<"py::init() begin"<<std::endl;
         std::unique_ptr<PyInferenceSession> sess;
 
         // separate creation of the session from model loading unless we have to read the config from the model.
@@ -1541,7 +1534,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
-            std::cout<<"initialize_session() begin"<<std::endl;
             InitializeSession(sess->GetSessionHandle(),
                               ep_registration_fn,
                               provider_types,

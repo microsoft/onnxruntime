@@ -45,7 +45,6 @@ try:
         set_default_logger_severity,
         set_default_logger_verbosity,
         set_seed,
-        test_dict,
     )
 
     import_capi_exception = None
