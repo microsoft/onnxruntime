@@ -154,7 +154,7 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasTanhActivation> {
         float16x8_t vz = vabsq_f16(vx);
 
         // The function saturates at -1 for large positive inputs: tanhh(-z) == -1.0h for z >=
-        // sat_cutoff ~= 9.010913. To guarantee this behaviour, we clip input z at sat_cutoff, and
+        // sat_cutoff ~= 9.010913. To guarantee this behavior, we clip input z at sat_cutoff, and
         // leverage the fact that for our implementation tanhf(sat_cutoff) == -1.0h. NaN inputs are
         // passed unchanged.
         vz = vminq_f16(vz, vsat_cutoff_16x8);
@@ -220,7 +220,7 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasTanhActivation> {
         float16x4_t vz = vabs_f16(vx);
 
         // The function saturates at -1 for large positive inputs: tanhh(-z) == -1.0h for z >=
-        // sat_cutoff ~= 9.010913. To guarantee this behaviour, we clip input z at sat_cutoff, and
+        // sat_cutoff ~= 9.010913. To guarantee this behavior, we clip input z at sat_cutoff, and
         // leverage the fact that for our implementation tanhf(sat_cutoff) == -1.0h. NaN inputs are
         // passed unchanged.
         vz = vmin_f16(vz, vsat_cutoff_16x4);
