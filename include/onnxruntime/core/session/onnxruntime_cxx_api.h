@@ -601,6 +601,18 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
 
   template <typename... Args>
   SessionOptionsImpl& RegisterCustomFuncT(const char* domain_name, const char* op_name, const char* execution_provider, void (*custom_compute_fn)(Args... args));
+
+  /////////////////////////////////////////////////////////////////////////////////
+
+  template <typename... Args>
+  SessionOptionsImpl& RegisterCustomFuncT2(const char* domain_name, const char* op_name, const char* execution_provider, void (*custom_compute_fn)(Args... args));
+
+  ~SessionOptionsImpl();
+
+ private:
+  std::unordered_map<std::string, OrtCustomOpDomain*> custom_domains_map_;
+  using OrtCustomOpPtr = std::unique_ptr<OrtCustomOp>;
+  std::vector<OrtCustomOpPtr> custom_ops_;
 };
 }  // namespace detail
 
@@ -1892,6 +1904,8 @@ class Tensor {
 template<typename T>
 class InputTensor : public Tensor {
  public:
+  using TT = typename std::remove_reference<T>::type;
+
   InputTensor(OrtKernelContext* ctx, size_t indice) : Tensor(ctx) {
     const_value_ = ctx_.GetInput(indice);
   };
@@ -1900,11 +1914,10 @@ class InputTensor : public Tensor {
     auto type_shape_info = const_value_.GetTensorTypeAndShapeInfo();
     return type_shape_info.GetShape();
   }
-  const void* Data() const {
+  const TT* Data() const {
     // assert(const_value_);
-    return const_value_.GetTensorRawData();
+    return reinterpret_cast<const TT*>(const_value_.GetTensorRawData());
   }
-
  private:
   ConstValue const_value_;
 };
@@ -1925,6 +1938,10 @@ class OutputTensor : public Tensor {
   const size_t indice_;
 };
 
+template <typename... Args>
+OrtCustomOp* CreateCustomOp(const char* op_name,
+                            const char* execution_provider,
+                            void (*custom_compute_fn)(Args...));
 }  // namespace custom
 
 }  // namespace Ort

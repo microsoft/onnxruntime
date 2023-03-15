@@ -4002,6 +4002,7 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
   INPUT_OUTPUT_VARIADIC,
 } OrtCustomOpInputOutputCharacteristic;
 
+using CustomComputeFnT = void(*)(OrtKernelContext*, void*);
 /*
  * The OrtCustomOp structure defines a custom op's schema and its kernel callbacks. The callbacks are filled in by
  * the implementor of the custom op.
@@ -4057,6 +4058,9 @@ struct OrtCustomOp {
   // and false (zero) otherwise.
   // Applicable only for custom ops that have a variadic output.
   int(ORT_API_CALL* GetVariadicOutputHomogeneity)(_In_ const struct OrtCustomOp* op);
+
+  CustomComputeFnT custom_compute_fn_ = {};
+  void* raw_fn_ = {};
 };
 
 /*

@@ -817,9 +817,41 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomFunc(
   return *this;
 }
 
+using TensorPtr = std::unique_ptr<Custom::Tensor>;
+
+template <size_t indice, typename T, typename... Args>
+typename std::enable_if<0 == sizeof...(Args), std::tuple<T>>::type
+MakeTuple(OrtKernelContext* context, size_t num_inputs, std::vector<TensorPtr>& tensors) {
+  tensors.push_back(std::make_unique<Custom::OutputTensor<T>>(context, indice - num_inputs));
+  return std::tuple<T>{reinterpret_cast<T>(*tensors[indice])};
+}
+
+template <size_t indice, typename T, typename... Args>
+typename std::enable_if<0 < sizeof...(Args), std::tuple<T, Args...>>::type
+MakeTuple(OrtKernelContext* context, size_t num_inputs, std::vector<TensorPtr>& tensors) {
+  if (indice < num_inputs) {
+    tensors.push_back(std::make_unique<Custom::InputTensor<T>>(context, indice));
+  } else {
+    tensors.push_back(std::make_unique<Custom::OutputTensor<T>>(context, indice - num_inputs));
+  }
+  std::tuple<T> current = std::tuple<T>{reinterpret_cast<T>(*tensors[indice])};
+  auto next = MakeTuple<indice + 1, Args...>(context, num_inputs, tensors);
+  return std::tuple_cat(current, next);
+}
+
+template <typename... Args>
+void CustomCompute(OrtKernelContext* context, void* raw_fn) {
+  using ComputeFn = void (*)(Args...);
+  auto compute_fn = reinterpret_cast<ComputeFn>(raw_fn);
+  std::vector<TensorPtr> tensors;
+  size_t num_inputs;
+  Ort::ThrowOnError(GetApi().KernelContext_GetInputCount(context, &num_inputs));
+  auto t = MakeTuple<0, Args...>(context, num_inputs, tensors);
+  std::apply([compute_fn](Args const&... t_args) { compute_fn(t_args...); }, t);
+}
+
 template <typename... Args>
 struct OrtCustomOpT : public OrtCustomOp {
-
   using ComputeFn = void (*)(Args...);
   using MyType = OrtCustomOpT<Args...>;
 
@@ -841,32 +873,45 @@ struct OrtCustomOpT : public OrtCustomOp {
     OrtCustomOp::CreateKernel = [](const OrtCustomOp* this_, const OrtApi*, const OrtKernelInfo*) { return (void*)this_; };
     OrtCustomOp::GetName = [](const OrtCustomOp* this_) { return static_cast<const OrtCustomOpT*>(this_)->op_name_.c_str(); };
     OrtCustomOp::GetExecutionProviderType = [](const OrtCustomOp* this_) { return ((OrtCustomOpT*)this_)->execution_provider_.c_str(); };
-    OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp*) { return (size_t)1; };
-    OrtCustomOp::GetInputType = [](const OrtCustomOp*, size_t) { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
     OrtCustomOp::GetInputMemoryType = [](const OrtCustomOp*, size_t) { return OrtMemTypeDefault; };
 
-    // OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp*) { return (size_t)1; };
-    // OrtCustomOp::GetOutputType = [](const OrtCustomOp*, size_t) { return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED; };
+    OrtCustomOp::GetInputTypeCount = [](const OrtCustomOp* this_) {
+      auto self = reinterpret_cast<const MyType*>(this_);
+      return self->input_types_.size();
+    };
+
+    OrtCustomOp::GetInputType = [](const OrtCustomOp* this_, size_t indice) {
+      auto self = reinterpret_cast<const MyType*>(this_);
+      return self->input_types_[indice];
+    };
 
     OrtCustomOp::GetOutputTypeCount = [](const OrtCustomOp* this_) {
       auto self = reinterpret_cast<const MyType*>(this_);
       return self->output_types_.size();
     };
+
     OrtCustomOp::GetOutputType = [](const OrtCustomOp* this_, size_t indice) {
       auto self = reinterpret_cast<const MyType*>(this_);
       return self->output_types_[indice];
     };
 
     OrtCustomOp::KernelDestroy = [](void*) {};
-    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp*, size_t) { return INPUT_OUTPUT_VARIADIC; };
-    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp*, size_t) { return INPUT_OUTPUT_VARIADIC; };
-    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp*) { return 1; };
+    OrtCustomOp::GetInputCharacteristic = [](const OrtCustomOp*, size_t) { return INPUT_OUTPUT_REQUIRED; };
+    OrtCustomOp::GetOutputCharacteristic = [](const OrtCustomOp*, size_t) { return INPUT_OUTPUT_REQUIRED; };
+    OrtCustomOp::GetVariadicInputMinArity = [](const OrtCustomOp*) { return 0; };
     OrtCustomOp::GetVariadicInputHomogeneity = [](const OrtCustomOp*) { return 0; };
-    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp*) { return 1; };
+    OrtCustomOp::GetVariadicOutputMinArity = [](const OrtCustomOp*) { return 0; };
     OrtCustomOp::GetVariadicOutputHomogeneity = [](const OrtCustomOp*) { return 0; };
 
+    ParseInputType<0, Args...>();
     ParseOutputType<0, Args...>();
+
+    this->custom_compute_fn_ = &CustomCompute<Args...>;
+    this->raw_fn_ = (void*)compute_fn_;
   }
+
+
+  ////////////////////// parse context ///////////////////////
 
   template <size_t indice, typename T, typename... Args>
   typename std::enable_if<0 == sizeof...(Args), std::tuple<T>>::type
@@ -888,6 +933,28 @@ struct OrtCustomOpT : public OrtCustomOp {
     return std::tuple_cat(current, next);
   }
 
+  ////////////////////// parse input ///////////////////////
+  template <size_t indice, typename T, typename... Args>
+  typename std::enable_if<0 == sizeof...(Args)>::type
+  ParseInputType() {
+  }
+
+  template <size_t indice, typename T, typename... Args>
+  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, const Custom::InputTensor<float>&>::value>::type
+  ParseInputType() {
+    input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+    ParseInputType<indice + 1, Args...>();
+  }
+
+  template <size_t indice, typename T, typename... Args>
+  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, const Custom::InputTensor<int32_t>&>::value>::type
+  ParseInputType() {
+    input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+    ParseInputType<indice + 1, Args...>();
+  }
+
+  ////////////////////// parse output ///////////////////////
+
   template <size_t indice, typename T, typename... Args>
   typename std::enable_if<0 == sizeof...(Args) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
   ParseOutputType() {
@@ -895,9 +962,16 @@ struct OrtCustomOpT : public OrtCustomOp {
   }
 
   template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 == sizeof...(Args) && !std::is_same<T, Custom::OutputTensor<float>&>::value>::type
+  typename std::enable_if<0 == sizeof...(Args) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {
+    output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
   }
+
+  template <size_t indice, typename T, typename... Args>
+  typename std::enable_if<0 == sizeof...(Args) &&
+                          !std::is_same<T, Custom::OutputTensor<float>&>::value &&
+                          !std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
+  ParseOutputType() {}
 
   template <size_t indice, typename T, typename... Args>
   typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, Custom::OutputTensor<float>&>::value>::type
@@ -907,7 +981,16 @@ struct OrtCustomOpT : public OrtCustomOp {
   }
 
   template <size_t indice, typename T, typename... Args>
-  typename std::enable_if<0 < sizeof...(Args) && !std::is_same<T, Custom::OutputTensor<float>&>::value>::type
+  typename std::enable_if<0 < sizeof...(Args) && std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
+  ParseOutputType() {
+    output_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
+    ParseOutputType<indice + 1, Args...>();
+  }
+
+  template <size_t indice, typename T, typename... Args>
+  typename std::enable_if<0 < sizeof...(Args) &&
+                          !std::is_same<T, Custom::OutputTensor<float>&>::value &&
+                          !std::is_same<T, Custom::OutputTensor<int32_t>&>::value>::type
   ParseOutputType() {
     ParseOutputType<indice + 1, Args...>();
   }
@@ -916,9 +999,8 @@ struct OrtCustomOpT : public OrtCustomOp {
   const std::string execution_provider_;
   const ComputeFn compute_fn_;
 
-  using TensorPtr = std::unique_ptr<Custom::Tensor>;
   std::vector<TensorPtr> tensors_;
-
+  std::vector<ONNXTensorElementDataType> input_types_;
   std::vector<ONNXTensorElementDataType> output_types_;
 };
 
@@ -933,6 +1015,37 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomFuncT(const c
   ThrowOnError(GetApi().AddCustomOp(domain_name, op_ptr.get()));
   op_ptr.release();
   return *this;
+}
+
+template <typename T>
+template <typename... Args>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::RegisterCustomFuncT2(const char* domain_name,
+                                                                          const char* op_name,
+                                                                          const char* execution_provider,
+                                                                          void (*custom_compute_fn)(Args...)) {
+  OrtCustomOpDomain* domain{};
+  auto domain_iter = custom_domains_map_.find(domain_name);
+  if (domain_iter == custom_domains_map_.end()) {
+    ThrowOnError(GetApi().CreateCustomOpDomain(domain_name, &domain));
+    custom_domains_map_.insert({domain_name, domain});
+    ThrowOnError(GetApi().AddCustomOpDomain(this->p_, domain));
+  } else {
+    domain = domain_iter->second;
+  }
+  // using CustomOpPtr = OrtCustomOpT<Args...>;
+  using OrtCustomOpTPtr = OrtCustomOpT<Args...>;
+  auto op_ptr = std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, custom_compute_fn);
+  custom_ops_.emplace_back(op_ptr.release());
+  ThrowOnError(GetApi().CustomOpDomain_Add(domain, custom_ops_.back().get()));
+  return *this;
+}
+
+template <typename T>
+SessionOptionsImpl<T>::~SessionOptionsImpl<T>() {
+  for (auto iter : custom_domains_map_) {
+    GetApi().ReleaseCustomOpDomain(iter.second);
+  }
+  custom_domains_map_.clear();
 }
 
 /// Session
@@ -2016,5 +2129,17 @@ void CustomOpBase<TOp, TKernel>::GetSessionConfigs(std::unordered_map<std::strin
     out[key] = options.GetConfigEntryOrDefault(config_entry_key.c_str(), "");
   }
 }
+
+namespace Custom {
+
+template <typename... Args>
+inline OrtCustomOp* CreateCustomOp(const char* op_name,
+                                   const char* execution_provider,
+                                   void (*custom_compute_fn)(Args...)) {
+  using OrtCustomOpTPtr = detail::OrtCustomOpT<Args...>;
+  return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, custom_compute_fn).release();
+}
+
+}  // namespace Custom
 
 }  // namespace Ort

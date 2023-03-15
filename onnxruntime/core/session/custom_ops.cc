@@ -284,28 +284,66 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
 namespace onnxruntime {
 
 struct CustomOpKernel : OpKernel {
-  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info), op_(op) {
-    if (op_.version > ORT_API_VERSION) {
-      ORT_THROW("Unsupported version '" + std::to_string(op_.version) + "' in custom op '" + op.GetName(&op));
+  using CustomComputeFn = void (*)(OrtKernelContext*, void*);
+
+  CustomOpKernel(const OpKernelInfo& info, const OrtCustomOp& op) : OpKernel(info) {
+    if (op.custom_compute_fn_ && op.raw_fn_) {
+      custom_compute_fn_ = op.custom_compute_fn_;
+      raw_fn_ = op.raw_fn_;
+      return;
+    }
+    op_ = &op;
+    if (op_->version > ORT_API_VERSION) {
+      ORT_THROW("Unsupported version '" + std::to_string(op_->version) + "' in custom op '" + op_->GetName(op_));
     }
 
-    op_kernel_ = op_.CreateKernel(&op_, OrtGetApiBase()->GetApi(op_.version),
-                                  reinterpret_cast<const OrtKernelInfo*>(&info));
+    op_kernel_ = op_->CreateKernel(op_, OrtGetApiBase()->GetApi(op_->version),
+                                   reinterpret_cast<const OrtKernelInfo*>(&info));
   }
 
-  ~CustomOpKernel() override { op_.KernelDestroy(op_kernel_); }
+  //CustomOpKernel(const OpKernelInfo& info, CustomComputeFn custom_compute_fn, void* raw_fn) : OpKernel(info),
+  //                                                                                                custom_compute_fn_(custom_compute_fn),
+  //                                                                                                raw_fn_(raw_fn) {
+  //  ORT_ENFORCE(custom_compute_fn_ && raw_fn_);
+  //  if (op_->version > ORT_API_VERSION) {
+  //    ORT_THROW("Unsupported version '" + std::to_string(op_->version) + "' in custom op '" + op_->GetName(op_));
+  //  }
+  //}
+
+  ~CustomOpKernel() override {
+    if (op_) {
+      op_->KernelDestroy(op_kernel_);
+    }
+  }
 
   Status Compute(OpKernelContext* ctx) const override {
-    op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
+    auto ort_ctx = reinterpret_cast<OrtKernelContext*>(ctx);
+    if (op_) {
+      op_->KernelCompute(op_kernel_, ort_ctx);
+    } else if (custom_compute_fn_ && raw_fn_) {
+      custom_compute_fn_(ort_ctx, raw_fn_);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "custom kernel compute failed.");
+    }
     return Status::OK();
   }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(CustomOpKernel);
 
-  const OrtCustomOp& op_;
-  void* op_kernel_;
+  const OrtCustomOp* op_{};
+  void* op_kernel_{};
+
+  //////////////////////////////////
+
+  CustomComputeFn custom_compute_fn_{};
+  void* raw_fn_{};
 };
+
+common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> /*op_domains*/,
+                                     std::shared_ptr<CustomRegistry>& /*output*/) {
+  return Status::OK();
+}
 
 common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                     std::shared_ptr<CustomRegistry>& output) {
