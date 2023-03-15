@@ -210,16 +210,40 @@ public:
         };
 
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == inputCount);
-        DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
+
+        // TODO (pavignol): Remove indices once we support additional inputs/outputs
+        std::vector<std::optional<uint32_t>> inputIndices = {0, 1, 2, 3, 4, 5};
+        std::vector<std::optional<uint32_t>> outputIndices = {0};
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, 1);
 
         std::vector<uint32_t> queryTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(queryIndex);
-        std::vector<uint32_t> keyTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(keyIndex);
-        std::vector<uint32_t> valueTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(valueIndex);
-        std::vector<uint32_t> biasTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(biasIndex);
-        std::vector<uint32_t> keyPaddingMaskTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(keyPaddingMaskIndex);
-        std::vector<uint32_t> relativePositionBiasTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(relativePositionBiasIndex);
-        std::vector<uint32_t> pastKeyTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastKeyIndex);
-        std::vector<uint32_t> pastValueTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastValueIndex);
+        std::vector<uint32_t> keyTensorShape = m_inputTensorDescs[keyIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+            ? std::vector<uint32_t>()
+            : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(keyIndex);
+
+        std::vector<uint32_t> valueTensorShape = m_inputTensorDescs[valueIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+            ? std::vector<uint32_t>()
+            : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(valueIndex);
+
+        std::vector<uint32_t> biasTensorShape = m_inputTensorDescs[biasIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+            ? std::vector<uint32_t>()
+            : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(biasIndex);
+
+        std::vector<uint32_t> relativePositionBiasTensorShape = m_inputTensorDescs[relativePositionBiasIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+            ? std::vector<uint32_t>()
+            : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(relativePositionBiasIndex);
+
+        std::vector<uint32_t> pastKeyTensorShape;
+        std::vector<uint32_t> pastValueTensorShape;
+
+        // TODO (pavignol): Uncomment once we support additional inputs/outputs
+        // std::vector<uint32_t> pastKeyTensorShape = m_inputTensorDescs[pastKeyIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+        //     ? std::vector<uint32_t>()
+        //     : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastKeyIndex);
+        //
+        // std::vector<uint32_t> pastValueTensorShape = m_inputTensorDescs[pastValueIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
+        //     ? std::vector<uint32_t>()
+        //     : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastValueIndex);
 
         if (m_inputTensorDescs[keyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
         {
@@ -247,6 +271,7 @@ public:
 
         if (m_inputTensorDescs[keyPaddingMaskIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
         {
+            std::vector<uint32_t> keyPaddingMaskTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(keyPaddingMaskIndex);
             ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 1 || keyPaddingMaskTensorShape.size() == 2);
 
             if (keyPaddingMaskTensorShape.size() == 2)
@@ -271,15 +296,15 @@ public:
             ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape.size() == 4);
         }
 
-        if (m_inputTensorDescs[pastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
-        {
-            ML_CHECK_VALID_ARGUMENT(pastKeyTensorShape.size() == 4);
-        }
-
-        if (m_inputTensorDescs[pastValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
-        {
-            ML_CHECK_VALID_ARGUMENT(pastValueTensorShape.size() == 4);
-        }
+        // if (m_inputTensorDescs[pastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        // {
+        //     ML_CHECK_VALID_ARGUMENT(pastKeyTensorShape.size() == 4);
+        // }
+        //
+        // if (m_inputTensorDescs[pastValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        // {
+        //     ML_CHECK_VALID_ARGUMENT(pastValueTensorShape.size() == 4);
+        // }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();

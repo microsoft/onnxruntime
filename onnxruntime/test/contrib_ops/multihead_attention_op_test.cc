@@ -45,8 +45,9 @@ static void RunMultiHeadAttentionTest(
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture) && !disable_cuda;
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get()) && !disable_rocm;
   bool enable_cpu = (nullptr != DefaultCpuExecutionProvider().get()) && !use_float16 && !disable_cpu;
+  bool enable_dml = !disable_dml;
 
-  if (enable_cpu || enable_cuda || enable_rocm || disable_dml) {
+  if (enable_cpu || enable_cuda || enable_rocm || enable_dml) {
     OpTester tester("MultiHeadAttention", 1, onnxruntime::kMSDomain);
     tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
     tester.AddAttribute<float>("mask_filter_value", static_cast<float>(-10000.0f));
@@ -231,6 +232,12 @@ static void RunMultiHeadAttentionTest(
     if (enable_cpu) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCpuExecutionProvider());
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    }
+
+    if (enable_dml) {
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     }
   }
