@@ -11,6 +11,7 @@ jobs:
     - script: |
         brew install ccache
         echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+        echo $PATH
         which clang
         clang --version
       displayName: Install ccache
