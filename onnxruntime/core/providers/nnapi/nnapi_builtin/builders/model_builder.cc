@@ -594,9 +594,10 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
       auto& [support_cnt, unspport_cnt] = ops_status;
       total_ops += support_cnt + unspport_cnt;
       if (support_cnt > 0) {
-        fallback_op_detail += MakeString(support_cnt, "x ", op, ", ");
-      } else if (unspport_cnt > 0) {
-        normal_op_detail += MakeString(unspport_cnt, "x ", op, ", ");
+        normal_op_detail += MakeString(support_cnt, "x ", op, ", ");
+      }
+      if (unspport_cnt > 0) {
+        fallback_op_detail += MakeString(unspport_cnt, "x ", op, ", ");
       }
     }
 
