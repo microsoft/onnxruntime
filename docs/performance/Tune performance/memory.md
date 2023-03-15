@@ -1,11 +1,11 @@
 ---
-title: Reduce memory consumption
+title: Memory Consumption
 grand_parent: Performance
 parent: Tune performance
 nav_order: 2
 ---
 
-# Reduce Memory Consumption
+# Reduce memory consumption
 
 ## Contents
 {: .no_toc }

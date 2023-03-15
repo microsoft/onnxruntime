@@ -1,5 +1,5 @@
 ---
-title: Troubleshooting performance
+title: Troubleshooting
 grand_parent: Performance
 parent: Tune performance
 nav_order: 5
