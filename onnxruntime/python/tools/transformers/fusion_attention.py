@@ -240,7 +240,7 @@ class FusionAttention(Fusion):
 
         # Concat K and V to get one node of size (2,B,N,P,H)
         concat_node_name = self.model.create_node_name("Concat")
-        kv_output_name = past_v.replace(".value", ".kv").replace(".", "_")
+        kv_output_name = past_v.replace(".value", ".kv").replace(".", "_").replace("_value", "_kv")
         concat_kv = helper.make_node(
             "Concat",
             inputs=[k_5d_name, v_5d_name],
@@ -536,10 +536,10 @@ class FusionAttention(Fusion):
             input (str): input name
             output (str): output name
             add_qk_str (str): name of Add node after Q x K'
-            past_k (str): name of input for past K value before attention
-            past_v (str): name of input for past V value before attention
-            present_k (str): name of output to store present K value after attention
-            present_v (str): name of output to store present V value after attention
+            past_k (str): name of input for past K value
+            past_v (str): name of input for past V value
+            present_k (str): name of output to store present K value
+            present_v (str): name of output to store present V value
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.
@@ -680,19 +680,6 @@ class FusionAttention(Fusion):
                 attention_inputs.append(mask_index)
             else:
                 attention_inputs.append("")
-                # if q_mul is not None:
-                #     # Reshape 4d attention mask with constant lower triangle to 2d attention mask with unidirectional = 1
-                #     reshape_4d_to_2d = helper.make_tensor("reshape_4d_to_2d", TensorProto.INT32, [2], [batch_size, sequence_length])
-                #     self.model.add_initializer(reshape_4d_to_2d, self.this_graph_name)
-                #     attention_mask_2d = helper.make_node(
-                #         "Reshape", # "Squeeze",
-                #         inputs=[mask_index, reshape_4d_to_2d],
-                #         outputs=[mask_index + "_2d"],
-                #         name=mask_index + "_4d_mask_to_2d",
-                #     )
-                #     attention_inputs.append(mask_index + "_4d_mask_to_2d")
-                # else:
-                #     attention_inputs.append(mask_index)
 
             if past_k != "" and past_v != "":
                 past_kv = self.concat_kv(past_k, past_v)
@@ -731,7 +718,6 @@ class FusionAttention(Fusion):
                 outputs=attention_outputs,
                 name=attention_node_name,
             )
-            # print(attention_node)
 
         attention_node.domain = "com.microsoft"
         attention_node.attribute.extend([helper.make_attribute("num_heads", num_heads)])
