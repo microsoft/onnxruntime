@@ -154,6 +154,7 @@ enum MLAS_ACTIVATION_KIND {
     MlasLogisticActivation,
     MlasClipActivation,
     MlasHardSigmoidActivation,
+    MlasActivationKindCount,
 };
 
 struct MLAS_ACTIVATION {

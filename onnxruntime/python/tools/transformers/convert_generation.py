@@ -706,13 +706,12 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     float_type = TensorProto.FLOAT16 if is_float16 else TensorProto.FLOAT
 
     input_count = len(graph.input)
-    layer_count = (input_count - 3) // 4
+    layer_count = (input_count - 2) // 4
     assert layer_count >= 1
 
     # Expect inputs:
     #   input_ids: int32 (B, 1)
     #   encoder_attention_mask: int32 (B, encode_sequence_length)
-    #   encoder_hidden_states: (B, encode_sequence_length, encoder_hidden_size)
 
     #   past_key_self_0: (B, num_heads, past_decode_sequence_length, head_size)
     #   past_value_self_0: (B, num_heads, past_decode_sequence_length, head_size)
@@ -723,7 +722,7 @@ def verify_t5_decoder_subgraph(graph: onnx.GraphProto, precision: Precision):
     #   ... (for each cross attention layer)
 
     # TODO: encoder_hidden_states is optional
-    expected_inputs = ["input_ids", "encoder_attention_mask", "encoder_hidden_states"]
+    expected_inputs = ["input_ids", "encoder_attention_mask"]
     for i in range(layer_count):
         expected_inputs.append(f"past_key_self_{i}")
         expected_inputs.append(f"past_value_self_{i}")
@@ -1451,6 +1450,43 @@ def generate_gpt2_init_decoder(
     return True
 
 
+def make_dim_proto_numeric_t5(model, config):
+    """Make dim_proto numeric.
+
+    Args:
+        model: T5 encoder and decoder model.
+        config: T5 config.
+    """
+    sequence_length = str(1)
+    num_heads = str(config.num_heads)
+    hidden_size = str(config.d_model)
+    head_size = str(config.d_kv)
+
+    for tensor in model.graph.output:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
+
+    for tensor in model.graph.input:
+        for dim_proto in tensor.type.tensor_type.shape.dim:
+            if dim_proto.HasField("dim_param") and dim_proto.dim_param in [
+                sequence_length,
+                num_heads,
+                hidden_size,
+                head_size,
+            ]:
+                dim_value = int(dim_proto.dim_param)
+                dim_proto.Clear()
+                dim_proto.dim_value = dim_value
+
+
 def convert_generation_model(args: argparse.Namespace, generation_type: GenerationType = GenerationType.BEAMSEARCH):
     """Convert model according to command line arguments.
 
@@ -1754,6 +1790,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             #     f"{len(moved_initializers)} initializers ({[i.name for i in moved_initializers]}) from the encoder are moved to the main graph"
             # )
             # initializers.extend(moved_initializers)
+
+        make_dim_proto_numeric_t5(encoder_model, config)
+        make_dim_proto_numeric_t5(decoder_model, config)
 
         node.attribute.extend(
             [
