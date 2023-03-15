@@ -33,6 +33,7 @@ class VaeOnnxModel(UnetOnnxModel):
             "Attention",
             "GroupNorm",
             "NhwcConv",
+            "FlashAttention"
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

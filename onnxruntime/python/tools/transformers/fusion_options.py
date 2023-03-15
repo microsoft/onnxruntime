@@ -79,6 +79,7 @@ class FusionOptions:
         if args.disable_layer_norm:
             options.enable_layer_norm = False
         if args.disable_attention:
+            print("set args.disable_attention")
             options.enable_attention = False
         if args.use_multi_head_attention:
             options.use_multi_head_attention = True

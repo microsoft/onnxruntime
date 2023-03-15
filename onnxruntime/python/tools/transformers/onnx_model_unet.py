@@ -9,6 +9,7 @@ from typing import Optional
 from fusion_attention_unet import FusionAttentionUnet
 from fusion_bias_add import FusionBiasAdd
 from fusion_biassplitgelu import FusionBiasSplitGelu
+from fusion_flashattention import FusionFlashAttention
 from fusion_group_norm import FusionGroupNorm
 from fusion_nhwc_conv import FusionNhwcConv
 from fusion_options import FusionOptions
@@ -109,6 +110,10 @@ class UnetOnnxModel(BertOnnxModel):
         fusion.apply()
 
     def optimize(self, options: Optional[FusionOptions] = None):
+
+        print(f"options configuration ...")
+        if (options is not None):
+            print(f"options.enable_attention {options.enable_attention}")
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 
@@ -140,6 +145,10 @@ class UnetOnnxModel(BertOnnxModel):
 
         if (options is None) or options.enable_attention:
             self.fuse_multi_head_attention(options)
+
+        if (options is not None) and options.enable_flash_attention:
+            flash_attention_fusion = FusionFlashAttention(self, self.hidden_size, self.num_heads)
+            flash_attention_fusion.apply()
 
         if (options is None) or options.enable_skip_layer_norm:
             self.fuse_skip_layer_norm()
@@ -182,6 +191,7 @@ class UnetOnnxModel(BertOnnxModel):
             "GroupNorm",
             "NhwcConv",
             "BiasAdd",
+            "FlashAttention",
         ]
         for op in ops:
             nodes = self.get_nodes_by_op_type(op)

@@ -76,6 +76,73 @@ class FusionFlashAttention(Fusion):
 
         return attention_node
 
+    def fuse_SD_unet_patern(self, softmax_node, input_name_to_nodes, output_name_to_node):
+        """
+                        K (B*H, D, L)         Mask
+                            |                  |
+        Q (B*H, L, D) --> MatMul --> Div -->  Add --> [Softmax] --> MatMul
+                                                                      |
+                                                                      |
+        V (B*H, L, D)--------------------------------------------------
+
+        """
+        need_to_remove = [softmax_node]
+
+        # search nodes before softmax
+        qk_matmul_nodes = self.model.match_parent_path(
+            softmax_node,
+            ["Add", "Mul", "MatMul"],
+            [0, None, 0],
+        )
+
+        if qk_matmul_nodes is not None:
+            (mask_add, qk_mul, matmul_qk) = qk_matmul_nodes
+        else:
+            return None, []
+
+
+        need_to_remove.extend(qk_matmul_nodes)
+
+        # get q and k node
+        q_input, k_input = matmul_qk.input[0], matmul_qk.input[1]
+
+        # get mask add input
+        mask_input = mask_add.input[0] if mask_add.input[1] == qk_mul.output[0] else mask_add.input[1]
+
+        # search nodes after softmax: MatMul and Transpose
+        sv_matmul = self.model.find_first_child_by_type(softmax_node, "MatMul")
+        if sv_matmul is None:
+            logger.warn(f'can not find matmal after softmax')
+            return None, []
+
+        # check matmul
+        before_matmul_nodes = self.model.match_parent_path(sv_matmul, ['Softmax'])
+        if before_matmul_nodes is None or before_matmul_nodes[0] != softmax_node:
+            logger.warn(f'can not find matmal after softmax')
+            return None, []
+
+        need_to_remove.append(sv_matmul)
+
+        # get v from matmul
+        v_input = sv_matmul.input[1]
+
+        attention_last_node = sv_matmul
+
+        new_node = self.create_attention_node(
+            q_input,
+            k_input,
+            v_input,
+            "",
+            mask_input,
+            attention_last_node.output[0],
+        )
+        if new_node is None:
+            logger.warn('create new node for flash attention failed')
+            return None, []
+
+        return new_node, need_to_remove
+
+
     def fuse_alibi_pattern(self, softmax_node, input_name_to_nodes, output_name_to_node):
         """
             K(N*H,L,D)        Alibi(N*H, 1, S)     Mask(N,1,S,L)
@@ -104,7 +171,7 @@ class FusionFlashAttention(Fusion):
         # get q and k node
         q_input, k_input = matmul_qk.input[0], matmul_qk.input[1]
 
-        # get add input 
+        # get add input
         add_input = qk_add.input[0] if qk_add.input[1] == qk_mul.output[0] else qk_add.input[1]
 
         # get mask add input
@@ -270,6 +337,14 @@ class FusionFlashAttention(Fusion):
             )
             if qk_matmul_nodes is not None:
                 new_node, need_to_remove = self.fuse_norm_pattern(softmax_node, input_name_to_nodes, output_name_to_node)
+            else:
+                qk_matmul_nodes = self.model.match_parent_path(
+                    softmax_node,
+                    ["Add", "Mul", "MatMul"],
+                    [0, None, 0],
+                )
+                if qk_matmul_nodes is not None:
+                    new_node, need_to_remove = self.fuse_SD_unet_patern(softmax_node, input_name_to_nodes, output_name_to_node)
 
         if new_node is None:
             return
@@ -283,4 +358,3 @@ class FusionFlashAttention(Fusion):
 
         self.nodes_to_remove.extend(need_to_remove)
         self.prune_graph = True
-
