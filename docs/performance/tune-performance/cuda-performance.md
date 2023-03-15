@@ -22,27 +22,20 @@ To address this, we've introduced the notion of IOBinding. The key idea is to ar
 Following are code snippets in various languages demonstrating the usage of this feature.
 
 * C++
-    <details>
-    <summary>Example</summary>
-    <pre>
-        ```c++
-        Ort::Env env;
-        Ort::Session session(env, model_path, session_options);
-        Ort::IoBinding io_binding{session};
-        auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 4);
-        io_binding.BindInput("input1", input_tensor);
-        Ort::MemoryInfo output_mem_info{"Cuda", OrtDeviceAllocator, 0,
-                                        OrtMemTypeDefault};
-        // Use this to bind output to a device when the shape is not known in advance. If the shape is known you can use the other overload of this function that takes an Ort::Value as input (IoBinding::BindOutput(const char* name, const Value& value)).
-        // This internally calls the BindOutputToDevice C API.
+    ```c++
+    Ort::Env env;
+    Ort::Session session(env, model_path, session_options);
+    Ort::IoBinding io_binding{session};
+    auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_tensor_values.data(), input_tensor_size, input_node_dims.data(), 4);
+    io_binding.BindInput("input1", input_tensor);
+    Ort::MemoryInfo output_mem_info{"Cuda", OrtDeviceAllocator, 0,
+                                    OrtMemTypeDefault};
+    // Use this to bind output to a device when the shape is not known in advance. If the shape is known you can use the other overload of this function that takes an Ort::Value as input (IoBinding::BindOutput(const char* name, const Value& value)).
+    // This internally calls the BindOutputToDevice C API.
 
-        io_binding.BindOutput("output1", output_mem_info);
-        session.Run(run_options, io_binding);
-        ```
-    </pre>
-
-    </details>
-    
+    io_binding.BindOutput("output1", output_mem_info);
+    session.Run(run_options, io_binding);
+    ```    
 
 * Python (see [Python API docs](https://onnxruntime.ai/docs/api/python))
 
@@ -56,9 +49,7 @@ By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optim
 
 Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
-<details markdown="block">
-    <summary>Python</summary>
-    
+* Python    
     ```python
     providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
     sess_options = ort.SessionOptions()
@@ -67,9 +58,7 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
 
  </details>
 
-<details>
-    <summary>C/C++</summary>
-
+* C/C++
     ```c++
     OrtCUDAProviderOptionsV2* cuda_options = nullptr;
     CreateCUDAProviderOptions(&cuda_options);
@@ -86,11 +75,7 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
     ReleaseCUDAProviderOptions(cuda_options);
     ```
 
- </details>
-
-<details>
-    <summary>C#</summary>
-
+ * C#
     ```csharp
     var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
@@ -107,19 +92,13 @@ Keep in mind that using this flag may increase the peak memory usage by a factor
 
 ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-D tensor as input for convolution operations, dimension padding is needed if the input is 3-D tensor. Given an input tensor of shape [N, C, D], it can be padded to [N, C, D, 1] or [N, C, 1, D]. While both of these two padding ways produce same output, the performance may be a lot different because different convolution algorithms are selected, especially on some devices such as A100. By default the input is padded to [N, C, D, 1]. A provider option named `cudnn_conv1d_pad_to_nc1d` needs to get set (as shown below) if [N, C, 1, D] is preferred.
 
-* <details>
-    <summary>Python</summary>
-
+* Python
     ```python
     providers = [("CUDAExecutionProvider", {"cudnn_conv1d_pad_to_nc1d": '1'})]
     sess_options = ort.SessionOptions()
     sess = ort.InferenceSession("my_conv_model.onnx", sess_options=sess_options, providers=providers)
     ```
-</details>
-
-* <details>
-    <summary>C/C++</summary>
-
+* C/C++
     ```c++
     OrtCUDAProviderOptionsV2* cuda_options = nullptr;
     CreateCUDAProviderOptions(&cuda_options);
@@ -135,11 +114,7 @@ ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-
     // Finally, don't forget to release the provider options
     ReleaseCUDAProviderOptions(cuda_options);
     ```
-    </details>
-
-* <details>
-    <summary>C#</summary>
-
+* C#
     ```csharp
     var cudaProviderOptions = new OrtCUDAProviderOptions(); // Dispose this finally
 
@@ -150,7 +125,6 @@ ORT leverages CuDNN for convolution operations. While CuDNN only takes 4-D or 5-
 
     SessionOptions options = SessionOptions.MakeSessionOptionWithCudaProvider(cudaProviderOptions);  // Dispose this finally
     ```
-    </details>
 
 ## Using CUDA Graphs (Preview)
 
@@ -174,8 +148,7 @@ Currently, there are some constraints with regards to using the CUDA Graphs feat
 NOTE: The very first `Run()` performs a variety of tasks under the hood like making CUDA memory allocations, capturing the CUDA graph for the model, and then performing a graph replay to ensure that the graph runs. Due to this, the latency associated with the first `Run()` is bound to be high. Subsequent `Run()`s only perform graph replays of the graph captured and cached in the first `Run()`. 
 
 
-* <details>
-    <summary>Python</summary>
+* Python
 
     ```python
     providers = [("CUDAExecutionProvider", {"enable_cuda_graph": '1'})]
@@ -208,78 +181,72 @@ NOTE: The very first `Run()` performs a variety of tasks under the hood like mak
     x_ortvalue.update_inplace(np.array([[10.0, 20.0], [30.0, 40.0], [50.0, 60.0]], dtype=np.float32))
     session.run_with_iobinding(io_binding)
     ```
-</details>
+* C/C++
+    ```c++
+    const auto& api = Ort::GetApi();
 
-* <details>
-    <summary>C/C++</summary>
+    struct CudaMemoryDeleter {
+    explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
+        alloc_ = alloc;
+    }
 
-        ```c++
-        const auto& api = Ort::GetApi();
+    void operator()(void* ptr) const {
+        alloc_->Free(ptr);
+    }
+    
+    const Ort::Allocator* alloc_;
+    };
+    
+    // Enable cuda graph in cuda provider option.
+    OrtCUDAProviderOptionsV2* cuda_options = nullptr;
+    api.CreateCUDAProviderOptions(&cuda_options);
+    std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
+    std::vector<const char*> keys{"enable_cuda_graph"};
+    std::vector<const char*> values{"1"};
+    api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1);
 
-        struct CudaMemoryDeleter {
-        explicit CudaMemoryDeleter(const Ort::Allocator* alloc) {
-            alloc_ = alloc;
-        }
-
-        void operator()(void* ptr) const {
-            alloc_->Free(ptr);
-        }
-        
-        const Ort::Allocator* alloc_;
-        };
-        
-        // Enable cuda graph in cuda provider option.
-        OrtCUDAProviderOptionsV2* cuda_options = nullptr;
-        api.CreateCUDAProviderOptions(&cuda_options);
-        std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(api.ReleaseCUDAProviderOptions)> rel_cuda_options(cuda_options, api.ReleaseCUDAProviderOptions);
-        std::vector<const char*> keys{"enable_cuda_graph"};
-        std::vector<const char*> values{"1"};
-        api.UpdateCUDAProviderOptions(rel_cuda_options.get(), keys.data(), values.data(), 1);
-
-        Ort::SessionOptions session_options;
-        api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get();
+    Ort::SessionOptions session_options;
+    api.SessionOptionsAppendExecutionProvider_CUDA_V2(static_cast<OrtSessionOptions*>(session_options), rel_cuda_options.get();
 
 
-        // Create IO bound inputs and outputs.
-        Ort::Session session(*ort_env, ORT_TSTR("matmul_2.onnx"), session_options);
-        Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
-        Ort::Allocator cuda_allocator(session, info_cuda);
+    // Create IO bound inputs and outputs.
+    Ort::Session session(*ort_env, ORT_TSTR("matmul_2.onnx"), session_options);
+    Ort::MemoryInfo info_cuda("Cuda", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+    Ort::Allocator cuda_allocator(session, info_cuda);
 
-        const std::array<int64_t, 2> x_shape = {3, 2};
-        std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-        auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+    const std::array<int64_t, 2> x_shape = {3, 2};
+    std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    auto input_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(x_values.size() * sizeof(float)),
+                                                            CudaMemoryDeleter(&cuda_allocator));
+    cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+
+    // Create an OrtValue tensor backed by data on CUDA memory
+    Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+    const std::array<int64_t, 2> expected_y_shape = {3, 2};
+    std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+    auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
                                                                 CudaMemoryDeleter(&cuda_allocator));
-        cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
 
-        // Create an OrtValue tensor backed by data on CUDA memory
-        Ort::Value bound_x = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(input_data.get()), x_values.size(),
-                                                    x_shape.data(), x_shape.size());
+    // Create an OrtValue tensor backed by data on CUDA memory
+    Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
-        const std::array<int64_t, 2> expected_y_shape = {3, 2};
-        std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
-        auto output_data = std::unique_ptr<void, CudaMemoryDeleter>(cuda_allocator.Alloc(expected_y.size() * sizeof(float)),
-                                                                    CudaMemoryDeleter(&cuda_allocator));
+    Ort::IoBinding binding(session);
+    binding.BindInput("X", bound_x);
+    binding.BindOutput("Y", bound_y);
 
-        // Create an OrtValue tensor backed by data on CUDA memory
-        Ort::Value bound_y = Ort::Value::CreateTensor(info_cuda, reinterpret_cast<float*>(output_data.get()),
-                                                    expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+    // One regular run for necessary memory allocation and graph capturing
+    session.Run(Ort::RunOptions(), binding);
 
-        Ort::IoBinding binding(session);
-        binding.BindInput("X", bound_x);
-        binding.BindOutput("Y", bound_y);
+    // After capturing, CUDA graph replay happens from this Run onwards
+    session.Run(Ort::RunOptions(), binding);
 
-        // One regular run for necessary memory allocation and graph capturing
-        session.Run(Ort::RunOptions(), binding);
-
-        // After capturing, CUDA graph replay happens from this Run onwards
-        session.Run(Ort::RunOptions(), binding);
-
-        // Update input and then replay CUDA graph with the updated input
-        x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
-        cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
-        session.Run(Ort::RunOptions(), binding);
-        ```
-        
-    </details>
+    // Update input and then replay CUDA graph with the updated input
+    x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
+    cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+    session.Run(Ort::RunOptions(), binding);
+    ```
 
 * C# (future)

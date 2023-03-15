@@ -17,9 +17,6 @@ Based on usage scenario requirements, latency, throughput, memory utilization, a
 While ORT out-of-box aims to provide good performance for the most common usage patterns, there are model optimization techniques and runtime configurations that can be utilized to improve performance for specific use cases and models. 
 
 
-## Contents
-{: .no_toc }
-
 * TOC placeholder
 {:toc}
 

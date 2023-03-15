@@ -27,21 +27,21 @@ sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL
 ```
 
 
-<details><summary>Thread Count</summary>
+* Thread Count
 
-  * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model.</details>
+  * `sess_options.intra_op_num_threads = 2` controls the number of threads to use to run the model.
 
-<details><summary>Sequential vs Parallel Execution</summary>
+* Sequential vs Parallel Execution
 
   * `sess_options.execution_mode = rt.ExecutionMode.ORT_SEQUENTIAL` controls whether the operators in the graph run sequentially or in parallel. Usually when a model has many branches, setting this option to `ORT_PARALLEL` will provide better performance.
   * When `sess_options.execution_mode = rt.ExecutionMode.ORT_PARALLEL`, you can set `sess_options.inter_op_num_threads` to control the
 number of threads used to parallelize the execution of the graph (across nodes).
-</details>
 
-<details><summary>Graph Optimization Level</summary>
+
+* Graph Optimization Level
 
   * `sess_options.graph_optimization_level = rt.GraphOptimizationLevel.ORT_ENABLE_ALL` enables all optimizations which is the default. Please see [onnxruntime_c_api.h](https://github.com/microsoft/onnxruntime/tree/main/include/onnxruntime/core/session/onnxruntime_c_api.h#L286) (enum `GraphOptimizationLevel`) for the full list of all optimization levels. For details regarding available optimizations and usage, please refer to the [Graph Optimizations](../graph-optimizations.md) documentation.
-</details>
+
 
 
 
@@ -114,61 +114,58 @@ Test showed that setting affinities to a single NUMA node has nearly 20 percent 
 
 Occasionally, users may prefer to use their own fine-tuned threads for multithreading. ORT offers thread creation and joining callbacks in the [C++ API](https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/session/onnxruntime_cxx_api.h):
 
-<details><summary>Example code</summary>
 
-    ```c++
-    std::vector<std::thread> threads;
-    void* custom_thread_creation_options = nullptr;
-    // initialize custom_thread_creation_options
+```c++
+std::vector<std::thread> threads;
+void* custom_thread_creation_options = nullptr;
+// initialize custom_thread_creation_options
 
-    // On thread pool creation, ORT calls CreateThreadCustomized to create a thread
-    OrtCustomThreadHandle CreateThreadCustomized(void* custom_thread_creation_options, OrtThreadWorkerFn work_loop, void* param) {
-        threads.push_back(std::thread(work_loop, param));
-        // configure the thread by custom_thread_creation_options
-        return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+// On thread pool creation, ORT calls CreateThreadCustomized to create a thread
+OrtCustomThreadHandle CreateThreadCustomized(void* custom_thread_creation_options, OrtThreadWorkerFn work_loop, void* param) {
+    threads.push_back(std::thread(work_loop, param));
+    // configure the thread by custom_thread_creation_options
+    return reinterpret_cast<OrtCustomThreadHandle>(threads.back().native_handle());
+}
+
+// On thread pool destruction, ORT calls JoinThreadCustomized for each created thread
+void JoinThreadCustomized(OrtCustomThreadHandle handle) {
+    for (auto& t : threads) {
+    if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
+        // recycling resources ... 
+        t.join();
     }
-
-    // On thread pool destruction, ORT calls JoinThreadCustomized for each created thread
-    void JoinThreadCustomized(OrtCustomThreadHandle handle) {
-        for (auto& t : threads) {
-        if (reinterpret_cast<OrtCustomThreadHandle>(t.native_handle()) == handle) {
-            // recycling resources ... 
-            t.join();
-        }
-        }
     }
+}
 
-    int main(...) {
-        ...
-        Ort::Env ort_env;
-        Ort::SessionOptions session_options;
-        session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
-        session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
-        session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
-        Ort::Session session(*ort_env, MODEL_URI, session_options);
-        ...
-    }
-    ```
+int main(...) {
+    ...
+    Ort::Env ort_env;
+    Ort::SessionOptions session_options;
+    session_options.SetCustomCreateThreadFn(CreateThreadCustomized);
+    session_options.SetCustomThreadCreationOptions(&custom_thread_creation_options);
+    session_options.SetCustomJoinThreadFn(JoinThreadCustomized);
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    ...
+}
+```
     
-</details>
 
 
 
-<details><summary>For global thread pool</summary>
+For global thread pool:
 
-    ```c++
-    int main() {
-        const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-        OrtThreadingOptions* tp_options = nullptr;
-        g_ort->CreateThreadingOptions(&tp_options);
-        g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
-        g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
-        g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
-        // disable per-session thread pool, create a session for inferencing
-        g_ort->ReleaseThreadingOptions(tp_options);
-    }
-    ```
-</details>
+```c++
+int main() {
+    const OrtApi* g_ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+    OrtThreadingOptions* tp_options = nullptr;
+    g_ort->CreateThreadingOptions(&tp_options);
+    g_ort->SetGlobalCustomCreateThreadFn(tp_options, CreateThreadCustomized);
+    g_ort->SetGlobalCustomThreadCreationOptions(tp_options, &custom_thread_creation_options);
+    g_ort->SetGlobalCustomJoinThreadFn(tp_options, JoinThreadCustomized);
+    // disable per-session thread pool, create a session for inferencing
+    g_ort->ReleaseThreadingOptions(tp_options);
+}
+```
 
 
 Note that `CreateThreadCustomized` and `JoinThreadCustomized`, once  set, will be applied to both ORT intra op and inter op thread pools uniformly.

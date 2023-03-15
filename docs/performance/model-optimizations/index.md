@@ -6,10 +6,5 @@ has_children: true
 ---
 
 # Model Optimizations
-{: .no_toc }
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
+In addition to [tuning performance](./../tune-performance/index.md) using ONNX Runtime configurations, there are techniques that can be applied to reduce model size and/or complexity to improve performance. 
