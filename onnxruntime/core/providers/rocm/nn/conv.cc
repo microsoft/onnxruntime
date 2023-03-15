@@ -352,9 +352,9 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
       const Tensor* B = context->Input<Tensor>(2);
       const auto& b_shape = B->Shape();
 
-      ConvBiasImpl(Stream(context), reinterpret_cast<HipT*>(s_.Y->MutableData<T>()),
+      ConvBiasImpl(Stream(context), reinterpret_cast<const HipT*>(s_.y_data),
                    reinterpret_cast<const HipT*>(B->Data<T>()),
-                   reinterpret_cast<HipT*>(s_.Y->MutableData<T>()), b_shape[0], s_.Y->Shape().Size());
+                   reinterpret_cast<HipT*>(s_.y_data), b_shape[0], s_.Y->Shape().Size());
     } else {
       MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
                                                           &beta, s_.y_tensor, s_.y_data));
