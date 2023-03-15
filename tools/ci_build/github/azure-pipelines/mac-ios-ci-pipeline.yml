@@ -11,9 +11,6 @@ jobs:
     - script: |
         brew install ccache
         echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-        echo $PATH
-        which clang
-        clang --version
       displayName: Install ccache
 
     - task: Cache@2
@@ -30,6 +27,9 @@ jobs:
       displayName: Install protobuf
 
     - script: |
+        echo $PATH
+        which clang
+        clang --version
         ccache -s
         ccache -z
       displayName: Show Cache stats and Clear protolbuf stats
