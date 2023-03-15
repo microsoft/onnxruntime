@@ -38,13 +38,13 @@ class GraphTransformer {
   @param[out] modified Set to true if the Graph was modified.
   @returns Status with success or error information.
   */
-  common::Status Apply(Graph& graph, bool& modified, const logging::Logger& logger) const;
+  Status Apply(Graph& graph, bool& modified, const logging::Logger& logger) const;
 
   virtual bool ShouldOnlyApplyOnce() const { return false; }
 
  protected:
   /** Helper method to call ApplyImpl on any subgraphs in the Node. */
-  common::Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger& logger) const {
+  Status Recurse(Node& node, bool& modified, int graph_level, const logging::Logger& logger) const {
     int subgraph_level = ++graph_level;
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       auto& subgraph = *entry.second;
@@ -62,10 +62,9 @@ class GraphTransformer {
   // You MUST call Recurse for all valid Nodes in the graph to ensure any subgraphs in control flow nodes
   // (Scan/If/Loop) are processed as well.
   // You should avoid calling Graph::Resolve in ApplyImpl unless you are 100% sure it's required. In most cases
-  // the call to Graph::Resolve in Apply prior to ApplyImpl being called, and after ApplyImpl fore the main graph
-  // completes (if 'modified' is true) should suffice.
-  virtual common::Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger)
-      const = 0;
+  // the call to Graph::Resolve in GraphTransformer::Apply after the call to ApplyImpl (if 'modified' is true)
+  // should suffice.
+  virtual Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const = 0;
 
   const std::string name_;
   const InlinedHashSet<std::string_view> compatible_provider_types_;

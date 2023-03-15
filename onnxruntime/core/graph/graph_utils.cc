@@ -376,6 +376,14 @@ std::vector<GraphEdge> GraphEdge::GetNodeInputEdges(const Node& node) {
   return input_edges;
 }
 
+std::optional<GraphEdge> GraphEdge::GetNodeInputEdge(const Node& node, size_t index) {
+  const auto* input_edge_end = GetInputEdge(node, static_cast<int>(index));
+  if (input_edge_end) {
+    return CreateGraphEdge(node, *input_edge_end, true);
+  }
+  return std::nullopt;
+}
+
 /** Returns a vector of the output GraphEdges of a node. */
 std::vector<GraphEdge> GraphEdge::GetNodeOutputEdges(const Node& node) {
   std::vector<GraphEdge> output_edges;
