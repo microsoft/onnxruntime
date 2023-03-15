@@ -161,7 +161,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
     }
 
     OrtCallback ext_data_deleter;
-    ScopedOrtCallbackInvoker scoped_ort_callback_invoker;
+    std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
     if (utils::HasExternalData(tensor_proto)) {
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
                                                      ext_data_deleter));
