@@ -111,8 +111,8 @@ class ModelBuilder {
   // ONNX node and NNAPI node are not a 1:1 mapping, like batch-normalization.
   // We use this to track a specific ONNX node which we are processing and record the detail mapping relationship.
   // So we can log out each NNAPI OP status during model-building and compiling.
-  void SetDebugTrackNode(const size_t node_index) {
-    track_node_index_ = node_index;
+  void SetDebugCurrentOnnxNodeIndex(const size_t node_index) {
+    current_onnx_node_index_ = node_index;
   }
 #endif
  private:
@@ -168,7 +168,7 @@ class ModelBuilder {
 
 #ifndef NDEBUG
   // To track and record current node index for debugging
-  size_t track_node_index_ = 0;
+  size_t current_onnx_node_index_ = 0;
   // <ONNX node index ,nnapi operation index>
   // An ONNX node might be decomposed into multiple nnapi operations
   // <1,1> <1,2> <1,3>
