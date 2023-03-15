@@ -361,7 +361,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
                "When past_present_share_buffer is set, "
-               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size). "
+               "The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys "
+               "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
+               "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is re - ordered to "
+               "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`."
                "T")
         .Input(5,
                "relative_position_bias",

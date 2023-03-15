@@ -27,7 +27,7 @@ Status GptSubgraph::CreateInitialFeeds(
     const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
     IAllocatorUniquePtr<char>& buffer,
     Stream* ort_stream,
-    int max_seq_len_past_present_share_buffer,
+    int past_present_share_buffer_max_seq_len,
     bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
@@ -85,7 +85,7 @@ Status GptSubgraph::CreateInitialFeeds(
     }
   } else {
     // Past state feeds
-    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_past_present_share_buffer, head_size};
+    int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, past_present_share_buffer_max_seq_len, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);
 
     // The remaining inputs are past state except the last one or three (see below for details)
@@ -119,7 +119,7 @@ Status GptSubgraph::CreateInitialFeeds(
       *num_beams_tensor_value.GetMutable<Tensor>()->MutableData<int32_t>() = static_cast<int32_t>(num_beams);
 
       // Cache indirection feed
-      int64_t cache_indirection_dims[] = {batch_size, num_beams, max_seq_len_past_present_share_buffer};
+      int64_t cache_indirection_dims[] = {batch_size, num_beams, past_present_share_buffer_max_seq_len};
       TensorShape cache_indirection_shape(&cache_indirection_dims[0], 3);
       OrtValue default_cache_indirection;
       Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), cache_indirection_shape,

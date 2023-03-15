@@ -34,7 +34,7 @@ class GptSubgraph : public Subgraph {
       const GenerationDeviceHelper::AddToFeedsFunc& add_to_feeds_func,
       IAllocatorUniquePtr<char>& buffer,
       Stream* ort_stream,
-      int max_seq_len_past_present_share_buffer = -1,
+      int past_present_share_buffer_max_seq_len = -1,
       bool add_beam_search_specific_inputs_for_decoder_masked_multihead_attention = false);
 
   Status Validate(const std::vector<const NodeArg*>& subgraph_inputs,

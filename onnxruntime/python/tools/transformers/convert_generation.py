@@ -1122,7 +1122,16 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(
                         return False
 
                     if k not in decoder_masked_attention_supported_attr:
+                        # Log the fact that we are removing certain attributes from the node
+                        # We don't need to log it for "unidirectional" as we are aware that
+                        # decoding attention kernels are unidirectional by definition.
+                        if k != "unidirectional":
+                            logger.warning(
+                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedMultiheadAttention"
+                            )
+
                         del kwargs[k]
+
                 nis = []
                 nis.extend(node.input)
 
