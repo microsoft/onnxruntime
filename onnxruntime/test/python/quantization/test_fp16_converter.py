@@ -5,12 +5,10 @@ import numpy as np
 import onnx
 import requests
 from onnx import TensorProto, helper, numpy_helper
+from onnxruntime.quantization.fp16_converter import FP16Converter
 from onnxruntime.quantization.fp16_converter_simple import FP16ConverterSimple
 
 from op_test_utils import check_model_correctness, check_op_type_count
-
-from onnxruntime.quantization.fp16_converter import FP16Converter
-from onnxruntime.transformers.float16 import convert_float_to_float16
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -177,7 +175,11 @@ class TestONNXModel(unittest.TestCase):
         converter = FP16Converter()
         converter.set_model(model)
         converter.convert()
-        converter.export_model_to_path("resnet50-fp16-v2-7-allow-list.onnx")
+        converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-keep-io.onnx")
+
+        # converter.set_model(model)
+        # converter.process(False)
+        # converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-no-keep-io.onnx")
 
     def test_model_converter_on_resnet50_v2_allow_list_simple(self):
         filename = "resnet50-v2-7.onnx"
@@ -191,8 +193,9 @@ class TestONNXModel(unittest.TestCase):
             print(f"Loaded model from {filename}.")
         converter = FP16ConverterSimple()
         converter.set_model(model)
-        converter.convert()
+        # converter.process()
         converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-simple.onnx")
+
     # def test_model_converter_on_resnet50_v2_block_list(self):
     #     filename = "resnet50-v2-7.onnx"
     #     if not os.path.exists(filename):

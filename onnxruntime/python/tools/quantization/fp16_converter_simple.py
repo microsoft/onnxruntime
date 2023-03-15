@@ -4,7 +4,7 @@ from onnx import TensorProto as TensorType
 from onnx import numpy_helper
 from onnxruntime.quantization.onnx_model import ONNXModel
 
-from python.tools.quantization.onnx_model_converter_base import ConverterBase, parse_arguments
+from python.tools.quantization.onnx_model_converter_base import ConverterBase
 
 
 class FP16ConverterSimple(ConverterBase):
@@ -69,7 +69,7 @@ class FP16ConverterSimple(ConverterBase):
 
 
 def main():
-    args = parse_arguments()
+    args = FP16ConverterSimple.parse_arguments()
     FP16ConverterSimple.convert_model_file(args.input, args.output, args.use_external_data_format, args.allow_list)
 
 

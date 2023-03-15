@@ -1,5 +1,7 @@
 import numpy as np
 from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
+from typing import List
+
 from python.tools.quantization.onnx_model import ONNXModel
 from python.tools.quantization.onnx_model_processor_base import ONNXModelProcessorBase
 
@@ -9,18 +11,17 @@ class ConverterBase(ONNXModelProcessorBase):
 
     def __init__(self, model=None, allow_list=None):
         if model is not None:
-            model = ONNXModel(model).topological_sort()
+            new_model = ONNXModel(model)
+            new_model.topological_sort()
+            model = new_model.model
         self.allow_list = allow_list if allow_list is not None else self.default_allow_list
         super().__init__(model)
 
     def set_allow_list(self, allow_list: list = None):
         self.allow_list = allow_list if allow_list is None else self.default_allow_list
 
-    def process(self):
-        raise NotImplementedError
-
     @staticmethod
-    def _convert_np_float16_to_int(np_array: np.ndarray(shape=(), dtype=np.float16)) -> list[int]:
+    def _convert_np_float16_to_int(np_array: np.ndarray(shape=(), dtype=np.float16)) -> List[int]:
         """
         Convert numpy float16 to python int.
 
@@ -95,11 +96,10 @@ class ConverterBase(ONNXModelProcessorBase):
 
     @staticmethod
     def parse_arguments():
-        ConverterBase.get_parser().parse_args()
+        return ConverterBase.get_parser().parse_args()
 
     @staticmethod
     def get_parser():
-
         parser = ONNXModelProcessorBase.get_parser()
         parser.add_argument(
             "--allow_list",

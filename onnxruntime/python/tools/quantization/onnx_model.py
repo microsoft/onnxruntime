@@ -95,7 +95,7 @@ class ONNXModel:
     def initializer(self):
         return self.model.graph.initializer
 
-    def graph(self):
+    def graph(self) -> onnx.GraphProto:
         return self.model.graph
 
     def ir_version(self):
