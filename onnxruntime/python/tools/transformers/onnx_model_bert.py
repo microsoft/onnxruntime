@@ -256,7 +256,7 @@ class BertOnnxModel(OnnxModel):
         nodes_to_remove = []
         for node in self.nodes():
             if node.op_type == "Reshape":
-                # Clean up unneccessary reshape nodes.
+                # Clean up unnecessary reshape nodes.
                 # Find reshape nodes with no actually data in "shape" attribute and remove.
                 reshape_shape = self.get_constant_value(node.input[1])
                 if reshape_shape is not None and reshape_shape.size == 0:

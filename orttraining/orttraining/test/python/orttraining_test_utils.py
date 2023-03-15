@@ -196,7 +196,7 @@ def run_test(
         )
         print("running with old frontend API")
 
-    # trainig loop
+    # training loop
     eval_batch = None
     if not use_new_api:
         model.train()

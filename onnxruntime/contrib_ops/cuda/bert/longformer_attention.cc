@@ -147,8 +147,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         input_data, k,
         &zero, q_data, n, device_prop));
     // k
-    const CudaT* k_weight = q_weight + hidden_size * hidden_size;
-    CudaT* k_data = q_data + batch_size * sequence_length * hidden_size;
+    const CudaT* k_weight = q_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+    CudaT* k_data = q_data + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         k_weight, n,
@@ -156,8 +156,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
         &zero, k_data, n, device_prop));
 
     // v
-    const CudaT* v_weight = k_weight + hidden_size * hidden_size;
-    CudaT* v_data = k_data + batch_size * sequence_length * hidden_size;
+    const CudaT* v_weight = k_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+    CudaT* v_data = k_data + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
     CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
         cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
         v_weight, n,
@@ -199,7 +199,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
     } else {
       // global q
       const CudaT* global_q_weight = global_weights_data;
-      CudaT* global_q = global_gemm_buffer + 2 * batch_size * sequence_length * hidden_size;
+      CudaT* global_q = global_gemm_buffer + static_cast<int64_t>(2) * batch_size * sequence_length * hidden_size;
       if (disable_compact_memory) {
         CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
             cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -228,7 +228,7 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               device_prop));
       }
       // global k
-      const CudaT* global_k_weight = global_weights_data + hidden_size * hidden_size;
+      const CudaT* global_k_weight = global_weights_data + static_cast<int64_t>(hidden_size) * hidden_size;
       CudaT* global_k = global_gemm_buffer;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
@@ -237,8 +237,8 @@ Status LongformerAttention<T>::ComputeInternal(OpKernelContext* context) const {
           &zero, global_k, n, device_prop));
 
       // global v
-      const CudaT* global_v_weight = global_k_weight + hidden_size * hidden_size;
-      CudaT* global_v = global_gemm_buffer + batch_size * sequence_length * hidden_size;
+      const CudaT* global_v_weight = global_k_weight + static_cast<int64_t>(hidden_size) * hidden_size;
+      CudaT* global_v = global_gemm_buffer + static_cast<int64_t>(batch_size) * sequence_length * hidden_size;
       CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
           cublas, CUBLAS_OP_N, CUBLAS_OP_N, n, m, k, &one,
           global_v_weight, n,

@@ -22,11 +22,7 @@ fi
 cd /tmp/src
 source $(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)/install_shared_deps.sh
 
-echo "Installing gradle"
 cd /tmp/src
-GetFile https://downloads.gradle-dn.com/distributions/gradle-6.3-bin.zip /tmp/src/gradle-6.3-bin.zip
-unzip /tmp/src/gradle-6.3-bin.zip
-mv /tmp/src/gradle-6.3 /usr/local/gradle
 
 if ! [ -x "$(command -v protoc)" ]; then
   source ${0/%install_deps_lort\.sh/..\/install_protobuf.sh}

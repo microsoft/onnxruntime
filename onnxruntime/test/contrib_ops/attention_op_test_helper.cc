@@ -2908,6 +2908,188 @@ void GetCrossAttentionData_HeadSize16(AttentionTestData& data) {
   }
 }
 
+void GetCrossAttentionDataWithPast(AttentionTestData& data) {
+  data.hidden_size = 8;
+  data.v_hidden_size = 8;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;
+  data.key_padding_mask_data = {1, 1, 1};
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+
+  {
+    data.query_data = {
+      -0.10939738f, -0.11916742f, -0.23157823f, -0.12894472f,
+      -0.02661306f,  0.26251313f,  0.30725253f, -0.34759378f,
+      -0.11695808f, -0.13129434f, -0.17031054f, -0.14986445f,
+      -0.02826184f,  0.2797631f ,  0.27337456f, -0.44312602f
+    };
+  }
+  // The past key and value data will be passed to the kernel as input 'key' and 'value'.
+  {
+    data.past_key_data = {
+      0.5967375f , 0.5966938f , 0.48602432f, 0.5341031f,
+      0.55797786f, 0.5663399f , 0.57087725f, 0.6240304f,
+      0.5352563f , 0.5648297f , 0.4972945f , 0.56637144f,
+
+      0.44123724f, 0.35872823f, 0.32176313f, 0.4490301f,
+      0.3643952f , 0.51968557f, 0.50137347f, 0.5743993f,
+      0.3905106f , 0.4741712f , 0.40881708f, 0.47243845f
+    };
+  }
+
+  {
+    data.past_value_data = {
+      0.40251260f, 0.55487730f, 0.49565578f, 0.42683450f,
+      0.44379145f, 0.58945787f, 0.54852820f, 0.43376005f,
+      0.44116694f, 0.44007313f, 0.40293324f, 0.53202707f,
+
+      0.35520583f, 0.47293650f, 0.45417705f, 0.33723440f,
+      0.50175804f, 0.37620395f, 0.24103148f, 0.50958070f,
+      0.56803876f, 0.37866923f, 0.32273075f, 0.44389135f
+    };
+  }
+
+  {
+    data.fp32_output_data = {
+      0.4291f, 0.5275f, 0.4818f, 0.4645f, 0.4770f, 0.4082f, 0.3372f, 0.4319f,
+      0.4291f, 0.5276f, 0.4818f, 0.4645f, 0.4768f, 0.4083f, 0.3377f, 0.4315f
+    };
+  }
+
+  {
+    data.fp16_output_data = data.fp32_output_data;
+  }
+}
+
+void GetSelfAttentionDataWithPast(AttentionTestData& data) {
+  data.hidden_size = 8;
+  data.v_hidden_size = 8;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_NONE;
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention,
+      AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention};
+
+  {
+    data.query_data = {
+      0.00403503f,  0.08716156f, -0.0358175f , -0.08171791f,
+      0.48912194f, -0.22679007f, -0.09093101f, -0.5939322f,
+      0.00878838f,  0.03355761f, -0.08080226f, -0.06677517f,
+      0.55038965f, -0.2720567f , -0.12977877f, -0.634123f
+    };
+  }
+  {
+    data.key_data = {
+      0.2808786f ,  0.10041683f,  0.15880886f,  0.45283064f,
+      0.39884242f,  0.12596075f,  0.4198916f , -0.0651141f,
+      0.31678027f,  0.11010794f,  0.21594375f,  0.4975329f,
+      0.436772f  ,  0.20940652f,  0.44072092f, -0.05601776f
+    };
+  }
+
+  {
+    data.value_data = {
+      0.26421773f, -0.16541699f, -0.0599675f ,  0.27200517f,
+      -0.1074627f , -0.4493224f , -0.03694462f,  0.17997989f,
+      0.27960598f, -0.16643806f, -0.07019104f,  0.29006317f,
+      -0.11640988f, -0.47876123f, -0.01979145f,  0.11468418f
+    };
+  }
+
+  {
+    data.rel_pos_bias_data = {
+      0.4781123f , 0.82420444f, 0.654424f  , 0.3995186f , 0.5482078f,
+      0.55570245f, 0.4216576f , 0.46001542f, 0.67183703f, 0.41973996f,
+
+      0.28494194f, 0.60367906f, 0.3453173f , 0.44483483f, 0.6770777f,
+      0.5460559f , 0.31994605f, 0.5470492f , 0.5433419f , 0.60349935f
+    };
+  }
+
+  {
+    data.past_key_data = {
+      0.34734827f, 0.5592256f , 0.5333037f , 0.5122027f,
+      0.5940516f , 0.44744077f, 0.43128848f, 0.55360645f,
+      0.57874715f, 0.29512063f, 0.2780432f , 0.4693917f,
+
+      0.4450266f , 0.530704f  , 0.3124955f , 0.4273598f,
+      0.44368753f, 0.5890438f , 0.5054336f , 0.46042535f,
+      0.5352153f , 0.5157861f , 0.39744973f, 0.5441864f
+    };
+  }
+
+  {
+    data.past_value_data = {
+        0.48998538f, 0.5493853f , 0.556647f  , 0.7011929f,
+        0.543909f  , 0.5630743f , 0.5087797f , 0.3901024f,
+        0.53116417f, 0.4086225f , 0.5320247f , 0.5145377f,
+
+        0.4086198f , 0.6913348f , 0.50045484f, 0.5338214f,
+        0.52980417f, 0.5243695f , 0.6046111f , 0.53555113f,
+        0.44936907f, 0.6010697f , 0.38031512f, 0.427301f
+    };
+  }
+
+  {
+    data.fp32_output_data = {
+      0.4358f, 0.2708f, 0.3201f, 0.4347f, 0.1886f, 0.0845f, 0.2479f, 0.3289f,
+      0.4157f, 0.2247f, 0.2826f, 0.4321f, 0.1874f, 0.1021f, 0.2427f, 0.3305f
+    };
+  }
+
+  {
+    data.fp16_output_data = data.fp32_output_data;
+  }
+
+  {
+    data.present_key_data = {
+      0.3473f,  0.5592f,  0.5333f,  0.5122f,
+      0.5941f,  0.4474f,  0.4313f,  0.5536f,
+      0.5787f,  0.2951f,  0.2780f,  0.4694f,
+      0.2809f,  0.1004f,  0.1588f,  0.4528f,
+      0.3168f,  0.1101f,  0.2159f,  0.4975f,
+
+      0.4450f,  0.5307f,  0.3125f,  0.4274f,
+      0.4437f,  0.5890f,  0.5054f,  0.4604f,
+      0.5352f,  0.5158f,  0.3974f,  0.5442f,
+      0.3988f,  0.1260f,  0.4199f, -0.0651f,
+      0.4368f,  0.2094f,  0.4407f, -0.0560f
+    };
+  }
+
+  {
+    data.present_value_data = {
+      0.4900f,  0.5494f,  0.5566f,  0.7012f,
+      0.5439f,  0.5631f,  0.5088f,  0.3901f,
+      0.5312f,  0.4086f,  0.5320f,  0.5145f,
+      0.2642f, -0.1654f, -0.0600f,  0.2720f,
+      0.2796f, -0.1664f, -0.0702f,  0.2901f,
+
+      0.4086f,  0.6913f,  0.5005f,  0.5338f,
+      0.5298f,  0.5244f,  0.6046f,  0.5356f,
+      0.4494f,  0.6011f,  0.3803f,  0.4273f,
+      -0.1075f, -0.4493f, -0.0369f,  0.1800f,
+      -0.1164f, -0.4788f, -0.0198f,  0.1147f
+    };
+  }
+
+  data.is_static_kv = false;
+}
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {
   return std::find(data.skip_kernel_types.begin(), data.skip_kernel_types.end(), kernel_type) != data.skip_kernel_types.end();
 }
