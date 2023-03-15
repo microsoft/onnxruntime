@@ -50,7 +50,6 @@ class AttentionMask:
             return None
 
         if input in self.mask_indice:
-            #print("mask exists, shape unknown")
             return self.mask_indice[input]
 
         # Add cast to convert int64 to int32
@@ -65,7 +64,6 @@ class AttentionMask:
 
         # Attention supports int32 attention mask (2D) since 1.4.0
         if self.mask_format == AttentionMaskFormat.AttentionMask:
-            #print("2d mask")
             self.mask_indice[input] = input_name
             return input_name
 
@@ -81,7 +79,6 @@ class AttentionMask:
         self.model.add_node(mask_index_node)
 
         self.mask_indice[input] = output_name
-        #print("1d mask")
         return output_name
 
 
@@ -923,16 +920,12 @@ class FusionAttention(Fusion):
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
-            #print(f"Mask input = {mask_nodes[-1].input[0]}, mask index = {mask_index}")
 
             attention_last_node = reshape_qkv if einsum_node is None else transpose_qkv
 
             q_num_heads, q_hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
-            #import os
-            #if not os.path.exists('temp.onnx'):
-            #    self.model.save_model_to_file('temp.onnx', use_external_data_format=True)
             new_node = self.create_attention_node(
                 mask_index,
                 matmul_q,

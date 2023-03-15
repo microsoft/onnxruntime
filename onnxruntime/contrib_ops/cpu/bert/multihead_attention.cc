@@ -6,7 +6,6 @@
 #include "multihead_attention_helper.h"
 
 #include "core/common/common.h"
-// #include "core/framework/print_tensor_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/transpose_helper.h"
 #include "core/graph/onnx_protobuf.h"
@@ -16,11 +15,8 @@
 #include "core/providers/cpu/tensor/reshape_helper.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
-#include <chrono>
-#include <iostream>
 #include <vector>
 
-// using onnxruntime::narrow;
 using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
@@ -51,7 +47,7 @@ template <typename T>
 Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data - query is BxSxD, key is BxLxD, value is BxLxD_v
                         const T* qkv_bias,                  // Input: Q/K/V bias - bias is (D + D + D_v)
                         OrtValue& qkv_with_bias_transposed, // Output: Q/K/V data - query is BxNxSxH, key is BxNxLxH, value is BxNxLxH_v
-                        int bias_offset,                    // Bias offset to enter qkv_bias
+                        int bias_offset,                    // bias offset to enter qkv_bias
                         int batch_size,                     // batch size
                         int sequence_length,                // sequence_length for Q, kv_sequence_length for K/V
                         int num_heads,                      // num heads
@@ -90,7 +86,6 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   memcpy(bias.GetMutable<Tensor>()->MutableData<T>(), qkv_bias + bias_offset, hidden_size * element_size);
   
   // Compute Q(BS, D) + bias(D) as broadcasted element-wise add
-  // auto t1 = std::chrono::high_resolution_clock::now();
   {
     InputBroadcaster input_broadcaster(*bias.GetMutable<Tensor>(), *qkv);
     const InputBroadcaster& const_input_broadcaster = input_broadcaster;
@@ -119,8 +114,6 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
         BroadcastLooper(segment_helper, add_funcs);
     });
   }
-  // auto t2 = std::chrono::high_resolution_clock::now();
-  // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " μs (Q/K/V + bias)" << std::endl;
 
   // Reshape Q from BxSxD to BxSxNxH
   std::vector<int64_t> reshape_dims({batch_size, sequence_length, num_heads, head_size});
@@ -131,20 +124,13 @@ Status AddBiasTranspose(const Tensor* qkv,                  // Input: Q/K/V data
   // Transpose Q from BxSxNxH to BxNxSxH
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
-  size_t from = 0, to = 0; // from = 2, to = 1;
-  bool moving_single_axis = IsTransposeMovingSingleAxis(permutations_span, from, to); // sets values of from and to
-  ORT_ENFORCE(moving_single_axis);
-  
-  // auto t3 = std::chrono::high_resolution_clock::now();
+  size_t from = 2, to = 1;
   SingleAxisTranspose(permutations_span, *qkv_with_bias.GetMutable<Tensor>(), *qkv_with_bias_transposed.GetMutable<Tensor>(), from, to);
-  // auto t4 = std::chrono::high_resolution_clock::now();
-  // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " μs (transpose of Q/K/V with bias)" << std::endl;
   return Status::OK();
 }
 
 template <typename T>
 Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
-  // std::cout << "Computing multihead attention CPU..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);

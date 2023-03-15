@@ -9,9 +9,6 @@
 #include "core/common/common.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-#include "core/framework/print_tensor_utils.h"
-#include <chrono>
-#include <iostream>
 
 namespace onnxruntime {
 namespace contrib {
@@ -39,19 +36,6 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* extra_add_qk,  // extra add in QK. Its size is BxNxSxT
                         bool separate_present_kv,    // whether to separate present KV into present K and present V
                         OpKernelContext* context) const {
-    // std::cout << "Q (in apply):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* q_tensor = Q + (i * num_heads_ * sequence_length * v_hidden_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(q_tensor, num_heads_, sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
-
-    // std::cout << "K (in apply):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* k_tensor = K + (i * num_heads_ * kv_sequence_length * v_hidden_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(k_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
 
     AllocatorPtr allocator;
     ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
@@ -111,7 +95,6 @@ class AttentionCPUBase : public AttentionBase {
       extra_add_qk_data = extra_add_qk->Data<T>();
     }
 
-    // std::cout << "Q x K'" << std::endl;
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
                              mask_index_data, mask_index_dims, static_cast<T*>(mask_data), has_unidirectional,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
@@ -123,7 +106,6 @@ class AttentionCPUBase : public AttentionBase {
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
-    // std::cout << "softmax x V" << std::endl;
     ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data),
                             static_cast<T*>(attention_probs), V,
                             batch_size, sequence_length, kv_sequence_length, past_sequence_length,
@@ -131,7 +113,6 @@ class AttentionCPUBase : public AttentionBase {
                             past_data, present_data, tp);
 
     if (separate_present_kv) {
-      // std::cout << "Separate present KV" << std::endl;
       SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
                         batch_size, kv_sequence_length, qk_head_size, v_head_size, context);
     }
@@ -162,7 +143,6 @@ class AttentionCPUBase : public AttentionBase {
                              ThreadPool* tp,                            // thread pool
                              const T* extra_add_qk_data                 // extra add matrix with shape BxNxSxT
   ) const {
-    // auto total_beg = std::chrono::high_resolution_clock::now();
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                 // T = P + L
     const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;      // P x H
     const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;        // S x H
@@ -177,8 +157,6 @@ class AttentionCPUBase : public AttentionBase {
                     has_unidirectional, batch_size, sequence_length, past_sequence_length, mask_filter_value_);
       }
       else {  // no any mask
-        // std::cout << batch_size << ", " << num_heads_ << ", " << sequence_length << ", " << total_sequence_length << std::endl;
-        // if (sequence_length > 256 || total_sequence_length > 256) {
         const int memset_loop_len = batch_size * num_heads_;
         const double memset_cost = static_cast<double>(sequence_length) * total_sequence_length;
         
@@ -189,14 +167,7 @@ class AttentionCPUBase : public AttentionBase {
             memset(output, 0, static_cast<size_t>(sequence_length) * total_sequence_length * sizeof(T));
           }
         });
-        // } 
-        // else {
-        //   size_t bytes = static_cast<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
-        //   memset(attention_probs, 0, bytes);
-        // }
       }
-      // auto memset_end = std::chrono::high_resolution_clock::now();
-      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(memset_end - memset_beg).count() << " μs (memset)" << std::endl;
 
       const int loop_len = batch_size * num_heads_;
       const float alpha = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
@@ -204,7 +175,6 @@ class AttentionCPUBase : public AttentionBase {
       // The cost of Gemm
       const double cost = static_cast<double>(head_size) * sequence_length * total_sequence_length;
 
-      // auto t1 = std::chrono::high_resolution_clock::now();
       ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           const int batch_index = static_cast<int>(i) / num_heads_;
@@ -252,28 +222,14 @@ class AttentionCPUBase : public AttentionBase {
           }
         }
       });
-      // auto t2 = std::chrono::high_resolution_clock::now();
-      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() << " μs (Q x K')" << std::endl;
     }
 
     // attention_probs(B, N, S, T) = Softmax(attention_probs)
-    // std::cout << "Q x K' + mask:" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* probs_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(probs_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
     {
       const int N = batch_size * num_heads_ * sequence_length;
       const int D = total_sequence_length;
-      // auto t3 = std::chrono::high_resolution_clock::now();
       ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
-      // auto t4 = std::chrono::high_resolution_clock::now();
-      // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t4 - t3).count() << " μs (softmax)" << std::endl;
     }
-
-    // auto total_end = std::chrono::high_resolution_clock::now();
-    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_beg).count() << " μs (ComputeAttentionProbs)" << std::endl;
   }
 
   template <typename T>
@@ -290,26 +246,11 @@ class AttentionCPUBase : public AttentionBase {
                                const T* past,             // past state
                                T* present,                // present state
                                ThreadPool* tp) const {
-    // auto total_beg = std::chrono::high_resolution_clock::now();
     const int total_sequence_length = past_sequence_length + kv_sequence_length;                     // T = P + L
     const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;      // P x H_v
     const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;        // S x H_v
     const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;    // L x H_v
     const ptrdiff_t present_chunk_length = past_chunk_length + kv_input_chunk_length;                // T x H_v
-
-    // std::cout << "Softmax (in score):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* softmax_tensor = attention_probs + (i * num_heads_ * sequence_length * total_sequence_length);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(softmax_tensor, num_heads_, sequence_length, total_sequence_length, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
-    
-    // std::cout << "V (in score):" << std::endl;
-    // for(int i = 0; i < 1; i++) {
-    //   std::cout << "[" << i << "]:" << std::endl;
-    //   const T* v_tensor = V + (i * num_heads_ * kv_sequence_length * v_hidden_size);
-    //   onnxruntime::utils::PrintCpuTensorSnippet<T>(v_tensor, num_heads_, kv_sequence_length, v_hidden_size, onnxruntime::utils::kDefaultSnippetEdgeItems);
-    // }
 
     // Move the pointer of past and present to start of v values.
     if (nullptr != past) {
@@ -351,9 +292,6 @@ class AttentionCPUBase : public AttentionBase {
         }
       }
     });
-    // auto t6 = std::chrono::high_resolution_clock::now();
-    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t6 - t5).count() << " μs (softmax x V)" << std::endl;
-    // std::cout << std::chrono::duration_cast<std::chrono::microseconds>(t6 - total_beg).count() << " μs (VxAttentionScore)" << std::endl;
   }
 
   template <typename T>

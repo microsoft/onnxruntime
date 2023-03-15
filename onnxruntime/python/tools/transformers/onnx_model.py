@@ -347,8 +347,6 @@ class OnnxModel:
         current_node = node
         matched_parents = []
         for i, op_type in enumerate(parent_op_types):
-            # if current_node.name in {'MatMul_123', 'Transpose_122', 'Reshape_118'}:
-            #    print("Current node:", current_node.name, op_type, parent_input_index[i])
             matched_parent = self.match_parent(
                 current_node,
                 op_type,
@@ -797,8 +795,6 @@ class OnnxModel:
             )
 
         self.update_graph()
-
-        # OnnxModel.save(self.model, "temp_before_sort.onnx", save_as_external_data=True)
 
     def update_graph(self, verbose=False):
         graph = self.model.graph

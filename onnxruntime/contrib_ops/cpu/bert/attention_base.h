@@ -30,15 +30,6 @@ class AttentionBase {
                      int kv_sequence_length,
                      int& past_sequence_length) const;
   
-  // Tensor* GetPresent(OpKernelContext* context,
-  //                    const Tensor* past,
-  //                    int batch_size,
-  //                    int head_size,
-  //                    int kv_sequence_length,
-  //                    int& past_sequence_length,
-  //                    MLDataType* elt_type,
-  //                    OrtValue* present_kv) const;
-
  protected:
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;
@@ -47,7 +38,7 @@ class AttentionBase {
 
     is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 0) == 1;
     mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
-    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f); // 1.0f
+    scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
     if (!info.GetAttrs<int64_t>("qkv_hidden_sizes", qkv_hidden_sizes_).IsOK()) {
       qkv_hidden_sizes_.clear();

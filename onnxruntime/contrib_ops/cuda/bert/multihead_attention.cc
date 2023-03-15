@@ -7,7 +7,6 @@
 #include "contrib_ops/cuda/bert/multihead_attention.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include <iostream>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -58,7 +57,6 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
-  std::cout << "Computing MHA CUDA..." << std::endl;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -180,14 +178,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   cublasHandle_t cublas = GetCublasHandle(context);
   
-  std::cout << "Use fused cross attention kernel: ";
-  if (use_fused_cross_attention) std::cout << "true" << std::endl;
-  else std::cout << "false" << std::endl;
-
-  std::cout << "Use memory efficient attention: ";
-  if (use_memory_efficient_attention) std::cout << "true" << std::endl;
-  else std::cout << "false" << std::endl;
-
   return QkvToContext<CudaT>(
       device_prop, cublas, Stream(context), parameters, data);
 }
