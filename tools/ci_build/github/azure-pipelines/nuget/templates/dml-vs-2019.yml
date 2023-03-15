@@ -24,6 +24,7 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
+  dependsOn: []
   jobs:
   - job:
     timeoutInMinutes: 200
