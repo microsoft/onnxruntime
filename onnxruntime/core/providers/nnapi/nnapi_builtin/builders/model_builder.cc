@@ -479,7 +479,7 @@ Status ModelBuilder::AddOperation(int op, const InlinedVector<uint32_t>& input_i
                                   const std::vector<std::string>& output_names,
                                   const std::vector<OperandType>& output_types) {
 #ifndef NDEBUG
-  operations_recorder_.emplace_back(track_node_index_, op);
+  operations_recorder_.emplace_back(current_onnx_node_index_, op);
 #endif
   InlinedVector<uint32_t> output_indices;
   for (size_t i = 0; i < output_types.size(); i++) {

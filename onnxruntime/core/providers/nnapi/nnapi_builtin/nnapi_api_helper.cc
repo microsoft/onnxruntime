@@ -113,7 +113,7 @@ Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_dev
   // and exclude nnapi-reference for better performance if possible.
   // 3) We can easily log the detail of how op was assigned on NNAPI devices which is helpful for debugging.
   // Related doc and code https://source.android.com/docs/core/interaction/neural-networks#cpu-usage
-  // and https://android.googlesource.com/platform/frameworks/ml/+/master/nn/runtime/ExecutionPlan.cpp#2303
+  // and https://android.googlesource.com/platform/frameworks/ml/+/5b525d4d9100819d87447bd2c2a0bcfdd62899ee/nn/runtime/ExecutionPlan.cpp#2303
   if (cpu_index != -1 && cpu_index != static_cast<int32_t>(devices.size()) - 1) {
     std::swap(devices[devices.size() - 1], devices[cpu_index]);
   }
