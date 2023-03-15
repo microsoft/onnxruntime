@@ -4,14 +4,15 @@
 
 import platform
 import unittest
-import numpy as np
-from numpy.testing import assert_allclose
-import onnx
-from onnx import TensorProto
-from onnx.helper import make_model, make_node, make_graph, make_tensor_value_info
-from onnx.checker import check_model
-import onnxruntime
 
+import numpy as np
+import onnx
+from numpy.testing import assert_allclose
+from onnx import TensorProto
+from onnx.checker import check_model
+from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+
+import onnxruntime
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:
