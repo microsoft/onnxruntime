@@ -274,7 +274,7 @@ public:
             std::vector<uint32_t> keyPaddingMaskTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(keyPaddingMaskIndex);
             ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 1 || keyPaddingMaskTensorShape.size() == 2);
 
-            if (keyPaddingMaskTensorShape.size() == 2)
+            if (keyPaddingMaskTensorShape.size() == 1)
             {
                 const uint32_t batchSize = keyPaddingMaskTensorShape[0];
                 const uint32_t kvSequenceLength = m_inputTensorDescs[keyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID
