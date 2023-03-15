@@ -44,6 +44,8 @@ class FusionOptions:
         self.enable_shape_inference = True
         self.enable_gemm_fast_gelu = False
 
+        self.enable_flash_attention = False
+
         # Set default to sequence length for BERT model to use fused attention to speed up.
         # Note that embed layer normalization will convert 2D mask to 1D when mask type is MaskIndexEnd.
         self.attention_mask_format = (
@@ -99,6 +101,8 @@ class FusionOptions:
             options.use_raw_attention_mask(True)
         if args.no_attention_mask:
             options.disable_attention_mask()
+        if args.enable_flash_attention:
+            options.enable_flash_attention = True
 
         if args.model_type in ["unet", "vae", "clip"]:
             if args.disable_nhwc_conv:
@@ -277,5 +281,13 @@ class FusionOptions:
             required=False,
             action="store_true",
             help="Do not use NhwcConv. Only works for model_type=unet or vae",
+        )
+        parser.set_defaults(disable_nhwc_conv=False)
+
+        parser.add_argument(
+            "--enable_flash_attention",
+            required=False,
+            action="store_true",
+            help="enable flash attention fusion",
         )
         parser.set_defaults(disable_nhwc_conv=False)
