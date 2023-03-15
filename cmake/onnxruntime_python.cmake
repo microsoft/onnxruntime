@@ -416,7 +416,7 @@ if (onnxruntime_ENABLE_TRAINING)
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
   )
-  file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
+  file(GLOB onnxruntime_python_utils_hooks_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/hooks/*"
   )
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -776,7 +776,7 @@ if (onnxruntime_ENABLE_TRAINING)
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
     COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_utils_data_srcs}
+        ${onnxruntime_python_utils_hooks_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
   )
   if (onnxruntime_ENABLE_TRAINING_APIS)

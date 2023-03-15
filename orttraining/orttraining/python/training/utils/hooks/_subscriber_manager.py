@@ -207,27 +207,22 @@ class SubscriberManager(object):
         global _MODULE_INDEX_TO_DEPTH
         global _OBSERVED_ACTIVATION_NAMES
 
-        if module not in _MODULE_TO_MODULE_INDEX:
-            return
+        if module in _MODULE_TO_MODULE_INDEX and isinstance(module, torch.nn.Module):
+            id = _MODULE_TO_MODULE_INDEX[module]
 
-        if not isinstance(module, torch.nn.Module):
-            return
+            def _apply_to_tensors_func(index, activation_tensor):
+                global _OBSERVED_ACTIVATION_NAMES
+                name = f"{module.__class__.__name__}_{id}_{index}th_output"
+                if name not in _OBSERVED_ACTIVATION_NAMES:
+                    _OBSERVED_ACTIVATION_NAMES[name] = True
+                    output = activation_tensor
+                    for subscriber in SubscriberManager.registered_subscribers:
+                        output = _InspectActivation.apply(name, id, _MODULE_INDEX_TO_DEPTH[id], output, subscriber)
+                    return output
+                else:
+                    return activation_tensor
 
-        id = _MODULE_TO_MODULE_INDEX[module]
-
-        def _apply_to_tensors_func(index, activation_tensor):
-            global _OBSERVED_ACTIVATION_NAMES
-            name = f"{module.__class__.__name__}_{id}_{index}th_output"
-            if name not in _OBSERVED_ACTIVATION_NAMES:
-                _OBSERVED_ACTIVATION_NAMES[name] = True
-                output = activation_tensor
-                for subscriber in SubscriberManager.registered_subscribers:
-                    output = _InspectActivation.apply(name, id, _MODULE_INDEX_TO_DEPTH[id], output, subscriber)
-                return output
-            else:
-                return activation_tensor
-
-        return SubscriberManager._apply_to_tensors(module, id, output, _apply_to_tensors_func)
+            return SubscriberManager._apply_to_tensors(module, id, output, _apply_to_tensors_func)
 
     @staticmethod
     def _is_builtin_type(obj):

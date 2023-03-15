@@ -69,19 +69,18 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
         with open(os.path.join(d, "order.txt"), "a") as of:
             of.write(f"{name}\n")
 
-        f = open(path, "w")
-        f.write(
-            f"{'>'*depth + name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
-            f"min: {flatten_array.min()} max: {flatten_array.max()}, mean: {flatten_array.mean()}, "
-            f"std: {flatten_array.std()} \n"
-            f"nan: {num_nan}, inf: {num_inf}\n"
-        )
-        f.write(f"samples(top 128): {flatten_array[:128]}\n")
+        with open(path, "w") as f:
+            f.write(
+                f"{'>'*depth + name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
+                f"min: {flatten_array.min()} max: {flatten_array.max()}, mean: {flatten_array.mean()}, "
+                f"std: {flatten_array.std()} \n"
+                f"nan: {num_nan}, inf: {num_inf}\n"
+            )
+            f.write(f"samples(top 128): {flatten_array[:128]}\n")
 
-        f.write(
-            f"neg: {torch.less(flatten_array, zerotensor).to(torch.int64).sum()}, "
-            f"pos: {torch.greater(flatten_array, zerotensor).to(torch.int64).sum()}, "
-            f"zero: {torch.eq(flatten_array, zerotensor).to(torch.int64).sum()},\n"
-        )
-        f.write(f"{'='*16}\n")
-        f.close()
+            f.write(
+                f"neg: {torch.less(flatten_array, zerotensor).to(torch.int64).sum()}, "
+                f"pos: {torch.greater(flatten_array, zerotensor).to(torch.int64).sum()}, "
+                f"zero: {torch.eq(flatten_array, zerotensor).to(torch.int64).sum()},\n"
+            )
+            f.write(f"{'='*16}\n")

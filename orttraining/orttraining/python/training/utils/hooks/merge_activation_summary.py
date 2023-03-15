@@ -4,10 +4,12 @@
 # --------------------------------------------------------------------------
 
 
-"""This file is used to merge convergence debugging summary files.
+"""
+    This file is used to merge convergence debugging summary files.
     It is used to compare activation results between pytorch and ORT.
     Both PyTorch and ORT run result directory are needed, check
     [ORTModule_Convergence_Notes](docs/ORTModule_Convergence_Notes.md) for how to export the results.
+
 """
 
 import argparse
@@ -31,8 +33,9 @@ def generate_summaries_per_step(args):
 
     def generate_summary_per_step(o_path, d_path, merge_dir_name):
         print(f"Start generating summary per step for {d_path} following typological order in {o_path}")
-        order_file = open(o_path)
-        tensor_name_in_order = order_file.readlines()
+        with open(o_path) as order_file:
+            tensor_name_in_order = order_file.readlines()
+
         if os.path.exists(merge_dir_name):
             shutil.rmtree(merge_dir_name)
         os.makedirs(merge_dir_name, exist_ok=True)
@@ -43,7 +46,6 @@ def generate_summaries_per_step(args):
                 merge_filename_for_sub_dir = os.path.join(merge_dir_name, f"{sub_dir_name}_.txt")
                 # Open merge_filename_for_sub_dir in write mode
                 with open(merge_filename_for_sub_dir, "w") as outfile:
-                    # Iterate through list
                     for filename in tensor_name_in_order:
                         filename = filename.rstrip("\n")
                         full_filename = os.path.join(sub_dir_full_path, filename)
@@ -51,18 +53,12 @@ def generate_summaries_per_step(args):
                         if not os.path.exists(full_filename):
                             # Be noted that, some tensor handled in pytorch might be missing in ORT graph
                             # (if the activation is not used by others, which is pruned during export)
-
                             print(f"tensor {full_filename} not exist")
                             continue
 
-                        # Open each file in read mode
                         with open(full_filename) as infile:
-                            # read the data from file1 and
-                            # file2 and write it in file3
                             outfile.write(infile.read())
 
-                        # Add '\n' to enter data of file2
-                        # from next line
                         outfile.write("\n")
 
         print(
