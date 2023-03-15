@@ -366,7 +366,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
                "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
                "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
-               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is re - ordered to "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
                "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`."
                "T")
         .Input(5,
