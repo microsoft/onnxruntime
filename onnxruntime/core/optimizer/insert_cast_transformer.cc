@@ -53,7 +53,7 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 
   if (not_assigned) {
     const auto& input_defs = node.InputDefs();
-    bool has_fp16_input = std::any_of(input_defs.cbegin(), input_defs.cend(),
+    bool has_fp16_input = std::any_of(input_defs.begin(), input_defs.end(),
                                       [](const NodeArg* input_def) {
                                         return IsMLFloat16Tensor(*input_def);
                                       });
@@ -99,7 +99,7 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
     do {
       // find the number of fp16 inputs as we need to make sure they're all coming from nodes that will be cast
       const auto& input_defs = node.InputDefs();
-      size_t num_fp16_inputs = std::count_if(input_defs.cbegin(), input_defs.cend(),
+      size_t num_fp16_inputs = std::count_if(input_defs.begin(), input_defs.end(),
                                              [](const NodeArg* input_def) {
                                                return IsMLFloat16Tensor(*input_def);
                                              });

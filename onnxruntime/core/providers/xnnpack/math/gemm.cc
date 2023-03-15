@@ -21,7 +21,7 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
 
   // use do {} while(false) so it's easier to set a breakpoint on the return
   do {
-    ConstPointerContainer<std::vector<NodeArg*>> input_defs = node.InputDefs();
+    const auto input_defs = node.InputDefs();
 
     const auto alpha = node.GetAttributes().find("alpha");
     if ((*alpha).second.f() != 1.0) break;

@@ -32,7 +32,6 @@
 #include "core/common/gsl.h"
 
 #include "core/common/common.h"
-#include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/path.h"
 #include "core/common/span_utils.h"
@@ -202,40 +201,38 @@ class Node {
   @param node_args Collection of NodeArgs returned by #InputDefs() or #OutputDefs()
   @param func Function to call for each valid NodeArg in the node_args. The function is called with the NodeArg
               and the index number in the container.
-  @returns common::Status with success or error information.
+  @returns Status with success or error information.
   @remarks Returns immediately on error.
   */
-  static common::Status ForEachWithIndex(const ConstPointerContainer<std::vector<NodeArg*>>& node_args,
-                                         std::function<common::Status(const NodeArg& arg, size_t index)> func) {
+  static Status ForEachWithIndex(gsl::span<const NodeArg* const> node_args,
+                                 std::function<Status(const NodeArg& arg, size_t index)> func) {
     for (size_t index = 0; index < node_args.size(); ++index) {
       auto arg = node_args[index];
       if (!arg->Exists())
         continue;
       ORT_RETURN_IF_ERROR(func(*arg, index));
     }
-    return common::Status::OK();
+    return Status::OK();
   }
 
   /** Gets the count of arguments for each of the Node's explicit inputs. */
   const std::vector<int>& InputArgCount() const noexcept { return definitions_.input_arg_count; }
 
-  /** Gets the Node's input definitions.
-  @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept {
-    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.input_defs);
+  /** Gets the Node's input definitions. */
+  gsl::span<const NodeArg* const> InputDefs() const noexcept {
+    return definitions_.input_defs;
   }
 
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
-  ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept {
-    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.implicit_input_defs);
+  gsl::span<const NodeArg* const> ImplicitInputDefs() const noexcept {
+    return definitions_.implicit_input_defs;
   }
 
-  /** Gets the Node's output definitions.
-  @remarks requires ConstPointerContainer wrapper to apply const to the NodeArg pointers so access is read-only. */
-  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept {
-    return ConstPointerContainer<std::vector<NodeArg*>>(definitions_.output_defs);
+  /** Gets the Node's output definitions. */
+  gsl::span<const NodeArg* const> OutputDefs() const noexcept {
+    return definitions_.output_defs;
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1298,8 +1295,8 @@ class Graph {
   /** Returns true if the name is for a value that is coming from outer scope */
   bool IsOuterScopeValue(const std::string& name) const {
     if (!parent_node_) return false;
-    const auto& implicit_input_defs = parent_node_->ImplicitInputDefs();
-    return std::any_of(implicit_input_defs.cbegin(), implicit_input_defs.cend(),
+    const auto implicit_input_defs = parent_node_->ImplicitInputDefs();
+    return std::any_of(implicit_input_defs.begin(), implicit_input_defs.end(),
                        [&name](const NodeArg* implicit_input) {
                          return implicit_input->Name() == name;
                        });

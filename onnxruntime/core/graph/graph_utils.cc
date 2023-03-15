@@ -61,12 +61,12 @@ static bool CanUpdateImplicitInputNameInSubgraph(const Node& node,
       const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
-            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
+            std::find_if(subgraph_node_implicit_inputs.begin(), subgraph_node_implicit_inputs.end(),
                          [&removed_output_name](const NodeArg* input) {
                            return input != nullptr && input->Name() == removed_output_name;
                          });
 
-        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
+        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.end()) {
           if (!CanUpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name))
             return false;
         }
@@ -91,12 +91,12 @@ static void UpdateImplicitInputNameInSubgraph(Node& node,
       const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
         auto subgraph_node_also_consumes_nodearg_as_implicit_input =
-            std::find_if(subgraph_node_implicit_inputs.cbegin(), subgraph_node_implicit_inputs.cend(),
+            std::find_if(subgraph_node_implicit_inputs.begin(), subgraph_node_implicit_inputs.end(),
                          [&removed_output_name](const NodeArg* input) {
                            return input->Name() == removed_output_name;
                          });
 
-        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.cend()) {
+        if (subgraph_node_also_consumes_nodearg_as_implicit_input != subgraph_node_implicit_inputs.end()) {
           UpdateImplicitInputNameInSubgraph(subgraph_node, removed_output_name, new_output_name);
         }
       }

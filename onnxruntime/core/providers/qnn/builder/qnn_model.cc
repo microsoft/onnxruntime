@@ -45,7 +45,7 @@ Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
+Status QnnModel::ParseGraphInputOrOutput(gsl::span<const NodeArg* const> input_output_defs,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
                                          std::unordered_map<std::string, size_t>& input_output_index_map_without_initializers,

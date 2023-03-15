@@ -595,9 +595,9 @@ struct ProviderHost {
   virtual ProviderType Node__GetExecutionProviderType(const Node* p) const noexcept = 0;
 
   virtual const std::vector<int>& Node__InputArgCount(const Node* p) = 0;
-  virtual ConstPointerContainer<std::vector<NodeArg*>> Node__ImplicitInputDefs(const Node* p) noexcept = 0;
-  virtual ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept = 0;
-  virtual ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept = 0;
+  virtual gsl::span<const NodeArg* const> Node__ImplicitInputDefs(const Node* p) noexcept = 0;
+  virtual gsl::span<const NodeArg* const> Node__InputDefs(const Node* p) noexcept = 0;
+  virtual gsl::span<const NodeArg* const> Node__OutputDefs(const Node* p) noexcept = 0;
   virtual NodeIndex Node__Index(const Node* p) noexcept = 0;
   virtual std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept = 0;
 

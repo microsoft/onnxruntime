@@ -10,7 +10,6 @@
 #include <set>
 
 #include "core/common/common.h"
-#include "core/common/const_pointer_container.h"
 #include "core/common/status.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"

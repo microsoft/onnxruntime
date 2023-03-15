@@ -685,9 +685,9 @@ struct ProviderHostImpl : ProviderHost {
   ProviderType Node__GetExecutionProviderType(const Node* p) const noexcept override { return p->GetExecutionProviderType(); }
 
   const std::vector<int>& Node__InputArgCount(const Node* p) override { return p->InputArgCount(); }
-  ConstPointerContainer<std::vector<NodeArg*>> Node__ImplicitInputDefs(const Node* p) noexcept override { return p->ImplicitInputDefs(); }
-  ConstPointerContainer<std::vector<NodeArg*>> Node__InputDefs(const Node* p) noexcept override { return p->InputDefs(); }
-  ConstPointerContainer<std::vector<NodeArg*>> Node__OutputDefs(const Node* p) noexcept override { return p->OutputDefs(); }
+  gsl::span<const NodeArg* const> Node__ImplicitInputDefs(const Node* p) noexcept override { return p->ImplicitInputDefs(); }
+  gsl::span<const NodeArg* const> Node__InputDefs(const Node* p) noexcept override { return p->InputDefs(); }
+  gsl::span<const NodeArg* const> Node__OutputDefs(const Node* p) noexcept override { return p->OutputDefs(); }
   NodeIndex Node__Index(const Node* p) noexcept override { return p->Index(); }
   std::vector<gsl::not_null<const Graph*>> Node__GetSubgraphs(const Node* p) const noexcept override { return p->GetSubgraphs(); }
 

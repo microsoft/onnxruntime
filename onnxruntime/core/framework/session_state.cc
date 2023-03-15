@@ -1357,7 +1357,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     auto outer_scope_node_args = parent_node->ImplicitInputDefs();
     valid_outer_scope_node_args.reserve(outer_scope_node_args.size());
 
-    std::for_each(outer_scope_node_args.cbegin(), outer_scope_node_args.cend(),
+    std::for_each(outer_scope_node_args.begin(), outer_scope_node_args.end(),
                   [this, &valid_outer_scope_node_args](const NodeArg* node_arg) {
                     int idx;
                     if (ort_value_name_idx_map_.GetIdx(node_arg->Name(), idx).IsOK()) {

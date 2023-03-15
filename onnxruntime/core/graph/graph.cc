@@ -588,7 +588,7 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ToProto(node_proto);
       std::vector<TypeProto> input_types;
       for (size_t i = 0, n = InputDefs().size(); i < n; i++) {
-        auto p_node_arg = InputDefs().at(i);
+        auto p_node_arg = InputDefs()[i];
         if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
           auto& type = *(p_node_arg->TypeAsProto());
           input_types.emplace_back(type);
@@ -2045,7 +2045,7 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
 
   const TypeProto* getInputType(size_t index) const override {
     const TypeProto* type = nullptr;
-    auto p_node_arg = node_.InputDefs().at(index);
+    auto p_node_arg = node_.InputDefs()[index];
     if ((nullptr != p_node_arg) && p_node_arg->Exists()) {
       type = p_node_arg->TypeAsProto();
     }

@@ -16,7 +16,7 @@ namespace {
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
-  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(),
+  return gsl::narrow_cast<int>(std::count_if(defs.begin(), defs.end(),
                                              [](const NodeArg* def) { return def && def->Exists(); }));
 }
 }  // namespace

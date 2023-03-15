@@ -281,7 +281,7 @@ std::vector<uint8_t> ApiTensor::Data() const {
 // </ApiTensor>
 
 // <ApiNode>
-std::vector<std::string_view> NodeArgsToStrings(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
+std::vector<std::string_view> NodeArgsToStrings(gsl::span<const NodeArg* const> node_args) {
   std::vector<std::string_view> result;
   result.reserve(node_args.size());
   for (const auto* arg : node_args) {

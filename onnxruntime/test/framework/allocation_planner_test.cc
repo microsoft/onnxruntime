@@ -451,7 +451,7 @@ TEST_F(PlannerTest, InputOutputTest) {
 
   // add node that consumes an outer scope node arg
   auto outer_node = AddNormalNode(Outer1, Y3);
-  const NodeArg* outer_scope_node_arg = outer_node->InputDefs().at(0);
+  const NodeArg* outer_scope_node_arg = outer_node->InputDefs()[0];
   GetGraph().AddOuterScopeNodeArg(Outer1);
 
   // simulate no shape-inference:

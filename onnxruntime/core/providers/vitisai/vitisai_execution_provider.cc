@@ -68,13 +68,11 @@ GetSupportedNodeClusters(const XGraphHolder& xg, const std::string& backend_type
   }
 
   for (const auto& node_idx : graph_viewer.GetNodesInTopologicalOrder()) {
-    ConstPointerContainer<std::vector<NodeArg*>> node_args = graph_viewer.GetNode(node_idx)->OutputDefs();
+    const auto node_args = graph_viewer.GetNode(node_idx)->OutputDefs();
 
     int cluster_id = -1;
     bool is_node_supported = false;
-    for (ConstPointerContainer<std::vector<NodeArg*>>::ConstIterator it =
-             node_args.begin();
-         it != node_args.end(); ++it) {
+    for (auto it = node_args.begin(); it != node_args.end(); ++it) {
       if (supported_tensors.find((*it)->Name()) != supported_tensors.end()) {
         is_node_supported = true;
         int found_cluster_id = cluster_idx[supported_tensors[(*it)->Name()]];

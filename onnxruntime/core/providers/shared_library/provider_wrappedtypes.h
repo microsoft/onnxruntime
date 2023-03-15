@@ -578,12 +578,12 @@ struct Node final {
   const Function* GetFunctionBody() const noexcept { return g_host->Node__GetFunctionBody(this); }
   ProviderType GetExecutionProviderType() const noexcept { return g_host->Node__GetExecutionProviderType(this); }
 
-  ConstPointerContainer<std::vector<NodeArg*>> ImplicitInputDefs() const noexcept { return g_host->Node__ImplicitInputDefs(this); }
+  gsl::span<const NodeArg* const> ImplicitInputDefs() const noexcept { return g_host->Node__ImplicitInputDefs(this); }
 
   const std::vector<int>& InputArgCount() const noexcept { return g_host->Node__InputArgCount(this); }
 
-  ConstPointerContainer<std::vector<NodeArg*>> InputDefs() const noexcept { return g_host->Node__InputDefs(this); }
-  ConstPointerContainer<std::vector<NodeArg*>> OutputDefs() const noexcept { return g_host->Node__OutputDefs(this); }
+  gsl::span<const NodeArg* const> InputDefs() const noexcept { return g_host->Node__InputDefs(this); }
+  gsl::span<const NodeArg* const> OutputDefs() const noexcept { return g_host->Node__OutputDefs(this); }
   NodeIndex Index() const noexcept { return g_host->Node__Index(this); }
 
   std::vector<gsl::not_null<const Graph*>> GetSubgraphs() const noexcept { return g_host->Node__GetSubgraphs(this); }

@@ -28,7 +28,7 @@ TEST(GraphViewer, FilteredGraph) {
   std::unordered_set<std::string> outputs;
   std::unordered_set<const NodeArg*> initializers;
 
-  auto add_inputs = [&](ConstPointerContainer<std::vector<NodeArg*>> defs) {
+  auto add_inputs = [&](gsl::span<const NodeArg* const> defs) {
     for (const auto* def : defs) {
       if (def->Exists()) {
         // not the output of a previous node

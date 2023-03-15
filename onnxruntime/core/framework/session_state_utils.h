@@ -4,7 +4,6 @@
 #pragma once
 #include <map>
 
-#include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
@@ -45,7 +44,7 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func);
-    
+
 common::Status SaveInputOutputNamesToNodeMapping(const GraphViewer& graph,
                                                  SessionState& session_state,
                                                  gsl::span<const NodeArg* const> implicit_inputs);

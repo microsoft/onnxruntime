@@ -169,14 +169,14 @@ const Path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath
 ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target_node_.GetExecutionProviderType(); }
 
 void NodeUnit::InitForSingleNode() {
-  const auto& input_defs = target_node_.InputDefs();
-  const auto& output_defs = target_node_.OutputDefs();
+  const auto input_defs = target_node_.InputDefs();
+  const auto output_defs = target_node_.OutputDefs();
   auto qlinear_type = GetQLinearOpType(target_node_);
   if (qlinear_type == QLinearOpType::Unknown ||
       IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
     // Not a Qlinear op, add all inputs / outputs
     auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
-                         const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
+                         gsl::span<const NodeArg* const> node_defs) {
       defs.reserve(node_defs.size());
 
       for (const auto def : node_defs) {
