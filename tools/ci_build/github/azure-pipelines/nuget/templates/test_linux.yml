@@ -8,7 +8,7 @@ stages:
   dependsOn:
   - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   # For downloading Linux CustomOp TestData
-  - Linux_C_API_Packaging_CPU_x64
+  - Linux_C_API_Packaging_CPU
   condition: succeeded()
   jobs:
   - job:
