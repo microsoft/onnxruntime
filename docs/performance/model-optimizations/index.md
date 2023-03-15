@@ -1,5 +1,5 @@
 ---
-title: Model Optimizations
+title: Model optimizations
 parent: Performance
 nav_order: 2
 has_children: true

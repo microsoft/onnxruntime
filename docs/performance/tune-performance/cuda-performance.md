@@ -24,7 +24,7 @@ Following are code snippets in various languages demonstrating the usage of this
 * C++
     <details>
     <summary>Example</summary>
-
+    <pre>
         ```c++
         Ort::Env env;
         Ort::Session session(env, model_path, session_options);
@@ -39,6 +39,8 @@ Following are code snippets in various languages demonstrating the usage of this
         io_binding.BindOutput("output1", output_mem_info);
         session.Run(run_options, io_binding);
         ```
+    </pre>
+
     </details>
     
 
@@ -54,14 +56,15 @@ By default, ORT clamps the workspace size to 32 MB which may lead to a sub-optim
 
 Keep in mind that using this flag may increase the peak memory usage by a factor (sometimes a few GBs) but this does help CuDNN pick the best convolution algorithm for the given input. We have found that this is an important flag to use while using an fp16 model as this allows CuDNN to pick tensor core algorithms for the convolution operations (if the hardware supports tensor core operations). This flag may or may not result in performance gains for other data types (`float` and `double`).
 
-* <details>
+* <details markdown="block">
     <summary>Python</summary>
-
+    
     ```python
     providers = [("CUDAExecutionProvider", {"cudnn_conv_use_max_workspace": '1'})]
     sess_options = ort.SessionOptions()
     sess = ort.InferenceSession("my_conv_heavy_fp16_model.onnx", sess_options=sess_options, providers=providers)
     ```
+
     </details>
 
 * <details>

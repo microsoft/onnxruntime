@@ -1,5 +1,5 @@
 ---
-title: Create Float16 and Mixed Precision Models
+title: Float16 and mixed precision models
 grand_parent: Performance
 parent: Model Optimizations
 nav_order: 2

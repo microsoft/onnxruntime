@@ -1,5 +1,5 @@
 ---
-title: Memory Consumption
+title: Memory consumption
 grand_parent: Performance
 parent: Tune performance
 nav_order: 2

@@ -1,5 +1,5 @@
 ---
-title: ORT Format Model Runtime Optimization
+title: ORT model format runtime optimization
 grand_parent: Performance
 parent: Model Optimizations
 nav_order: 5
@@ -19,7 +19,7 @@ redirect_from: /docs/performance/ort-format-model-runtime-optimization
 
 The full ONNX Runtime build supports [graph optimizations](./graph-optimizations.md) at runtime for ONNX models.
 
-The ORT format model was designed to be used with ONNX Runtime [minimal builds](../build/custom.md#minimal-build) for environments where smaller binary size is important. To reduce the binary size, some or all of the graph optimizer code is excluded from a minimal build. As such, ONNX models and ORT format models do not share the same graph optimization process.
+The ORT format model was designed to be used with ONNX Runtime [minimal builds](../../build/custom.md#minimal-build) for environments where smaller binary size is important. To reduce the binary size, some or all of the graph optimizer code is excluded from a minimal build. As such, ONNX models and ORT format models do not share the same graph optimization process.
 
 In ONNX Runtime **1.11 and later**, there is limited support for graph optimizations at runtime for ORT format models. This only applies to extended minimal builds or full builds.
 
@@ -57,4 +57,4 @@ You can compare the performance of:
 - A fully optimized model run with only the CPU EP enabled
 - A model with saved runtime optimizations run with additional EPs enabled
 
-The [model usability checker](../tutorials/mobile/helpers/model-usability-checker.md) will provide guidance for a particular model.
+The [model usability checker](../../tutorials/mobile/helpers/model-usability-checker.md) will provide guidance for a particular model.

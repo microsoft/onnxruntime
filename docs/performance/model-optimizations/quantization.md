@@ -1,5 +1,5 @@
 ---
-title: Quantize ONNX Models
+title: Quantize ONNX models
 grand_parent: Performance
 parent: Model Optimizations
 nav_order: 1

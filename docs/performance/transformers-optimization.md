@@ -1,5 +1,5 @@
 ---
-title: Transformers Optimizer 
+title: Transformers optimizer 
 description: Transformer model optimization tool to use with ONNX Runtime
 parent: Performance
 nav_order: 4
