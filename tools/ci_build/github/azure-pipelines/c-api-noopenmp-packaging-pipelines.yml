@@ -289,12 +289,25 @@ jobs:
   - checkout: manylinux                      # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/manylinux
     submodules: false
 
-  - template: templates/get-docker-image-steps.yml
+  - script: |
+        set -e -x
+        cd $(Build.SourcesDirectory)
+        mv manylinux onnxruntime
+        ls
+  - template: templates/with-container-registry-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecuda116xtrt85build
+      Steps:
+      - script: |
+          tools/ci_build/get_docker_image.py \
+            --dockerfile tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5 \
+            --context tools/ci_build/github/linux/docker \
+            --docker-build-args "--network=host --build-arg POLICY=manylinux2014 --build-arg PLATFORM=x86_64 --build-arg DEVTOOLSET_ROOTPATH=/opt/rh/devtoolset-11/root --build-arg PREPEND_PATH=/opt/rh/devtoolset-11/root/usr/bin: --build-arg LD_LIBRARY_PATH_ARG=/opt/rh/devtoolset-11/root/usr/lib64:/opt/rh/devtoolset-11/root/usr/lib:/opt/rh/devtoolset-11/root/usr/lib64/dyninst:/opt/rh/devtoolset-11/root/usr/lib/dyninst:/usr/local/lib64 --build-arg BUILD_UID=$( id -u )" \
+            --container-registry onnxruntimebuildcache \
+            --multiple_repos \
+            --repository onnxruntimecuda116xtrt85build
+        displayName: "Get onnxruntimecuda116xtrt85build image for tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cuda11_6_tensorrt8_5"
+        workingDirectory: $(Build.SourcesDirectory)/onnxruntime
+      ContainerRegistry: onnxruntimebuildcache
 
   - template: templates/set-version-number-variables-step.yml
     parameters:
