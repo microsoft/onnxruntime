@@ -60,6 +60,8 @@ jobs:
       env:
         CC: clang
         CXX: clang++
+        CCACHE_CPP2: 1
+        CCACHE_DEPEND: 1
         CCACHE_SLOPPINESS: modules
 
     - script: |
