@@ -87,7 +87,9 @@ class CudaKernel : public OpKernel {
     return stream->cublas_handle_;
   }
 
-  bool IsTunableOpEnabled() const { return provider_->IsTunableOpEnabled(); }
+  tunable::CudaTuningContext* GetTuningContext() const {
+    return static_cast<tunable::CudaTuningContext*>(provider_->GetTuningContext());
+  }
 
   // To support cudaMemcpyAsync, the cpu memory should be allocated in pinned memory
   // and it can only be released after the copy has finished

@@ -230,7 +230,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
           // Allocate a new buffer to hold the partitioned optimizer state
           // as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read
-          auto alloc = cpu_execution_provider_.GetAllocator(0, OrtMemTypeDefault);
+          auto alloc = cpu_execution_provider_.GetAllocator(OrtMemTypeDefault);
           p_tensor = std::make_unique<Tensor>(element_type,
                                               partition_shape,
                                               alloc);
@@ -246,7 +246,7 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
 
           // allocate a new buffer as column partitioning cannot re-use the original
           // buffer as it is a non-contiguous read on original buffer
-          auto alloc = cpu_execution_provider_.GetAllocator(0, OrtMemTypeDefault);
+          auto alloc = cpu_execution_provider_.GetAllocator(OrtMemTypeDefault);
           p_tensor = std::make_unique<Tensor>(element_type,
                                               partition_shape,
                                               alloc);

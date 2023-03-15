@@ -335,7 +335,7 @@ void DumpTensor(
     if (tensor_location.device.Type() == OrtDevice::GPU) {
       const auto& execution_providers = session_state.GetExecutionProviders();
       const auto* cpu_execution_provider = execution_providers.Get(onnxruntime::kCpuExecutionProvider);
-      auto cpu_allocator = cpu_execution_provider->GetAllocator(0, OrtMemTypeDefault);
+      auto cpu_allocator = cpu_execution_provider->GetAllocator(OrtMemTypeDefault);
       Tensor cpu_tensor{data_type, tensor.Shape(), cpu_allocator};
       const auto& data_transfer_mgr = session_state.GetDataTransferMgr();
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);

@@ -27,6 +27,7 @@ Subgraph::Subgraph(
       vocab_size(0),
       num_layers(0),
       past_present_share_buffer_(false),
+      has_decoder_masked_multihead_attention_(false),
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -48,6 +49,13 @@ Subgraph::Subgraph(
   subgraph_output_names.reserve(num_subgraph_outputs);
   for (int i = 0; i < num_subgraph_outputs; ++i) {
     subgraph_output_names.push_back(subgraph_outputs[i]->Name());
+  }
+
+  for (const auto& n : subgraph.Nodes()) {
+    if (n.OpType() == "DecoderMaskedMultiheadAttention") {
+      has_decoder_masked_multihead_attention_ = true;
+      break;
+    }
   }
 }
 
@@ -116,7 +124,9 @@ const IExecutionProvider* Subgraph::GetProvider() const {
   const ExecutionProviders& providers = session_state_->GetExecutionProviders();
   const IExecutionProvider* cpu_provider = providers.Get(onnxruntime::kCpuExecutionProvider);
   const IExecutionProvider* cuda_provider = providers.Get(onnxruntime::kCudaExecutionProvider);
-  const IExecutionProvider* provider = cuda_provider ? cuda_provider : cpu_provider;
+  const IExecutionProvider* rocm_provider = providers.Get(onnxruntime::kRocmExecutionProvider);
+  const IExecutionProvider* gpu_provider = cuda_provider ? cuda_provider : rocm_provider;
+  const IExecutionProvider* provider = gpu_provider ? gpu_provider : cpu_provider;
   return provider;
 }
 

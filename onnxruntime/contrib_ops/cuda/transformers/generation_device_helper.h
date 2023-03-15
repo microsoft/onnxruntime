@@ -22,6 +22,12 @@ namespace contrib {
 // These are CUDA specific device helper implementations
 namespace GenerationCudaDeviceHelper {
 
+Status ReorderPastState(
+    const void* cuda_device_prop,
+    Tensor& past_state,
+    Tensor& past_state_staging,
+    Stream* stream);
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,
@@ -64,7 +70,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
-                                 transformers::ISamplingState<T>* sampling_state,// sampling buffers
+                                 transformers::ISamplingState<T>* sampling_state,        // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
                                  AllocatorPtr& allocator,                                // default allocator
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)

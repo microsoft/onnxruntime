@@ -232,33 +232,36 @@ using PySessionOptions = OrtSessionOptions;
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(Environment& env, const PySessionOptions& so) {
-    sess_ = std::make_unique<InferenceSession>(so.value, env);
+  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
+  : env_(std::move(env)) {
+    sess_ = std::make_unique<InferenceSession>(so.value, *env_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(Environment& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) {
+  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name) 
+  : env_(std::move(env)) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so.value, env, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = std::make_unique<InferenceSession>(so.value, env, buffer);
+      sess_ = std::make_unique<InferenceSession>(so.value, *env_, buffer);
     }
   }
 #endif
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
-  virtual ~PyInferenceSession() {}
+  virtual ~PyInferenceSession() = default;
 
  protected:
-  PyInferenceSession(std::unique_ptr<InferenceSession> sess) {
-    sess_ = std::move(sess);
+  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess) 
+  : env_(std::move(env)), sess_(std::move(sess)) {
   }
 
  private:
+  std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
 };
 
@@ -383,7 +386,7 @@ class SessionObjectInitializer {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-Environment& GetEnv();
+std::shared_ptr<Environment> GetEnv();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.
@@ -444,7 +447,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tensor
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(const OrtMIGraphXProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
 #ifdef USE_TVM
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);

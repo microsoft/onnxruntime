@@ -31,17 +31,21 @@ REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
-
 MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
-    : CudaKernel(info), fused_fp16_cross_attention_kernel_(nullptr) {
+    : CudaKernel(info),
+      fused_fp16_cross_attention_kernel_(nullptr),
+      cumulated_sequence_length_q_cache_(),
+      cumulated_sequence_length_kv_cache_() {
   int64_t num_heads = 0;
   ORT_ENFORCE(info.GetAttr("num_heads", &num_heads).IsOK() && num_heads > 0);
   num_heads_ = static_cast<int>(num_heads);
 
   mask_filter_value_ = info.GetAttrOrDefault<float>("mask_filter_value", -10000.0f);
 
-  disable_fused_runner_ = sizeof(T) != 2 ||
-                          ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedAttention, false);
+  scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+
+  disable_fused_self_attention_ = sizeof(T) != 2 ||
+                                  ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedSelfAttention, false);
 
   enable_trt_flash_attention_ = sizeof(T) == 2 &&
                                 !ParseEnvironmentVariableWithDefault<bool>(attention::kDisableTrtFlashAttention, false);
@@ -52,7 +56,15 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   disable_memory_efficient_attention_ = true;
 #endif
 
-  disable_fused_cross_attention_ = sizeof(T) != 2 || ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+  disable_fused_cross_attention_ = sizeof(T) != 2 ||
+                                   ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFusedCrossAttention, false);
+
+  // Allocate cache buffers
+  constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
+  cumulated_sequence_length_q_cache_.buffer = GetTransientScratchBuffer<void>(cache_bytes);
+  cumulated_sequence_length_q_cache_.max_batch_size = kCumulatedSequenceLengthCacheMaxBatchSize;
+  cumulated_sequence_length_kv_cache_.buffer = GetTransientScratchBuffer<void>(cache_bytes);
+  cumulated_sequence_length_kv_cache_.max_batch_size = kCumulatedSequenceLengthCacheMaxBatchSize;
 }
 
 template <typename T>
@@ -62,6 +74,9 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value = context->Input<Tensor>(2);
   const Tensor* bias = context->Input<Tensor>(3);
   const Tensor* key_padding_mask = context->Input<Tensor>(4);
+  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* past_key = context->Input<Tensor>(6);
+  const Tensor* past_value = context->Input<Tensor>(7);
 
   auto& device_prop = GetDeviceProp();
   AttentionParameters parameters;
@@ -70,9 +85,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       value,
                                                                       bias,
                                                                       key_padding_mask,
+                                                                      relative_position_bias,
+                                                                      past_key,
+                                                                      past_value,
                                                                       &parameters,
                                                                       num_heads_,
                                                                       mask_filter_value_,
+                                                                      scale_,
                                                                       device_prop.maxThreadsPerBlock));
   int sequence_length = parameters.sequence_length;
 
@@ -81,6 +100,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[1] = static_cast<int64_t>(sequence_length);
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
+
+  std::vector<int64_t> present_dims{
+      parameters.batch_size, parameters.num_heads, parameters.total_sequence_length, parameters.head_size};
+  TensorShape present_shape(present_dims);
+  Tensor* present_key = context->Output(1, present_shape);
+  Tensor* present_value = context->Output(2, present_shape);
 
   MHARunner* fused_runner = nullptr;
 
@@ -93,6 +118,10 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
+                                   nullptr == relative_position_bias &&
+                                   (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
+                                   key != nullptr &&
+                                   (value != nullptr || bias == nullptr) &&  // TODO: new kernel for adding bias to packed KV
                                    parameters.hidden_size == parameters.v_hidden_size &&
                                    has_fused_cross_attention_kernel(sm, parameters.head_size,
                                                                     parameters.kv_sequence_length);
@@ -108,8 +137,11 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     }
   }
 
-  bool use_fused_runner = !disable_fused_runner_ &&
+  bool use_fused_runner = !disable_fused_self_attention_ &&
                           fused_cross_attention_kernel == nullptr &&
+                          nullptr == relative_position_bias &&
+                          (value != nullptr || key == nullptr) &&
+                          (nullptr == past_key && nullptr == past_value && !parameters.pass_past_in_kv) &&
                           (nullptr == key_padding_mask || is_mask_1d_seq_len) &&
                           parameters.hidden_size == parameters.v_hidden_size &&
                           parameters.sequence_length == parameters.kv_sequence_length &&
@@ -119,8 +151,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       constexpr bool is_unidirectional = false;
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(
-          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale));
+      fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(
+          num_heads_, parameters.head_size, sm, is_unidirectional, enable_trt_flash_attention_, parameters.scale);
     }
 
     // In case some kernel not loaded due to shared memory limit, we need to double check here.
@@ -140,41 +172,66 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
                                         nullptr == key_padding_mask &&  // TODO: support 1D mask
+                                        nullptr == relative_position_bias &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
 
-  constexpr size_t element_size = sizeof(T);
-  size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
-                                                   parameters.batch_size,
-                                                   parameters.num_heads,
-                                                   parameters.head_size,
-                                                   parameters.v_head_size,
-                                                   parameters.sequence_length,
-                                                   parameters.kv_sequence_length,
-                                                   parameters.total_sequence_length,
-                                                   fused_runner,
-                                                   use_memory_efficient_attention);
-  auto work_space = GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  // When packed kv or packed qkv is used, there is no needed for add bias transpose thus no qkv workspace.
+  bool no_qkv_workspace = nullptr == value &&
+                          (use_fused_cross_attention || (nullptr != fused_runner && nullptr == key)) &&
+                          nullptr == key_padding_mask &&
+                          nullptr == bias;
+
+  size_t workspace_bytes;
+  if (no_qkv_workspace) {
+    workspace_bytes = (parameters.batch_size > kCumulatedSequenceLengthCacheMaxBatchSize) ? 2 * GetSequenceOffsetSize(parameters.batch_size, true) : 0;
+  } else {
+    constexpr size_t element_size = sizeof(T);
+    workspace_bytes = GetAttentionWorkspaceSize(element_size,
+                                                parameters.batch_size,
+                                                parameters.num_heads,
+                                                parameters.head_size,
+                                                parameters.v_head_size,
+                                                parameters.sequence_length,
+                                                parameters.kv_sequence_length,
+                                                parameters.total_sequence_length,
+                                                fused_runner,
+                                                use_fused_cross_attention,
+                                                use_memory_efficient_attention);
+  }
+
+  auto work_space = GetScratchBuffer<void>(workspace_bytes, context->GetComputeStream());
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   AttentionData<CudaT> data;
   data.gemm_buffer = nullptr;
-  data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
+  data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
-  data.key = reinterpret_cast<const CudaT*>(key->Data<T>());
-  data.value = reinterpret_cast<const CudaT*>(value->Data<T>());
+  data.key = (nullptr == key || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());
+  data.value = (nullptr == value || parameters.pass_past_in_kv) ? nullptr : reinterpret_cast<const CudaT*>(value->Data<T>());
   data.mask_index = (nullptr == key_padding_mask) ? nullptr : key_padding_mask->Data<int>();
   data.mask_index_dims = (nullptr == key_padding_mask) ? gsl::span<const int64_t>() : key_padding_mask->Shape().GetDims();
   data.past = nullptr;
-  data.extra_add_qk = nullptr;
+  data.past_key = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(key->Data<T>())
+                  : (nullptr == past_key)      ? nullptr
+                                               : reinterpret_cast<const CudaT*>(past_key->Data<T>());
+  data.past_value = (parameters.pass_past_in_kv) ? reinterpret_cast<const CudaT*>(value->Data<T>())
+                    : (nullptr == past_value)    ? nullptr
+                                                 : reinterpret_cast<const CudaT*>(past_value->Data<T>());
+  data.relative_position_bias = (nullptr == relative_position_bias) ? nullptr : reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  data.has_qkv_workspace = !no_qkv_workspace;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present = nullptr;
+  data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
+  data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  data.cumulated_sequence_length_q_cache = &(this->cumulated_sequence_length_q_cache_);
+  data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
   

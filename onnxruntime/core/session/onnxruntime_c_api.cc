@@ -60,6 +60,14 @@ ProviderInfo_CANN* TryGetProviderInfo_CANN();
 }
 #endif
 
+#ifdef USE_DNNL
+#include "core/providers/dnnl/dnnl_provider_factory.h"
+#include "core/providers/dnnl/dnnl_execution_provider_info.h"
+namespace onnxruntime {
+ProviderInfo_Dnnl* TryGetProviderInfo_Dnnl();
+}
+#endif
+
 #ifdef USE_DML
 #include "core/providers/dml/dml_provider_factory.h"
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t version) NO_EXCEPTION;
@@ -816,8 +824,10 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
   API_IMPL_BEGIN
   auto session = reinterpret_cast<::onnxruntime::InferenceSession*>(sess);
 
-  std::vector<std::string> feed_names(input_len);
-  std::vector<OrtValue> feeds(input_len);
+  InlinedVector<std::string> feed_names;
+  feed_names.reserve(input_len);
+  InlinedVector<OrtValue> feeds;
+  feeds.reserve(input_len);
 
   for (size_t i = 0; i != input_len; ++i) {
     if (input_names[i] == nullptr || input_names[i][0] == '\0') {
@@ -825,31 +835,34 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
     }
 
     if (!input[i]) {
-      std::ostringstream ostr;
-      ostr << "NULL input supplied for input " << input_names[i];
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, ostr.str().c_str());
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+        MakeString("NULL input supplied for input ", input_names[i]).c_str());
     }
 
-    feed_names[i] = input_names[i];
-    feeds[i] = *reinterpret_cast<const ::OrtValue*>(input[i]);
+    feed_names.emplace_back(input_names[i]);
+    feeds.emplace_back(*input[i]);
   }
 
   // Create output feed
-  std::vector<std::string> output_names(output_names_len);
+  InlinedVector<std::string> output_names;
+  output_names.reserve(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output_names1[i] == nullptr || output_names1[i][0] == '\0') {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "output name cannot be empty");
     }
-    output_names[i] = output_names1[i];
+    output_names.emplace_back(output_names1[i]);
   }
 
-  std::vector<OrtValue> fetches(output_names_len);
+  std::vector<OrtValue> fetches;
+  fetches.reserve(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
     if (output[i] != nullptr) {
-      ::OrtValue& value = *(output[i]);
-      fetches[i] = value;
+      fetches.emplace_back(*output[i]);
+    } else {
+      fetches.emplace_back();
     }
   }
+
   Status status;
   if (run_options == nullptr) {
     OrtRunOptions op;
@@ -860,11 +873,24 @@ ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRu
 
   if (!status.IsOK())
     return ToOrtStatus(status);
+
+  // We do it in two loops to make sure copy __ctors does not throw
+  InlinedVector<std::unique_ptr<OrtValue>> output_unique_ptrs;
+  output_unique_ptrs.reserve(output_names_len);
   for (size_t i = 0; i != output_names_len; ++i) {
-    ::OrtValue& value = fetches[i];
     if (output[i] == nullptr) {
-      GSL_SUPPRESS(r .11)
-      output[i] = new OrtValue(value);
+      output_unique_ptrs.emplace_back(std::make_unique<OrtValue>(fetches[i]));
+    } else {
+      output_unique_ptrs.emplace_back();
+    }
+  }
+
+  assert(output_unique_ptrs.size() == output_names_len);
+
+  for (size_t i = 0; i != output_names_len; ++i) {
+    if (output[i] == nullptr) {
+      assert(output_unique_ptrs[i] != nullptr);
+      output[i] = output_unique_ptrs[i].release();
     }
   }
   return nullptr;
@@ -904,8 +930,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateIoBinding, _Inout_ OrtSession* sess, _Outptr_
   if (!status.IsOK()) {
     return ToOrtStatus(status);
   }
-  GSL_SUPPRESS(r .11)
-  *out = new OrtIoBinding(std::move(binding));
+  *out = std::make_unique<OrtIoBinding>(std::move(binding)).release();
   return nullptr;
   API_IMPL_END
 }
@@ -1002,34 +1027,27 @@ ORT_API_STATUS_IMPL(OrtApis::GetBoundOutputValues, _In_ const OrtIoBinding* bind
   }
 
   // Used to destroy and de-allocate on exception
-  size_t created = 0;
   IAllocatorUniquePtr<OrtValue*> ortvalues_alloc(reinterpret_cast<OrtValue**>(allocator->Alloc(allocator, outputs.size() * sizeof(OrtValue*))),
-                                                 [&created, allocator](OrtValue** buffer) {
-                                                   if (buffer) {
-                                                     while (created > 0) {
-                                                       auto p = buffer + --created;
-                                                       delete (*p);
-                                                     }
-                                                     allocator->Free(allocator, buffer);
-                                                   }
-                                                 });
-
+                                                 [allocator](OrtValue** p) { if (p) allocator->Free(allocator, p);});
   if (!ortvalues_alloc) {
     return OrtApis::CreateStatus(ORT_FAIL, "Output buffer allocation failed");
   }
 
-  OrtValue** out_ptr = ortvalues_alloc.get();
+  InlinedVector<std::unique_ptr<OrtValue>> value_dups;
+  value_dups.reserve(outputs.size());
+
   for (const auto& out_value : outputs) {
-    GSL_SUPPRESS(r .11)
-    *out_ptr = new OrtValue(out_value);
-    ++out_ptr;
-    ++created;
+    value_dups.push_back(std::make_unique<OrtValue>(out_value));
   }
 
-  assert(created == outputs.size());
+  // The rest is noexcept
+  OrtValue** out_ptr = ortvalues_alloc.get();
+  for (auto& v : value_dups) {
+    *out_ptr++ = v.release();
+  }
 
   *output = ortvalues_alloc.release();
-  *output_count = created;
+  *output_count = outputs.size();
   return nullptr;
   API_IMPL_END
 }
@@ -1361,8 +1379,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetModelMetadata, _In_ const OrtSession* ses
   auto p = session->GetModelMetadata();
   if (!p.first.IsOK())
     return ToOrtStatus(p.first);
-  GSL_SUPPRESS(r .11)
-  *out = reinterpret_cast<OrtModelMetadata*>(new ModelMetadata(*p.second));
+  *out = reinterpret_cast<OrtModelMetadata*>(std::make_unique<ModelMetadata>(*p.second).release());
   return nullptr;
   API_IMPL_END
 }
@@ -1803,43 +1820,29 @@ static ORT_STATUS_PTR OrtCreateValueImplSeqHelperMap(const OrtValue* const* in, 
 }
 #endif
 
-static ORT_STATUS_PTR OrtCreateValueImplSeqHelperTensor(const Tensor& tensor, Tensor& out) {
-  auto data_type = tensor.DataType();
-  ORT_API_RETURN_IF_ERROR(CreateTensorImplForSeq(data_type,
-                                                 tensor.Shape().GetDims().data(), tensor.Shape().NumDimensions(),
-                                                 out));
-  size_t num_elements = narrow<size_t>(tensor.Shape().Size());
-  ORT_API_RETURN_IF_ERROR(c_api_internal::PopulateTensorWithData(out, tensor.IsDataTypeString(),
-                                                                 tensor.DataRaw(), num_elements, data_type->Size()));
-  return nullptr;
-}
-
 static ORT_STATUS_PTR OrtCreateValueImplSeqHelper(const OrtValue* const* in, size_t num_values,
                                                   _Outptr_ OrtValue** out) {
   using namespace c_api_internal;
-  std::vector<Tensor> tensors;
-  tensors.resize(num_values);
-  auto dtype = static_cast<const OrtValue*>(in[0])->Get<Tensor>().DataType();
+  auto dtype = in[0]->Get<Tensor>().DataType();
+  auto seq_ptr = std::make_unique<TensorSeq>(dtype);
+  seq_ptr->Reserve(num_values);
 
   for (size_t idx = 0; idx < num_values; ++idx) {
     ORT_ENFORCE(in[idx]->IsTensor(), "Expecting all elements to be tensors. Got: ", DataTypeImpl::ToString(in[idx]->Type()));
-    auto& one_tensor = static_cast<const OrtValue*>(in[idx])->Get<Tensor>();
-    auto tensor_elem_type = one_tensor.DataType();
+    auto tensor_elem_type = in[idx]->Get<Tensor>().DataType();
 
     // sequences must have tensors of the same data type
-    if (idx > 0 && (tensor_elem_type != dtype)) {
+    if (tensor_elem_type != dtype) {
       return OrtApis::CreateStatus(ORT_FAIL,
                                    "Sequences must have tensors of the same data type. There was at least one tensor in the input that was different.");
     }
 
-    ORT_API_RETURN_IF_ERROR(OrtCreateValueImplSeqHelperTensor(one_tensor, tensors[idx]));
+    seq_ptr->Add(*in[idx]);
   }
 
   // create OrtValue with this vector
   auto value = std::make_unique<OrtValue>();
   auto ml_type = DataTypeImpl::GetType<TensorSeq>();
-  auto seq_ptr = std::make_unique<TensorSeq>(dtype);
-  seq_ptr->SetElements(std::move(tensors));
   value->Init(seq_ptr.release(),
               ml_type,
               ml_type->GetDeleteFunc());
@@ -2044,53 +2047,78 @@ ORT_API_STATUS_IMPL(OrtApis::GetOpaqueValue, _In_ const char* domain_name, _In_ 
   return nullptr;
 }
 
-GSL_SUPPRESS(r .11)
+namespace {
+
+struct ProviderBuffer {
+  char** buffer_;
+  char* next_write_;
+
+  ProviderBuffer(char** buf, size_t p_count) {
+    buffer_ = buf;
+    next_write_ = DataStart(p_count);
+  }
+
+  char* DataStart(size_t p_count) { return reinterpret_cast<char*>(buffer_ + p_count); }
+  // Return next buffer ptr
+  void Append(const std::string& provider, size_t p_index) {
+    // Maximum provider name length is now enforced at GetAvailableExecutionProviderNames()
+    const size_t to_copy = provider.size();
+#ifdef _MSC_VER
+    memcpy_s(next_write_, to_copy, provider.data(), to_copy);
+#elif defined(__APPLE__)
+    memcpy(next_write_, provider.data(), to_copy);
+#else
+    memcpy(next_write_, provider.data(), to_copy);
+#endif
+    next_write_[to_copy] = 0;
+    buffer_[p_index] = next_write_;
+    next_write_ += to_copy + 1;
+  }
+};
+}  // namespace
+
 ORT_API_STATUS_IMPL(OrtApis::GetAvailableProviders, _Outptr_ char*** out_ptr,
                     _In_ int* providers_length) {
   API_IMPL_BEGIN
-  // TODO: there is no need to manually malloc/free these memory, it is insecure
-  // and inefficient. Instead, the implementation could scan the array twice,
-  // and use a single string object to hold all the names.
-  constexpr size_t MAX_LEN = 30;
   const auto& available_providers = GetAvailableExecutionProviderNames();
-  const int available_count = narrow<int>(available_providers.size());
-  GSL_SUPPRESS(r .11)
-  char** const out = new char*[available_count];
-  if (out) {
-    for (int i = 0; i < available_count; i++) {
-      GSL_SUPPRESS(r .11)
-      out[i] = new char[MAX_LEN + 1];
-#ifdef _MSC_VER
-      strncpy_s(out[i], MAX_LEN, available_providers[i].c_str(), MAX_LEN);
-      out[i][MAX_LEN] = '\0';
-#elif defined(__APPLE__)
-      strlcpy(out[i], available_providers[i].c_str(), MAX_LEN);
-#else
-      strncpy(out[i], available_providers[i].c_str(), MAX_LEN);
-      out[i][MAX_LEN] = '\0';
-#endif
-    }
+  const size_t available_count = available_providers.size();
+
+  if (available_count == 0) {
+    out_ptr = nullptr;
+    *providers_length = 0;
+    return OrtApis::CreateStatus(ORT_FAIL, "Invalid build with no providers available");
   }
-  *providers_length = available_count;
-  *out_ptr = out;
+
+  size_t output_len = 0;
+  for (const auto& p : available_providers) {
+    output_len += p.size() + 1;
+  }
+
+  // We allocate and construct the buffer in char* to hold all the string pointers
+  // followed by the actual string data. We allocate in terms of char* to make it convinient and avoid casts.
+  const size_t ptrs_num = (sizeof(char*) * available_count + output_len + (sizeof(char*) - 1)) / sizeof(char*);
+  auto total_buffer = std::make_unique<char*[]>(ptrs_num);
+  ProviderBuffer provider_buffer(total_buffer.get(), available_count);
+
+  for (size_t p_index = 0; p_index < available_count; p_index++) {
+    provider_buffer.Append(available_providers[p_index], p_index);
+  }
+
+  *providers_length = narrow<int>(available_count);
+  *out_ptr = total_buffer.release();
   API_IMPL_END
   return nullptr;
 }
 
-// TODO: we don't really need the second parameter
+// This is a cleanup API, it should never return any failure
+// so any no-throw code can rely on it.
 ORT_API_STATUS_IMPL(OrtApis::ReleaseAvailableProviders, _In_ char** ptr,
-                    _In_ int providers_length) {
+                    _In_ int /* providers_length */) {
   API_IMPL_BEGIN
-  if (ptr) {
-    for (int i = 0; i < providers_length; i++) {
-      GSL_SUPPRESS(r .11)
-      delete[] ptr[i];
-    }
-    GSL_SUPPRESS(r .11)
-    delete[] ptr;
-  }
+  // take possession of the memory and deallocate it
+  std::unique_ptr<char*[]> g(ptr);
   API_IMPL_END
-  return NULL;
+  return nullptr;
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetExecutionProviderApi,
@@ -2181,12 +2209,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetProfilingStartTimeNs, _In_ const OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_extend_strategy, int initial_chunk_size_bytes,
                     int max_dead_bytes_per_chunk, _Outptr_ OrtArenaCfg** out) {
   API_IMPL_BEGIN
-  GSL_SUPPRESS(r .11)
-  *out = new OrtArenaCfg();
-  (*out)->max_mem = max_mem;
-  (*out)->arena_extend_strategy = arena_extend_strategy;
-  (*out)->initial_chunk_size_bytes = initial_chunk_size_bytes;
-  (*out)->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  auto cfg = std::make_unique<OrtArenaCfg>();
+  cfg->max_mem = max_mem;
+  cfg->arena_extend_strategy = arena_extend_strategy;
+  cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
+  cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
+  *out = cfg.release();
   return nullptr;
   API_IMPL_END
 }
@@ -2221,9 +2249,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 }
 
 // Allow using raw new/delete because this is for C.
-GSL_SUPPRESS(r .11)
 ORT_API(void, OrtApis::ReleaseArenaCfg, _Frees_ptr_opt_ OrtArenaCfg* ptr) {
-  delete ptr;
+  std::unique_ptr<OrtArenaCfg> g(ptr);
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreatePrepackedWeightsContainer, _Outptr_ OrtPrepackedWeightsContainer** out) {
@@ -2318,13 +2345,15 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
-  return OrtTrainingApis::GetTrainingApi(version);
+  if (version >= 13 && version <= ORT_API_VERSION)
+    return OrtTrainingApis::GetTrainingApi(version);
+
+  fprintf(stderr, "The given version [%u] is not supported. Training api only supports version 13 to %u.\n",
+          version, ORT_API_VERSION);
+  return nullptr;
 #else
 
   ORT_UNUSED_PARAMETER(version);
-  fprintf(stderr,
-          "Training APIs are not supported with this build. Please build onnxruntime "
-          "from source with the build flags enable_training_apis to retrieve the training APIs.\n");
 
   return nullptr;
 #endif
@@ -2374,7 +2403,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_14 = {
+static constexpr OrtApi ort_api_1_to_15 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -2663,7 +2692,11 @@ static constexpr OrtApi ort_api_1_to_14 = {
     // End of Version 14 - DO NOT MODIFY ABOVE (see above text for more information)
 
     // Start of Version 15 API in progress, safe to modify/rename/rearrange until we ship
-
+    &OrtApis::SessionOptionsAppendExecutionProvider_Dnnl,
+    &OrtApis::CreateDnnlProviderOptions,
+    &OrtApis::UpdateDnnlProviderOptions,
+    &OrtApis::GetDnnlProviderOptionsAsString,
+    &OrtApis::ReleaseDnnlProviderOptions,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)
@@ -2694,7 +2727,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.15.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_14;
+    return &ort_api_1_to_15;
 
   fprintf(stderr, "The given version [%u] is not supported, only version 1 to %u is supported in this build.\n",
           version, ORT_API_VERSION);

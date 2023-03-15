@@ -46,7 +46,7 @@ Status GptSubgraph::CreateInitialFeeds(
   AllocatorPtr cpu_allocator = session_state_->GetAllocator(input_ids.Location());
 
   // Store allocator, which will be used in remaining feeds
-  auto default_allocator = provider->GetAllocator(0, OrtMemTypeDefault);
+  auto default_allocator = provider->GetAllocator(OrtMemTypeDefault);
   allocator_ = default_allocator;
 
   // The ordering is the same as used in Setup
@@ -85,7 +85,7 @@ Status GptSubgraph::CreateInitialFeeds(
   } else {
     int64_t past_state_dims[] = {2, batch_size * num_beams, num_heads, max_seq_len_past_present_share_buffer, head_size};
     TensorShape past_shape(&past_state_dims[0], 5);
-    // The remaining inputs are past state execpt the last one
+    // The remaining inputs are past state except the last one
     for (int i = first_past_input_index_; i < num_subgraph_inputs - 1; ++i) {
       OrtValue past_tensor;
       Tensor::InitOrtValue(past_type, past_shape, default_allocator, past_tensor);

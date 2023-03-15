@@ -40,12 +40,14 @@ bool GetGPUInfo(GPUInfo gpu_info) {
       gpuRuntimeFound = true;
       // attempt to make a dnnl::matmul::desc. If we are able to successfully make a bf16 matmul::desc
       // assume the GPU supports all BF16 operations.
+      dnnl::primitive_attr attr;
+      attr.set_scales_mask(DNNL_ARG_SRC, 0);
+      attr.set_zero_points_mask(DNNL_ARG_SRC, /* mask */ 0);
       auto src0_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
       auto src1_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
       auto dst_md = dnnl::memory::desc({1,1}, dnnl::memory::data_type::bf16, dnnl::memory::format_tag::ab);
-      auto matmul_d = dnnl::matmul::desc(src0_md, src1_md, dst_md);
       try {
-        auto matmul_pd = dnnl::matmul::primitive_desc(matmul_d, gpu_engine);
+        auto matmul_pd = dnnl::matmul::primitive_desc(gpu_engine, src0_md, src1_md, dst_md, attr);
         gpuBF16Supported = true;
       } catch(const dnnl::error& e) {
         if (e.status == dnnl_unimplemented) {
