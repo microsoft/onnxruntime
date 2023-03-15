@@ -801,9 +801,11 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
   for (const std::string& type : provider_types) {
     int ep_global_index = -1;
     ProviderOptionsMap::const_iterator it = provider_options_map.find(type);
-    ProviderOptions::const_iterator it2 = it->second.find("UseGlobal");  // TODO: Need to do this for C API as well
-    if (it2 != it->second.end()) {
-      ep_global_index = std::stoi(it2->second);
+    if (it != provider_options_map.end()) {
+      ProviderOptions::const_iterator it2 = it->second.find("UseGlobal");  // TODO: Need to do this for C API as well
+      if (it2 != it->second.end()) {
+        ep_global_index = std::stoi(it2->second);
+      }
     }
     if (ep_global_index >= 0) {
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::shared_ptr<onnxruntime::IExecutionProvider>(sess->GetExecutionProviderFromEnv(ep_global_index))));
@@ -949,7 +951,10 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
       });
   m.def(  // TODO: Get rid of session_option as parameter?
-      "register_execution_provider", [&env](const SessionOptions& session_options, const std::string& type, const ProviderOptionsMap& provider_options_map) -> int {
+      "register_execution_provider", [&env](const bool& enable_cpu_mem_arena, const std::string& type, const ProviderOptions& provider_option) -> int {
+        ProviderOptionsMap provider_options_map{{type, provider_option}};
+        SessionOptions session_options;
+        session_options.enable_cpu_mem_arena = enable_cpu_mem_arena;
         auto ep = CreateExecutionProviderInstance(session_options, type, provider_options_map);
         if (ep) {
             env.AddExecutionProvider(std::move(ep));
@@ -957,6 +962,13 @@ void addGlobalMethods(py::module& m, Environment& env) {
         }
         return -1;
       });
+  m.def("test_dict", [](const SessionOptions& session_options, const ProviderOptions& provider_option)->int{
+    std::cout<<"introduce session:"<<session_options.enable_mem_pattern<<std::endl;
+    for(const auto& [k, v] : provider_option) {
+      std::cout<<"key:"<<k<<",v:"<<v<<std::endl;
+    }
+    return -1;
+  });
 
 #ifdef USE_OPENVINO
   m.def(
@@ -1493,6 +1505,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([&env](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
                            bool load_config_from_model = false) {
+        std::cout<<"py::init() begin"<<std::endl;
         std::unique_ptr<PyInferenceSession> sess;
 
         // separate creation of the session from model loading unless we have to read the config from the model.
@@ -1528,6 +1541,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+            std::cout<<"initialize_session() begin"<<std::endl;
             InitializeSession(sess->GetSessionHandle(),
                               ep_registration_fn,
                               provider_types,

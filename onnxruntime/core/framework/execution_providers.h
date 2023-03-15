@@ -66,7 +66,7 @@ class ExecutionProviders {
   }
 
   IExecutionProvider* Get(int index) const {
-    assert(index >= 0 && index < exec_providers_.size());
+    assert(index >= 0 && static_cast<size_t>(index) < exec_providers_.size());
     return exec_providers_[index].get();
   }
 
