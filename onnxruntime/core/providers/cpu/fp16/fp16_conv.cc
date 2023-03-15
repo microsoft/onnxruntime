@@ -51,6 +51,10 @@ class FusedConvFp16 final : public OpKernel {
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
       /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
 
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   int input_idx,
+                                   /*out*/ bool& used_shared_buffers) override;
+
  private:
 
   /**
@@ -203,6 +207,27 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
   return Status::OK();
 }
 
+Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                       int input_idx,
+                                                       /*out*/ bool& used_shared_buffers) {
+  if (input_idx != 1) {
+    // only the filter tensor is packed
+    return Status::OK();
+  }
+
+  used_shared_buffers = true;
+
+  if (prepacked_buffers.size() == 1) {  // This means that only packed_W_ exists
+    packed_W_buffer_ = std::move(prepacked_buffers[0]);
+  } else if (prepacked_buffers.size() == 2) {  // This means that only reordered_W_ exists
+    // Enforce that the first "placeholder" buffer is nullptr
+    ORT_ENFORCE(prepacked_buffers[0].get() == nullptr);
+    reordered_W_buffer_ = std::move(prepacked_buffers[1]);
+  }
+
+  return Status::OK();
+}
+
 
 Status FusedConvFp16::Compute(OpKernelContext* context) const {
   size_t num_inputs = OpKernel::Node().InputDefs().size();
@@ -269,7 +294,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   BufferUniquePtr reordered_W_buffer;
   MLFloat16* reordered_W = nullptr;
   if (!packed_W_buffer_) {
-    if (W == nullptr) {
+    if (reordered_W_buffer_) {
       // Weight was constant and reordered.
       reordered_W = static_cast<MLFloat16*>(reordered_W_buffer_.get());
     } else {
@@ -436,13 +461,16 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
       auto* worker_output = output_data + output_start * M;
 
       if (is_depthwise_conv) {
+        // TODO!! add Sum tensor to activation
+        MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_);
         MlasConvDepthwise(
             worker_indirection_buffer,
             reordered_W,
             worker_output,
             static_cast<size_t>(M),
             static_cast<size_t>(output_count),
-            static_cast<size_t>(kernel_size));
+            static_cast<size_t>(kernel_size),
+            &act);
       } else {
         for (int64_t group_id = 0; group_id < group_count; ++group_id) {
           // Prepare the im2col transformation or use the input buffer directly for
@@ -505,7 +533,6 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
 
           // TODO!! add Sum tensor to activation
           MLAS_HALF_GEMM_ACTIVATION_PROCESSOR act(activation_);
-
           MLAS_HALF_GEMM_DATA_PARAMS gemm_params;
           gemm_params.A = AData;
           gemm_params.lda = lda;
@@ -556,6 +583,19 @@ ONNX_CPU_OPERATOR_TYPED_KERNEL(
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     FusedConvFp16);
+
+
+#ifndef DISABLE_CONTRIB_OPS
+namespace contrib {
+    ONNX_CPU_OPERATOR_TYPED_MS_KERNEL(
+        FusedConv,
+        1,
+        MLFloat16,
+        KernelDefBuilder()
+            .TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+        FusedConvFp16);
+}  // namespace contrib
+#endif
 
 }  // namespace onnxruntime
 

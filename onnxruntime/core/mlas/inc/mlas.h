@@ -1622,7 +1622,8 @@ MlasConvDepthwise(
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,
-    size_t KernelSize
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     );
 
 

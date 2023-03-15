@@ -7,6 +7,9 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/providers/run_options_config_keys.h"
+#include "default_providers.h"
+
 using namespace std;
 namespace onnxruntime {
 namespace test {
@@ -21,6 +24,8 @@ struct ConvOpAndTestAttributes {
   vector<int64_t> pads;
   vector<int64_t> strides;
   std::unordered_set<std::string> excluded_providers;
+  string activation;
+  vector<float> activation_parameters = {};
 };
 
 void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
@@ -32,33 +37,45 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& err_str = "",
                 int opset = 11) {
-  OpTester test("Conv", opset);
-  test.AddAttribute("group", attributes.group);
-  test.AddAttribute("kernel_shape", attributes.kernel_shape);
+  std::unique_ptr<OpTester> tester;
+  if (!attributes.activation.empty()) {
+    tester = std::make_unique<OpTester>("FusedConv", 1, onnxruntime::kMSDomain);
+    tester->AddAttribute("activation", attributes.activation);
+
+    if (!attributes.activation_parameters.empty()) {
+      tester->AddAttribute("activation_params", attributes.activation_parameters);
+    }
+  } else {
+    tester = std::make_unique<OpTester>("Conv", opset);
+  }
+
+  tester->AddAttribute("group", attributes.group);
+  tester->AddAttribute("kernel_shape", attributes.kernel_shape);
 
   if (!attributes.dilations.empty()) {
-    test.AddAttribute("dilations", attributes.dilations);
+    tester->AddAttribute("dilations", attributes.dilations);
   }
 
   // Only one of pads / auto_pad can be present
   if (!attributes.pads.empty()) {
-    test.AddAttribute("pads", attributes.pads);
+    tester->AddAttribute("pads", attributes.pads);
   } else {
-    test.AddAttribute("auto_pad", attributes.auto_pad);
+    tester->AddAttribute("auto_pad", attributes.auto_pad);
   }
 
   if (!attributes.strides.empty()) {
-    test.AddAttribute("strides", attributes.strides);
+    tester->AddAttribute("strides", attributes.strides);
   }
+
 
   ORT_ENFORCE(inputs.size() <= 3, "Our name array is only setup to handle 3 inputs");
   const char* szNames[] = {"X", "W", "B"};
-  test.AddInput<MLFloat16>(szNames[0], input_shapes[0], inputs[0]);
-  test.AddInput<MLFloat16>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
+  tester->AddInput<MLFloat16>(szNames[0], input_shapes[0], inputs[0]);
+  tester->AddInput<MLFloat16>(szNames[1], input_shapes[1], inputs[1], weight_is_initializer);
   if (inputs.size() == 3)
-    test.AddInput<MLFloat16>(szNames[2], input_shapes[2], inputs[2]);
+    tester->AddInput<MLFloat16>(szNames[2], input_shapes[2], inputs[2]);
 
-  test.AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, 0.002f, 0.0f);
+  tester->AddOutput<MLFloat16>("Y", expected_output_shape, expected_output, /*no sort*/ false, 0.002f, 0.0f);
 
   std::unordered_set<std::string> excluded_providers(attributes.excluded_providers);
   // Disable TensorRT because weight as input is not supported
@@ -68,7 +85,7 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
     excluded_providers.insert(kQnnExecutionProvider);
   }
 
-  test.Run(expect_result, err_str, excluded_providers);
+  tester->Run(expect_result, err_str, excluded_providers);
 }
 
 }  // namespace
@@ -489,6 +506,85 @@ TEST(ConvFp16Test, Conv2D_AutoPad2) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+#ifndef DISABLE_CONTRIB_OPS
+TEST(ConvFp16Test, Conv2D_HardSigmoid) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "HardSigmoid",                // activation
+      vector<float>{0.2f, 0.5f}     // activation_parameters
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f), MLFloat16(0.125f),
+                         MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f), MLFloat16(-0.125f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  auto expected_vals = {MLFloat16(0.8f), MLFloat16(0.9f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(0.2f), MLFloat16(0.1f), MLFloat16(0.0f), MLFloat16(0.0f)};
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvFp16Test, Conv2D_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "Relu"                        // activation
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                         MLFloat16(-1.0f), MLFloat16(-1.0f), MLFloat16(-1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  auto expected_vals = {MLFloat16(12.0f), MLFloat16(16.0f), MLFloat16(24.0f), MLFloat16(28.0f),
+                        MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f)};
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+TEST(ConvFp16Test, Conv2D_Bias_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{2, 2},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "Relu"                        // activation
+  };
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                         MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> B_shape = {2};
+  auto expected_vals = {MLFloat16(13.0f), MLFloat16(17.0f), MLFloat16(25.0f), MLFloat16(29.0f),
+                        MLFloat16(11.0f), MLFloat16(15.0f), MLFloat16(23.0f), MLFloat16(27.0f)};
+  TestConvFp16Op(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+}
+#endif // CONTRIB_OPS
+
 
 TEST(ConvFp16Test, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {
@@ -866,6 +962,147 @@ TEST(ConvFp16Test, Pointwise_3D) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
+
+#ifndef DISABLE_CONTRIB_OPS
+
+TEST(ConvFp16Test, Pointwise_Relu) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {},                           // excluded EPs
+      "Relu"                        // activation
+  };
+
+  vector<MLFloat16> X = {
+      MLFloat16(-9.f), MLFloat16(1.f), MLFloat16(2.f),
+      MLFloat16(-5.f), MLFloat16(3.f), MLFloat16(-2.f),
+      MLFloat16(5.f), MLFloat16(-3.f), MLFloat16(1.f),
+      MLFloat16(1.f), MLFloat16(8.f), MLFloat16(-4.f),
+      MLFloat16(-1.f), MLFloat16(6.f), MLFloat16(7.f),
+      MLFloat16(-1.f), MLFloat16(4.f), MLFloat16(-5.f),
+      MLFloat16(-9.f), MLFloat16(1.f), MLFloat16(2.f),
+      MLFloat16(-5.f), MLFloat16(3.f), MLFloat16(-2.f),
+      MLFloat16(5.f), MLFloat16(-3.f), MLFloat16(1.f)};
+  vector<int64_t> X_shape = {1, 3, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(2.f), MLFloat16(-3.f), MLFloat16(0.5f),
+                         MLFloat16(0.25f), MLFloat16(-2.f), MLFloat16(-0.75f)};
+  vector<int64_t> W_shape = {2, 3, 1, 1};
+  vector<int64_t> Y_shape = {1, 2, 3, 3};
+  auto expected_vals = {
+      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(17.f),
+      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(15.5f), MLFloat16(0.f), MLFloat16(17.5f),
+      MLFloat16(2.5f), MLFloat16(0.f), MLFloat16(7.f),
+      MLFloat16(4.5f), MLFloat16(0.f), MLFloat16(0.f),
+      MLFloat16(0.f), MLFloat16(0.f), MLFloat16(9.5f)};
+
+  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+}
+
+#endif  // CONTRIB_OPS
+
+
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
+
+const onnxruntime::RunOptions run_options = []() {
+  onnxruntime::RunOptions options{};
+  ORT_THROW_IF_ERROR(options.config_options.AddConfigEntry(kOpTesterRunOptionsConfigTestTunableOp, "true"));
+  return options;
+}();
+
+const constexpr auto run_with_tunable_op = &run_options;
+
+TEST(ConvFp16Test, SharedPrepackedWeights) {
+  OpTester test("Conv", 11);
+
+  vector<MLFloat16> X = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                         MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                         MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  vector<int64_t> X_shape = {1, 1, 3, 3};
+  vector<MLFloat16> W = {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f),
+                         MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)};
+  vector<int64_t> W_shape = {2, 1, 2, 2};
+  vector<int64_t> Y_shape = {1, 2, 2, 2};
+  vector<MLFloat16> B = {MLFloat16(1.0f), MLFloat16(-1.0f)};
+  vector<int64_t> B_shape = {2};
+  auto expected_vals = {
+      MLFloat16(13.0f), MLFloat16(17.0f), MLFloat16(25.0f), MLFloat16(29.0f),
+      MLFloat16(11.0f), MLFloat16(15.0f), MLFloat16(23.0f), MLFloat16(27.0f)};
+
+  test.AddInput<MLFloat16>("X", X_shape, X);
+  test.AddInput<MLFloat16>("W", W_shape, W, true);
+  test.AddInput<MLFloat16>("B", B_shape, B, true);
+  test.AddOutput<MLFloat16>("Y", Y_shape, expected_vals, /*no sort*/ false, 0.002f, 0.0f);
+
+  OrtValue w;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape(W_shape),
+                       W.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), w);
+
+  SessionOptions so;
+  // Set up B as a shared initializer to be shared between sessions
+  ASSERT_EQ(so.AddInitializer("W", &w), Status::OK());
+
+  // We want all sessions running using this OpTester to be able to share pre-packed weights if applicable
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  // Pre-packing is limited just to the CPU EP for now and we will only test the CPU EP
+  // and we want to ensure that it is available in this build
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  // Session 1
+  {
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+    // Assert that no pre-packed weights have been shared thus far
+    ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+  }
+
+  auto number_of_elements_in_shared_prepacked_buffers_container =
+      test.GetNumPrePackedWeightsShared();
+  // Assert that the number of elements in the shared container
+  // is the same as the number of weights that have been pre-packed
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_elements_in_shared_prepacked_buffers_container);
+
+  // On some platforms/architectures MLAS may choose to not do any pre-packing and the number of elements
+  // that have been pre-packed will be zero in which case we do not continue with the testing
+  // of "sharing" of pre-packed weights as there are no pre-packed weights to be shared at all.
+  if (number_of_pre_packed_weights_counter_session_1 == 0)
+    return;
+
+  // Session 2
+  {
+    size_t number_of_pre_packed_weights_counter_session_2 = 0;
+    test.Config(so)
+        .Config(run_with_tunable_op)
+        .ConfigEps(cpu_ep())
+        .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+    // Assert that the same number of weights were pre-packed in both sessions
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_1, number_of_pre_packed_weights_counter_session_2);
+
+    // Assert that the number of pre-packed weights that were shared equals
+    // the number of pre-packed weights in the second session
+    ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
+              static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
+  }
+}
+
+#endif
+
 
 }  // namespace test
 }  // namespace onnxruntime

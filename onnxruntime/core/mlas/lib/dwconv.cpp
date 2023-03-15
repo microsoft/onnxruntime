@@ -27,7 +27,8 @@ MlasConvDepthwiseKernel(
     _mlas_fp16_* Output,
     size_t Channels,
     size_t OutputCount,
-    size_t KernelSize
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     )
 {
     while (OutputCount > 0) {
@@ -84,7 +85,10 @@ MlasConvDepthwiseKernel(
             MlasStorePartialFloat16x4(Output, Accumulator, c);
             Output += c;
         }
-
+        if (PostProc) {
+            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels,
+                              Channels);
+        }
         Input += KernelSize;
         OutputCount -= 1;
     }
@@ -100,7 +104,8 @@ MlasConvDepthwiseKernel(
     _mlas_fp16_* Output,
     size_t Channels,
     size_t OutputCount,
-    size_t KernelSize
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     )
 {
     while (OutputCount > 0) {
@@ -114,7 +119,10 @@ MlasConvDepthwiseKernel(
             }
             *Output++ = MLAS_Float2Half(Accumulator);
         }
-
+        if (PostProc) {
+            PostProc->Process(reinterpret_cast<MLAS_FP16*>(Output - Channels), 0, 0, 1, Channels,
+                              Channels);
+        }
         Input += KernelSize;
         OutputCount -= 1;
     }
@@ -131,7 +139,8 @@ MlasConvDepthwise(
     MLAS_FP16* Output,
     size_t Channels,
     size_t OutputCount,
-    size_t KernelSize
+    size_t KernelSize,
+    MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     )
 {
     MlasConvDepthwiseKernel(
@@ -140,5 +149,6 @@ MlasConvDepthwise(
         reinterpret_cast<_mlas_fp16_*>(Output),
         Channels,
         OutputCount,
-        KernelSize);
+        KernelSize,
+        PostProc);
 }
