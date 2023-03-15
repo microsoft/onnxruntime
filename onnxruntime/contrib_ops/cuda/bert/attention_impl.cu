@@ -764,7 +764,7 @@ Status QkvToContext(
     MemoryEfficientAttentionParams p;
     p.sm = device_prop.major * 10 + device_prop.minor;
     p.is_half = sizeof(T) == 2;
-    p.batch_size = data.mask_index == nullptr ? parameters.batch_size : 2 * parameters.batch_size;
+    p.batch_size = parameters.batch_size;
     p.num_heads = parameters.num_heads;
     p.sequence_length = parameters.sequence_length;
     p.kv_sequence_length = parameters.total_sequence_length;
@@ -772,9 +772,9 @@ Status QkvToContext(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
     p.scale = scale;
-    p.cu_seqlens_q = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
-    p.cu_seqlens_k = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
-    p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    p.cu_seqlens_q = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    p.cu_seqlens_k = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
     p.query = query;
     p.key = key;
     p.value = value;

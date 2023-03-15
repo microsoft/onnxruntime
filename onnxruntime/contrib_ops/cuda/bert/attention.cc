@@ -102,6 +102,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // Check whether we can use fused kernel
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  bool is_mask_1d_key_query_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_QUERY_LEN;
 
   if (is_unidirectional_ && enable_fused_causal_attention_) {  // GPT
     // GPT fused kernels requires left side padding. mask can be:
@@ -153,10 +154,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 #if USE_FLASH_ATTENTION
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
-                                        nullptr == mask_index &&  // TODO: support 1D mask
+                                        (nullptr == mask_index || is_mask_1d_key_query_len) &&
                                         nullptr == past &&
                                         nullptr == present &&
-                                        nullptr == relative_position_bias &&
+                                        (nullptr == relative_position_bias || parameters.broadcast_res_pos_bias) &&
                                         (sizeof(T) == 2 ||  // sequence length threshold is 0 in FP16
                                          parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);

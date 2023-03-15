@@ -3090,6 +3090,80 @@ void GetSelfAttentionDataWithPast(AttentionTestData& data) {
   data.is_static_kv = false;
 }
 
+void GetAttentionDataCutlassRelPosBias(AttentionTestData& data) {
+  data.hidden_size = 8;
+  data.v_hidden_size = 8;
+  data.num_heads = 2;
+  data.batch_size = 1;
+  data.sequence_length = 2;
+  data.kv_sequence_length = 3;
+  data.mask_type = AttentionMaskType::MASK_1D_KEY_QUERY_LEN;
+
+  data.key_padding_mask_data = {2, 0, 2};
+
+  data.skip_kernel_types = {
+      AttentionKernelType::AttentionKernel_TrtFlashAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedCrossAttention,
+      AttentionKernelType::AttentionKernel_TrtFusedAttention};
+
+  {
+    data.query_data = {
+      0.00403503f,  0.08716156f, -0.0358175f , -0.08171791f,
+      0.48912194f, -0.22679007f, -0.09093101f, -0.5939322f,
+      0.00878838f,  0.03355761f, -0.08080226f, -0.06677517f,
+      0.55038965f, -0.2720567f , -0.12977877f, -0.634123f
+    };
+  }
+  {
+    data.key_data = {
+      0.2808786f ,  0.10041683f,  0.15880886f,  0.45283064f,
+      0.39884242f,  0.12596075f,  0.4198916f , -0.0651141f,
+      0.31678027f,  0.11010794f,  0.21594375f,  0.4975329f,
+      0.436772f  ,  0.20940652f,  0.44072092f, -0.05601776f
+    };
+  }
+
+  {
+    data.value_data = {
+      0.26421773f, -0.16541699f, -0.0599675f ,  0.27200517f,
+      -0.1074627f , -0.4493224f , -0.03694462f,  0.17997989f,
+      0.27960598f, -0.16643806f, -0.07019104f,  0.29006317f,
+      -0.11640988f, -0.47876123f, -0.01979145f,  0.11468418f
+    };
+  }
+
+  {
+    data.bias_data = {
+        -0.38124341f, 0.02696526f, -0.11914945f, -0.43795273f,
+        0.04772711f, -0.03419551f, -0.30606642f, 0.42656231f,
+        -0.25891554f, 0.13431972f, 0.22861153f, 0.06360734f,
+        -0.10595283f, -0.42839217f, 0.28931111f, -0.13180739f,
+        0.27079183f, 0.42074734f, -0.40314156f, -0.43726659f,
+        -0.40546918f, 0.06927037f, 0.16979086f, 0.41458064f
+    };
+  }
+
+  {
+    data.rel_pos_bias_data = {
+      0.4781123f , 0.82420444f, 0.654424f  , 0.3995186f ,
+      0.55570245f, 0.4216576f , 0.46001542f, 0.67183703f
+    };
+  }
+
+  {
+    data.fp16_output_data = {
+      0.4358f, 0.2708f, 0.3201f, 0.4347f, 0.1886f, 0.0845f, 0.2479f, 0.3289f,
+      0.4157f, 0.2247f, 0.2826f, 0.4321f, 0.1874f, 0.1021f, 0.2427f, 0.3305f
+    };
+  }
+
+  {
+    data.fp32_output_data = {};
+  }
+
+  data.is_static_kv = false;
+}
+
 bool SkipAttentionKernel(AttentionTestData& data, AttentionKernelType kernel_type) {
   return std::find(data.skip_kernel_types.begin(), data.skip_kernel_types.end(), kernel_type) != data.skip_kernel_types.end();
 }

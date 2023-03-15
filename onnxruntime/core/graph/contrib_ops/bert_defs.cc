@@ -272,7 +272,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "mask_index",
                "Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), "
                "(batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), "
-               "or index with shape (batch_size) or (2 * batch_size)",
+               "or index with shape (batch_size) or (2 * batch_size) or (2 * batch_size + 1)",
                "M",
                OpSchema::Optional)
         .Input(4,
@@ -444,7 +444,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(4,
                "key_padding_mask",
-               "Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)",
+               "Key padding mask with shape (batch_size) or (2 * batch_size + 1) or (batch_size, kv_sequence_length)",
                "M",
                OpSchema::Optional)
         .Input(5,
