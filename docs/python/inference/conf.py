@@ -62,10 +62,9 @@ pygments_style = "sphinx"
 
 # -- Options for HTML output -------------------------------------------------
 
-html_static_path = ["_static"]
-html_theme = "furo"
 html_logo = "ONNX_Runtime_icon.png"
 html_static_path = ["_static"]
+html_theme = "furo"
 graphviz_output_format = "svg"
 
 html_context = {
