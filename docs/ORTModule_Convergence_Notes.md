@@ -32,12 +32,11 @@ Add few lines of code:
 ```diff
 	from onnxruntime.training.ortmodule import ORTModule
 	from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
-
-+	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 	model = ORTModule(model)
++	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 ```
 
-> ActivationSummarizer must be initialized before wrapping ORTModule.
+> ActivationSummarizer MUST be initialized after wrapping ORTModule.
 
 Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_out` is created in current working directory.
 

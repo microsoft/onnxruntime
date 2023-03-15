@@ -99,34 +99,22 @@ class _IncrementStep(torch.autograd.Function):
     This class is used to manage the global execution step, e.g.
     global step increment by one, once a full forward path completed and state clear.
 
-    This autograd Function is registered as a post forward hook to the root module. So once the root
-    module's forward path is completed, this backward function will be called immediately, triggering
-    global step increment and state clear.
+    This autograd Function is registered as a post forward hook to the root module. This is only
+    expected to run once for the first tensor output, otherwise, the logic is not right.
     """
 
     @staticmethod
     def forward(ctx, input):
-        global _EXECUTION_GLOBAL_STEP
-        ctx.current_step = _EXECUTION_GLOBAL_STEP
-        # We cannot do the step incremental here. Imagine the outside-most module has multiple outputs,
-        # we need increase the step only at the very last output handling.
-        # We avoid the complexity to probe the last output handling, and instead, we assume once
-        # the very first backward of outside-most module is called, then the forward pass MUST be completed.
+        global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES
+
+        print(f"{'='*6} Completed forward pass for STEP {_EXECUTION_GLOBAL_STEP} {'='*6}")
+        _EXECUTION_GLOBAL_STEP += 1
+        _OBSERVED_ACTIVATION_NAMES = {}
 
         return input
 
     @staticmethod
     def backward(ctx, grad_output):
-        global _EXECUTION_GLOBAL_STEP
-        global _OBSERVED_ACTIVATION_NAMES
-
-        # This backward is called for each gradient input of the module, so we only increase the dump step
-        # and clear states once.
-        if ctx.current_step == _EXECUTION_GLOBAL_STEP:
-            print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
-            _EXECUTION_GLOBAL_STEP += 1
-            _OBSERVED_ACTIVATION_NAMES = {}
-
         return grad_output
 
 
@@ -141,7 +129,7 @@ class SubscriberManager(object):
 
     There is one special handling for global step increment and state clear. A post forward hook is registered
     for the outside-most module, which is the root module. In that hook, _IncrementStep is called, which will
-    increase the step by 1 once the very first time its backward is called (check _IncrementStep for details).
+    increase the step by 1 (check _IncrementStep for details).
     """
 
     registered_subscribers = set()
@@ -154,12 +142,30 @@ class SubscriberManager(object):
         if not isinstance(module, torch.nn.Module):
             raise ValueError("module must be a torch.nn.Module instance")
 
+        SubscriberManager.reset_all_states()
+
+        from onnxruntime.training.ortmodule import ORTModule
+
+        if isinstance(module, ORTModule):
+            global _EXECUTION_GLOBAL_STEP
+            # The first two steps are for preparing to export ONNX, so we use negative number for it.
+            _EXECUTION_GLOBAL_STEP -= 2
+            module = module.module
+
         for subscriber in subscribers:
             if not isinstance(subscriber, _ModuleHookSubscriberBase):
                 raise ValueError("subscriber must be a _ModuleHookSubscriberBase instance")
             SubscriberManager.registered_subscribers.add(subscriber)
 
         SubscriberManager._initialize(module)
+
+    @staticmethod
+    def reset_all_states():
+        global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES, _MODULE_INDEX_TO_DEPTH, _MODULE_TO_MODULE_INDEX
+        _EXECUTION_GLOBAL_STEP = 0
+        _OBSERVED_ACTIVATION_NAMES = {}
+        _MODULE_INDEX_TO_DEPTH = {}
+        _MODULE_TO_MODULE_INDEX = {}
 
     @staticmethod
     def _initialize(module):
@@ -173,24 +179,23 @@ class SubscriberManager(object):
         # tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation equality.
         SubscriberManager._register_hooks_recursively(module, 1, count)
 
-        # Register backward start hook, then we increase the dump step.
+        # Register post forward hook for outmost module, then we increase the dump step.
         # Be noted, if backward is not triggered, the global dump step remain the original number,
         # which means the subsequent run will override the previous dump files. This indeed happens imagine ORTModule
         # firstly export graph (run the forward only), after gradient graph is built, another forward+backward is
         # triggered, override the previous dump files.
-        def _post_backward_module_hook(module, inputs, outputs2):
+        def _post_forward_outmost_module_hook(module, inputs, outputs2):
             def _apply_to_tensors_func(index, outputs):
                 return _IncrementStep.apply(outputs)
 
-            return SubscriberManager._apply_to_tensors(module, 0, outputs2, _apply_to_tensors_func)
+            return SubscriberManager._apply_to_tensors(module, 0, outputs2, _apply_to_tensors_func, True)
 
-        module.register_forward_hook(_post_backward_module_hook)
+        module.register_forward_hook(_post_forward_outmost_module_hook)
 
     @staticmethod
     def _register_hooks_recursively(module, depth, count):
+        global _MODULE_TO_MODULE_INDEX, _MODULE_INDEX_TO_DEPTH
         id = count[0]
-        global _MODULE_TO_MODULE_INDEX
-        global _MODULE_INDEX_TO_DEPTH
         _MODULE_INDEX_TO_DEPTH[id] = depth
         _MODULE_TO_MODULE_INDEX[module] = id
 
@@ -230,7 +235,7 @@ class SubscriberManager(object):
         return obj.__class__.__module__ == "__builtin__" or obj.__class__.__module__ == "builtins"
 
     @staticmethod
-    def _apply_to_tensors(module, id, tensors, func):
+    def _apply_to_tensors(module, id, tensors, func, handle_first_tensor_only=False):
         """
         Apply func to all tensors in the given object.
         module: the module that generates the tensors.
@@ -244,19 +249,26 @@ class SubscriberManager(object):
             if isinstance(outputs, abc.Sequence):
                 touched_outputs = []
                 for output in outputs:
-                    touched_output = SubscriberManager._apply_to_tensors(module, id, output, func)
+                    touched_output = SubscriberManager._apply_to_tensors(
+                        module, id, output, func, handle_first_tensor_only
+                    )
                     touched_outputs.append(touched_output)
                 return outputs.__class__(touched_outputs)
             elif isinstance(outputs, abc.Mapping):
                 # apply inplace to avoid recreating dict inherited objects
                 for key, value in outputs.items():
-                    outputs[key] = SubscriberManager._apply_to_tensors(module, id, outputs[key], func)
+                    outputs[key] = SubscriberManager._apply_to_tensors(
+                        module, id, outputs[key], func, handle_first_tensor_only
+                    )
                 return outputs
 
             elif type(outputs) is torch.Tensor:
                 cur_id = index[0]
                 index[0] += 1
-                return func(cur_id, outputs)
+                if handle_first_tensor_only is True and cur_id > 0:
+                    return outputs
+                else:
+                    return func(cur_id, outputs)
 
             else:
                 if not SubscriberManager._is_builtin_type(outputs):
