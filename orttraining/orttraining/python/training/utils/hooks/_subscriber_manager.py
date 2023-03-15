@@ -4,8 +4,11 @@
 # --------------------------------------------------------------------------
 
 import warnings
-from collections import abc
 import torch
+
+from collections import abc
+from typing import Union
+from onnxruntime.training.ortmodule import ORTModule
 
 
 class _ModuleHookSubscriberBase:
@@ -107,7 +110,8 @@ class _IncrementStep(torch.autograd.Function):
     def forward(ctx, input):
         global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES
 
-        print(f"{'='*6} Completed forward pass for STEP {_EXECUTION_GLOBAL_STEP} {'='*6}")
+        if _EXECUTION_GLOBAL_STEP >= 0:
+            print(f"{'='*6} Completed forward pass for STEP {_EXECUTION_GLOBAL_STEP} {'='*6}")
         _EXECUTION_GLOBAL_STEP += 1
         _OBSERVED_ACTIVATION_NAMES = {}
 
@@ -138,13 +142,15 @@ class SubscriberManager(object):
         pass
 
     @staticmethod
-    def subscribe(module, subscribers):
+    def subscribe(module: Union[torch.nn.Module, ORTModule], subscribers):
+        """
+        The API called externally to register hooks that is implicitly defined by subscribers.
+        Each time all global states will be cleaned up once called.
+        """
         if not isinstance(module, torch.nn.Module):
             raise ValueError("module must be a torch.nn.Module instance")
 
-        SubscriberManager.reset_all_states()
-
-        from onnxruntime.training.ortmodule import ORTModule
+        SubscriberManager._reset_all_states()
 
         if isinstance(module, ORTModule):
             global _EXECUTION_GLOBAL_STEP
@@ -160,7 +166,7 @@ class SubscriberManager(object):
         SubscriberManager._initialize(module)
 
     @staticmethod
-    def reset_all_states():
+    def _reset_all_states():
         global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES, _MODULE_INDEX_TO_DEPTH, _MODULE_TO_MODULE_INDEX
         _EXECUTION_GLOBAL_STEP = 0
         _OBSERVED_ACTIVATION_NAMES = {}
