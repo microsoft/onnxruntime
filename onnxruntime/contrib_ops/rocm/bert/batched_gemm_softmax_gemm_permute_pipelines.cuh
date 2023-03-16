@@ -63,11 +63,13 @@ are in composable kernels. The scale and add logic is performed via Acc0ElementO
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/rocm/bert/attention_impl.h"
 #include "contrib_ops/rocm/bert/attention_softmax.h"
+#ifdef USE_COMPOSABLE_KERNEL
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_ck_impl/impl.cuh"
 
 #include "ck/ck.hpp"
 #include "ck/tensor_operation/gpu/device/tensor_layout.hpp"
 #include "ck/tensor_operation/gpu/element/element_wise_operation.hpp"
+#endif  // USE_COMPOSABLE_KERNEL
 
 #include <array>
 #include <vector>
@@ -284,24 +286,6 @@ struct GemmSoftmaxGemmPermuteGenericPipeline {
   }
 };
 
-namespace {
-template <typename T>
-struct DataTypeAdaptor {
-  using type = T;
-};
-
-template <>
-struct DataTypeAdaptor<half> {
-  using type = ck::half_t;
-};
-
-template <>
-struct DataTypeAdaptor<BFloat16> {
-  using type = ck::bhalf16_t;
-};
-
-}  // namespace
-
 template <typename T>
 class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGemmPermuteParams<T>> {
  public:
@@ -390,6 +374,24 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
     return HIP_CALL(hipGetLastError());
   }
 };
+
+#ifdef USE_COMPOSABLE_KERNEL
+namespace {
+template <typename T>
+struct DataTypeAdaptor {
+  using type = T;
+};
+
+template <>
+struct DataTypeAdaptor<half> {
+  using type = ck::half_t;
+};
+
+template <>
+struct DataTypeAdaptor<BFloat16> {
+  using type = ck::bhalf16_t;
+};
+}  // namespace
 
 template <typename T, bool USE_BIAS, bool USE_MASK>
 auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
@@ -501,6 +503,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
   }
   return ret;
 }
+#endif  // USE_COMPOSABLE_KERNEL
 
 template <typename T>
 GemmSoftmaxGemmPermuteTunableOp<T>::GemmSoftmaxGemmPermuteTunableOp() {
@@ -508,6 +511,7 @@ GemmSoftmaxGemmPermuteTunableOp<T>::GemmSoftmaxGemmPermuteTunableOp() {
     return GemmSoftmaxGemmPermuteGenericPipeline<T>::Run(params, false);
   });
 
+#ifdef USE_COMPOSABLE_KERNEL
   for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/false, /*USE_MASK=*/false>()) {
     this->RegisterOp(std::move(op));
   }
@@ -523,6 +527,7 @@ GemmSoftmaxGemmPermuteTunableOp<T>::GemmSoftmaxGemmPermuteTunableOp() {
   for (auto&& [_, op] : GetCKGemmSoftmaxGemmPermuteTypeStringAndOps<T, /*USE_BIAS=*/true, /*USE_MASK=*/true>()) {
     this->RegisterOp(std::move(op));
   }
+#endif
 }
 
 }  // namespace rocm
