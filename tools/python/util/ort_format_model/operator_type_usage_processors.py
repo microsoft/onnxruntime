@@ -327,7 +327,7 @@ class OneHotProcessor(TypeUsageProcessor):
         self._triples.clear()
         aggregate_info = json.loads(entry)
         if "custom" in aggregate_info:
-            self._triples = set([tuple(triple) for triple in aggregate_info["custom"]])
+            self._triples = {tuple(triple) for triple in aggregate_info["custom"]}
 
 
 def _create_operator_type_usage_processors():

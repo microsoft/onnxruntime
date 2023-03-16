@@ -220,9 +220,9 @@ def get_latency_result(runtimes, batch_size):
     result = {
         "test_times": len(runtimes),
         "latency_variance": f"{latency_variance:.2f}",
-        "latency_90_percentile": "{:.2f}".format(np.percentile(runtimes, 90) * 1000.0),
-        "latency_95_percentile": "{:.2f}".format(np.percentile(runtimes, 95) * 1000.0),
-        "latency_99_percentile": "{:.2f}".format(np.percentile(runtimes, 99) * 1000.0),
+        "latency_90_percentile": f"{np.percentile(runtimes, 90) * 1000.0:.2f}",
+        "latency_95_percentile": f"{np.percentile(runtimes, 95) * 1000.0:.2f}",
+        "latency_99_percentile": f"{np.percentile(runtimes, 99) * 1000.0:.2f}",
         "average_latency_ms": f"{latency_ms:.2f}",
         "QPS": f"{throughput:.2f}",
     }

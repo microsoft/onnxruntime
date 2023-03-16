@@ -348,7 +348,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         )
 
         nodes = m.nodes()
-        op_list = set([node.op_type for node in nodes])
+        op_list = {node.op_type for node in nodes}
         all_ops = ",".join(op_list)
 
         # print optimized operators

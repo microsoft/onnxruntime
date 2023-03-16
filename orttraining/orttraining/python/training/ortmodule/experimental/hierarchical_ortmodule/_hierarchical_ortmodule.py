@@ -13,9 +13,9 @@ from ...debug_options import DebugOptions, LogLevel
 # nn.Module's in this set are considered exportable to ONNX.
 # For other nn.Module's, torch.onnx.export is called to check if
 # they are exportable.
-_force_exportable_set = set(
-    [torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear]
-)
+_force_exportable_set = {
+    torch.nn.Linear, torch.nn.Identity, torch.nn.modules.linear.NonDynamicallyQuantizableLinear
+}
 
 
 class _IteratedORTModule(torch.nn.Module):

@@ -118,7 +118,7 @@ def run_model(
     print(f"model: {meta.graph_name}")
     print(f"version: {meta.version}")
     print(f"iterations: {num_iters}")
-    print("avg latency: {} ms".format(((end - start) * 1000) / num_iters))
+    print(f"avg latency: {((end - start) * 1000) / num_iters} ms")
 
     if profile:
         trace_file = sess.end_profiling()

@@ -68,7 +68,7 @@ def export_gradient_graph(
     args = (example_input, example_labels, *tuple(model.parameters()))
     model_param_names = tuple(name for name, _ in model.named_parameters())
     input_names = ["input", "labels", *model_param_names]
-    nodes_needing_gradients = set(name for name, param in model.named_parameters() if param.requires_grad)
+    nodes_needing_gradients = {name for name, param in model.named_parameters() if param.requires_grad}
 
     f = io.BytesIO()
     torch.onnx.export(

@@ -109,10 +109,10 @@ class CalibraterBase:
         value_infos = {vi.name: vi for vi in model.graph.value_info}
         value_infos.update({ot.name: ot for ot in model.graph.output})
         value_infos.update({it.name: it for it in model.graph.input})
-        initializer = set(init.name for init in model.graph.initializer)
+        initializer = {init.name for init in model.graph.initializer}
 
         tensors_to_calibrate = set()
-        tensor_type_to_calibrate = set([TensorProto.FLOAT, TensorProto.FLOAT16])
+        tensor_type_to_calibrate = {TensorProto.FLOAT, TensorProto.FLOAT16}
 
         for node in model.graph.node:
             if not self.op_types_to_calibrate or node.op_type in self.op_types_to_calibrate:
@@ -185,7 +185,7 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {output.name for output in self.model.graph.output}
         self.moving_average = moving_average
         if moving_average and (averaging_constant < 0 or averaging_constant > 1):
             raise ValueError("Invalid averaging constant, which should not be < 0 or > 1.")
@@ -291,9 +291,9 @@ class MinMaxCalibrater(CalibraterBase):
             added_output_names[i].rpartition("_")[0] for i in range(0, len(added_output_names), 2)
         ]  # output names
 
-        merged_added_output_dict = dict(
-            (i, merged_output_dict[i]) for i in merged_output_dict if i not in self.model_original_outputs
-        )
+        merged_added_output_dict = {
+            i: merged_output_dict[i] for i in merged_output_dict if i not in self.model_original_outputs
+        }
 
         pairs = []
         for i in range(0, len(added_output_names), 2):
@@ -359,7 +359,7 @@ class HistogramCalibrater(CalibraterBase):
         self.intermediate_outputs = []
         self.calibrate_tensors_range = None
         self.num_model_outputs = len(self.model.graph.output)
-        self.model_original_outputs = set(output.name for output in self.model.graph.output)
+        self.model_original_outputs = {output.name for output in self.model.graph.output}
         self.collector = None
         self.method = method
         self.num_bins = num_bins
@@ -412,7 +412,7 @@ class HistogramCalibrater(CalibraterBase):
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
 
-        clean_merged_dict = dict((i, merged_dict[i]) for i in merged_dict if i in self.tensors_to_calibrate)
+        clean_merged_dict = {i: merged_dict[i] for i in merged_dict if i in self.tensors_to_calibrate}
 
         if not self.collector:
             self.collector = HistogramCollector(

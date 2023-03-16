@@ -126,7 +126,7 @@ def run_test(
         optimized_model, all_inputs, use_gpu, disable_optimization=False
     )
     if verbose:
-        print("treatment average latency: {} ms".format(statistics.mean(treatment_latency) * 1000))
+        print(f"treatment average latency: {statistics.mean(treatment_latency) * 1000} ms")
 
     # Validate the output of baseline and treatment, to make sure the results are similar.
     compare(baseline_results, treatment_results, verbose, rtol, atol)

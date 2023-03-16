@@ -550,7 +550,7 @@ def einsum_internal(g, equation, tensor_list):
     # After process contraction labels, contraction_labels = [k],
     # label_perm_map = {(s, 0), (m, 1), (k, 2)}, out_size = 2, perm_size = 3.
     out_size = len(result_labels)
-    label_perm_map = dict([(label, idx) for idx, label in enumerate(result_labels)])
+    label_perm_map = {label: idx for idx, label in enumerate(result_labels)}
     perm_size = out_size
     contraction_labels = []
     lhs_reduce_sum_axes = []

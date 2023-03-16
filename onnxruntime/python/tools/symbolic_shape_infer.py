@@ -297,19 +297,15 @@ class SymbolicShapeInference:
     def _preprocess(self, in_mp):
         self.out_mp_ = onnx.ModelProto()
         self.out_mp_.CopyFrom(in_mp)
-        self.graph_inputs_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
-        self.initializers_ = dict([(i.name, i) for i in self.out_mp_.graph.initializer])
-        self.known_vi_ = dict([(i.name, i) for i in list(self.out_mp_.graph.input)])
+        self.graph_inputs_ = {i.name: i for i in list(self.out_mp_.graph.input)}
+        self.initializers_ = {i.name: i for i in self.out_mp_.graph.initializer}
+        self.known_vi_ = {i.name: i for i in list(self.out_mp_.graph.input)}
         self.known_vi_.update(
-            dict(
-                [
-                    (
-                        i.name,
-                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims)),
-                    )
+            {
+                        i.name:
+                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
                     for i in self.out_mp_.graph.initializer
-                ]
-            )
+            }
         )
 
     def _merge_symbols(self, dims):
@@ -504,8 +500,8 @@ class SymbolicShapeInference:
         # it's up to the node dispatcher to prepare subgraph input
         # for example, with Scan/Loop, subgraph input shape would be trimmed from node input shape
         # besides, inputs in subgraph could shadow implicit inputs
-        subgraph_inputs = set([i.name for i in list(subgraph.initializer) + list(subgraph.input)])
-        subgraph_implicit_input = set([name for name in self.known_vi_ if name not in subgraph_inputs])
+        subgraph_inputs = {i.name for i in list(subgraph.initializer) + list(subgraph.input)}
+        subgraph_implicit_input = {name for name in self.known_vi_ if name not in subgraph_inputs}
         tmp_graph = helper.make_graph(
             list(subgraph.node),
             "tmp",
@@ -543,9 +539,9 @@ class SymbolicShapeInference:
         subgraph.node.extend(symbolic_shape_inference.out_mp_.graph.node)
         # for new symbolic dims from subgraph output, add to main graph symbolic dims
         subgraph_shapes = [get_shape_from_value_info(o) for o in symbolic_shape_inference.out_mp_.graph.output]
-        subgraph_new_symbolic_dims = set(
-            [d for s in subgraph_shapes if s for d in s if type(d) == str and d not in self.symbolic_dims_]
-        )
+        subgraph_new_symbolic_dims = {
+            d for s in subgraph_shapes if s for d in s if type(d) == str and d not in self.symbolic_dims_
+        }
         new_dims = {}
         for d in subgraph_new_symbolic_dims:
             assert d in symbolic_shape_inference.symbolic_dims_
@@ -2307,7 +2303,7 @@ class SymbolicShapeInference:
         prereq_for_node = {}  # map from node to all its inputs, including implicit ones in subgraph
 
         def get_prereq(node):
-            names = set(i for i in node.input if i)
+            names = {i for i in node.input if i}
             subgraphs = []
             if node.op_type == "If":
                 subgraphs = [
@@ -2335,7 +2331,7 @@ class SymbolicShapeInference:
 
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
-        sorted_known_vi = set([i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)])
+        sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
         if any([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
             # Loop/Scan will have some graph output in graph inputs, so don't do topological sort
             sorted_nodes = self.out_mp_.graph.node

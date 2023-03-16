@@ -71,7 +71,7 @@ _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() els
 
 
 def _start_process(*args) -> subprocess.Popen:
-    _log.debug("Starting process - args: {}".format([*args]))
+    _log.debug(f"Starting process - args: {[*args]}")
     return subprocess.Popen([*args], creationflags=_process_creationflags)
 
 

@@ -675,13 +675,13 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             "description",
         ]
 
-        description_list = list(set([result["description"] for result in results]))
+        description_list = list({result["description"] for result in results})
         description_list.sort()
 
-        batch_sizes = list(set([result["batch_size"] for result in results]))
+        batch_sizes = list({result["batch_size"] for result in results})
         batch_sizes.sort()
 
-        sequence_lengths = list(set([result["sequence_length"] for result in results]))
+        sequence_lengths = list({result["sequence_length"] for result in results})
         sequence_lengths.sort()
 
         data_names = []

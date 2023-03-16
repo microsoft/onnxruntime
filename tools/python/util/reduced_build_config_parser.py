@@ -102,7 +102,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
                 nonlocal globally_allowed_types
                 if globally_allowed_types is not None:
                     raise RuntimeError("Globally allowed types were already specified.")
-                globally_allowed_types = set(segment.strip() for segment in line.split(";")[1].split(","))
+                globally_allowed_types = {segment.strip() for segment in line.split(";")[1].split(",")}
             return True
 
         if line == "!no_ops_specified_means_all_ops_are_required":  # handle all ops required line
@@ -172,7 +172,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
                         cur = end_str + 1
 
             else:
-                operators = set([op.strip() for op in operators_str.split(",")])
+                operators = {op.strip() for op in operators_str.split(",")}
 
             for opset in opsets:
                 if domain not in required_ops:

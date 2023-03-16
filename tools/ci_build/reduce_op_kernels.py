@@ -96,7 +96,7 @@ def _adapt_filters_for_extended_minimal_build(
 
         adapted_op_type_impl_filter = _AdaptedFilter(
             base_op_type_impl_filter,
-            set([(domain, optype) for (domain, optype, opset) in extended_minimal_build_required_op_ids]),
+            {(domain, optype) for (domain, optype, opset) in extended_minimal_build_required_op_ids},
         )
 
     return (adapted_required_ops, adapted_op_type_impl_filter)

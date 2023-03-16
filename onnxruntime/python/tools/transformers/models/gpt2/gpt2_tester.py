@@ -63,7 +63,7 @@ class Gpt2Metric:
                 if key == 0:
                     print(f"\t{key}:         \t{average:.2f} ms")
                 else:
-                    print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2 ** (key + 1) - 1, average))
+                    print(f"\t[{2**key}, {2 ** (key + 1) - 1}]:\t{average:.2f} ms")
                 total += average * len(self.seq_len_latency[key])
                 count += len(self.seq_len_latency[key])
             print(f"Average Latency: {total / count:.2f} ms")

@@ -767,7 +767,7 @@ def main():
         logger.error("int8 is for CPU only")
         return
 
-    args.num_threads = sorted(set(cpu_count if x <= 0 else x for x in args.num_threads))
+    args.num_threads = sorted({cpu_count if x <= 0 else x for x in args.num_threads})
 
     logger.info(f"Arguments: {args}")
 

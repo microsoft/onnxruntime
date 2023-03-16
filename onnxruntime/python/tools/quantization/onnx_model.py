@@ -129,7 +129,7 @@ class ONNXModel:
         return None
 
     def get_initializer_name_set(self):
-        return set(initializer.name for initializer in self.model.graph.initializer)
+        return {initializer.name for initializer in self.model.graph.initializer}
 
     def remove_initializer(self, tensor):
         if tensor in self.model.graph.initializer:
