@@ -1,6 +1,6 @@
 ## Quantization Aware Training (QAT) with onnxruntime POC
 
-This directory contains a complete example of how users can perform QAT in onnxruntime (as a Proof of Concept). There are two approaches to perform QAT in ort - a). Using `onnxruntime.trainig.api` and b). Using `onnxruntime.training.ORTModule`. The contents of this tutorial focus on the former (QAT with `ORTModule` is still under development and is not ready).
+This directory contains a complete example of how users can perform QAT in onnxruntime (as a Proof of Concept). There are two approaches to perform QAT in ort - a). Using `onnxruntime.training.api` and b). Using `onnxruntime.training.ORTModule`. The contents of this tutorial focus on the former (QAT with `ORTModule` is still under development and is not ready).
 
 We will walk through a POC example using the `MNIST` dataset and a simple neural network with two linear layers:
 

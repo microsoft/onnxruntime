@@ -367,9 +367,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)"
                "When past_present_share_buffer is set, "
-               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size)",
-               "T",
-               OpSchema::Optional)
+               "its shape is (2, batch_size, num_heads, max_sequence_length, head_size). "
+               "The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys "
+               "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
+               "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
+               "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
+               "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
+               "T")
         .Input(5,
                "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
@@ -378,6 +383,17 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(6,
                "past_sequence_length",
                "When past_present_share_buffer is used, it is required to specify past_sequence_length (could be 0).",
+               "M")
+        .Input(7,
+               "beam_width",
+               "The beam width that is being used while decoding."
+               "If not provided, the beam width will be assumed to be 1.",
+               "M",
+               OpSchema::Optional)
+        .Input(8,
+               "cache_indirection",
+               "A buffer of shape [batch_size, beam_width, max_output_length] where an [i, j, k] entry specifies"
+               "which beam the 'k' th token came from for the 'j' th beam for batch 'i' in the current iteration",
                "M",
                OpSchema::Optional)
         .Output(0,
@@ -390,8 +406,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "If past_present_share_buffer is set, "
                 "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
                 "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
-                "T",
-                OpSchema::Optional)
+                "T")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")

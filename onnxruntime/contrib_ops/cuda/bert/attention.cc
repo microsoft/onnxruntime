@@ -119,8 +119,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_causal_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale));
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_trt_flash_attention_, parameters.scale);
       }
 
       // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
@@ -139,8 +139,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     if (use_fused_runner) {
       // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
       if (nullptr == fused_fp16_runner_.get()) {
-        fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                          enable_trt_flash_attention_, parameters.scale));
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+                                                          enable_trt_flash_attention_, parameters.scale);
       }
 
       // In case some kernel not loaded due to shared memory limit, we need to double check here.
