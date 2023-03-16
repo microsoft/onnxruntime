@@ -48,7 +48,7 @@ jobs:
           rm -rf site/docs/api/java
           mv java/build/docs/javadoc site/docs/api/java
       - name: Upload new site
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-pages-artifact@v3
         with:
           name: github-pages
           path: site
