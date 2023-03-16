@@ -42,7 +42,7 @@ jobs:
       - name: Debug
         run: |
           ls
-          echo "site"
+          echo "ls site"
           ls site
       - name: Move Java docs into site
         run: |
