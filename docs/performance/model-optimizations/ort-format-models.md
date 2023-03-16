@@ -56,7 +56,7 @@ Each '.onnx' file is loaded, optimized, and saved in ORT format as a file with t
 ### Outputs of the script
 
 1. One ORT format model for each ONNX model
-2. A [build configuration file](./operators/reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
+2. A [build configuration file](../../reference/operators/reduced-operator-config-file.md) ('required_operators.config') with the operators required by the optimized ONNX models.
 
    If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and is called 'required_operators_and_types.config'.
 
@@ -172,7 +172,7 @@ For earlier versions, *extended* is recommended, as the *all* level previously i
 
 If the model is to be run with the NNAPI EP or CoreML EP, it is recommended to create an ORT format model using the *basic* optimization level. Performance testing should be done to compare running this model with the NNAPI or CoreML EP enabled vs. running the model optimized to a higher level using the CPU EP to determine the optimal setup.
 
-See the documentation on [performance tuning mobile scenarios](../performance/mobile-performance-tuning.md) for more information.
+See the documentation on [performance tuning mobile scenarios](../../performance/mobile-performance-tuning.md) for more information.
 
 ##### Enable type reduction
 
@@ -188,7 +188,7 @@ For example, the ONNX Runtime kernel for Softmax supports both float and double.
 
 ##### Custom Operator support
 
-If your ONNX model uses [custom operators](./operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
+If your ONNX model uses [custom operators](../../reference/operators/add-custom-op.md), the path to the library containing the custom operator kernels must be provided so that the ONNX model can be successfully loaded. The custom operators will be preserved in the ORT format model.
 
 ##### Save optimized ONNX model
 

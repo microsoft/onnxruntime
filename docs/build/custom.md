@@ -47,7 +47,7 @@ The operators that are included are specified at build time, in a [configuration
 
 **`--enable_reduced_operator_type_support`**
 
-* Enables [operator type reduction](../reference/ort-format-models.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
+* Enables [operator type reduction](../performance/model-optimizations/ort-format-models.md#enable-type-reduction). Requires ONNX Runtime version 1.7 or higher and for type reduction to have been enabled during model conversion
 
 If the configuration file is created using ORT format models, the input/output types that individual operators require can be tracked if `--enable_type_reduction` is specified. This can be used to further reduce the build size if `--enable_reduced_operator_type_support` is specified when building ORT.
 
@@ -66,7 +66,7 @@ RTTI is disabled by default in this build, unless the Python bindings (`--build_
 
 A basic minimal build has the following limitations:
 
-* No support for ONNX format models. The model must be converted to [ORT format](../reference/ort-format-models.md).
+* No support for ONNX format models. The model must be converted to [ORT format](../performance/model-optimizations/ort-format-models.md).
 * No support for runtime optimizations. Optimizations are performed during conversion to ORT format.
 * Support for execution providers that statically register kernels (e.g. ONNX Runtime CPU Execution Provider) only.
 

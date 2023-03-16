@@ -103,7 +103,7 @@ This flag is only supported from the V2 version of the provider options struct w
 Default value: 0
 
 ## Performance Tuning
-The [I/O Binding feature](../performance/tune-performance/io-binding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. 
+The [I/O Binding feature](../performance/tune-performance/iobinding.md) should be utilized to avoid overhead resulting from copies on inputs and outputs. 
 
 ### Convolution-heavy models
 

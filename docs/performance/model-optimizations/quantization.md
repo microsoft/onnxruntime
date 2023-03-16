@@ -220,7 +220,7 @@ Hardware support is required to achieve better performance with quantization on 
 
 ONNX Runtime leverages the TensorRT Execution Provider for quantization on GPU now. Unlike the CPU Execution Provider, TensorRT takes in a full precision model and a calibration result for inputs. It decides how to quantize with their own logic. The overall procedure to leverage TensorRT EP quantization is:
 - Implement a [CalibrationDataReader](https://github.com/microsoft/onnxruntime/blob/07788e082ef2c78c3f4e72f49e7e7c3db6f09cb0/onnxruntime/python/tools/quantization/calibrate.py).
-- Compute quantization parameters using a calibration data set. Note: In order to include all tensors from the model for better calibration, please run `symbolic_shape_infer.py` first. Please refer to [here](../execution-providers/TensorRT-ExecutionProvider.md#samples) for details.
+- Compute quantization parameters using a calibration data set. Note: In order to include all tensors from the model for better calibration, please run `symbolic_shape_infer.py` first. Please refer to [here](../../execution-providers/TensorRT-ExecutionProvider.md#samples) for details.
 - Save quantization parameters into a flatbuffer file
 - Load model and quantization parameter file and run with the TensorRT EP.
 
