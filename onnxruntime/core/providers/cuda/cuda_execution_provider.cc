@@ -2271,7 +2271,7 @@ static bool RNNNeedFallbackToCPU(const onnxruntime::Node& node,
     // cudnn LSTM not support peephole
     auto input_defs = node.InputDefs();
     if (8 == input_defs.size()) {
-      auto peephole = input_defs.at(7);
+      auto peephole = input_defs[7];
       if (peephole->Exists()) {
         return true;
       }
