@@ -6,11 +6,11 @@
 from onnxruntime.capi._pybind_state import PropagateCastOpsStrategy, TrainingParameters
 from onnxruntime.capi.training.training_session import TrainingSession
 
+from . import amp, checkpoint, model_desc_validation, optim
+from .orttrainer import ORTTrainer, TrainStepInfo
+
 # Options need to be imported before `ORTTrainer`.
 from .orttrainer_options import ORTTrainerOptions
-from .orttrainer import ORTTrainer, TrainStepInfo
-from . import amp, checkpoint, model_desc_validation, optim
-
 
 try:
     from .ortmodule import ORTModule

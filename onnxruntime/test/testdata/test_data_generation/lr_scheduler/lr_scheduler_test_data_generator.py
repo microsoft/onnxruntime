@@ -30,7 +30,7 @@ class WarmupLinearSchedule(LambdaLR):
     def __init__(self, optimizer, warmup_steps, t_total, last_epoch=-1):
         self.warmup_steps = warmup_steps
         self.t_total = t_total
-        super(WarmupLinearSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
+        super().__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
         print(f"warmup_step_count_: {self.warmup_steps }, step: {step}, total_step_count_: {self.t_total}")
@@ -42,7 +42,6 @@ class WarmupLinearSchedule(LambdaLR):
 def main():
     """Main entry."""
     num_training_steps = 100
-    seed = 8888
     device = "cuda"
     batch_size, dimension_in, dimension_hidden = 2, 2, 3
 

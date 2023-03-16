@@ -228,7 +228,7 @@ class ONNXExporterTest(unittest.TestCase):
 # opset 9 tests, with keep_initializers_as_inputs=False for
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(
-    str("TestONNXRuntime_opset9_IRv4"),
+    "TestONNXRuntime_opset9_IRv4",
     (unittest.TestCase,),
     dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
 )

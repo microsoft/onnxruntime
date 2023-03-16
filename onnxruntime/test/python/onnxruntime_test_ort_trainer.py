@@ -170,7 +170,7 @@ def runBertTrainingTest(
     next_sentence_labels_batches = []
     batch_size = 16
     num_batches = 8
-    for batch in range(num_batches):
+    for _batch in range(num_batches):
         input_ids_batches = [
             *input_ids_batches,
             generate_sample_batch(model_desc.inputs_[0], batch_size, device),
@@ -603,7 +603,6 @@ class TestOrtTrainer(unittest.TestCase):
         assert state_dict == {}
 
         learningRate = 0.02
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -636,7 +635,6 @@ class TestOrtTrainer(unittest.TestCase):
         assert not os.path.exists(onnx_file_name)
 
         learningRate = 0.02
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -659,7 +657,6 @@ class TestOrtTrainer(unittest.TestCase):
             model.to(model_device)
             trainer = mnist.get_trainer(model, model_desc, device)
             learningRate = 0.02
-            epoch = 0
 
             data, target = next(iter(train_loader))
             data, target = data.to(device), target.to(device)
@@ -677,7 +674,6 @@ class TestOrtTrainer(unittest.TestCase):
 
         trainer = mnist.get_trainer(model, model_desc, device)
         learningRate = 0.02
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -708,7 +704,6 @@ class TestOrtTrainer(unittest.TestCase):
             internal_loss_fn=True,
             get_lr_this_step=get_lr_this_step,
         )
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -731,7 +726,6 @@ class TestOrtTrainer(unittest.TestCase):
         trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=["fc1.weight"])
 
         learningRate = 0.02
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -759,7 +753,6 @@ class TestOrtTrainer(unittest.TestCase):
         trainer = mnist.get_trainer(model, model_desc, device)
 
         learningRate = 0.02
-        epoch = 0
 
         data, target = next(iter(train_loader))
         data, target = data.to(device), target.to(device)
@@ -789,7 +782,6 @@ class TestOrtTrainer(unittest.TestCase):
         trainer = mnist.get_trainer(model, model_desc, device, frozen_weights=["fc1.weight"])
 
         learningRate = 0.02
-        epoch = 0
 
         # do one train step
         data, target = next(iter(train_loader))
@@ -835,10 +827,9 @@ class TestOrtTrainer(unittest.TestCase):
         )
 
         learningRate = 0.02
-        epoch = 0
 
         # do 5 train step
-        for i in range(5):
+        for _i in range(5):
             data, target = next(iter(train_loader))
             data, target = data.to(device), target.to(device)
             data = data.reshape(data.shape[0], -1)

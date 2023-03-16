@@ -12,7 +12,6 @@ import torch
 
 
 def parse_arguments(namespace_filter=None):
-
     parser = argparse.ArgumentParser()
 
     # useful EPs that don't require the use of optmizer.py
@@ -78,7 +77,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, device):
 
     input_hidden_states = create_inputs(hidden_size=hidden_size, float16=float16, device=device)
     with torch.no_grad():
-        outputs = model(input_hidden_states)
+        model(input_hidden_states)
 
     dynamic_axes = {
         "input": {0: "batch_size", 1: "seq_len"},
@@ -213,7 +212,7 @@ def run_parity(
     max_diffs = []
     printed = False  # print only one sample
     ort_session = create_ort_session(onnx_model_path, device.type == "cuda", optimized=optimized, verbose=verbose)
-    for i in range(test_cases):
+    for _i in range(test_cases):
         input_hidden_states = create_inputs(batch_size, sequence_length, hidden_size, float16, device)
 
         with torch.no_grad():

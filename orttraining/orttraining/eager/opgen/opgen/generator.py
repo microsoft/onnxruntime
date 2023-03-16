@@ -17,7 +17,7 @@ class Outputs:
         self.name = None
 
     def __str__(self):
-        return self.name if self.name else f"<unbound output>"
+        return self.name if self.name else "<unbound output>"
 
 
 class AttrType:
@@ -180,8 +180,7 @@ class ORTGen:
 
         if len(self._mapped_ops) > 0:
             raise Exception(
-                "Torch operation(s) could not be parsed for mapping: "
-                + ", ".join([f"'{o}'" for o in self._mapped_ops.keys()])
+                "Torch operation(s) could not be parsed for mapping: " + ", ".join([f"'{o}'" for o in self._mapped_ops])
             )
 
     def _write_file_prelude(self, writer: opgenwriter.SourceWriter):
@@ -282,7 +281,7 @@ class ORTGen:
             if attr.type.startswith("at::ScalarType::"):
                 writer.write(f", {attr.type}")
             elif attr.type == AttrType.TENSOR:
-                writer.write(f", true")
+                writer.write(", true")
             elif attr.type != AttrType.STRING:
                 raise FunctionGenerationError(
                     cpp_func,
@@ -432,7 +431,7 @@ class ORTGen:
             isinstance(cpp_func.return_type, ast.TemplateType)
             and cpp_func.return_type.identifier_tokens[-1].value == "std::tuple"
         ):
-            raise Exception(f"")
+            raise Exception("")
         tensorRef = "Tensor&," * len(in_place_params)
         tensorRef = tensorRef[: len(tensorRef) - 1]
         writer.write(f"return std::tuple<{tensorRef}>(")
@@ -776,7 +775,7 @@ class ORTGen:
                 try:
                     op_namespace = op_name[0 : op_name.index("::")]
                     op_namewithoutnamespace = op_name[len(op_namespace) + 2 :]
-                except:
+                except Exception:
                     op_namespace = None
                     op_namewithoutnamespace = op_name
 

@@ -1,9 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-from opgen.lexer import *
+from typing import List, Optional, Tuple, Union
+
 from opgen.ast import *
-from typing import List, Tuple, Union, Optional
+from opgen.lexer import *
 
 
 class UnexpectedTokenError(RuntimeError):
@@ -18,7 +19,7 @@ class ExpectedSyntaxError(RuntimeError):
         super().__init__(f"expected {expected}; actual {actual}")
 
 
-class ParserBase(object):
+class ParserBase:
     _peek_queue: List[Token]
 
     def __init__(self, lexer: Union[Lexer, Reader]):
@@ -50,7 +51,7 @@ class ParserBase(object):
             raise IndexError("look_ahead must be at least 1")
         if look_ahead >= len(self._peek_queue):
             for _ in range(look_ahead - len(self._peek_queue)):
-                self._peek_queue = [self._lexer.lex()] + self._peek_queue
+                self._peek_queue = [self._lexer.lex(), *self._peek_queue]
         peek = self._peek_queue[-look_ahead]
         if not kinds:
             return peek

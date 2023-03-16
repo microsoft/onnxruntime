@@ -3,21 +3,21 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from ._torch_module_factory import TorchModuleFactory
-from ._torch_module_pytorch import TorchModulePytorch
-from ._torch_module_ort import TorchModuleORT
-from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
-from ._custom_gradient_registry import CustomGradientRegistry
-from . import _utils
-from .debug_options import DebugOptions
-from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
-from onnxruntime.training import ortmodule
-
-from onnxruntime.tools import pytorch_export_contrib_ops
+from typing import Callable, Iterator, Optional, Tuple, TypeVar
 
 import torch
-from typing import Iterator, Optional, Tuple, TypeVar, Callable
 
+from onnxruntime.tools import pytorch_export_contrib_ops
+from onnxruntime.training import ortmodule
+
+from . import _utils
+from ._custom_gradient_registry import CustomGradientRegistry
+from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
+from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
+from ._torch_module_factory import TorchModuleFactory
+from ._torch_module_ort import TorchModuleORT
+from ._torch_module_pytorch import TorchModulePytorch
+from .debug_options import DebugOptions
 
 # Needed to override PyTorch methods
 T = TypeVar("T", bound="Module")
@@ -35,7 +35,6 @@ class ORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, debug_options=None):
-
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -63,7 +62,7 @@ class ORTModule(torch.nn.Module):
             if ortmodule._FALLBACK_INIT_EXCEPTION:
                 raise ortmodule._FALLBACK_INIT_EXCEPTION
 
-            super(ORTModule, self).__init__()
+            super().__init__()
 
             self._torch_module = TorchModuleFactory()(module, debug_options, self._fallback_manager)
 
@@ -284,16 +283,14 @@ class ORTModule(torch.nn.Module):
             assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
             return getattr(self.module, name)
         else:
-            return super(ORTModule, self).__getattr__(name)
+            return super().__getattr__(name)
 
     def __setattr__(self, name: str, value) -> None:
-
         if name in self.__dict__:
             # If the name is an attribute of ORTModule, update only ORTModule
             self.__dict__[name] = value
 
         elif "_is_initialized" in self.__dict__ and self.__dict__["_is_initialized"] is True:
-
             assert "_torch_module" in self.__dict__, "ORTModule does not have a reference to the user's model"
 
             # If the name is an attribute of user model, or is a new attribute, update there.

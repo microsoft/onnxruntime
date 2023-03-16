@@ -7,10 +7,8 @@ import onnxruntime as ort
 
 
 class TestAmlEndpoint(unittest.TestCase):
-
     # test an endpoint of adding floats
     def testAddf(self):
-
         sess_opt = ort.SessionOptions()
         sess_opt.add_session_config_entry("azure.endpoint_type", "triton")
         sess_opt.add_session_config_entry("azure.uri", "https://endpoint-2930.westus2.inference.ml.azure.com")
@@ -35,7 +33,6 @@ class TestAmlEndpoint(unittest.TestCase):
 
     # test an endpoint of adding doubles
     def testAddf8(self):
-
         sess_opt = ort.SessionOptions()
         sess_opt.add_session_config_entry("azure.endpoint_type", "triton")
         sess_opt.add_session_config_entry("azure.uri", "https://endpoint-1364.westus2.inference.ml.azure.com")
@@ -60,7 +57,6 @@ class TestAmlEndpoint(unittest.TestCase):
 
     # test an endpoint of adding int
     def testAddi4(self):
-
         sess_opt = ort.SessionOptions()
         sess_opt.add_session_config_entry("azure.endpoint_type", "triton")
         sess_opt.add_session_config_entry("azure.uri", "https://endpoint-9879.westus2.inference.ml.azure.com")
@@ -85,7 +81,6 @@ class TestAmlEndpoint(unittest.TestCase):
 
     # test an endpoint of "And"
     def testAnd(self):
-
         sess_opt = ort.SessionOptions()
         sess_opt.add_session_config_entry("azure.endpoint_type", "triton")
         sess_opt.add_session_config_entry("azure.uri", "https://endpoint-6811.westus2.inference.ml.azure.com")

@@ -178,7 +178,12 @@ def run_onnxruntime(
                         fusion_options,
                     )
             if "tf" in model_source:
-                (onnx_model_file, is_valid_onnx_model, vocab_size, max_sequence_length,) = export_onnx_model_from_tf(
+                (
+                    onnx_model_file,
+                    is_valid_onnx_model,
+                    vocab_size,
+                    max_sequence_length,
+                ) = export_onnx_model_from_tf(
                     model_name,
                     MODELS[model_name][1],
                     MODELS[model_name][2],
@@ -257,9 +262,7 @@ def run_onnxruntime(
                         "datetime": str(datetime.now()),
                     }
 
-                    logger.info(
-                        "Run onnxruntime on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                    )
+                    logger.info(f"Run onnxruntime on {model_name} with input shape {[batch_size, sequence_length]}")
 
                     if disable_ort_io_binding:
                         result = inference_ort(
@@ -359,7 +362,7 @@ def run_pytorch(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
+                logger.info(f"Run PyTorch on {model_name} with input shape {[batch_size, sequence_length]}")
                 input_ids = torch.randint(
                     low=0,
                     high=config.vocab_size - 1,
@@ -491,9 +494,7 @@ def run_tensorflow(
                 if max_input_size is not None and sequence_length > max_input_size:
                     continue
 
-                logger.info(
-                    "Run Tensorflow on {} with input shape {}".format(model_name, [batch_size, sequence_length])
-                )
+                logger.info(f"Run Tensorflow on {model_name} with input shape {[batch_size, sequence_length]}")
 
                 import random
 
@@ -891,8 +892,8 @@ def main():
                     args.model_source,
                     args,
                 )
-            except:
-                logger.error(f"Exception", exc_info=True)
+            except Exception:
+                logger.error("Exception", exc_info=True)
 
     time_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if model_fusion_statistics:

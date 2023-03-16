@@ -37,12 +37,12 @@ def get_ep_list(comparison):
 def resolve_trtexec_path(workspace):
     trtexec_options = get_output(["find", workspace, "-name", "trtexec"])
     trtexec_path = re.search(r".*/bin/trtexec", trtexec_options).group(0)
-    logger.info("using trtexec {}".format(trtexec_path))
+    logger.info(f"using trtexec {trtexec_path}")
     return trtexec_path
 
 
 def dict_to_args(dct):
-    return ",".join(["{}={}".format(k, v) for k, v in dct.items()])
+    return ",".join([f"{k}={v}" for k, v in dct.items()])
 
 
 def main():
@@ -103,7 +103,7 @@ def main():
             if args.track_memory:
                 command.append("-z")
 
-            if ep == standalone_trt or ep == standalone_trt_fp16:
+            if ep in (standalone_trt, standalone_trt_fp16):
                 command.extend(["--trtexec", trtexec])
 
             if len(args.cuda_ep_options):
@@ -165,7 +165,7 @@ def main():
         if os.path.exists(METRICS_FILE):
             model_to_metrics = read_map_from_file(METRICS_FILE)
             output_metrics(model_to_metrics, os.path.join(path, benchmark_metrics_csv))
-            logger.info("\nSaved model metrics results to {}".format(benchmark_metrics_csv))
+            logger.info(f"\nSaved model metrics results to {benchmark_metrics_csv}")
 
     if benchmark:
         logger.info("\n=========================================")
@@ -176,7 +176,7 @@ def main():
             model_to_session = read_map_from_file(SESSION_FILE)
             pretty_print(pp, model_to_session)
             output_session_creation(model_to_session, os.path.join(path, benchmark_session_csv))
-            logger.info("\nSaved session creation results to {}".format(benchmark_session_csv))
+            logger.info(f"\nSaved session creation results to {benchmark_session_csv}")
 
         logger.info("\n=========================================================")
         logger.info("========== Failing Models/EPs (accumulated) ==============")
@@ -186,7 +186,7 @@ def main():
             model_to_fail_ep = read_map_from_file(FAIL_MODEL_FILE)
             output_fail(model_to_fail_ep, os.path.join(path, benchmark_fail_csv))
             logger.info(model_to_fail_ep)
-            logger.info("\nSaved model failing results to {}".format(benchmark_fail_csv))
+            logger.info(f"\nSaved model failing results to {benchmark_fail_csv}")
 
         logger.info("\n=======================================================")
         logger.info("=========== Models/EPs Status (accumulated) ===========")
@@ -205,7 +205,7 @@ def main():
         pretty_print(pp, model_status)
 
         output_status(model_status, os.path.join(path, benchmark_status_csv))
-        logger.info("\nSaved model status results to {}".format(benchmark_status_csv))
+        logger.info(f"\nSaved model status results to {benchmark_status_csv}")
 
         logger.info("\n=========================================================")
         logger.info("=========== Models/EPs latency (accumulated)  ===========")
@@ -218,7 +218,7 @@ def main():
             pretty_print(pp, model_to_latency)
 
             output_latency(model_to_latency, os.path.join(path, benchmark_latency_csv))
-            logger.info("\nSaved model latency results to {}".format(benchmark_latency_csv))
+            logger.info(f"\nSaved model latency results to {benchmark_latency_csv}")
 
     logger.info("\n===========================================")
     logger.info("=========== System information  ===========")
@@ -227,7 +227,7 @@ def main():
     pretty_print(pp, info)
     logger.info("\n")
     output_specs(info, os.path.join(path, specs_csv))
-    logger.info("\nSaved hardware specs to {}".format(specs_csv))
+    logger.info(f"\nSaved hardware specs to {specs_csv}")
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ def test_rocblas_gemm_all_cases(dtype, transa, transb, m, n, k):
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
 def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
-    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    wrapper_name = f"CKGemm_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
 
 
@@ -92,7 +92,7 @@ def test_ck_gemm_bert_cases(dtype, transa, transb, m, n, k):
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
 def test_gemm_tunable_bert_cases(dtype, transa, transb, m, n, k):
-    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    wrapper_name = f"GemmTunable_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, m, n, k)
 
 
@@ -109,7 +109,7 @@ def test_rocblas_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
 def test_ck_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
-    wrapper_name = "CKGemm_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    wrapper_name = f"CKGemm_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 256, 128, 384, alpha=alpha, beta=beta)
 
 
@@ -117,7 +117,7 @@ def test_ck_gemm_alpha_beta(dtype, transa, transb, alpha, beta):
 @pytest.mark.parametrize("transa, transb", all_transabs)
 @pytest.mark.parametrize("dtype", dtypes)
 def test_gemm_tunable_alpha_beta(dtype, transa, transb, alpha, beta):
-    wrapper_name = "GemmTunable_{}_{}".format(dtype_to_suffix(dtype), transab_to_suffix((transa, transb)))
+    wrapper_name = f"GemmTunable_{dtype_to_suffix(dtype)}_{transab_to_suffix((transa, transb))}"
     _test_gemm(getattr(ke, wrapper_name), dtype, transa, transb, 128, 512, 384, alpha=alpha, beta=beta)
 
 

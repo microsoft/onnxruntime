@@ -70,8 +70,8 @@ import onnxruntime as rt
 
 sess = rt.InferenceSession("logreg_iris.onnx", providers=rt.get_available_providers())
 
-print("input name='{}' and shape={}".format(sess.get_inputs()[0].name, sess.get_inputs()[0].shape))
-print("output name='{}' and shape={}".format(sess.get_outputs()[0].name, sess.get_outputs()[0].shape))
+print(f"input name='{sess.get_inputs()[0].name}' and shape={sess.get_inputs()[0].shape}")
+print(f"output name='{sess.get_outputs()[0].name}' and shape={sess.get_outputs()[0].shape}")
 
 ##################################
 # We compute the predictions.
@@ -119,7 +119,7 @@ def speed(inst, number=10, repeat=20):
     raw = numpy.array(timer.repeat(repeat, number=number))
     ave = raw.sum() / len(raw) / number
     mi, ma = raw.min() / number, raw.max() / number
-    print("Average %1.3g min=%1.3g max=%1.3g" % (ave, mi, ma))
+    print(f"Average {ave:1.3g} min={mi:1.3g} max={ma:1.3g}")
     return ave
 
 

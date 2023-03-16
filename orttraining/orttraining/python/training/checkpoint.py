@@ -1,12 +1,13 @@
+import os
+import tempfile
+import warnings
+from enum import Enum
+
 import numpy as np
 import onnx
-import os
 import torch
-import warnings
-import tempfile
-from enum import Enum
-from . import _checkpoint_storage, _utils
 
+from . import _checkpoint_storage, _utils
 
 ################################################################################
 # Experimental Checkpoint APIs
@@ -65,7 +66,7 @@ def experimental_load_state_dict(ort_trainer, state_dict, strict=False):
         if name in cur_initializers_names:
             new_initializers[name] = state_dict[name].numpy()
         elif strict:
-            raise RuntimeError("Checkpoint tensor: {} is not present in the model.".format(name))
+            raise RuntimeError(f"Checkpoint tensor: {name} is not present in the model.")
 
     ort_trainer._update_onnx_model_initializers(new_initializers)
 
@@ -241,7 +242,7 @@ def _aggregate_model_states(
                 model_state_key,
                 model_state_value,
                 state_dict[model][full_precision],
-                "Value mismatch for model state {}".format(model_state_key),
+                f"Value mismatch for model state {model_state_key}",
             )
 
 
@@ -283,7 +284,7 @@ def _aggregate_optimizer_states(rank_state_dict, sharded_states_original_dims, s
                     optimizer_key,
                     optimizer_value,
                     state_dict[optimizer][model_state_key],
-                    "Value mismatch for model state {} and optimizer state {}".format(model_state_key, optimizer_key),
+                    f"Value mismatch for model state {model_state_key} and optimizer state {optimizer_key}",
                 )
 
 
@@ -429,25 +430,25 @@ def _aggregate_over_ranks(
         else:
             assert (
                 loaded_mixed_precision == rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
-            ), "Mixed precision state mismatch among checkpoint files. File: {}".format(path)
+            ), f"Mixed precision state mismatch among checkpoint files. File: {path}"
         if loaded_world_size is None:
             loaded_world_size = rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
         else:
             assert (
                 loaded_world_size == rank_state_dict[_utils.state_dict_trainer_options_key()][world_size]
-            ), "World size state mismatch among checkpoint files. File: {}".format(path)
+            ), f"World size state mismatch among checkpoint files. File: {path}"
         if loaded_zero_stage is None:
             loaded_zero_stage = rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
         else:
             assert (
                 loaded_zero_stage == rank_state_dict[_utils.state_dict_trainer_options_key()][zero_stage]
-            ), "Zero stage mismatch among checkpoint files. File: {}".format(path)
+            ), f"Zero stage mismatch among checkpoint files. File: {path}"
         if loaded_optimizer_name is None:
             loaded_optimizer_name = rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
         else:
             assert (
                 loaded_optimizer_name == rank_state_dict[_utils.state_dict_trainer_options_key()][optimizer_name]
-            ), "Optimizer name mismatch among checkpoint files. File: {}".format(path)
+            ), f"Optimizer name mismatch among checkpoint files. File: {path}"
 
         # aggregate all model states
         _aggregate_model_states(rank_state_dict, sharded_states_original_dims, state_dict, loaded_mixed_precision, mode)
@@ -657,9 +658,8 @@ def _split_state_dict(state_dict):
     return split_sd
 
 
-class _CombineZeroCheckpoint(object):
+class _CombineZeroCheckpoint:
     def __init__(self, checkpoint_files, clean_state_dict=None):
-
         assert len(checkpoint_files) > 0, "No checkpoint files passed"
         self.checkpoint_files = checkpoint_files
         self.clean_state_dict = clean_state_dict

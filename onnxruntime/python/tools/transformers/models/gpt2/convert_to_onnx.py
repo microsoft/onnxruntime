@@ -496,7 +496,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
                 "nan_rate": parity_result["nan_rate"],
                 "top1_match_rate": parity_result["top1_match_rate"],
                 "top1_match_rate_per_run": parity_result["top1_match_rate_per_run"],
-                "onnx_size_in_MB": "{}".format(model_size_in_MB),
+                "onnx_size_in_MB": f"{model_size_in_MB}",
             }
             logger.info(f"result: {row}")
             result.update(row)

@@ -252,9 +252,9 @@ class AttentionForONNX(nn.Module):
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
         # For readability
-        static_kv = True if self.encoder_decoder_attention else False
-        has_layer_state = True if layer_state is not None else False
-        use_past_cache = True if use_past else False
+        static_kv = bool(self.encoder_decoder_attention)
+        has_layer_state = layer_state is not None
+        use_past_cache = bool(use_past)
 
         q_weight = self.q_proj.weight.transpose(0, 1)
         q_weight = q_weight.reshape(self.embed_dim, self.embed_dim)

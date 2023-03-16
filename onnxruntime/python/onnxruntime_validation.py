@@ -67,7 +67,7 @@ def validate_build_package_info():
 
     has_ortmodule = False
     try:
-        from onnxruntime.training.ortmodule import ORTModule  # noqa
+        from onnxruntime.training.ortmodule import ORTModule
 
         has_ortmodule = True
     except ImportError:
@@ -102,7 +102,7 @@ def validate_build_package_info():
 
             try:
                 from .build_and_package_info import cuda_version
-            except:  # noqa
+            except Exception:
                 pass
 
             if cuda_version:
@@ -110,7 +110,7 @@ def validate_build_package_info():
                 # when the build environment has none or multiple libraries installed
                 try:
                     from .build_and_package_info import cudart_version
-                except:  # noqa
+                except Exception:
                     warnings.warn("WARNING: failed to get cudart_version from onnxruntime build info.")
                     cudart_version = None
 
@@ -132,7 +132,7 @@ def validate_build_package_info():
                 # TODO: rcom
                 pass
 
-        except Exception as e:  # noqa
+        except Exception as e:
             warnings.warn("WARNING: failed to collect onnxruntime version and build info")
             print(e)
 

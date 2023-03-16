@@ -8,7 +8,7 @@ from flatbuffers.compat import import_numpy
 np = import_numpy()
 
 
-class TrtTable(object):
+class TrtTable:
     __slots__ = ["_tab"]
 
     @classmethod

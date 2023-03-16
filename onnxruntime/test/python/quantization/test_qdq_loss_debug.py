@@ -42,7 +42,7 @@ def construct_test_model1(test_model_path: str, activations_as_outputs=False):
       Relu2  Conv3
         |      |
       Conv2    |
-        \      /
+        \\      /
           Add
            |
           (AddOut)
@@ -258,7 +258,6 @@ class TestSaveActivations(unittest.TestCase):
             )
 
     def test_create_weight_matching_per_channel(self):
-
         # float model
         #         (input)
         #           |

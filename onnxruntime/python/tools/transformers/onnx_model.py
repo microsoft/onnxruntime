@@ -39,7 +39,7 @@ class OnnxModel:
             try:
                 if self.shape_infer_helper.infer(dynamic_axis_mapping):
                     return self.shape_infer_helper
-            except:  # noqa
+            except Exception:
                 self.enable_shape_infer = False  # disable shape inference to suppress same error message.
                 print("failed in shape inference", sys.exc_info()[0])
 
@@ -316,7 +316,7 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, List) or isinstance(path, Tuple)
+            assert isinstance(path, (List, Tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:

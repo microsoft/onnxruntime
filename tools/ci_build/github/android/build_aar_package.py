@@ -35,7 +35,7 @@ def _parse_build_settings(args):
     setting_file = args.build_settings_file.resolve()
 
     if not setting_file.is_file():
-        raise FileNotFoundError("Build config file {} is not a file.".format(setting_file))
+        raise FileNotFoundError(f"Build config file {setting_file} is not a file.")
 
     with open(setting_file) as f:
         build_settings_data = json.load(f)
@@ -99,7 +99,7 @@ def _build_aar(args):
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
         abi_build_dir = os.path.join(intermediates_dir, abi)
-        abi_build_command = base_build_command + ["--android_abi=" + abi, "--build_dir=" + abi_build_dir]
+        abi_build_command = [*base_build_command, "--android_abi=" + abi, "--build_dir=" + abi_build_dir]
 
         if ops_config_path is not None:
             abi_build_command += ["--include_ops_by_config=" + ops_config_path]
@@ -152,9 +152,9 @@ def _build_aar(args):
     ]
 
     # clean, build, and publish to a local directory
-    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["build"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["publish"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "build"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run([*gradle_command, "publish"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
 
 
 def parse_args():

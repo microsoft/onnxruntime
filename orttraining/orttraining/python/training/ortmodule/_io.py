@@ -66,7 +66,7 @@ class _OutputIdentityOp(torch.autograd.Function):
         return g.op("Identity", self)
 
 
-class _PrimitiveType(object):
+class _PrimitiveType:
     _primitive_types = {int, bool, float}
 
     @staticmethod
@@ -110,7 +110,7 @@ def flatten_kwargs(kwargs, device):
     return flattened_kwargs
 
 
-class _InputInfo(object):
+class _InputInfo:
     def __init__(
         self,
         names,
@@ -268,7 +268,7 @@ def deepcopy_model_input(*inputs, **kwargs):
     return sample_inputs_copy, sample_kwargs_copy
 
 
-class _TensorStub(object):
+class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
     __slots__ = ["name", "dtype", "shape", "shape_dims"]
@@ -302,7 +302,7 @@ class _TensorStub(object):
         if not other:
             return False
         elif not isinstance(other, _TensorStub):
-            raise NotImplemented("_TensorStub must only be compared to another _TensorStub instance!")
+            raise NotImplementedError("_TensorStub must only be compared to another _TensorStub instance!")
         elif self.name != other.name:
             return False
         elif self.dtype != other.dtype:
@@ -466,7 +466,7 @@ def _transform_output_to_flat_tuple(data):
 
 class _FlattenedModule(torch.nn.Module):
     def __init__(self, original_module):
-        super(_FlattenedModule, self).__init__()
+        super().__init__()
         self._original_module = original_module
 
         # Before `forward` is called, _ort_module must be assigned

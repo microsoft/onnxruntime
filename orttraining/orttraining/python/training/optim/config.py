@@ -1,7 +1,7 @@
 from enum import IntEnum, unique
 
 
-class _OptimizerConfig(object):
+class _OptimizerConfig:
     r"""Base class for optimizer configuration
 
     This class is not an optimizer, but a means to configure existing ones from ORT backend.
@@ -13,7 +13,7 @@ class _OptimizerConfig(object):
         name (str): optimizer names.
             One of 'SGDOptimizer', 'AdamOptimizer' and 'LambOptimizer'
         defaults (dict): optimizer parameters applied to all model parameters.
-                         Used when a parameter group doesn’t specify them.
+                         Used when a parameter group doesn`t specify them.
                          NOTE: Every optimizer must have 'lr'.
         params (list of dict, default is []): list of parameter groups.
             Each dict must contain a 'params' key with a list of names of model's parameter that will

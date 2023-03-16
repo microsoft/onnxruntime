@@ -149,7 +149,6 @@ def parse_arguments():
 
 # Create a dummy input for ONNX export.
 def get_dummy_inputs(config, export_padding, device):
-
     # When sequence length is multiple of windows size, there is no padding logic in ONNX graph
     sequence_length = config.attention_window[0] + 1 if export_padding else config.attention_window[0]
 
@@ -266,7 +265,7 @@ def my_longformer_self_attention_forward_4_3(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     return my_longformer_self_attention_forward_4(
         self,
         hidden_states,
@@ -288,7 +287,7 @@ def my_longformer_self_attention_forward_4_3_2(
     is_global_attn=None,
     output_attentions=False,
 ):
-    assert output_attentions == False
+    assert output_attentions is False
     assert layer_head_mask is None
     return my_longformer_self_attention_forward_4(
         self,

@@ -1,9 +1,8 @@
-import sys
 import os
+import sys
+
 import onnx
-from onnx import helper
-from onnx import TensorProto
-from onnx import OperatorSetIdProto
+from onnx import OperatorSetIdProto, TensorProto, helper
 
 # Edge that needs to be cut for the split.
 # If the edge is feeding into more than one nodes, and not all the nodes belong to the same cut,
@@ -287,7 +286,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         try:
             if i in identity_node_index:
                 del main_graph.graph.node[i]
-        except:
+        except Exception:
             print("error deleting identity node", i)
 
     all_visited_nodes = []
@@ -301,7 +300,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
         outputs0 = []
         while stack0:
             node = stack0.pop()
-            if not node in visited0:
+            if node not in visited0:
                 tranversed_node += 1
                 visited0.append(node)
                 all_visited_nodes.append(node)
@@ -338,7 +337,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.node[i]
                 else:
                     del main_graph.graph.node[i]
-            except:
+            except Exception:
                 print("error deleting node", i)
 
         for i in reversed(range(len(main_graph.graph.input))):
@@ -347,7 +346,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.input[i]
                 else:
                     del main_graph.graph.input[i]
-            except:
+            except Exception:
                 print("error deleting inputs", i)
 
         for i in reversed(range(len(main_graph.graph.output))):
@@ -356,7 +355,7 @@ def generate_subgraph(model, start_nodes, identity_node_list):
                     del subgraph.graph.output[i]
                 else:
                     del main_graph.graph.output[i]
-            except:
+            except Exception:
                 print("error deleting outputs ", i)
 
         print("model", str(model_count), " length ", len(subgraph.graph.node))

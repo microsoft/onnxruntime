@@ -107,7 +107,7 @@ def post_processing(outputs_path, outputs_path_other):
                 record[Path(filename).name.split(".")[0]] = diff
                 if_close[Path(filename).name.split(".")[0]] = numpy.allclose(array, array_other, rtol=1e-04, atol=1e-04)
 
-    results = [f"Node\tDiff\tClose"]
+    results = ["Node\tDiff\tClose"]
     for k, v in sorted(record.items(), key=lambda x: x[1], reverse=True):
         results.append(f"{k}\t{v}\t{if_close[k]}")
     for line in results:

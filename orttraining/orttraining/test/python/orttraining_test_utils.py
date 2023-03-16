@@ -200,7 +200,7 @@ def run_test(
     eval_batch = None
     if not use_new_api:
         model.train()
-    for epoch in range(epochs):
+    for _epoch in range(epochs):
         for step, batch in enumerate(dataloader):
             if eval_batch is None:
                 eval_batch = batch
@@ -214,13 +214,9 @@ def run_test(
 
             if batch_args_option == BatchArgsOption.List:
                 if not use_internal_get_lr_this_step:
-                    batch = batch + [
-                        learning_rate,
-                    ]
+                    batch = [*batch, learning_rate]
                 if not use_internal_loss_scaler and fp16:
-                    batch = batch + [
-                        loss_scale,
-                    ]
+                    batch = [*batch, loss_scale]
                 outputs = model.train_step(*batch)
             elif batch_args_option == BatchArgsOption.Dict:
                 args, kwargs = split_batch(batch, model_desc.inputs_, 0)

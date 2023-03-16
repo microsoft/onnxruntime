@@ -21,7 +21,7 @@ from .qdq_base_operator import QDQOperatorBase
 def is_B_transposed(gemm_node):
     transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]
     if len(transB_attribute):
-        return 0 < onnx.helper.get_attribute_value(transB_attribute[0])
+        return onnx.helper.get_attribute_value(transB_attribute[0]) > 0
 
     return False
 

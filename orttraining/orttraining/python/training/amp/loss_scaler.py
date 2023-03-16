@@ -1,4 +1,4 @@
-class LossScaler(object):
+class LossScaler:
     r"""Base class for implementing custom loss scaler strategies
 
     Once the scaler is configured, no user intervention is needed to update loss scale during training.

@@ -1,16 +1,15 @@
 # This test script is a modified version of Pytorch's tutorial.
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
+import argparse
 import os
 import sys
 import tempfile
-import torch
-import argparse
 
+import torch
 import torch.distributed as dist
+import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.optim as optim
-import torch.multiprocessing as mp
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 import onnxruntime
@@ -31,7 +30,7 @@ def cleanup():
 
 class ToyModel(nn.Module):
     def __init__(self):
-        super(ToyModel, self).__init__()
+        super().__init__()
         self.net1 = nn.Linear(10, 10)
         self.relu = nn.ReLU()
         self.net2 = nn.Linear(10, 5)
@@ -135,7 +134,7 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     elif rank == 3:
         assert torch.allclose(loss.cpu(), torch.FloatTensor([0.825118362903595]))
     else:
-        assert False
+        raise AssertionError()
 
     # Not necessary to use a dist.barrier() to guard the file deletion below
     # as the AllReduce ops in the backward pass of DDP already served as

@@ -4,12 +4,15 @@
 import dataclasses
 import logging
 import os
+import unittest
 from dataclasses import dataclass, field
 from typing import Dict, Optional
-import unittest
-import numpy as np
-from numpy.testing import assert_allclose
 
+import numpy as np
+import torch
+from numpy.testing import assert_allclose
+from orttraining_run_glue import verify_old_and_new_api_are_equal
+from orttraining_transformer_trainer import ORTTransformerTrainer
 from transformers import (
     AutoConfig,
     AutoModelForMultipleChoice,
@@ -20,16 +23,10 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
+from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import ORTTrainer, LossScaler, ModelDescription, IODescription
-
-from orttraining_transformer_trainer import ORTTransformerTrainer
-
-import torch
-
-from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
-from orttraining_run_glue import verify_old_and_new_api_are_equal
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +268,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
 
             result = trainer.evaluate()
 
-            logger.info("***** Eval results {} *****".format(data_args.task_name))
+            logger.info(f"***** Eval results {data_args.task_name} *****")
             for key, value in result.items():
                 logger.info("  %s = %s", key, value)
 

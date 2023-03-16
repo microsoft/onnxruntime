@@ -146,9 +146,9 @@ class FusionGptAttentionNoPast(Fusion):
         # fused into a SkipLayerNorm. This can happen if the shapes to the Add node are different.
         # So, keep the following check if SkipLayerNorm fusion is turned ON or OFF.
         if another_input is not None:
-            if not another_input in layernorm_before_attention.input:
+            if another_input not in layernorm_before_attention.input:
                 # match openai-gpt
-                if not another_input in layernorm_before_attention.output:
+                if another_input not in layernorm_before_attention.output:
                     logger.debug("Add and (Skip)LayerNormalization shall have one same input")
                     return
 

@@ -404,7 +404,7 @@ def test_torch(args, device) -> List[Dict[str, Any]]:
 
 
 def test_latency(args, device) -> List[Dict[str, Any]]:
-    if "onnxruntime" == args.engine:
+    if args.engine == "onnxruntime":
         return test_ort(args, device)
 
     return test_torch(args, device)
@@ -647,7 +647,7 @@ def run_tests(
                         latency_results = launch_test(args)
                     except KeyboardInterrupt as exc:
                         raise RuntimeError("Keyboard Interrupted") from exc
-                    except:
+                    except Exception:
                         traceback.print_exc()
                         continue
 

@@ -87,7 +87,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertTrue("CPUExecutionProvider" in onnxrt.get_available_providers())
         # get_all_providers() returns the default EP order from highest to lowest.
         # CPUExecutionProvider should always be last.
-        self.assertTrue("CPUExecutionProvider" == onnxrt.get_all_providers()[-1])
+        self.assertTrue(onnxrt.get_all_providers()[-1] == "CPUExecutionProvider")
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
         self.assertTrue("CPUExecutionProvider" in sess.get_providers())
 
@@ -749,7 +749,7 @@ class TestInferenceSession(unittest.TestCase):
         with self.assertRaises(ValueError) as context:
             sess = onnxrt.InferenceSession(get_name("logicaland.onnx"), providers=onnxrt.get_available_providers())
             a = np.array([[True, True], [False, False]], dtype=bool)
-            res = sess.run([], {"input:0": a})
+            sess.run([], {"input:0": a})
 
         self.assertTrue("Model requires 2 inputs" in str(context.exception))
 
@@ -820,7 +820,7 @@ class TestInferenceSession(unittest.TestCase):
         a = np.array([[True, True], [False, False]], dtype=bool)
         b = np.array([[True, False], [True, False]], dtype=bool)
 
-        res = sess.run([], {"input1:0": a, "input:0": b})
+        sess.run([], {"input1:0": a, "input:0": b})
 
     def testSequenceLength(self):
         sess = onnxrt.InferenceSession(get_name("sequence_length.onnx"), providers=available_providers_without_tvm)
@@ -1031,22 +1031,22 @@ class TestInferenceSession(unittest.TestCase):
         if sys.platform.startswith("win"):
             shared_library = "custom_op_library.dll"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         elif sys.platform.startswith("darwin"):
             shared_library = "libcustom_op_library.dylib"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         else:
             shared_library = "./libcustom_op_library.so"
             if not os.path.exists(shared_library):
-                raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+                raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_op_library", "custom_op_test.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         so1 = onnxrt.SessionOptions()
         so1.register_custom_ops_library(shared_library)
@@ -1070,19 +1070,18 @@ class TestInferenceSession(unittest.TestCase):
         so2 = so1
 
         # Model loading successfully indicates that the custom op node could be resolved successfully
-        sess2 = onnxrt.InferenceSession(
+        onnxrt.InferenceSession(
             custom_op_model, sess_options=so2, providers=available_providers_without_tvm_and_tensorrt
         )
 
         # Create another SessionOptions instance with the same shared library referenced
         so3 = onnxrt.SessionOptions()
         so3.register_custom_ops_library(shared_library)
-        sess3 = onnxrt.InferenceSession(
+        onnxrt.InferenceSession(
             custom_op_model, sess_options=so3, providers=available_providers_without_tvm_and_tensorrt
         )
 
     def testOrtValue(self):
-
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
@@ -1245,7 +1244,7 @@ class TestInferenceSession(unittest.TestCase):
     def testRunModelWithCudaCopyStream(self):
         available_providers = onnxrt.get_available_providers()
 
-        if not "CUDAExecutionProvider" in available_providers:
+        if "CUDAExecutionProvider" not in available_providers:
             print("Skipping testRunModelWithCudaCopyStream when CUDA is not available")
         else:
             # adapted from issue #4829 for a race condition when copy is not on default stream
@@ -1261,8 +1260,8 @@ class TestInferenceSession(unittest.TestCase):
 
             session = onnxrt.InferenceSession(get_name("issue4829.onnx"), providers=providers)
             shape = np.array([2, 2], dtype=np.int64)
-            for iteration in range(100000):
-                result = session.run(output_names=["output"], input_feed={"shape": shape})
+            for _iteration in range(100000):
+                session.run(output_names=["output"], input_feed={"shape": shape})
 
     def testSharedAllocatorUsingCreateAndRegisterAllocator(self):
         # Create and register an arena based allocator
@@ -1401,12 +1400,12 @@ class TestInferenceSession(unittest.TestCase):
             shared_library = "./libtest_execution_provider.so"
 
         if not os.path.exists(shared_library):
-            raise FileNotFoundError("Unable to find '{0}'".format(shared_library))
+            raise FileNotFoundError(f"Unable to find '{shared_library}'")
 
         this = os.path.dirname(__file__)
         custom_op_model = os.path.join(this, "testdata", "custom_execution_provider_library", "test_model.onnx")
         if not os.path.exists(custom_op_model):
-            raise FileNotFoundError("Unable to find '{0}'".format(custom_op_model))
+            raise FileNotFoundError(f"Unable to find '{custom_op_model}'")
 
         session_options = C.get_default_session_options()
         sess = C.InferenceSession(session_options, custom_op_model, True, True)

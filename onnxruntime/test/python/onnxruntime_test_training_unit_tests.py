@@ -26,7 +26,7 @@ class TestTrainingDropout(unittest.TestCase):
 
         class TwoDropoutNet(nn.Module):
             def __init__(self, drop_prb_1, drop_prb_2, dim_size):
-                super(TwoDropoutNet, self).__init__()
+                super().__init__()
                 self.drop_1 = nn.Dropout(drop_prb_1)
                 self.drop_2 = nn.Dropout(drop_prb_2)
                 self.weight_1 = torch.nn.Parameter(torch.zeros(dim_size, dtype=torch.float32))

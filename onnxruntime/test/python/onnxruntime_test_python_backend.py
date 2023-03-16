@@ -24,8 +24,8 @@ class TestBackend(unittest.TestCase):
     def testAllocationPlanWorksWithOnlyExecutePathToFetchesOption(self):
         """
                (inp0)  (inp1)
-                  |  \/  |
-                  |  /\  |
+                  |  \\/  |
+                  |  /\\  |
                  Add    Sub
                   |      |
               (tsor0)  (tsor1)

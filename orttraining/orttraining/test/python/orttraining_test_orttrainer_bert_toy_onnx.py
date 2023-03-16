@@ -1,33 +1,26 @@
 import copy
-from functools import partial
 import inspect
 import math
-import numpy as np
-from numpy.testing import assert_allclose
-import onnx
 import os
+from functools import partial
+
+import _test_commons
+import _test_helpers
+import numpy as np
+import onnx
 import pytest
 import torch
+from numpy.testing import assert_allclose
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import (
-    IODescription as Legacy_IODescription,
-    ModelDescription as Legacy_ModelDescription,
-    LossScaler as Legacy_LossScaler,
-    ORTTrainer as Legacy_ORTTrainer,
-)
-from onnxruntime.training import (
-    _utils,
-    amp,
-    checkpoint,
-    optim,
-    orttrainer,
-    TrainStepInfo,
-    model_desc_validation as md_val,
-    orttrainer_options as orttrainer_options,
-)
-
-import _test_commons, _test_helpers
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
+from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
+from onnxruntime.training import TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################
 # Helper functions ############################################################
@@ -191,7 +184,6 @@ def legacy_ort_trainer_learning_rate_description():
 
 
 def legacy_bert_model_description():
-    vocab_size = 30528
     input_ids_desc = Legacy_IODescription("input_ids", ["batch", "max_seq_len_in_batch"])
     segment_ids_desc = Legacy_IODescription("segment_ids", ["batch", "max_seq_len_in_batch"])
     input_mask_desc = Legacy_IODescription("input_mask", ["batch", "max_seq_len_in_batch"])
@@ -242,7 +234,7 @@ def testToyBERTModelBasicTraining(dynamic_shape):
     opts = orttrainer.ORTTrainerOptions({})
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
-    for i in range(10):
+    for _i in range(10):
         sample_input = generate_random_input_from_model_desc(model_desc)
         output = trainer.train_step(*sample_input)
         assert output.shape == torch.Size([])
@@ -264,7 +256,7 @@ def testToyBERTDeterministicCheck(expected_losses):
     # Modeling
     model_desc = bert_model_description()
     model = load_bert_onnx_model()
-    params = optimizer_parameters(model)
+    optimizer_parameters(model)
     optim_config = optim.LambConfig()
     opts = orttrainer.ORTTrainerOptions(
         {
@@ -692,7 +684,7 @@ def testToyBertCheckpointFrozenWeights():
     trainer = orttrainer.ORTTrainer(model, model_desc, optim_config, options=opts)
 
     # Train for a few steps
-    for i in range(total_steps):
+    for _i in range(total_steps):
         sample_input = generate_random_input_from_model_desc(model_desc, seed)
         _ = trainer.train_step(*sample_input)
     sample_input = generate_random_input_from_model_desc(model_desc, seed + total_steps + 1)
@@ -727,7 +719,6 @@ def testToyBertCheckpointFrozenWeights():
 )
 def testToyBertLoadOptimState(optimizer, mixedprecision_enabled):
     # Common setup
-    rtol = 1e-03
     device = "cuda"
     seed = 1
     torch.manual_seed(seed)

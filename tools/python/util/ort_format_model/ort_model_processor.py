@@ -20,7 +20,7 @@ class OrtFormatModelProcessor:
         self._file = open(model_path, "rb").read()
         self._buffer = bytearray(self._file)
         if not fbs.InferenceSession.InferenceSession.InferenceSessionBufferHasIdentifier(self._buffer, 0):
-            raise RuntimeError("File does not appear to be a valid ORT format model: '{}'".format(model_path))
+            raise RuntimeError(f"File does not appear to be a valid ORT format model: '{model_path}'")
         self._model = fbs.InferenceSession.InferenceSession.GetRootAsInferenceSession(self._buffer, 0).Model()
         self._op_type_processors = processors
 

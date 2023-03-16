@@ -64,7 +64,7 @@ def test_gelu():
 
     class GeLUModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(GeLUModel, self).__init__()
+            super().__init__()
             self.relu = GeLUFunction1.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -116,7 +116,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
 
     class GeLUModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(GeLUModel, self).__init__()
+            super().__init__()
             self.relu = GeLUFunction2.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -174,7 +174,7 @@ def test_GeLU_multiple_forward_runs():
 
     class GeLUModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(GeLUModel, self).__init__()
+            super().__init__()
             self.relu = GeLUFunction3.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -213,7 +213,7 @@ def test_MegatronF():
 
     class MegatronFModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(MegatronFModel, self).__init__()
+            super().__init__()
             self.copy_ = MegatronFFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -261,7 +261,7 @@ def test_ScalarAndTuple():
 
     class ScalarAndTupleModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(ScalarAndTupleModel, self).__init__()
+            super().__init__()
             self.activation = ScalarAndTupleFunction.apply
             self.linear_a = torch.nn.Linear(output_size, output_size)
             self.linear_b = torch.nn.Linear(output_size, output_size)
@@ -308,7 +308,7 @@ def test_ScalarAndTupleReordered():
 
     class ScalarAndTupleReorderedModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(ScalarAndTupleReorderedModel, self).__init__()
+            super().__init__()
             self.activation = ScalarAndTupleReorderedFunction.apply
             self.linear_a = torch.nn.Linear(output_size, output_size)
             self.linear_b = torch.nn.Linear(output_size, output_size)
@@ -354,7 +354,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
 
     class InplaceUpdateInputAsOutputNotRequireGradModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputNotRequireGradModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputAsOutputNotRequireGradFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -400,7 +400,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
 
     class InplaceUpdateInputNotAsOutputNotRequireGradModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputNotAsOutputNotRequireGradModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputNotAsOutputNotRequireGradFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -451,7 +451,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
 
     class InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputAsOutputNotRequireGradWithMarkDirtyFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -497,7 +497,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
 
     class InplaceUpdateInputAsOutputRequireGradModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputRequireGradModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputAsOutputRequireGradFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -551,7 +551,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
 
     class InplaceUpdateInputNotAsOutputRequireGradModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputNotAsOutputRequireGradModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputNotAsOutputRequireGradFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -605,7 +605,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
 
     class InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(InplaceUpdateInputAsOutputRequireGradWithMarkDirtyModel, self).__init__()
+            super().__init__()
             self.inplace_op = InplaceUpdateInputAsOutputRequireGradWithMarkDirtyFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -643,12 +643,11 @@ def test_EvalTest():
 
         @staticmethod
         def backward(ctx, grad_output):
-            x = ctx.saved_tensors
             return None
 
     class EvalTestModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(EvalTestModel, self).__init__()
+            super().__init__()
             self.custom_fn = EvalTestFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -713,7 +712,7 @@ def test_TwoOutputFunction():
 
     class TwoOutputModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(TwoOutputModel, self).__init__()
+            super().__init__()
             self.fun = TwoOutputFunction1.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -742,7 +741,7 @@ def test_TwoOutputFunction():
 def test_InnerModuleCall():
     class InnerModel(torch.nn.Module):
         def __init__(self, dim, device):
-            super(InnerModel, self).__init__()
+            super().__init__()
             self.bias = Parameter(torch.FloatTensor([1.0] * dim).to(device))
 
         def forward(self, x):
@@ -774,7 +773,7 @@ def test_InnerModuleCall():
 
     class OuterModel(torch.nn.Module):
         def __init__(self, dim, device, use_ort):
-            super(OuterModel, self).__init__()
+            super().__init__()
             self.fun = OuterFunction.apply
             self.dim = dim
             self.device = device
@@ -833,7 +832,7 @@ def test_Share_Input():
 
     class TwoOutputModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(TwoOutputModel, self).__init__()
+            super().__init__()
             self.fun = TwoOutputFunction2.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -888,7 +887,7 @@ def test_MultipleStream_InForwardFunction():
 
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(MultipleStreamModel, self).__init__()
+            super().__init__()
             self.relu = MultipleStreamFunction1.apply
 
         def forward(self, model_input):
@@ -935,7 +934,7 @@ def test_NonDefaultStream_InForwardFunction1():
 
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(MultipleStreamModel, self).__init__()
+            super().__init__()
             self.relu = MultipleStreamFunction2.apply
 
         def forward(self, model_input):
@@ -977,7 +976,7 @@ def test_NonDefaultStream_InForwardFunction2():
 
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(MultipleStreamModel, self).__init__()
+            super().__init__()
             self.relu = MultipleStreamFunction3.apply
 
         def forward(self, model_input):
@@ -1031,7 +1030,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
 
     class MultipleStreamModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(MultipleStreamModel, self).__init__()
+            super().__init__()
             self.relu = MultipleStreamFunction4.apply
 
         def forward(self, model_input):
@@ -1073,7 +1072,7 @@ def test_non_differentiable_autograd_function():
     class Foo(torch.nn.Module):
         # Module calling non-differentiable function.
         def __init__(self):
-            super(Foo, self).__init__()
+            super().__init__()
             self._linear = torch.nn.Linear(2, 3)
 
         def forward(self, x):
@@ -1112,7 +1111,7 @@ def test_checkpoint_function():
     class A(torch.nn.Module):
         # A supported module.
         def __init__(self):
-            super(A, self).__init__()
+            super().__init__()
             self.l1 = torch.nn.Linear(2, 2)
 
         def forward(self, x):
@@ -1123,7 +1122,7 @@ def test_checkpoint_function():
         # uses gradient-checkpointing. However, its two sub-module's
         # are exportable, so ORTModule should be used to compute them.
         def __init__(self):
-            super(B, self).__init__()
+            super().__init__()
             self.l1 = torch.nn.Linear(2, 2)
             self.a = A()
 
@@ -1176,12 +1175,11 @@ def test_skipped_autograd_function():
 
         @staticmethod
         def backward(ctx, grad_output):
-            x = ctx.saved_tensors
             return None
 
     class TestSkippedModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(TestSkippedModel, self).__init__()
+            super().__init__()
             self.custom_fn = TestSkippedFunction.apply
             self.bias = Parameter(torch.empty(output_size, device=torch.cuda.current_device(), dtype=torch.float))
 
@@ -1251,7 +1249,7 @@ def test_pythonop_training_mode():
 
     class TestModel(torch.nn.Module):
         def __init__(self, output_size):
-            super(TestModel, self).__init__()
+            super().__init__()
             self.custom_fn = TestFunction.apply
             self.bias = Parameter(torch.empty(output_size, dtype=torch.float))
 

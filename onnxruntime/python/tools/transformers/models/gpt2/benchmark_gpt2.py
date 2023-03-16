@@ -404,8 +404,8 @@ def main(args):
                             "onnxruntime_latency": f"{ort_latency:.2f}",
                         }
                         csv_writer.writerow(row)
-                    except:
-                        logger.error(f"Exception", exc_info=True)
+                    except Exception:
+                        logger.error("Exception", exc_info=True)
                         return None
 
     logger.info(f"Results are saved to file {csv_filename}")

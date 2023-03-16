@@ -68,12 +68,12 @@ def main():
         log.info("No container registry will be used")
 
     full_image_name = (
-        "{}.azurecr.io/{}:latest".format(args.container_registry, args.repository)
+        f"{args.container_registry}.azurecr.io/{args.repository}:latest"
         if use_container_registry
-        else "{}:latest".format(args.repository)
+        else f"{args.repository}:latest"
     )
 
-    log.info("Image: {}".format(full_image_name))
+    log.info(f"Image: {full_image_name}")
 
     dst_deps_file = Path(args.context) / "scripts" / "deps.txt"
     # The docker file may provide a special deps.txt in its docker context dir and uses that one.
@@ -86,7 +86,7 @@ def main():
         manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
         dest = Path(args.context) / "build_scripts"
         if dest.exists():
-            log.info("Deleting: {}".format(str(dest)))
+            log.info(f"Deleting: {str(dest)}")
             shutil.rmtree(str(dest))
         shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
         src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")

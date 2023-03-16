@@ -19,7 +19,7 @@ class OrtOpTests(unittest.TestCase):
     def test_aten_embedding(self):
         class NeuralNetEmbedding(torch.nn.Module):
             def __init__(self, num_embeddings, embedding_dim, hidden_size):
-                super(NeuralNetEmbedding, self).__init__()
+                super().__init__()
                 self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim)
                 self.linear = torch.nn.Linear(embedding_dim, hidden_size)
 
@@ -56,7 +56,7 @@ class OrtOpTests(unittest.TestCase):
                     attr = node.attribute.add()
                     attr.name = "operator"
                     attr.type = 3
-                    attr.s = "embedding".encode()
+                    attr.s = b"embedding"
                     exported_model.graph.node.append(
                         helper.make_node(
                             "Constant",

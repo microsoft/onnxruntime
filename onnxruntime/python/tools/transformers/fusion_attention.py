@@ -454,7 +454,7 @@ class FusionAttention(Fusion):
                 return
 
         other_inputs = []
-        for i, input in enumerate(start_node.input):
+        for _i, input in enumerate(start_node.input):
             if input not in output_name_to_node:
                 continue
 

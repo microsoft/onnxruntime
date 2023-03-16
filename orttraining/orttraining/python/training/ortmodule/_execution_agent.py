@@ -81,7 +81,7 @@ class InferenceAgent:
         return ExecutionAgentOutput(ortvalues)
 
 
-class TrainingAgent(object):
+class TrainingAgent:
     """
     This is the main class used to run an ORTModule model training.
     """

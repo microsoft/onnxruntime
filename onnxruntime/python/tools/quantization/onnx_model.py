@@ -393,16 +393,10 @@ class ONNXModel:
         self.remove_initializers(ununsed_weights)
 
     def is_graph_output(self, output_name):
-        for output in self.model.graph.output:
-            if output.name == output_name:
-                return True
-        return False
+        return any(output.name == output_name for output in self.model.graph.output)
 
     def is_graph_input(self, tensor_name: str) -> bool:
-        for input in self.model.graph.input:
-            if input.name == tensor_name:
-                return True
-        return False
+        return any(input.name == tensor_name for input in self.model.graph.input)
 
     # TODO:use OnnxModel.graph_topological_sort(self.model.graph) from transformers.onnx_model
     # Currently it breaks Openvino/Linux training gpu pipeline so hold off for 1.8 release

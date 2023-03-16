@@ -61,12 +61,12 @@ class Gpt2Metric:
             for key in sorted(self.seq_len_latency.keys()):
                 average = statistics.mean(self.seq_len_latency[key]) * 1000.0
                 if key == 0:
-                    print("\t{}:         \t{:.2f} ms".format(key, average))
+                    print(f"\t{key}:         \t{average:.2f} ms")
                 else:
                     print("\t[{}, {}]:\t{:.2f} ms".format(2**key, 2 ** (key + 1) - 1, average))
                 total += average * len(self.seq_len_latency[key])
                 count += len(self.seq_len_latency[key])
-            print("Average Latency: {:.2f} ms".format(total / count))
+            print(f"Average Latency: {total / count:.2f} ms")
 
     def diff_logits(self, baseline_logits, treatment_logits, is_empty_past: bool):
         diff = (baseline_logits - treatment_logits).abs().max()
@@ -130,7 +130,6 @@ class Gpt2Tester:
         top_k=20,
         top_k_required_order=False,
     ):
-
         self.batch_size = input_ids.shape[0]
         self.input_length = input_ids.shape[1]
         self.n_layer = num_layer
@@ -151,7 +150,7 @@ class Gpt2Tester:
             0,
             hidden_size // num_attention_heads,
         ]
-        for i in range(num_layer):
+        for _i in range(num_layer):
             empty_past = torch.empty(past_shape).type(torch.float16 if is_fp16 else torch.float32)
             self.past.append(empty_past.to(device))
 
@@ -190,15 +189,15 @@ class Gpt2Tester:
             add_tensor(input_tensors, self.past[i], "past_" + str(i))
 
         for i, tensor in enumerate(input_tensors):
-            with open(os.path.join(path, "input_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"input_{i}.pb"), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         output_names = [output.name for output in session.get_outputs()]
-        for i, name in enumerate(output_names):
+        for i, _name in enumerate(output_names):
             tensor = numpy_helper.from_array(
                 output[i] if isinstance(output[i], numpy.ndarray) else output[i].clone().cpu().numpy()
             )
-            with open(os.path.join(path, "output_{}.pb".format(i)), "wb") as f:
+            with open(os.path.join(path, f"output_{i}.pb"), "wb") as f:
                 f.write(tensor.SerializeToString())
 
         print(f"Test data saved to directory {path}")
@@ -462,7 +461,10 @@ class Gpt2Tester:
                     )
                     Gpt2Helper.auto_increase_buffer_size(output_buffers, output_shapes)
 
-                    (onnx_io_output, avg_latency_ms,) = Gpt2Helper.onnxruntime_inference_with_binded_io(
+                    (
+                        onnx_io_output,
+                        avg_latency_ms,
+                    ) = Gpt2Helper.onnxruntime_inference_with_binded_io(
                         session,
                         onnx_io_runner.get_inputs(),
                         output_buffers,

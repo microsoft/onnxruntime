@@ -94,7 +94,7 @@ def assemble_objc_pod_package(
         print("Warning: staging directory already exists", file=sys.stderr)
 
     # copy the necessary files to the staging directory
-    copy_repo_relative_to_dir([license_file] + source_files + test_source_files + test_resource_files, staging_dir)
+    copy_repo_relative_to_dir([license_file, *source_files, *test_source_files, *test_resource_files], staging_dir)
 
     # generate the podspec file from the template
 

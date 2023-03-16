@@ -15,13 +15,7 @@ data_dir = "test_data_set_0"
 def SaveTensorProto(file_path, variable, data, name):
     # ONNX input shape always has sequence axis as the first dimension, if sequence axis exists
     if len(variable.dynamic_axes) == 2:
-        data = data.transpose(
-            (
-                1,
-                0,
-            )
-            + tuple(range(2, len(data.shape)))
-        )
+        data = data.transpose((1, 0, *tuple(range(2, len(data.shape)))))
     tp = numpy_helper.from_array(data, name if name else variable.uid)
     onnx.save_tensor(tp, file_path)
 
@@ -31,7 +25,7 @@ def SaveData(test_data_dir, prefix, variables, data_list, name_replacements=None
         data_list = [data_list]
     for (i, d), v in zip(enumerate(data_list), variables):
         SaveTensorProto(
-            os.path.join(test_data_dir, "{0}_{1}.pb".format(prefix, i)),
+            os.path.join(test_data_dir, f"{prefix}_{i}.pb"),
             v,
             d,
             name_replacements[v.uid] if name_replacements else None,

@@ -1,4 +1,5 @@
 import os
+
 import torch
 
 
@@ -42,9 +43,8 @@ def _split_state_dict(state_dict):
     return split_sd
 
 
-class CombineZeroCheckpoint(object):
+class CombineZeroCheckpoint:
     def __init__(self, checkpoint_files, clean_state_dict=None):
-
         assert len(checkpoint_files) > 0, "No checkpoint files passed"
         self.checkpoint_files = checkpoint_files
         self.clean_state_dict = clean_state_dict

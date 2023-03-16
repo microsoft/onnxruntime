@@ -140,7 +140,7 @@ def main():
     elif args.cmd == "pprint":
         tuning_results = None
         try:
-            tuning_results = json.load(open(args.json_or_onnx, "r"))
+            tuning_results = json.load(open(args.json_or_onnx))
         except Exception:
             # it might be an onnx file otherwise, try it latter
             pass

@@ -1,11 +1,10 @@
 ### Be noted: this script is developed against the model exported from Megatron GPT2 Pretraining script.
 
 import sys
-import onnx
-from onnx import helper, shape_inference
-from onnx import TensorProto
+
 import numpy as np
-from onnx import numpy_helper
+import onnx
+from onnx import TensorProto, helper, numpy_helper, shape_inference
 
 if len(sys.argv) < 2:
     print("Please give model path...")
@@ -112,7 +111,7 @@ def process_concat(model):
                 skip = True
             input_nodes.append(concat_input_node)
 
-        if skip == True:
+        if skip is True:
             continue
 
         # figure out target shape
@@ -129,7 +128,7 @@ def process_concat(model):
                 data = numpy_helper.to_array(attr[0].t)
                 shape.append(np.asscalar(data))
 
-        print("concat node: %s, new_shape is: %s" % (node.name, shape))
+        print(f"concat node: {node.name}, new_shape is: {shape}")
 
         # find out the nodes need to be deleted.
         fuse_nodes = find_all_fused_nodes(model, node)

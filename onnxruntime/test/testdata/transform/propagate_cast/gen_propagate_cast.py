@@ -29,9 +29,7 @@ def save(model_path, nodes, inputs, outputs, initializers):
 
 
 def gen_fuse_back2back_casts(model_path):
-
-    for (type1, type2) in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
-
+    for type1, type2 in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
         nodes = [
             helper.make_node("MatMul", ["input_0", "input_1"], ["product"], "MatMul_0"),
             helper.make_node("Cast", ["product"], ["product_cast"], "Cast_0", to=type1),
@@ -64,8 +62,7 @@ def gen_fuse_back2back_casts(model_path):
 
 
 def gen_fuse_sibling_casts(model_path):
-
-    for (type1, type2) in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
+    for type1, type2 in list(itertools.product([TensorProto.FLOAT, TensorProto.FLOAT16], repeat=2)):
         input_type = (
             type2 if type1 != type2 else (TensorProto.FLOAT16 if type1 == TensorProto.FLOAT else TensorProto.FLOAT)
         )

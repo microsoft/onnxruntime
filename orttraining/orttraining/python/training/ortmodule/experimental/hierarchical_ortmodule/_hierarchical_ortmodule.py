@@ -32,7 +32,7 @@ class _IteratedORTModule(torch.nn.Module):
     """
 
     def __init__(self, module, count, log_level, save_onnx, onnx_prefix):
-        super(_IteratedORTModule, self).__init__()
+        super().__init__()
         assert count > 1
         self._count = count
         self._it = count - 1
@@ -90,7 +90,7 @@ class HierarchicalORTModule(torch.nn.Module):
 
     def __init__(self, module, debug_options=None):
         self._initialized = False
-        super(HierarchicalORTModule, self).__init__()
+        super().__init__()
         self._original_module = module
         self._log_level = debug_options.logging.log_level if debug_options else LogLevel.ERROR
         self._save_onnx = debug_options.save_onnx_models.save if debug_options else False

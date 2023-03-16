@@ -426,7 +426,7 @@ class Gpt2Helper:
 
         # GPT2Model outputs last_state; GPT2LMHeadModel outputs logits (prediction_scores)
         assert outputs[0].shape[2] == config.vocab_size or outputs[0].shape[2] == config.hidden_size
-        output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state"] + present_names
+        output_names = ["logits" if outputs[0].shape[2] == config.vocab_size else "last_state", *present_names]
 
         # Shape of input tensors:
         #    input_ids: (batch_size, seq_len)
@@ -647,7 +647,7 @@ class Gpt2Helper:
     @staticmethod
     def onnxruntime_inference(ort_session, inputs: Gpt2Inputs, total_runs: int = 0):
         """Run inference of ONNX model, and returns average latency in ms when total_runs > 0 besides outputs."""
-        logger.debug(f"start onnxruntime_inference")
+        logger.debug("start onnxruntime_inference")
 
         ort_inputs = {"input_ids": numpy.ascontiguousarray(inputs.input_ids.cpu().numpy())}
 
@@ -715,7 +715,7 @@ class Gpt2Helper:
         include_copy_output_latency: bool = False,
     ):
         """Inference with IO binding. Returns outputs, and optional latency when total_runs > 0."""
-        logger.debug(f"start onnxruntime_inference_with_binded_io")
+        logger.debug("start onnxruntime_inference_with_binded_io")
 
         # Bind inputs and outputs to onnxruntime session
         io_binding = Gpt2Helper.prepare_io_binding(
@@ -888,8 +888,7 @@ class Gpt2Helper:
 
         if max_abs_diff_list:
             result = {
-                f"max_diff_percentile_{p}": "{:.5f}".format(numpy.percentile(max_abs_diff_list, p))
-                for p in [50, 90, 95, 99]
+                f"max_diff_percentile_{p}": f"{numpy.percentile(max_abs_diff_list, p):.5f}" for p in [50, 90, 95, 99]
             }
         else:
             result = {f"max_diff_percentile_{p}": "nan" for p in [50, 90, 95, 99]}

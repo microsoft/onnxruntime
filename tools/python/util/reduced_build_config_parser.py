@@ -5,10 +5,10 @@ import os
 
 # Check if the flatbuffers module is available. If not we cannot handle type reduction information in the config.
 try:
-    import flatbuffers  # noqa
+    import flatbuffers
 
     have_flatbuffers = True
-    from .ort_format_model import GloballyAllowedTypesOpTypeImplFilter, OperatorTypeUsageManager  # noqa
+    from .ort_format_model import GloballyAllowedTypesOpTypeImplFilter, OperatorTypeUsageManager
 except ImportError:
     have_flatbuffers = False
 
@@ -82,7 +82,7 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
     """
 
     if not os.path.isfile(config_file):
-        raise ValueError("Configuration file {} does not exist".format(config_file))
+        raise ValueError(f"Configuration file {config_file} does not exist")
 
     # only enable type reduction when flatbuffers is available
     enable_type_reduction = enable_type_reduction and have_flatbuffers
@@ -112,12 +112,12 @@ def parse_config(config_file: str, enable_type_reduction: bool = False):
 
         return False
 
-    with open(config_file, "r") as config:
+    with open(config_file) as config:
         for line in [orig_line.strip() for orig_line in config.readlines()]:
             if process_non_op_line(line):
                 continue
 
-            domain, opset_str, operators_str = [segment.strip() for segment in line.split(";")]
+            domain, opset_str, operators_str = (segment.strip() for segment in line.split(";"))
             opsets = [int(s) for s in opset_str.split(",")]
 
             # any type reduction information is serialized json that starts/ends with { and }.

@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 
-class Enabler(object):
+class Enabler:
     def __init__(self):
         self._state = False
 
@@ -30,9 +30,9 @@ class Enabler(object):
 
 custom_autograd_function_enabler = Enabler()
 
+
 # Legacy API to enable the custom autograd, keep its name with default value for compatibility.
 def enable_custom_autograd_support(to_enable=True):
-
     import atexit
 
     from torch.onnx import register_custom_op_symbolic, unregister_custom_op_symbolic
@@ -66,7 +66,7 @@ def enable_custom_autograd_support(to_enable=True):
             # This is for the latest Pytorch nightly after this commit:
             # https://github.com/pytorch/pytorch/commit/11bc435622e6b7207bbf37ed1aafe999e1f296ec
             register_custom_op_symbolic("prim::PythonOp", _export, 1)
-        except:
+        except Exception:
             # This applies to Pytorch 1.9 and 1.9.1.
             register_custom_op_symbolic("::prim_PythonOp", _export, 1)
 
@@ -78,7 +78,7 @@ def enable_custom_autograd_support(to_enable=True):
             # This is for the latest Pytorch nightly after this commit:
             # https://github.com/pytorch/pytorch/commit/11bc435622e6b7207bbf37ed1aafe999e1f296ec
             unregister_custom_op_symbolic("prim::PythonOp", 1)
-        except:
+        except Exception:
             # This applies to Pytorch 1.9 and 1.9.1.
             unregister_custom_op_symbolic("::prim_PythonOp", 1)
 

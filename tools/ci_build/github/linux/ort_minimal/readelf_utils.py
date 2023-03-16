@@ -39,7 +39,7 @@ def get_section_sizes(binary_path, readelf_path, dump_to_file=None):
         section_sizes[name] = size
 
         if dump_to_file:
-            print("{}:{}".format(name, size), file=dump_to_file)
+            print(f"{name}:{size}", file=dump_to_file)
 
     return section_sizes
 
@@ -109,12 +109,12 @@ def main():
     if args.base_binary_path:
         diffs = diff_sections_total_size(args.base_binary_path, args.binary_path, args.readelf_path)
         for key, value in diffs.items():
-            print("{}:{}".format(key, value), file=out_file)
+            print(f"{key}:{value}", file=out_file)
     else:
         section_sizes = get_section_sizes(args.binary_path, args.readelf_path, out_file)
         filesize = os.path.getsize(args.binary_path)
-        print("Sections total:{}".format(sum(section_sizes.values())), file=out_file)
-        print("File size:{}".format(filesize), file=out_file)
+        print(f"Sections total:{sum(section_sizes.values())}", file=out_file)
+        print(f"File size:{filesize}", file=out_file)
 
     if args.write_to:
         out_file.close()

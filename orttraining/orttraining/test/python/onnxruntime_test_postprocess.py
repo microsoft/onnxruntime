@@ -47,7 +47,7 @@ class Test_PostPasses(unittest.TestCase):
             _extra_postprocess=_extra_postprocess,
         )
 
-        train_output = model.train_step(*inputs)
+        model.train_step(*inputs)
         return model.onnx_model_
 
     def count_all_nodes(self, model):
@@ -78,12 +78,12 @@ class Test_PostPasses(unittest.TestCase):
         res = os.path.join(data, name)
         if os.path.exists(res):
             return res
-        raise FileNotFoundError("Unable to find '{0}' or '{1}' or '{2}'".format(name, rel, res))
+        raise FileNotFoundError(f"Unable to find '{name}' or '{rel}' or '{res}'")
 
     def test_layer_norm(self):
         class LayerNormNet(nn.Module):
             def __init__(self, target):
-                super(LayerNormNet, self).__init__()
+                super().__init__()
                 self.ln_1 = nn.LayerNorm(10)
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
@@ -117,7 +117,7 @@ class Test_PostPasses(unittest.TestCase):
     def test_expand(self):
         class ExpandNet(nn.Module):
             def __init__(self, target):
-                super(ExpandNet, self).__init__()
+                super().__init__()
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
                 self.linear = torch.nn.Linear(2, 2)
@@ -213,9 +213,7 @@ class Test_PostPasses(unittest.TestCase):
             batch = b
             break
         learning_rate = torch.tensor([1.00e00]).to(device)
-        inputs = batch + [
-            learning_rate,
-        ]
+        inputs = [*batch, learning_rate]
 
         onnx_model = self.get_onnx_model(model, model_desc, inputs, device, _extra_postprocess=postprocess_model)
 
@@ -261,7 +259,7 @@ class Test_PostPasses(unittest.TestCase):
 
         class MultiAdd(nn.Module):
             def __init__(self, target):
-                super(MultiAdd, self).__init__()
+                super().__init__()
                 self.loss = nn.CrossEntropyLoss()
                 self.target = target
                 self.linear = torch.nn.Linear(2, 2, bias=False)

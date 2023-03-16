@@ -13,7 +13,6 @@ from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, 
 
 from onnxruntime.training import ortmodule
 
-
 # Mapping from pytorch scalar type to onnx scalar type.
 _CAST_PYTORCH_TO_ONNX = {
     "Byte": torch.onnx.TensorProtoDataType.UINT8,
@@ -174,7 +173,7 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     )
     indices_shape = _get_tensor_sizes(indices)
     if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes(indices_shape + [_get_tensor_dim_size(weight, 1)])
+        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
         output.setType(output_type)
     return output
 
