@@ -167,6 +167,21 @@ cudnnDataType_t CudnnTensor::GetDataType<uint8_t>() {
 }
 
 template <>
+cudnnDataType_t CudnnTensor::GetDataType<int32_t>() {
+  return CUDNN_DATA_INT32;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<uint32_t>() {
+  return CUDNN_DATA_UINT8x4;
+}
+
+template <>
+cudnnDataType_t CudnnTensor::GetDataType<int64_t>() {
+  return CUDNN_DATA_INT64;
+}
+
+template <>
 const float Consts<float>::One = 1;
 
 template <>
@@ -196,6 +211,24 @@ const uint8_t Consts<uint8_t>::Zero = 0;
 
 template <>
 const uint8_t Consts<uint8_t>::One = 1;
+
+template <>
+const int32_t Consts<int32_t>::Zero = 0;
+
+template <>
+const int32_t Consts<int32_t>::One = 1;
+
+template <>
+const uint32_t Consts<uint32_t>::Zero = 0;
+
+template <>
+const uint32_t Consts<uint32_t>::One = 1;
+template <>
+
+const int64_t Consts<int64_t>::Zero = 0;
+
+template <>
+const int64_t Consts<int64_t>::One = 1;
 
 }  // namespace cuda
 }  // namespace onnxruntime

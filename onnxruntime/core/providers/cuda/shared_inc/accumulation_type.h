@@ -20,7 +20,10 @@ template <>
 struct AccumulationType<double> { using type = double; };
 template <>
 struct AccumulationType<BFloat16> { using type = float; };
-
+template <>
+struct AccumulationType<int32_t> { using type = int32_t; };
+template <>
+struct AccumulationType<int64_t> { using type = int64_t; };
 template <typename T>
 using AccumulationType_t = typename AccumulationType<T>::type;
 

@@ -15,11 +15,11 @@ namespace ReductionOps {
 // Implementation that holds the core logic of reduction op processing
 // `input_shape_override` is the input shape for compute purposes (if provided)
 
-template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES>
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices = CUDNN_REDUCE_TENSOR_NO_INDICES, bool calculate_log = false, bool calculate_sqt = false, bool log_sum_exp = false, bool fast_reduction = false>
 std::unique_ptr<Tensor> ReduceCompute(const CUDAExecutionProvider& cuda_ep, cudnnReduceTensorOp_t cudnn_reduce_op, AllocatorPtr allocator,
                                       const Tensor& input, gsl::span<const int64_t> axes,
-                                      bool keep_dims, bool calculate_log, bool calculate_sqt, bool log_sum_exp,
-                                      bool fast_reduction, Stream* stream, const TensorShape* input_shape_override = nullptr);
+                                      bool keep_dims,
+                                      Stream* stream, const TensorShape* input_shape_override = nullptr);
 
 }  // namespace ReductionOps
 
@@ -35,18 +35,14 @@ struct PrepareReduceMetadata {
   TensorShapeVector output_dims_cudnn;
 };
 
-template <bool allow_multi_axes>
+template <bool allow_multi_axes, bool calculate_log = false, bool calculate_sqt = false, bool log_sum_exp = false, bool fast_reduction = false>
 class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes> {
  protected:
   ReduceKernel(
       const OpKernelInfo& info,
       optional<int64_t> keep_dims_override = {})
       : CudaKernel(info),
-        ReduceKernelBase<allow_multi_axes>(info, keep_dims_override),
-        calculate_log_(false),
-        calculate_sqt_(false),
-        log_sum_exp_(false),
-        fast_reduction_(false) {
+        ReduceKernelBase<allow_multi_axes>(info, keep_dims_override) {
     cuda_ep_ = static_cast<const CUDAExecutionProvider*>(info.GetExecutionProvider());
   }
 
@@ -74,13 +70,12 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
   using ReduceKernelBase<allow_multi_axes>::keepdims_;
   using ReduceKernelBase<allow_multi_axes>::noop_with_empty_axes_;
 
-  bool calculate_log_;
-  bool calculate_sqt_;
-  bool log_sum_exp_;
+  static constexpr bool calculate_log_ = calculate_log;
+  static constexpr bool calculate_sqt_ = calculate_sqt;
+  static constexpr bool log_sum_exp_ = log_sum_exp;
   // Indicates if this reduction can be delegated to our highly-optimized reduction kernels.
   // Those efficient kernels are defined/implemented in reduction_functions.h/.cu.
-  bool fast_reduction_;
-
+  static constexpr bool fast_reduction_ = fast_reduction;
   // We need to access to the CUDA EP instance to get the cudnn handle
   const CUDAExecutionProvider* cuda_ep_;
 };
@@ -136,10 +131,9 @@ class ReduceMax final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceMean final : public ReduceKernel<true> {
+class ReduceMean final : public ReduceKernel<true, false, false, false, true> {
  public:
-  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    fast_reduction_ = true;
+  ReduceMean(const OpKernelInfo& info) : ReduceKernel<true, false, false, false, true>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -168,10 +162,9 @@ class ReduceProd final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceSum final : public ReduceKernel<true> {
+class ReduceSum final : public ReduceKernel<true, false, false, false, true> {
  public:
-  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    fast_reduction_ = true;
+  ReduceSum(const OpKernelInfo& info) : ReduceKernel<true, false, false, false, true>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -180,11 +173,9 @@ class ReduceSum final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceLogSum final : public ReduceKernel<true> {
+class ReduceLogSum final : public ReduceKernel<true, true, false, false, true> {
  public:
-  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    ReduceKernel<true>::calculate_log_ = true;
-    fast_reduction_ = true;
+  ReduceLogSum(const OpKernelInfo& info) : ReduceKernel<true, true, false, false, true>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -193,11 +184,9 @@ class ReduceLogSum final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceSumSquare final : public ReduceKernel<true> {
+class ReduceSumSquare final : public ReduceKernel<true, false, true, false, true> {
  public:
-  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    ReduceKernel<true>::calculate_sqt_ = true;
-    fast_reduction_ = true;
+  ReduceSumSquare(const OpKernelInfo& info) : ReduceKernel<true, false, true, false, true>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -206,10 +195,9 @@ class ReduceSumSquare final : public ReduceKernel<true> {
 };
 
 template <typename T>
-class ReduceLogSumExp final : public ReduceKernel<true> {
+class ReduceLogSumExp final : public ReduceKernel<true, false, false, true> {
  public:
-  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true>(info) {
-    ReduceKernel<true>::log_sum_exp_ = true;
+  ReduceLogSumExp(const OpKernelInfo& info) : ReduceKernel<true, false, false, true>(info) {
   }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
@@ -223,11 +211,11 @@ Status PrepareForReduce(const Tensor* X,
                         PrepareReduceMetadata& prepare_reduce_metadata,
                         const TensorShape* input_shape_override = nullptr);
 
-template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices>
+template <typename T, cudnnReduceTensorIndices_t ReduceTensorIndices, bool calculate_log, bool calculate_sqt, bool log_sum_exp>
 Status ReduceComputeCore(const CUDAExecutionProvider& cuda_ep, const Tensor& input, PrepareReduceMetadata& prepare_reduce_metadata,
                          /*out*/ Tensor& output, cudnnReduceTensorOp_t cudnn_reduce_op,
                          gsl::span<const int64_t> axes,
-                         bool calculate_log, bool calculate_sqt, bool log_sum_exp, bool fast_reduction,
+                         bool fast_reduction,
                          Stream* ort_stream,
                          const TensorShape* input_shape_override = nullptr);
 

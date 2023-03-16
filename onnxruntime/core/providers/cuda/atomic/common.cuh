@@ -21,12 +21,21 @@
 #include "cuda_fp16.h"
 #include "cuda_runtime.h"
 #include "core/framework/float16.h"
+#include "device_atomic_functions.h"
 
 namespace onnxruntime {
 namespace cuda {
 
 __device__ __forceinline__ void atomic_add(float *address, float value) {
     atomicAdd(address, value);
+}
+
+__device__ __forceinline__ void atomic_add(int32_t *address, int32_t value) {
+    atomicAdd(address, value);
+}
+
+__device__ __forceinline__ void atomic_add(int64_t *address, int64_t value) {
+  atomicAdd(reinterpret_cast<unsigned long long*>(address), *reinterpret_cast<unsigned long long*>(&value));
 }
 
 __device__ __forceinline__ void atomic_add(double *address, double value) {

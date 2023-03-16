@@ -80,10 +80,9 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                   bool keep_dims, AllocatorPtr allocator,
                                   const TensorShape* input_shape_override,
                                   concurrency::ThreadPool* /*tp*/, void* einsum_cuda_assets) {
-  return cuda::ReductionOps::ReduceCompute<T>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
+  return cuda::ReductionOps::ReduceCompute<T, CUDNN_REDUCE_TENSOR_NO_INDICES, false, false, false, true>(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_, CUDNN_REDUCE_TENSOR_ADD,
                                               allocator, input, reduce_axes,
-                                              keep_dims, false, false, false,
-                                              true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
+                                              keep_dims, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
                                               input_shape_override);
 }
 
