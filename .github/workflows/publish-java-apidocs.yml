@@ -41,7 +41,6 @@ jobs:
           path: site
       - name: Debug
         run: |
-          ls
           ls site
       - name: Move Java docs into site
         run: |
