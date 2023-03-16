@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 //
 // Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
@@ -385,18 +385,6 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
-// v >= 0
-int32_t round_up_power_of_2(int32_t v) {
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v |= v >> 8;
-  v |= v >> 16;
-  v++;
-  return v;
-}
-
 template <typename T, typename U, typename V, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
@@ -417,8 +405,9 @@ void HostApplyLayerNorm(
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
-  int32_t threads_per_block = std::max(round_up_power_of_2(std::min(prop.maxThreadsPerBlock, n2)), warp_size);
-  dim3 threads(warp_size, threads_per_block / warp_size, 1);
+  int32_t threads_y = std::min(std::min(prop.maxThreadsPerBlock, n2 + warp_size - 1) / warp_size,
+                               prop.maxThreadsDim[1]);
+  dim3 threads(warp_size, threads_y, 1);
 #ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100
   threads.y = 1;
