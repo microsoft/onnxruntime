@@ -39,6 +39,10 @@ jobs:
           name: github-pages
           workflow: jekyll-gh-pages.yml
           path: site
+      - name: Debug
+        run: |
+          ls
+          ls site
       - name: Move Java docs into site
         run: |
           rm -rf site/docs/api/java
