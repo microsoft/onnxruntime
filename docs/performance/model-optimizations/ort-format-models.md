@@ -60,7 +60,7 @@ Each '.onnx' file is loaded, optimized, and saved in ORT format as a file with t
 
    If [type reduction](#enable-type-reduction) is enabled (ONNX Runtime version 1.7 or later) the configuration file will also include the required types for each operator, and is called 'required_operators_and_types.config'.
 
-   If you are using a pre-built ONNX Runtime [iOS](../install/index.md#install-on-ios), [Android](../install/index.md#install-on-android) or [web](../install/index.md#javascript-installs) package, the build configuration file is not used and can be ignored.
+   If you are using a pre-built ONNX Runtime [iOS](../../install/index.md#install-on-ios), [Android](../../install/index.md#install-on-android) or [web](../../install/index.md#javascript-installs) package, the build configuration file is not used and can be ignored.
 
 ### Script location
 
@@ -156,7 +156,7 @@ python -m onnxruntime.tools.convert_onnx_models_to_ort --help
 
 **Since ONNX Runtime 1.11**
 
-Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./../performance/ort-format-model-runtime-optimization.md) for more information.
+Specify whether the converted model will be fully optimized ("Fixed") or have saved runtime optimizations ("Runtime"). Both types of models are produced by default. See [here](./ort-format-model-runtime-optimization.md) for more information.
 
 This replaces the [optimization level](#optimization-level) option from earlier ONNX Runtime versions.
 
@@ -206,7 +206,7 @@ python <ONNX Runtime repository root>/tools/python/convert_onnx_models_to_ort.py
 
 The API for executing ORT format models is the same as for ONNX models.
 
-See the [ONNX Runtime API documentation](../api) for details on individual API usage.
+See the [ONNX Runtime API documentation](../../api) for details on individual API usage.
 
 ### APIs by platform
 

@@ -7,12 +7,6 @@ nav_order: 4
 # Transformer Model Optimization Tool Overview
 {: .no_toc }
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
 While ONNX Runtime automatically applies most optimizations while loading transformer models, some of the latest optimizations that have not yet been integrated into ONNX Runtime. These additional optimizations can be applied using the [transformer optimization tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) to tune models for the best performance. This optimization tool provides an offline capability to optimize transformer models in scenarios where ONNX Runtime does not apply the optimization at load time.
 
 This tool can be helpful when:
