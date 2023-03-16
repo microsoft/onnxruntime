@@ -38,10 +38,43 @@ jobs:
           ./builddoc.sh /usr/bin ../.. ../../build
       - name: Log source commit
         run: git rev-parse --short HEAD > build/docs/inference/html/source-version.txt
-      - name: Deploy
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Download deployed site
+        uses: dawidd6/action-download-artifact@v2
         with:
-          branch: gh-pages
-          folder: build/docs/inference/html
-          target-folder: docs/api/python
-          clean: true
+          name: github-pages
+          workflow: jekyll-gh-pages.yml
+          path: site
+      - name: Unpack site
+        run: |
+          cd site
+          tar xvf artifact.tar
+      - name: Move Python docs into site
+        run: |
+          rm -rf site/docs/api/python
+          mv build/docs/inference/html site/docs/api/python
+      - name: Upload new site
+        uses: actions/upload-pages-artifact@v1
+        with:
+          name: github-pages
+          path: site
+
+  deploy:
+    # Add a dependency to the build job
+    needs: build
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    # Deploy to the github-pages environment
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    # Specify runner + deployment step
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
