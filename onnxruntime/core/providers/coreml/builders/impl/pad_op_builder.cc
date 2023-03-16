@@ -42,7 +42,7 @@ class PadOpBuilder : public BaseOpBuilder {
 // Helper function
 // Use axes initializer data if `axes` input provided or create default axes vector.
 static InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& initializers,
-                                                 const Node& node, size_t input_rank) {
+                                                 const Node& node, int64_t input_rank) {
   InlinedVector<int64_t> axes_tensor_data;
   const auto& input_defs = node.InputDefs();
 
@@ -141,7 +141,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
   }
 
   if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
-    LOGS(logger, VERBOSE) << "Input with a 0 for a dimension is not supported";
+    LOGS(logger, VERBOSE) << "Cases that input dimensions with value of 0 is not supported";
     return false;
   }
 
@@ -186,6 +186,15 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       }
     }
 
+    // Check if provided, `axes` input must be a constant initializer
+    if (input_defs.size() > 3) {
+      const auto axes_initializer_it = initializers.find(input_defs[3]->Name());
+      if (axes_initializer_it == initializers.end()) {
+        LOGS(logger, VERBOSE) << "if provided, `axes` input is required to a constant initializer";
+        return false;
+      }
+    }
+
     // Check that only supports padding on last two dimensions - [H,W].
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = onnxruntime::narrow<int64_t>(input_shape.size());
@@ -203,6 +212,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       }
     }
   }
+
   return true;
 }
 
