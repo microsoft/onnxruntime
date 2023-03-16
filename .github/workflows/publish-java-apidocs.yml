@@ -39,11 +39,10 @@ jobs:
           name: github-pages
           workflow: jekyll-gh-pages.yml
           path: site
-      - name: Debug
+      - name: Unpack site
         run: |
-          ls
-          echo "ls site"
-          ls site
+          cd site
+          tar xvf artifact.tar
       - name: Move Java docs into site
         run: |
           rm -rf site/docs/api/java
