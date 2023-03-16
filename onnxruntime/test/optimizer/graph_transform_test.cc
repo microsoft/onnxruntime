@@ -4553,7 +4553,7 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_4) {
     Graph& graph = p_model->MainGraph();
 
     // assign the nodes. as LayerNormFusion happens in level 2 it can have EP specific logic
-    const ProviderType provider = ep_has_fp16_layernorm ? kCudaExecutionProvider : kCpuExecutionProvider;
+    const char* provider = ep_has_fp16_layernorm ? kCudaExecutionProvider : kCpuExecutionProvider;
     for (auto& node : graph.Nodes()) {
       node.SetExecutionProviderType(provider);
     }
