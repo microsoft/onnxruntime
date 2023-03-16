@@ -16,6 +16,7 @@ from onnxruntime.training import ortmodule
 
 from . import _logger
 from ._fallback import ORTModuleONNXModelException, wrap_exception
+from ._custom_op_symbolic_registry import pytorch_type_to_onnx
 
 # Some autograd.Function's shouldn't be exported as PythonOp.
 # If CheckpointFunction is exported as PythonOp, the checkpointed computation
@@ -50,7 +51,7 @@ def _full_name(klass):
     return module + "." + klass.__qualname__
 
 
-def _pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
+def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
     try:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
@@ -131,7 +132,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             if call_type == "d":
                 # Got a tensor variable.
                 tensor_args.append(arg)
-                scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
+                scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
                 input_tensor_types.append(scalar_type)
                 input_tensor_ranks.append(arg.type().dim())
             elif call_type == "c":
@@ -178,7 +179,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         output_tensor_ranks = []
         for arg in n.outputs():
             # Type of tensor's elements.
-            scalar_type = _pytorch_type_to_onnx(arg.type().scalarType())
+            scalar_type = pytorch_type_to_onnx(arg.type().scalarType())
             output_tensor_types.append(scalar_type)
             output_tensor_ranks.append(arg.type().dim())
 

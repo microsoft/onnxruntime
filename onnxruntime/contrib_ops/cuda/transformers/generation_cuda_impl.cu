@@ -320,33 +320,33 @@ void GetTempStorageSize(const T* d_keys_in,
                         bool is_descending,
                         size_t& temp_storage_bytes) {
   if (is_descending) {
-    cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
-                                                       temp_storage_bytes,
-                                                       d_keys_in,
-                                                       (T*)nullptr,
-                                                       d_values_in,
-                                                       (int*)nullptr,
-                                                       num_items,
-                                                       num_segments,
-                                                       d_offsets,
-                                                       d_offsets + 1,
-                                                       0,
-                                                       sizeof(T) * 8,
-                                                       stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairsDescending(nullptr,
+                                                                       temp_storage_bytes,
+                                                                       d_keys_in,
+                                                                       (T*)nullptr,
+                                                                       d_values_in,
+                                                                       (int*)nullptr,
+                                                                       num_items,
+                                                                       num_segments,
+                                                                       d_offsets,
+                                                                       d_offsets + 1,
+                                                                       0,
+                                                                       sizeof(T) * 8,
+                                                                       stream));
   } else {
-    cub::DeviceSegmentedRadixSort::SortPairs(nullptr,
-                                             temp_storage_bytes,
-                                             d_keys_in,
-                                             (T*)nullptr,
-                                             d_values_in,
-                                             (int*)nullptr,
-                                             num_items,
-                                             num_segments,
-                                             d_offsets,
-                                             d_offsets + 1,
-                                             0,
-                                             sizeof(T) * 8,
-                                             stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairs(nullptr,
+                                                             temp_storage_bytes,
+                                                             d_keys_in,
+                                                             (T*)nullptr,
+                                                             d_values_in,
+                                                             (int*)nullptr,
+                                                             num_items,
+                                                             num_segments,
+                                                             d_offsets,
+                                                             d_offsets + 1,
+                                                             0,
+                                                             sizeof(T) * 8,
+                                                             stream));
   }
 }
 
@@ -412,33 +412,33 @@ void LaunchSortPairs(void* d_temp_storage,
                      cudaStream_t stream,
                      bool is_descending) {
   if (is_descending) {
-    cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
-                                                       temp_storage_bytes,
-                                                       d_keys_in,
-                                                       d_keys_out,
-                                                       d_values_in,
-                                                       d_values_out,
-                                                       num_items,
-                                                       num_segments,
-                                                       d_offsets,
-                                                       d_offsets + 1,
-                                                       0,
-                                                       sizeof(T) * 8,
-                                                       stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairsDescending(d_temp_storage,
+                                                                       temp_storage_bytes,
+                                                                       d_keys_in,
+                                                                       d_keys_out,
+                                                                       d_values_in,
+                                                                       d_values_out,
+                                                                       num_items,
+                                                                       num_segments,
+                                                                       d_offsets,
+                                                                       d_offsets + 1,
+                                                                       0,
+                                                                       sizeof(T) * 8,
+                                                                       stream));
   } else {
-    cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage,
-                                             temp_storage_bytes,
-                                             d_keys_in,
-                                             d_keys_out,
-                                             d_values_in,
-                                             d_values_out,
-                                             num_items,
-                                             num_segments,
-                                             d_offsets,
-                                             d_offsets + 1,
-                                             0,
-                                             sizeof(T) * 8,
-                                             stream);
+    CUDA_CALL_THROW(cub::DeviceSegmentedRadixSort::SortPairs(d_temp_storage,
+                                                             temp_storage_bytes,
+                                                             d_keys_in,
+                                                             d_keys_out,
+                                                             d_values_in,
+                                                             d_values_out,
+                                                             num_items,
+                                                             num_segments,
+                                                             d_offsets,
+                                                             d_offsets + 1,
+                                                             0,
+                                                             sizeof(T) * 8,
+                                                             stream));
   }
 }
 
@@ -469,7 +469,7 @@ template void LaunchSortPairs(void* d_temp_storage,
 // A stateful callback functor that maintains a running prefix to be applied
 // during consecutive scan operations.
 struct BlockPrefixCallbackOp {
-  float running_total; // running prefix
+  float running_total;  // running prefix
 
   __device__ BlockPrefixCallbackOp(float running_total) : running_total(running_total) {}
   // Callback operator to be entered by the first warp of threads in the block.
@@ -721,9 +721,9 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                     cudaStream_t stream) {
   // Store the props in class variables
   int device;
-  cudaGetDevice(&device);
+  CUDA_CALL_THROW(cudaGetDevice(&device));
   cudaDeviceProp props;
-  cudaGetDeviceProperties(&props, device);
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&props, device));
 
   int numSM = props.multiProcessorCount;
   int maxThreads = props.maxThreadsPerBlock;
@@ -746,6 +746,65 @@ void TorchMultinomialKernelLauncher(float* d_input,
                                                 d_presence_mask);
 }
 
+__global__ void UpdateDecoderMaskedMultiheadAttentionCacheIndirectionKernel(int32_t* tgt_indir_cache,
+                                                                            const int32_t* src_indir_cache,
+                                                                            const int32_t* beam_ids,
+                                                                            int batch_size,
+                                                                            int beam_width,
+                                                                            int input_seq_length,
+                                                                            int max_seq_length,
+                                                                            int current_length) {
+  int time_step = threadIdx.x + blockIdx.x * blockDim.x;
+  int bb_id = threadIdx.y + blockIdx.y * blockDim.y;
+  const int batch_id = bb_id / beam_width;
+  const int beam_id = bb_id % beam_width;
+
+  if (bb_id >= beam_width * batch_size || time_step >= current_length) {
+    return;
+  }
+
+  const int src_beam = beam_ids[batch_id * beam_width + beam_id] % beam_width;
+
+  const int tgt_offset = batch_id * beam_width * max_seq_length + beam_id * max_seq_length + time_step;
+
+  if (time_step < input_seq_length) {
+    // For time steps that correspond to the input sequence,
+    // the beam that it comes from is always 0.
+    tgt_indir_cache[tgt_offset] = static_cast<int32_t>(0);
+  } else if (time_step == (current_length - 1)) {
+    // For the final (newly generated) time step,
+    // the beam that it comes from is always the beam that we
+    // are currently processing (i.e.) from this point on, these time-steps
+    // form the new beams.
+    tgt_indir_cache[tgt_offset] = static_cast<int32_t>(beam_id);
+  } else {
+    // For all other time-steps, we look up the source indirection, to
+    // see which beam it came from based on the `src_beam`.
+    const int src_offset = batch_id * beam_width * max_seq_length + src_beam * max_seq_length + time_step;
+    tgt_indir_cache[tgt_offset] = src_indir_cache[src_offset];
+  }
+}
+
+void UpdateDecoderMaskedMultiheadAttentionCacheIndirection(int32_t* tgt_indir_cache,
+                                                           const int32_t* src_indir_cache,
+                                                           const int32_t* beam_ids,
+                                                           int batch_size,
+                                                           int beam_width,
+                                                           int input_seq_length,
+                                                           int max_seq_length,
+                                                           int current_length,
+                                                           cudaStream_t stream) {
+  const dim3 block(32);
+  const dim3 grid((current_length + block.x - 1) / block.x, batch_size * beam_width);
+  UpdateDecoderMaskedMultiheadAttentionCacheIndirectionKernel<<<grid, block, 0, stream>>>(tgt_indir_cache,
+                                                                                          src_indir_cache,
+                                                                                          beam_ids,
+                                                                                          batch_size,
+                                                                                          beam_width,
+                                                                                          input_seq_length,
+                                                                                          max_seq_length,
+                                                                                          current_length);
+}
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
