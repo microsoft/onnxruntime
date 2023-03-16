@@ -412,18 +412,6 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
       positive_label_(positive_label),
       negative_label_(negative_label) {}
 
-  void get_max_weight(const InlinedVector<ScoreValue<ThresholdType>>& classes, int64_t& maxclass,
-                      ThresholdType& maxweight) const {
-    maxclass = -1;
-    maxweight = 0;
-    for (auto it = classes.cbegin(); it != classes.cend(); ++it) {
-      if (it->has_score && (maxclass == -1 || it->score > maxweight)) {
-        maxclass = (int64_t)(it - classes.cbegin());
-        maxweight = it->score;
-      }
-    }
-  }
-
   int64_t _set_score_binary(int& write_additional_scores,
                             const InlinedVector<ScoreValue<ThresholdType>>& classes) const {
     ORT_ENFORCE(classes.size() == 2 || classes.size() == 1);
@@ -498,21 +486,34 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
 
   void FinalizeScores(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                       OutputType* Z, int /*add_second_class*/, int64_t* Y = 0) const {
-    ThresholdType maxweight = 0;
-    int64_t maxclass = -1;
-
     int write_additional_scores = -1;
     if (this->n_targets_or_classes_ > 2) {
       // add base values
-      for (size_t k = 0; k < this->base_values_.size(); ++k) {
+      ThresholdType maxweight = 0;
+      size_t maxclass;
+      size_t k;
+      bool first = true;
+
+      for (k = 0; k < this->base_values_.size(); ++k) {
         if (!predictions[k].has_score) {
           predictions[k].has_score = 1;
           predictions[k].score = this->base_values_[k];
         } else {
           predictions[k].score += this->base_values_[k];
         }
+        if (first || predictions[k].score > maxweight) {
+          maxclass = k;
+          maxweight = predictions[k].score;
+          first = true;
+        }
       }
-      get_max_weight(predictions, maxclass, maxweight);
+      for (;k < predictions.size(); ++k) {
+        if (predictions[k].has_score && (first || predictions[k].score > maxweight)) {
+          maxclass = k;
+          maxweight = predictions[k].score;
+          first = true;
+        }
+      }
       *Y = class_labels_[onnxruntime::narrow<size_t>(maxclass)];
     } else {  // binary case
       ORT_ENFORCE(predictions.size() == 2);
