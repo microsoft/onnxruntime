@@ -74,7 +74,7 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         save(model, model_path)
 
-    def quantize_split_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_split_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "split_fp32.onnx"
         self.construct_model(model_fp32_path)

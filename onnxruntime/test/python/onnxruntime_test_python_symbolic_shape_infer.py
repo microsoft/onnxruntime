@@ -5,7 +5,7 @@ import os
 
 # -*- coding: UTF-8 -*-
 import onnx
-from onnx import AttributeProto, GraphProto, TensorProto, helper
+from onnx import AttributeProto, GraphProto, TensorProto, helper  # noqa: F401
 
 if os.path.exists(
     os.path.join(

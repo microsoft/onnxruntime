@@ -88,7 +88,7 @@ def onnx_compile(
                 "vision.roi_align": ["NHWC", "default"],
             }
             log.info("Use tuning file from ", ANSOR_TYPE, ": ", tuning_logfile)
-            with auto_scheduler.ApplyHistoryBest(tuning_logfile):
+            with auto_scheduler.ApplyHistoryBest(tuning_logfile):  # noqa: SIM117
                 with tvm.transform.PassContext(
                     opt_level=opt_level,
                     config={

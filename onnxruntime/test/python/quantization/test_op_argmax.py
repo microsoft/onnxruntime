@@ -94,7 +94,7 @@ class TestOpArgMax(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quantize_argmax_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_argmax_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "argmax_fp32.onnx"
 

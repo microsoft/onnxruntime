@@ -17,7 +17,7 @@ onnxruntime.set_seed(1)
 
 
 class TestTrainingDropout(unittest.TestCase):
-    def testTrainingAndEvalDropout(self):
+    def testTrainingAndEvalDropout(self):  # noqa: N802
         # Temporarily disable this test.
         # The graph below will trigger ORT
         # to sort backward graph before forward graph which gives incorrect result.

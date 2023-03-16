@@ -1108,10 +1108,10 @@ def create_session(model_path, providers, provider_options, session_options):
                 status = run_symbolic_shape_inference(model_path, new_model_path)
                 if not status[0]:  # symbolic shape inference error
                     e = status[1]
-                    raise Exception(e)
+                    raise Exception(e)  # noqa: B904
             return time_and_create_session(new_model_path, providers, provider_options, session_options)
         else:
-            raise Exception(e)
+            raise Exception(e)  # noqa: B904
 
 
 def calculate_gain(value, ep1, ep2):

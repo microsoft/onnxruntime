@@ -323,7 +323,7 @@ class BertOnnxModel(OnnxModel):
                 if parent_nodes is not None:
                     (
                         cast,
-                        constantOfShape,
+                        constantOfShape,  # noqa: N806
                         concat,
                         unsqueeze,
                         gather,

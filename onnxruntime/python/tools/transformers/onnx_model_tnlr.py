@@ -65,7 +65,7 @@ class FusionTnlrAttention(FusionAttention):
 
         # Sometimes weights and bias are stored in fp16
         if weight.data_type == 10:
-            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))
+            weight.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(weight).astype(np.float16), weight.name))  # noqa: F821
         self.model.add_initializer(weight, self.this_graph_name)
 
         bias = helper.make_tensor(
@@ -75,7 +75,7 @@ class FusionTnlrAttention(FusionAttention):
             vals=qkv_bias.flatten().tolist(),
         )
         if bias.data_type == 10:
-            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))
+            bias.CopyFrom(numpy_helper.from_array(NumpyHelper.to_array(bias).astype(np.float16), bias.name))  # noqa: F821
         self.model.add_initializer(bias, self.this_graph_name)
 
         attention_inputs = [

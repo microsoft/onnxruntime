@@ -166,7 +166,7 @@ def create_inputs(
     sequence_length=1,
     past_sequence_length=5,
     float16=False,
-    device=torch.device("cuda"),
+    device=torch.device("cuda"),  # noqa: B008
     padding_length=0,
 ):
     float_type = torch.float16 if float16 else torch.float32

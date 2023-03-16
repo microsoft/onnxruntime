@@ -127,7 +127,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         data_reader=None,
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QUInt8,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         if data_reader is not None:
             quantize_static(

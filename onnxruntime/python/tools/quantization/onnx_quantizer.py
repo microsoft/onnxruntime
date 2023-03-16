@@ -230,7 +230,7 @@ class ONNXQuantizer:
         self.fuse_dynamic_quant = True
         return opset_version
 
-    def has_QDQ_nodes(self):
+    def has_QDQ_nodes(self):  # noqa: N802
         """
         Detect if model already has QuantizeLinear or DequantizeLinear.
         """
@@ -357,7 +357,7 @@ class ONNXQuantizer:
             parameter nodes_list: new nodes are appended to this list.
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
-        qType = onnx_proto.TensorProto.INT8
+        qType = onnx_proto.TensorProto.INT8  # noqa: N806
 
         # Reduce min and Reduce max
         input_scale_name = input_name + "_scale"
@@ -440,7 +440,7 @@ class ONNXQuantizer:
             parameter nodes_list: new nodes are appended to this list.
             return: scale_name, zero_point_name, scale_shape, zero_point_shape.
         """
-        qType = onnx_proto.TensorProto.UINT8
+        qType = onnx_proto.TensorProto.UINT8  # noqa: N806
         # Reduce min and Reduce max
         input_scale_name = input_name + "_scale"
         input_zp_name = input_name + "_zero_point"

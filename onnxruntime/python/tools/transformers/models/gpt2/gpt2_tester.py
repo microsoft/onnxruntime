@@ -17,7 +17,7 @@ from gpt2_helper import Gpt2Helper, Gpt2Inputs
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision
+from benchmark_helper import Precision  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -289,9 +289,9 @@ class Gpt2Tester:
 
         # logits has shape (batch_size, seq_len, vocab_size)
         # last token logits has shape (batch_size, vocab_size)
-        lastTokenLogits = logits[:, -1]
+        lastTokenLogits = logits[:, -1]  # noqa: N806
         if top_k == 1:
-            generatedTokens = torch.argmax(lastTokenLogits, 1, True)
+            generatedTokens = torch.argmax(lastTokenLogits, 1, True)  # noqa: N806
             return generatedTokens
         else:
             topk = torch.argsort(lastTokenLogits, -1, descending=True)[:, :top_k]

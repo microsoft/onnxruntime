@@ -27,7 +27,7 @@ class OrtOpTests(unittest.TestCase):
                 embedding_result = self.embedding(input)
                 return embedding_result, self.linear(embedding_result)
 
-        N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128
+        N, num_embeddings, embedding_dim, hidden_size = 64, 32, 128, 128  # noqa: N806
         model = NeuralNetEmbedding(num_embeddings, embedding_dim, hidden_size)
 
         with torch.no_grad():

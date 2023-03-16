@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import numpy
 import torch

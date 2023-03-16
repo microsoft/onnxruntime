@@ -9,7 +9,7 @@ import os
 import unittest
 
 import packaging.version
-from onnx import ModelProto, helper, version
+from onnx import ModelProto, helper, version  # noqa: F401
 from onnx.backend.base import Backend
 from onnx.checker import check_model
 
@@ -29,7 +29,7 @@ class OnnxRuntimeBackend(Backend):
     Note: This is not the official Python API.
     """
 
-    allowReleasedOpsetsOnly = bool(os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1")
+    allowReleasedOpsetsOnly = bool(os.getenv("ALLOW_RELEASED_ONNX_OPSET_ONLY", "1") == "1")  # noqa: N815
 
     @classmethod
     def is_compatible(cls, model, device=None, **kwargs):

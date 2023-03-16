@@ -108,7 +108,7 @@ class TestOpResize(unittest.TestCase):
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_resize_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_resize_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "resize_fp32.onnx"
 

@@ -30,14 +30,14 @@ from transformers import AutoConfig
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import (
+from benchmark_helper import (  # noqa: E402
     Precision,
     create_onnxruntime_session,
     get_ort_environment_variables,
     prepare_environment,
     setup_logger,
 )
-from quantize_helper import QuantizeHelper
+from quantize_helper import QuantizeHelper  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -372,7 +372,7 @@ def main(argv=None, experiment_name: str = "", run_id: str = "0", csv_filename: 
         output_path = args.output
 
     logger.info(f"Output path: {output_path}")
-    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)
+    model_size_in_MB = int(get_onnx_model_size(output_path, args.use_external_data_format) / 1024 / 1024)  # noqa: N806
 
     session = create_onnxruntime_session(
         output_path, args.use_gpu, args.provider, enable_all_optimization=True, verbose=args.verbose

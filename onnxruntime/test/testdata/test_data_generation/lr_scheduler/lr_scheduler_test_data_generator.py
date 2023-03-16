@@ -96,7 +96,7 @@ def main():
 
         new_scheduler = WarmupLinearSchedule(new_adamw_optimizer, num_warmup_steps, num_training_steps)
         new_scheduler.load_state_dict(state_dict["lr_scheduler"])
-        for i in range(save_ckpt_step + 1, num_training_steps):
+        for i in range(save_ckpt_step + 1, num_training_steps):  # noqa: B007
             data.append([new_scheduler.last_epoch, new_scheduler.get_last_lr()])
             prediction = pt_model(input)
             loss = prediction.sum()

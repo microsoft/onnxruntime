@@ -26,7 +26,7 @@ from onnx_model import OnnxModel
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import get_ort_environment_variables, setup_logger
+from benchmark_helper import get_ort_environment_variables, setup_logger  # noqa: E402
 
 logger = logging.getLogger("")
 
@@ -150,7 +150,7 @@ def score(row):
     """Scoring function based on 3 metrics. The larger score is better."""
     latency_in_ms = get_latency(row)
     top1_match_rate = float(row["top1_match_rate"])
-    onnx_size_in_MB = float(row["onnx_size_in_MB"])
+    onnx_size_in_MB = float(row["onnx_size_in_MB"])  # noqa: N806
     # A simple scoring function: cost of 0.1ms latency ~ 0.1% match rate ~ 100MB size
     return top1_match_rate * 1000 - latency_in_ms * 10 - onnx_size_in_MB / 100
 
@@ -330,7 +330,7 @@ def run_candidate(
     task: ParityTask,
     args,
     last_matmul_node_name,
-    op_block_list=["FastGelu", "LayerNormalization"],
+    op_block_list=["FastGelu", "LayerNormalization"],  # noqa: B006
 ):
     parameters = get_mixed_precision_parameters(args, last_matmul_node_name, op_block_list)
     op_block_list_str = ",".join(sorted(op_block_list))

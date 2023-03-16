@@ -12,7 +12,7 @@ import onnx
 from onnx import TensorProto, helper
 from op_test_utils import TestDataFeeds, check_model_correctness, check_op_type_count, check_qtype_by_node_type
 
-from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static
+from onnxruntime.quantization import QuantFormat, QuantType, quantize_dynamic, quantize_static  # noqa: F401
 
 
 class TestOpGlobalAveragePool(unittest.TestCase):
@@ -79,7 +79,7 @@ class TestOpGlobalAveragePool(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quantize_gavgpool_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_gavgpool_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "gavg_pool_fp32.onnx"
         data_reader = self.input_feeds(1, {"input": [1, 8, 33, 33]})

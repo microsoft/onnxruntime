@@ -22,11 +22,11 @@ from transformers import GPT2Config, GPT2LMHeadModel, GPT2Model, TFGPT2Model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from benchmark_helper import Precision
-from float16 import float_to_float16_max_diff
-from io_binding_helper import IOBindingHelper
-from onnx_model import OnnxModel
-from torch_onnx_export_helper import torch_onnx_export
+from benchmark_helper import Precision  # noqa: E402
+from float16 import float_to_float16_max_diff  # noqa: E402
+from io_binding_helper import IOBindingHelper  # noqa: E402
+from onnx_model import OnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ class MyGPT2LMHeadModel(GPT2LMHeadModel):
         return MyGPT2Model.post_process(result, self.config.n_layer)
 
 
-class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):
+class MyGPT2LMHeadModel_NoPadding(GPT2LMHeadModel):  # noqa: N801
     """Here we wrap a class for Onnx model conversion for GPT2LMHeadModel with past state and no padding.
     When you always use batch_size=1 in inference, there is no padding in inputs. In such case, position_ids
     and attention_mask need no be in inputs.
@@ -551,7 +551,7 @@ class Gpt2Helper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: List[str] = [
+        op_block_list: List[str] = [  # noqa: B006
             "Add",
             "LayerNormalization",
             "SkipLayerNormalization",
@@ -987,7 +987,7 @@ class Gpt2Helper:
         model_class: str = "GPT2LMHeadModel",
         has_past=True,
         new_folder=False,
-        remove_existing=["raw", "fp32", "fp16", "int8"],
+        remove_existing=["raw", "fp32", "fp16", "int8"],  # noqa: B006
     ):
         """Build a  path name for given model based on given attributes."""
         model_name = model_name_or_path

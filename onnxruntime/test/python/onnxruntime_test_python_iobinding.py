@@ -101,8 +101,8 @@ class TestIOBinding(unittest.TestCase):
                     x = np.arange(8).reshape((-1, 2)).astype(dtype)
                     proto_dtype = NP_TYPE_TO_TENSOR_TYPE[x.dtype]
 
-                    X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])
-                    Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])
+                    X = helper.make_tensor_value_info("X", proto_dtype, [None, x.shape[1]])  # noqa: N806
+                    Y = helper.make_tensor_value_info("Y", proto_dtype, [None, x.shape[1]])  # noqa: N806
 
                     # inference
                     node_add = helper.make_node("Identity", ["X"], ["Y"])

@@ -64,7 +64,7 @@ def optimize_by_onnxruntime(
     use_gpu: bool = False,
     optimized_model_path: Optional[str] = None,
     opt_level: Optional[int] = 99,
-    disabled_optimizers=[],
+    disabled_optimizers=[],  # noqa: B006
     verbose=False,
 ) -> str:
     """

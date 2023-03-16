@@ -10,12 +10,12 @@
 import argparse
 import logging
 import os
-import re
+import re  # noqa: F401
 import sys
 import tempfile
-from collections import deque
+from collections import deque  # noqa: F401
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path  # noqa: F401
 from typing import List
 
 import numpy as np

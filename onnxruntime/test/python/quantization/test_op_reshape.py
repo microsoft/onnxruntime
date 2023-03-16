@@ -79,7 +79,7 @@ class TestOpReshape(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quantize_reshape_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_reshape_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "reshape_fp32.onnx"
 

@@ -148,7 +148,7 @@ class TestOpSqueezeUnsqueeze(unittest.TestCase):
         opset=13,
         activation_type=QuantType.QUInt8,
         weight_type=QuantType.QUInt8,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         np.random.seed(1)
 

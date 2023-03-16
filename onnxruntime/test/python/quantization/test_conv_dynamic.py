@@ -11,10 +11,10 @@ import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import (
-    TestDataFeeds,
+    TestDataFeeds,  # noqa: F401
     check_model_correctness,
     check_op_type_count,
-    check_op_type_order,
+    check_op_type_order,  # noqa: F401
     check_qtype_by_node_type,
 )
 
@@ -64,7 +64,7 @@ class TestONNXModel(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
         onnx.save(model, model_path)
 
-    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):
+    def dynamic_quant_conv_test(self, weight_type, extra_options={}, use_quant_config=False):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "conv_bias.fp32.onnx"
         self.construct_model(model_fp32_path)

@@ -81,7 +81,7 @@ def create_onnxruntime_session(
     num_threads=-1,
     enable_profiling=False,
     verbose=False,
-    provider_options={},  # map execution provider name to its option
+    provider_options={},  # map execution provider name to its option  # noqa: B006
 ):
     session = None
     try:
@@ -375,7 +375,7 @@ def inference_ort_with_io_binding(
     return result
 
 
-def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):
+def allocateOutputBuffers(output_buffers, output_buffer_max_sizes, device):  # noqa: N802
     # Allocate output tensors with the largest test size needed. So the allocated memory can be reused
     # for each test run.
 

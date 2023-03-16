@@ -165,7 +165,7 @@ def profile_gemm_func(f, dtype: str, transa: bool, transb: bool, m: int, n: int,
         duration_ms = -1
         if my_gemm.SelectOp(impl):
             duration_ms = my_gemm.Profile()
-        FLOPs = batch * m * k * n * 2
+        FLOPs = batch * m * k * n * 2  # noqa: N806
         ke.report(BatchedGemmMetric(impl, dtype, duration_ms, FLOPs, transa, transb, m, n, k, batch))
 
 

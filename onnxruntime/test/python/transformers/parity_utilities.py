@@ -40,7 +40,7 @@ def parse_arguments(namespace_filter=None):
     return args, sys.argv[:1] + remaining_args
 
 
-def find_transformers_source(sub_dir_paths=[]):
+def find_transformers_source(sub_dir_paths=[]):  # noqa: B006
     source_dir = os.path.join(
         os.path.dirname(__file__),
         "..",
@@ -63,7 +63,7 @@ def create_inputs(
     sequence_length=1,
     hidden_size=768,
     float16=False,
-    device=torch.device("cuda"),
+    device=torch.device("cuda"),  # noqa: B008
 ):
     float_type = torch.float16 if float16 else torch.float32
     input = torch.normal(mean=0.0, std=10.0, size=(batch_size, sequence_length, hidden_size)).to(float_type).to(device)

@@ -8,7 +8,7 @@
 
 import itertools
 import logging
-from typing import Dict, List
+from typing import Dict, List  # noqa: F401
 
 import numpy as np
 import onnx

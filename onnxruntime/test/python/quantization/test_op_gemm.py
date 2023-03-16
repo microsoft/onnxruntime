@@ -109,7 +109,7 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -148,7 +148,7 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"
@@ -187,7 +187,7 @@ class TestOpGemm(unittest.TestCase):
         data_reader,
         activation_type,
         weight_type,
-        extra_options={},
+        extra_options={},  # noqa: B006
     ):
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"

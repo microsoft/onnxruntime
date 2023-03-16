@@ -69,7 +69,7 @@ if __name__ == "__main__":
     if args.opset_version < 14:
         raise ValueError(f"The minimum supported opset version is 14! The given one was {args.opset_version}.")
 
-    isExist = os.path.exists(args.output)
+    isExist = os.path.exists(args.output)  # noqa: N816
     if not isExist:
         os.makedirs(args.output)
 

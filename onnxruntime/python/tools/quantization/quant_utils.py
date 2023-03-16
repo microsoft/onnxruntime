@@ -56,7 +56,7 @@ class QuantizationMode(Enum):
         try:
             return QuantizationMode[mode]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantizedValueType(Enum):
@@ -71,7 +71,7 @@ class QuantizedValueType(Enum):
         try:
             return QuantizedValueType[v]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantType(Enum):
@@ -86,7 +86,7 @@ class QuantType(Enum):
         try:
             return QuantType[t]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 class QuantFormat(Enum):
@@ -101,7 +101,7 @@ class QuantFormat(Enum):
         try:
             return QuantFormat[format]
         except KeyError:
-            raise ValueError()
+            raise ValueError()  # noqa: B904
 
 
 ONNX_TYPE_TO_NP_TYPE = {
@@ -202,7 +202,7 @@ def quantize_data(data, qType, symmetric, reduce_range=False):
     return rmin, rmax, zero_point, scale, quantized_data
 
 
-def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Return qmin and qmax, the minimum and maximum value representable by the given qType
     :parameter qType: onnx.onnx_pb.TensorProto.UINT8 or onnx.onnx_pb.TensorProto.UINT8
@@ -220,7 +220,7 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):
     return qmin, qmax
 
 
-def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):
+def get_qrange_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
     """
     Helper function to get the quantization range for a type.
         parameter qType: quantization type.
@@ -243,8 +243,8 @@ class QuantizedInitializer:
         rmaxs,
         zero_points,
         scales,
-        data=[],
-        quantized_data=[],
+        data=[],  # noqa: B006
+        quantized_data=[],  # noqa: B006
         axis=None,
     ):
         self.name = name

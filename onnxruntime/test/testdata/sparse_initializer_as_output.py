@@ -1,21 +1,21 @@
 import argparse
-import os
+import os  # noqa: F401
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast  # noqa: F401
 
 import numpy as np
 import onnx
 from onnx import (
-    AttributeProto,
-    GraphProto,
-    SparseTensorProto,
+    AttributeProto,  # noqa: F401
+    GraphProto,  # noqa: F401
+    SparseTensorProto,  # noqa: F401
     TensorProto,
     ValueInfoProto,
     helper,
-    mapping,
-    numpy_helper,
-    utils,
+    mapping,  # noqa: F401
+    numpy_helper,  # noqa: F401
+    utils,  # noqa: F401
 )
 from onnx.helper import make_opsetid
 
@@ -112,7 +112,7 @@ def create_model(constant_node_name, output_file_name):
     )
 
     # Outputs, a square matrix
-    Values_info = make_sparse_tensor_value_info("values", TensorProto.FLOAT, dense_shape)
+    Values_info = make_sparse_tensor_value_info("values", TensorProto.FLOAT, dense_shape)  # noqa: N806
 
     graph_def = helper.make_graph(
         nodes=[constant_node],

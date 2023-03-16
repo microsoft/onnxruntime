@@ -1,6 +1,6 @@
 import logging
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
 from onnx import onnx_pb as onnx_proto
 
@@ -9,17 +9,17 @@ from ..quant_utils import (
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,
-    find_by_name,
-    get_mul_node,
+    find_by_name,  # noqa: F401
+    get_mul_node,  # noqa: F401
     ms_domain,
 )
-from .base_operator import QuantOperatorBase
+from .base_operator import QuantOperatorBase  # noqa: F401
 from .matmul import QOpMatMul
 from .qdq_base_operator import QDQOperatorBase
 
 
-def is_B_transposed(gemm_node):
-    transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]
+def is_B_transposed(gemm_node):  # noqa: N802
+    transB_attribute = [attr for attr in gemm_node.attribute if attr.name == "transB"]  # noqa: N806
     if len(transB_attribute):
         return onnx.helper.get_attribute_value(transB_attribute[0]) > 0
 

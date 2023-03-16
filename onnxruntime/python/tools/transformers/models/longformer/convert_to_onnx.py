@@ -47,8 +47,8 @@ from torch.onnx.symbolic_helper import parse_args
 from transformers import LongformerModel, LongformerSelfAttention
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
-from onnx_model_bert import BertOnnxModel
-from torch_onnx_export_helper import torch_onnx_export
+from onnx_model_bert import BertOnnxModel  # noqa: E402
+from torch_onnx_export_helper import torch_onnx_export  # noqa: E402
 
 # Supports format 0 or 1
 weight_bias_format = 0

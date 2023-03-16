@@ -23,7 +23,7 @@ class TestDataFeeds(CalibrationDataReader):
         self.iter_next = iter(self.data_feeds)
 
 
-def InputFeedsNegOneZeroOne(n, name2shape):
+def InputFeedsNegOneZeroOne(n, name2shape):  # noqa: N802
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """

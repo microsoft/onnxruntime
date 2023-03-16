@@ -84,11 +84,11 @@ QDQRegistry = {
 }
 
 
-def CreateDefaultOpQuantizer(onnx_quantizer, node):
+def CreateDefaultOpQuantizer(onnx_quantizer, node):  # noqa: N802
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateOpQuantizer(onnx_quantizer, node):
+def CreateOpQuantizer(onnx_quantizer, node):  # noqa: N802
     registry = IntegerOpsRegistry if onnx_quantizer.mode == QuantizationMode.IntegerOps else QLinearOpsRegistry
     if node.op_type in registry:
         op_quantizer = registry[node.op_type](onnx_quantizer, node)
@@ -97,7 +97,7 @@ def CreateOpQuantizer(onnx_quantizer, node):
     return QuantOperatorBase(onnx_quantizer, node)
 
 
-def CreateQDQQuantizer(onnx_quantizer, node):
+def CreateQDQQuantizer(onnx_quantizer, node):  # noqa: N802
     if node.op_type in QDQRegistry:
         return QDQRegistry[node.op_type](onnx_quantizer, node)
     return QDQOperatorBase(onnx_quantizer, node)

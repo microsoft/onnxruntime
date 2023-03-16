@@ -26,7 +26,7 @@ The input model is generated like the following (need install keras2onnx from so
 import argparse
 import os
 import random
-import sys
+import sys  # noqa: F401
 import timeit
 from pathlib import Path
 
@@ -401,7 +401,7 @@ def generate_test_data(
                 print("Warning: GPU not found")
                 continue
         outputs = session.run(None, inputs)
-        evalTime = timeit.default_timer() - start_time
+        evalTime = timeit.default_timer() - start_time  # noqa: N806
         if outputs[0].tolist() != result[0].tolist():
             print(
                 "Error: not same result after optimization. use_cpu={}, no_opt_output={}, opt_output={}".format(

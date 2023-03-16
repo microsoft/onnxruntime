@@ -9,7 +9,7 @@ class QLinearActivation(QuantOperatorBase):
     def __init__(self, onnx_quantizer, onnx_node):
         super().__init__(onnx_quantizer, onnx_node)
 
-    def QuantizeClipRelu(self):
+    def QuantizeClipRelu(self):  # noqa: N802
         node = self.node
         assert node.op_type == "Relu" or node.op_type == "Clip"
 

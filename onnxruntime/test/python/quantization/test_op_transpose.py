@@ -76,7 +76,7 @@ class TestOpTranspose(unittest.TestCase):
 
         onnx.save(model, output_model_path)
 
-    def quantize_transpose_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_transpose_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "transpose_fp32.onnx"
         self.construct_model_matmul_transpose(model_fp32_path, [3, 7], [7, 5], [5, 3])

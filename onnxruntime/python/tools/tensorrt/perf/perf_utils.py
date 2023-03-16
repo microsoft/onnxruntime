@@ -1,11 +1,11 @@
 import json
-import logging
+import logging  # noqa: F401
 import pprint
 import re
 import subprocess
 import sys
 
-import coloredlogs
+import coloredlogs  # noqa: F401
 
 debug = False
 debug_verbose = False

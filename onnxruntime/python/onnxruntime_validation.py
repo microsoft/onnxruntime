@@ -15,8 +15,8 @@ def check_distro_info():
     __my_distro_ver__ = ""
     __my_system__ = platform.system().lower()
 
-    __OS_RELEASE_FILE__ = "/etc/os-release"
-    __LSB_RELEASE_FILE__ = "/etc/lsb-release"
+    __OS_RELEASE_FILE__ = "/etc/os-release"  # noqa: N806
+    __LSB_RELEASE_FILE__ = "/etc/lsb-release"  # noqa: N806
 
     if __my_system__ == "windows":
         __my_distro__ = __my_system__
@@ -67,7 +67,7 @@ def validate_build_package_info():
 
     has_ortmodule = False
     try:
-        from onnxruntime.training.ortmodule import ORTModule
+        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
 
         has_ortmodule = True
     except ImportError:
@@ -100,7 +100,7 @@ def validate_build_package_info():
             from .build_and_package_info import __version__ as version
             from .build_and_package_info import package_name
 
-            try:
+            try:  # noqa: SIM105
                 from .build_and_package_info import cuda_version
             except Exception:
                 pass

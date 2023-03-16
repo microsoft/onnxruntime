@@ -163,7 +163,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module(torch.nn.Module):
                 def forward(self, input):
-                    return input.triu(diagonal=i)
+                    return input.triu(diagonal=i)  # noqa: B023
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
@@ -179,7 +179,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module2D(torch.nn.Module):
                 def forward(self, input):
-                    return input.triu(diagonal=i)
+                    return input.triu(diagonal=i)  # noqa: B023
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)
@@ -196,7 +196,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module(torch.nn.Module):
                 def forward(self, input):
-                    return input.tril(diagonal=i)
+                    return input.tril(diagonal=i)  # noqa: B023
 
             model = Module()
             x = torch.randn(5, 4, 7, dtype=torch.float32)
@@ -212,7 +212,7 @@ class ONNXExporterTest(unittest.TestCase):
 
             class Module2D(torch.nn.Module):
                 def forward(self, input):
-                    return input.tril(diagonal=i)
+                    return input.tril(diagonal=i)  # noqa: B023
 
             model = Module2D()
             x = torch.randn(4, 7, dtype=torch.float32)

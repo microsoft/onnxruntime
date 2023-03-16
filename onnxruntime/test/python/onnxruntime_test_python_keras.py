@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 import onnxmltools
 from keras import Sequential
-from keras import backend as K
+from keras import backend as K  # noqa: N812
 from keras.layers import Conv2D, Layer, MaxPooling2D
 
 import onnxruntime as onnxrt
@@ -43,9 +43,9 @@ def custom_activation(scope, operator, container):
 
 
 class TestInferenceSessionKeras(unittest.TestCase):
-    def testRunModelConv(self):
+    def testRunModelConv(self):  # noqa: N802
         # keras model
-        N, C, H, W = 2, 3, 5, 5
+        N, C, H, W = 2, 3, 5, 5  # noqa: N806
         x = np.random.rand(N, H, W, C).astype(np.float32, copy=False)
 
         model = Sequential()

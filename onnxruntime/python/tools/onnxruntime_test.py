@@ -29,7 +29,7 @@ integer_dict = {
 }
 
 
-def generate_feeds(sess, symbolic_dims={}):
+def generate_feeds(sess, symbolic_dims={}):  # noqa: B006
     feeds = {}
     for input_meta in sess.get_inputs():
         # replace any symbolic dimensions
@@ -67,7 +67,7 @@ def run_model(
     num_iters=1,
     debug=None,
     profile=None,
-    symbolic_dims={},
+    symbolic_dims={},  # noqa: B006
     feeds=None,
     override_initializers=True,
 ):

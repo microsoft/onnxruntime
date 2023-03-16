@@ -13,7 +13,7 @@ from onnx import TensorProto, helper
 from op_test_utils import (
     TestDataFeeds,
     check_model_correctness,
-    check_op_nodes,
+    check_op_nodes,  # noqa: F401
     check_op_type_count,
     check_qtype_by_node_type,
 )
@@ -75,7 +75,7 @@ class TestOpAveragePool(unittest.TestCase):
         model.ir_version = 7  # use stable onnx ir version
         onnx.save(model, output_model_path)
 
-    def quantize_avgpool_test(self, activation_type, weight_type, extra_options={}):
+    def quantize_avgpool_test(self, activation_type, weight_type, extra_options={}):  # noqa: B006
         np.random.seed(1)
         model_fp32_path = "avgpool_fp32.onnx"
         self.construct_model_conv_avgpool(

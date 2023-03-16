@@ -10,14 +10,14 @@
 # license information.
 # -------------------------------------------------------------------------
 
-import math
-import os
-from typing import Dict, List, Optional, Tuple
+import math  # noqa: F401
+import os  # noqa: F401
+from typing import Dict, List, Optional, Tuple  # noqa: F401
 
 import numpy
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F
+from torch.nn import functional as F  # noqa: N812
 
 torch.manual_seed(0)
 
@@ -122,7 +122,7 @@ class AttentionProjection(nn.Module):
         key,
         layer_state: Optional[List[Tensor]],
         encoder_decoder_attention: bool,
-        use_past=torch.tensor(False),
+        use_past=torch.tensor(False),  # noqa: B008
     ):
         bsz = torch._shape_as_tensor(query)[1]
         if layer_state is None or not use_past:
@@ -188,7 +188,7 @@ class AttentionForONNX(nn.Module):
         layer_state: Optional[List[Tensor]] = None,
         attn_mask: Optional[Tensor] = None,
         output_attentions: bool = False,
-        use_past=torch.tensor(False),
+        use_past=torch.tensor(False),  # noqa: B008
         has_key_padding_mask: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
@@ -239,7 +239,7 @@ class AttentionForONNX(nn.Module):
 
         return attn_output, new_key_cache, new_value_cache
 
-    def ORT_forward(
+    def ORT_forward(  # noqa: N802
         self,
         query,
         key: Tensor,
@@ -247,7 +247,7 @@ class AttentionForONNX(nn.Module):
         layer_state: Optional[List[Tensor]] = None,
         attn_mask: Optional[Tensor] = None,
         output_attentions: bool = False,
-        use_past=torch.tensor(False),
+        use_past=torch.tensor(False),  # noqa: B008
         has_key_padding_mask: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Input shape: Time(SeqLen) x Batch x Channel"""
@@ -328,10 +328,10 @@ def create_decoder_attention_graph(
 ):
     from onnx import TensorProto, helper
 
-    S, B, NH = query.size()
-    S2 = key.size()[0]
-    N = num_heads_
-    H = int(NH / N)
+    S, B, NH = query.size()  # noqa: N806
+    S2 = key.size()[0]  # noqa: N806
+    N = num_heads_  # noqa: N806
+    H = int(NH / N)  # noqa: N806
 
     nodes = [
         helper.make_node(

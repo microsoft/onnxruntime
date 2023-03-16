@@ -21,29 +21,29 @@ __author__ = "Microsoft"
 # the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import (
-        ExecutionMode,
-        ExecutionOrder,
-        GraphOptimizationLevel,
-        ModelMetadata,
-        NodeArg,
-        OrtAllocatorType,
-        OrtArenaCfg,
-        OrtMemoryInfo,
-        OrtMemType,
-        OrtSparseFormat,
-        RunOptions,
-        SessionIOBinding,
-        SessionOptions,
-        create_and_register_allocator,
-        disable_telemetry_events,
-        enable_telemetry_events,
-        get_all_providers,
-        get_available_providers,
-        get_device,
-        get_version_string,
-        set_default_logger_severity,
-        set_default_logger_verbosity,
-        set_seed,
+        ExecutionMode,  # noqa: F401
+        ExecutionOrder,  # noqa: F401
+        GraphOptimizationLevel,  # noqa: F401
+        ModelMetadata,  # noqa: F401
+        NodeArg,  # noqa: F401
+        OrtAllocatorType,  # noqa: F401
+        OrtArenaCfg,  # noqa: F401
+        OrtMemoryInfo,  # noqa: F401
+        OrtMemType,  # noqa: F401
+        OrtSparseFormat,  # noqa: F401
+        RunOptions,  # noqa: F401
+        SessionIOBinding,  # noqa: F401
+        SessionOptions,  # noqa: F401
+        create_and_register_allocator,  # noqa: F401
+        disable_telemetry_events,  # noqa: F401
+        enable_telemetry_events,  # noqa: F401
+        get_all_providers,  # noqa: F401
+        get_available_providers,  # noqa: F401
+        get_device,  # noqa: F401
+        get_version_string,  # noqa: F401
+        set_default_logger_severity,  # noqa: F401
+        set_default_logger_verbosity,  # noqa: F401
+        set_seed,  # noqa: F401
     )
 
     import_capi_exception = None
@@ -56,21 +56,21 @@ if import_capi_exception:
     raise import_capi_exception
 
 from onnxruntime.capi.onnxruntime_inference_collection import (
-    InferenceSession,
-    IOBinding,
-    OrtDevice,
-    OrtValue,
-    SparseTensor,
+    InferenceSession,  # noqa: F401
+    IOBinding,  # noqa: F401
+    OrtDevice,  # noqa: F401
+    OrtValue,  # noqa: F401
+    SparseTensor,  # noqa: F401
 )
 from onnxruntime.capi.training import *  # noqa: F403
 
 # TODO: thiagofc: Temporary experimental namespace for new PyTorch front-end
-try:
-    from . import experimental
+try:  # noqa: SIM105
+    from . import experimental  # noqa: F401
 except ImportError:
     pass
 
-from onnxruntime.capi.onnxruntime_validation import cuda_version, package_name, version
+from onnxruntime.capi.onnxruntime_validation import cuda_version, package_name, version  # noqa: F401
 
 if version:
     __version__ = version

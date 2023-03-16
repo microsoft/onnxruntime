@@ -260,25 +260,25 @@ class ONNXModel:
             if node.op_type == "Gemm":
                 alpha = 1.0
                 beta = 1.0
-                transA = 0
-                transB = 0
+                transA = 0  # noqa: N806
+                transB = 0  # noqa: N806
                 for attr in node.attribute:
                     if attr.name == "alpha":
                         alpha = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "beta":
                         beta = onnx_helper.get_attribute_value(attr)
                     elif attr.name == "transA":
-                        transA = onnx_helper.get_attribute_value(attr)
+                        transA = onnx_helper.get_attribute_value(attr)  # noqa: N806
                     elif attr.name == "transB":
-                        transB = onnx_helper.get_attribute_value(attr)
+                        transB = onnx_helper.get_attribute_value(attr)  # noqa: N806
                 if alpha == 1.0 and beta == 1.0 and transA == 0:
-                    inputB = node.input[1]
+                    inputB = node.input[1]  # noqa: N806
                     if transB == 1:
-                        B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)
+                        B, Bs_graph = ONNXModel.__get_initializer(node.input[1], graph_path)  # noqa: N806
                         if B:
                             # assume B is not used by any other node
-                            B_array = onnx_numpy_helper.to_array(B)
-                            B_trans = onnx_numpy_helper.from_array(B_array.T)
+                            B_array = onnx_numpy_helper.to_array(B)  # noqa: N806
+                            B_trans = onnx_numpy_helper.from_array(B_array.T)  # noqa: N806
                             B_trans.name = B.name
                             Bs_graph.initializer.remove(B)
                             for input in Bs_graph.input:
@@ -287,7 +287,7 @@ class ONNXModel:
                                     break
                             Bs_graph.initializer.extend([B_trans])
                         else:
-                            inputB += "_Transposed"
+                            inputB += "_Transposed"  # noqa: N806
                             transpose_node = onnx_helper.make_node(
                                 "Transpose",
                                 inputs=[node.input[1]],
