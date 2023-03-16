@@ -12,6 +12,8 @@ namespace onnxruntime {
 
 namespace {
 
+constexpr auto* kTransformerName = "EnsureUniqueDQForNodeUnit";
+
 // Given `original_dq_output_edge`, an edge from DQ to an input of Y, duplicate DQ to a new node, DQ'.
 // After duplication, the input of Y from `original_dq_output_edge` is the only consumer of DQ'.
 //
@@ -45,7 +47,7 @@ Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output
   // DQ'
   Node& new_dq_node = graph.AddNode(graph.GenerateNodeName(original_dq_node.Name() + "/duplicated"),
                                     QDQ::DQOpName,
-                                    MakeString("Added by ", EnsureUniqueDQForNodeUnit::kTransformerName),
+                                    MakeString("Added by ", kTransformerName),
                                     dq_inputs,
                                     {&new_dq_output_nodearg});
 
@@ -142,6 +144,10 @@ Status EnsureUniqueDQForNodeUnit::ApplyImpl(Graph& graph,
   }
 
   return Status::OK();
+}
+
+EnsureUniqueDQForNodeUnit::EnsureUniqueDQForNodeUnit()
+    : GraphTransformer{kTransformerName, {}} {
 }
 
 }  // namespace onnxruntime

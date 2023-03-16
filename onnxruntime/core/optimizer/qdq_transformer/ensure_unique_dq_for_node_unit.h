@@ -9,11 +9,7 @@ namespace onnxruntime {
 
 class EnsureUniqueDQForNodeUnit : public GraphTransformer {
  public:
-  EnsureUniqueDQForNodeUnit()
-      : GraphTransformer{kTransformerName, {}} {
-  }
-
-  static constexpr auto* kTransformerName = "EnsureUniqueDQForNodeUnit";
+  EnsureUniqueDQForNodeUnit();
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
