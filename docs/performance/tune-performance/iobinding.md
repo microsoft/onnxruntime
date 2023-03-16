@@ -7,12 +7,6 @@ nav_order: 4
 
 # I/O Binding
 
-## Contents
-{: .no_toc }
-
-* TOC placeholder
-{:toc}
-
 When working with non-CPU execution providers, it's most efficient to have inputs (and/or outputs) arranged on the target device (abstracted by the execution provider used) prior to executing the graph (calling `Run()`). When the input is not copied to the target device, ORT copies it from the CPU as part of the `Run()` call. Similarly, if the output is not pre-allocated on the device, ORT assumes that the output is requested on the CPU and copies it from the device as the last step of the `Run()` call. This eats into the execution time of the graph, misleading users into thinking ORT is slow when the majority of the time is spent in these copies. 
 
 To address this, we've introduced the notion of IOBinding. The key idea is to arrange for inputs to be copied to the device and for outputs to be pre-allocated on the device prior to calling `Run()`. IOBinding is available in all our language bindings. 

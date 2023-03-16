@@ -13,8 +13,7 @@ nav_order: 4
 * TOC placeholder
 {:toc}
 
-## Overview
-While ONNX Runtime automatically applies most optimizations while loading transformer models, some of the latest optimizations that have not yet been integrated into ONNX Runtime. These additional optimizations can be applied using a [separate tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) that tunes models for the best performance. This optimization tool provides an offline capability to optimize transformer models in scenarios where ONNX Runtime does not apply the optimization at load time.
+While ONNX Runtime automatically applies most optimizations while loading transformer models, some of the latest optimizations that have not yet been integrated into ONNX Runtime. These additional optimizations can be applied using the [transformer optimization tool](https://github.com/microsoft/onnxruntime/tree/main/onnxruntime/python/tools/transformers) to tune models for the best performance. This optimization tool provides an offline capability to optimize transformer models in scenarios where ONNX Runtime does not apply the optimization at load time.
 
 This tool can be helpful when:
 * ONNX Runtime does not yet have transformer-specific graph optimization enabled
@@ -22,15 +21,15 @@ This tool can be helpful when:
 * The model has inputs with dynamic axis, which blocks some optimizations from being applied by ONNX Runtime due to shape inference.
 * Experimenting with disabling or enabling some fusions to evaluate impact on performance or accuracy.
 
-## Usage workflow
+**Usage:**
 1. [Install ONNX Runtime](#1-install-onnx-runtime)
 2. [Convert the transformer model to ONNX](#2-convert-a-transformer-model-to-onnx)
 3. [Run the model optimizer tool](#3-run-the-model-optimizer-tool)
 4. [Benchmark and profile the model](#4-benchmark-and-profile-the-model)
 
 
-### Supported models
-For list of models that have been tested with the optimizer, please refer to [this page](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/README.md#supported-models).
+## Supported models
+For the list of models that have been tested with the optimizer, please refer to [this page](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/README.md#supported-models).
 
 Most optimizations require exact match of a subgraph. Any layout change in the subgraph might cause some optimization to not work. Note that different versions of training or export tool might lead to different graph layouts. It is recommended to use the latest released version of PyTorch and Transformers.
 
@@ -38,17 +37,14 @@ Most optimizations require exact match of a subgraph. Any layout change in the s
 * Due to the CUDA implementation of the Attention kernel in ONNX Runtime, the maximum number of attention heads is 1024. 
 * Normally, due to GPU memory constraints, the maximum supported sequence length is 4096 for Longformer and 1024 for other types of models.
 
-
-
-
 ---
 
-### 1. Install ONNX Runtime
+## 1. Install ONNX Runtime
 
 First you need install onnxruntime or onnxruntime-gpu package for CPU or GPU inference. To use onnxruntime-gpu, it is required to install CUDA and cuDNN and add their bin directories to PATH environment variable. See [Python installation instructions](./../install/index.md#python-installs).
 
 
-### 2. Convert a transformer model to ONNX
+## 2. Convert a transformer model to ONNX
 
 To convert the transformer model to ONNX, use [torch.onnx](https://pytorch.org/docs/stable/onnx.html) or [tensorflow-onnx](https://github.com/onnx/tensorflow-onnx). 
 
@@ -56,7 +52,7 @@ To convert the transformer model to ONNX, use [torch.onnx](https://pytorch.org/d
 
 - For tf2onnx, please refer to this [BERT tutorial](https://github.com/onnx/tensorflow-onnx/blob/master/tutorials/BertTutorial.ipynb). 
 
-#### GPT-2 Model conversion
+### GPT-2 Model conversion
 
 Converting the GPT-2 model from PyTorch to ONNX is not straightforward when past state is used. The tool [convert_to_onnx](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/models/gpt2/convert_to_onnx.py) can help.
 
@@ -69,7 +65,7 @@ python -m onnxruntime.transformers.models.gpt2.convert_to_onnx -m distilgpt2 --m
 
 The tool will also verify whether the ONNX model and corresponding PyTorch model generate the same outputs given the same random inputs.
 
-#### Longformer Model conversion
+### Longformer Model conversion
 
 Requirement: Linux OS (e.g. Ubuntu 18.04 or 20.04) and a Python environment with PyTorch 1.9.* like the following:
 ```
@@ -93,7 +89,7 @@ python convert_to_onnx.py -m longformer-base-4096
 
 The exported ONNX model can only run on GPU right now.
 
-### 3. Run the model optimizer tool
+## 3. Run the model optimizer tool
 
 For all Optimizer options, please see [Github](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/README.md#optimizer-options). 
 
@@ -116,7 +112,7 @@ You can also download the latest script files from [here](https://github.com/mic
 python optimizer.py --input bert.onnx --output bert_opt.onnx --model_type bert
 ```
 
-#### BERT Model Verification
+### BERT Model Verification
 
 If your BERT model has three inputs (like input_ids, token_type_ids and attention_mask), a script compare_bert_results.py can be used to do a quick verification. The tool will generate some fake input data, and compare results from both the original and optimized models. If outputs are all close, it is safe to use the optimized model.
 
@@ -128,14 +124,38 @@ python -m onnxruntime.transformers.compare_bert_results --baseline_model origina
 
 For GPU, please append --use_gpu to the command.
 
-### 4. Benchmark and profile the model
+## 4. Benchmark and profile the model
 
-#### Benchmarking
-There is a bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) for running benchmark. You can modify the bash script to choose your options (like models to test, batch sizes, sequence lengths, target device etc) before running.
+### Benchmarking
+The bash script [run_benchmark.sh](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/run_benchmark.sh) can be used for running benchmarks. You can modify the bash script to choose your options (models, batch sizes, sequence lengths, target device, etc) before running.
 
 The bash script will call benchmark.py script to measure inference performance of OnnxRuntime, PyTorch or PyTorch+TorchScript on pretrained models of Huggingface Transformers. 
 
-#### Performance Test
+#### Benchmark.py
+
+If you use run_benchmark.sh, you need not use benchmark.py directly. You can skip this section if you do not want to know the details.
+
+Below is example to run benchmark.py on pretrained model bert-base-cased on GPU.
+
+```console
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -o -v -b 0
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -o
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -e torch
+python -m onnxruntime.transformers.benchmark -g -m bert-base-cased -e torchscript
+```
+The first command will generate ONNX models (both before and after optimizations), but not run performance tests since batch size is 0. The other three commands will run performance test on each of three engines: OnnxRuntime, PyTorch and PyTorch+TorchScript.
+
+If you remove -o parameter, optimizer script is not used in benchmark.
+
+If your GPU (like V100 or T4) has TensorCore, you can append `-p fp16` to the above commands to enable mixed precision.
+
+If you want to benchmark on CPU, you can remove -g option in the commands.
+
+Note that our current benchmark on GPT2 and DistilGPT2 models has disabled past state from inputs and outputs.
+
+By default, ONNX model has only one input (input_ids). You can use -i parameter to test models with multiple inputs. For example, we can add "-i 3" to command line to test a bert model with 3 inputs (input_ids, token_type_ids and attention_mask). This option only supports OnnxRuntime right now.
+
+### Performance Test
 
 bert_perf_test.py can be used to check the BERT model inference performance. Below are examples:
 
@@ -147,7 +167,7 @@ For GPU, please append --use_gpu to the command.
 
 After test is finished, a file like perf_results_CPU_B1_S128_<date_time>.txt or perf_results_GPU_B1_S128_<date_time>.txt will be output to the model directory.
 
-#### Profiling
+### Profiling
 
 profiler.py can be used to run profiling on a transformer model. It can help figure out the bottleneck of a model, and CPU time spent on a node or subgraph.
 
