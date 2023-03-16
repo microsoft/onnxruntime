@@ -12,8 +12,9 @@ import torch
 import onnxruntime as ort
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
-from . import ORTTrainerOptions, _checkpoint_storage, _utils, amp, checkpoint, optim, postprocess
+from . import _checkpoint_storage, _utils, amp, checkpoint, optim, postprocess
 from .model_desc_validation import _ORTTrainerModelDesc
+from .orttrainer_options import ORTTrainerOptions
 
 
 class TrainStepInfo:

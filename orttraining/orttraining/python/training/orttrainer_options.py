@@ -1,9 +1,8 @@
 import cerberus
-import torch  # noqa: F401
 
 import onnxruntime as ort
+from onnxruntime.capi._pybind_state import PropagateCastOpsStrategy
 
-from . import PropagateCastOpsStrategy
 from .amp import loss_scaler
 from .optim import lr_scheduler
 
