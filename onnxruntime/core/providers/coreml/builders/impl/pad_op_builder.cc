@@ -54,6 +54,9 @@ InlinedVector<int64_t> GetPaddingAxesData(const InitializedTensorSet& initialize
     Initializer axes_initializer(axes_tensor);
     const auto axes_data_span = axes_initializer.DataAsSpan<int64_t>();
     axes_tensor_data.assign(axes_data_span.begin(), axes_data_span.end());
+    for (size_t i = 0; i < axes_tensor_data.size(); i++) {
+      axes_tensor_data[i] = HandleNegativeAxis(axes_tensor_data[i], SafeInt<int64_t>(input_rank));
+    }
   } else {
     // if not provided, make a default axes as [0, 1, ..., input_rank - 1]
     InlinedVector<int64_t> default_axes(input_rank);
@@ -184,13 +187,6 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     // CoreML PaddinglayerParams: https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#paddinglayerparams
     const auto input_rank = input_shape.size();
     InlinedVector<int64_t> axes_tensor_data = GetPaddingAxesData(initializers, node, input_rank);
-    for (size_t i = 0; i < axes_tensor_data.size(); i++) {
-      if (axes_tensor_data[i] < 0) {
-        LOGS(logger, VERBOSE) << "Negative axis value is not supported for now: axes["
-                              << i << "] = " << axes_tensor_data[i];
-        return false;
-      }
-    }
     int64_t num_axes = axes_tensor_data.size();
 
     for (int64_t i = 0; i < num_axes; i++) {
