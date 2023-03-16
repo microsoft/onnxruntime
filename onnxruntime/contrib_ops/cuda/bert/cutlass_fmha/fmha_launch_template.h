@@ -58,13 +58,13 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.q_strideH = params.qk_head_size;
     p.k_strideH = params.qk_head_size;
     p.v_strideH = params.v_head_size;
-    p.bias_strideH = p.num_queries * p.num_keys;
+    p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
     p.q_strideM = params.num_heads * params.qk_head_size;
     p.k_strideM = params.num_heads * params.qk_head_size;
     p.v_strideM = params.num_heads * params.v_head_size;
     p.o_strideM = params.num_heads * params.v_head_size;
-    p.bias_strideM = p.num_keys;
+    p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
     p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
     p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.kv_sequence_length;
