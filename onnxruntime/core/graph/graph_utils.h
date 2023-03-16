@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <optional>
-
 #if !defined(ORT_MINIMAL_BUILD)
 #include "onnx/defs/schema.h"
 #else
@@ -93,9 +91,6 @@ struct GraphEdge {
 
   /** Returns a vector of the input GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeInputEdges(const Node& node);
-
-  /** Returns the input GraphEdge at the provided input index if it exists. */
-  static std::optional<GraphEdge> GetNodeInputEdge(const Node& node, size_t index);
 
   /** Returns a vector of the output GraphEdges of a node. */
   static std::vector<GraphEdge> GetNodeOutputEdges(const Node& node);

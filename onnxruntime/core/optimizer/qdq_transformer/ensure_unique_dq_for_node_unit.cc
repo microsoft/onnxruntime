@@ -12,19 +12,19 @@ namespace onnxruntime {
 
 namespace {
 
-// Given `original_dq_output_edge`, the edge from DQ to Y, duplicate DQ so that Y has a new input node DQ', for which it
-// is the only consumer.
+// Given `original_dq_output_edge`, an edge from DQ to an input of Y, duplicate DQ to a new node, DQ'.
+// After duplication, the input of Y from `original_dq_output_edge` is the only consumer of DQ'.
 //
-// Convert this: X -> DQ -> ...
+// Convert this: <DQ_inputs> -> DQ -> ...
+//                              |
+//                              +---> Y
+//
+// To this:      <DQ_inputs> -> DQ -> ...
 //                    |
-//                    +---> Y
+//                    +-------> DQ' -> Y
 //
-// To this:      X -> DQ -> ...
-//               |
-//               +--> DQ' -> Y
-//
-// Note: Y should be a node, not an output. X may be either an input/initializer or a node.
-Status DuplicateDQForEdge(const graph_utils::GraphEdge& original_dq_output_edge, Graph& graph) {
+// Note: <DQ_inputs> may be graph inputs/initializers or nodes.
+Status DuplicateDQForOutputEdge(const graph_utils::GraphEdge& original_dq_output_edge, Graph& graph) {
   // DQ
   Node* original_dq_node_ptr = graph.GetNode(original_dq_output_edge.src_node);
   assert(original_dq_node_ptr != nullptr);
@@ -53,11 +53,12 @@ Status DuplicateDQForEdge(const graph_utils::GraphEdge& original_dq_output_edge,
   // remove DQ -> Y
   graph_utils::GraphEdge::RemoveGraphEdges(graph, {original_dq_output_edge});
 
-  // add X -> DQ' if X is a node
-  if (const auto original_dq_input_edge = graph_utils::GraphEdge::GetNodeInputEdge(original_dq_node, 0);
-      original_dq_input_edge.has_value()) {
-    // create another edge from the original DQ node's input node
-    graph.AddEdge(original_dq_input_edge->src_node, new_dq_node.Index(), original_dq_input_edge->src_arg_index, 0);
+  // add DQ_input -> DQ' if DQ_input is a node
+  const auto original_dq_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(original_dq_node);
+  for (const auto& original_dq_input_edge : original_dq_input_edges) {
+    // create edge from the original DQ node's input node
+    graph.AddEdge(original_dq_input_edge.src_node, new_dq_node.Index(),
+                  original_dq_input_edge.src_arg_index, original_dq_input_edge.dst_arg_index);
   }
 
   // add DQ' -> Y
@@ -67,7 +68,7 @@ Status DuplicateDQForEdge(const graph_utils::GraphEdge& original_dq_output_edge,
   return Status::OK();
 }
 
-Status EnsureUniqueDQForEachConsumerNode(const Node& node, Graph& graph, bool& modified) {
+Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, bool& modified) {
   if (!QDQ::MatchDQNode(node)) {
     return Status::OK();
   }
@@ -89,8 +90,8 @@ Status EnsureUniqueDQForEachConsumerNode(const Node& node, Graph& graph, bool& m
         const Node* consumer_node_ptr = const_graph.GetNode(dq_output_edge.dst_node);
         assert(consumer_node_ptr != nullptr);
         const Node& consumer_node = *consumer_node_ptr;
-        const auto input_defs_count = consumer_node.InputDefs().size();
-        return dq_output_edge.dst_arg_index < input_defs_count;
+        const auto consumer_explicit_input_defs_count = consumer_node.InputDefs().size();
+        return dq_output_edge.dst_arg_index < consumer_explicit_input_defs_count;
       });
 
   const bool has_output_edge_to_implicit_input = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
@@ -100,15 +101,15 @@ Status EnsureUniqueDQForEachConsumerNode(const Node& node, Graph& graph, bool& m
   }
 
   const bool produces_graph_output = graph.NodeProducesGraphOutput(node);
-  const bool is_original_dq_in_use = has_output_edge_to_implicit_input || produces_graph_output;
+  const bool can_use_original_dq = !has_output_edge_to_implicit_input && !produces_graph_output;
 
   auto next_edge_to_process = dq_output_edges.begin();
-  if (!is_original_dq_in_use && next_edge_to_process != dq_output_edges.end()) {
+  if (can_use_original_dq && next_edge_to_process != dq_output_edges.end()) {
     ++next_edge_to_process;
   }
 
   for (; next_edge_to_process != dq_output_edges.end(); ++next_edge_to_process) {
-    ORT_RETURN_IF_ERROR(DuplicateDQForEdge(*next_edge_to_process, graph));
+    ORT_RETURN_IF_ERROR(DuplicateDQForOutputEdge(*next_edge_to_process, graph));
     modified = true;
   }
 
@@ -137,7 +138,7 @@ Status EnsureUniqueDQForNodeUnit::ApplyImpl(Graph& graph,
     Node& node = *node_ptr;
     ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
 
-    ORT_RETURN_IF_ERROR(EnsureUniqueDQForEachConsumerNode(node, graph, modified));
+    ORT_RETURN_IF_ERROR(EnsureUniqueDQForEachExplicitOutputEdge(node, graph, modified));
   }
 
   return Status::OK();
