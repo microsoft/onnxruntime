@@ -117,6 +117,11 @@ export interface ComputeContextInputsOutputsMapping {
   readonly outputs?: readonly number[];
 }
 
+export declare namespace ComputeContextInputsOutputsMapping {
+  export const TEMPORARY_OUTPUT: -1;
+  export const PERSISTENT_OUTPUT: -2;
+}
+
 export interface ComputeContext {
   readonly opKernelContext: number;
   readonly inputs: readonly TensorView[];

@@ -7,8 +7,15 @@ import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, ComputeContextInputsOutputsMapping, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
+/**
+ * get a unique key representing the program from the program info,input shapes and types.
+ *
+ * @returns a unique key is a shorter string than the shader source, which contains all the information to identify a
+ * program. if the key is the same, the program shader source should be the same, so we can reuse the program.
+ *
+ */
 const getProgramInfoUniqueKey =
     (programInfo: ProgramInfo|ProgramInfoLoader, inputTensorShapes: ReadonlyArray<TensorView['dims']>,
      inputGpuDataTypes: readonly GpuDataType[]): string => {
@@ -59,6 +66,8 @@ export class WebGpuBackend {
         maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
       }
     };
+    // WebGPU Spec: Timestamp Queries Inside Passes
+    // https://github.com/gpuweb/gpuweb/blob/main/proposals/timestamp-query-inside-passes.md
     if (adapter.features.has('timestamp-query-inside-passes') && env.webgpu.profilingMode === 'default') {
       this.profilingEnabled = true;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,19 +157,21 @@ export class WebGpuBackend {
     // check ouput indices
     const validatedOutputIndices = outputIndices.length === 0 ? programInfo.outputs.map((_, i) => i) : outputIndices;
     if (validatedOutputIndices.length !== programInfo.outputs.length) {
-      throw new Error(`Output size must be equal to ${programInfo.outputs.length}.`);
+      throw new Error(`Output size ${validatedOutputIndices.length} must be equal to ${programInfo.outputs.length}.`);
     }
 
     // create info for outputs
     const outputTensorViews: TensorView[] = [];
     const outputDatas: GpuData[] = [];
     for (let i = 0; i < programInfo.outputs.length; ++i) {
+      // value -1 and -2 are used for creating temporary and persistent outputs. so -2, -1 and 0, 1, 2, ... are valid
+      // output indices. see type definition of ComputeContextInputsOutputsMapping for more details.
       if (!Number.isInteger(validatedOutputIndices[i]) || validatedOutputIndices[i] < -2 ||
           validatedOutputIndices[i] >= programInfo.outputs.length) {
         throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
       }
-      const isTemporary = validatedOutputIndices[i] === -2;
-      const isPersistent = validatedOutputIndices[i] === -1;
+      const isTemporary = validatedOutputIndices[i] === ComputeContextInputsOutputsMapping.TEMPORARY_OUTPUT;
+      const isPersistent = validatedOutputIndices[i] === ComputeContextInputsOutputsMapping.PERSISTENT_OUTPUT;
       const tensorView = (isTemporary || isPersistent) ?
           createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
