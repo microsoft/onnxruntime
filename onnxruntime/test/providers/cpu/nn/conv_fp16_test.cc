@@ -24,7 +24,7 @@ struct ConvOpAndTestAttributes {
   vector<int64_t> pads;
   vector<int64_t> strides;
   std::unordered_set<std::string> excluded_providers;
-  string activation;
+  string activation = "";
   vector<float> activation_parameters = {};
 };
 
