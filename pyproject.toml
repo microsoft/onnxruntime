@@ -60,7 +60,6 @@ select = [
 ignore = [
     "E501", # Line length controlled by black
     "N803", # Argument casing
-    "N806", # Relax: Variable name in function should be lowercase
     "N999", # Module names
     "SIM102", # We don't perfer always combining if branches
     "SIM108", # We don't encourage ternary operators
