@@ -4542,19 +4542,34 @@ TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_3) {
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithCastFusionTest_4) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast_4.onnx";
-  std::shared_ptr<Model> p_model;
-  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
-  Graph& graph = p_model->MainGraph();
+  // the Cast node before the nodes that can be converted to a LayerNormalization node is from fp16 to fp32.
+  // if the EP does not support fp16 LayerNormalization (i.e. CPU EP) we want to keep the Cast outside of the
+  // fused nodes.
+  // if the EP does support fp16 LayerNormalization (i.e. CUDA EP) we can include the Cast in the fusion.
+  const auto run_test = [this](bool ep_has_fp16_layernorm = false) {
+    constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm_with_cast_4.onnx";
+    std::shared_ptr<Model> p_model;
+    ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+    Graph& graph = p_model->MainGraph();
 
-  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
-  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+    // assign the nodes. as LayerNormFusion happens in level 2 it can have EP specific logic
+    const ProviderType provider = ep_has_fp16_layernorm ? kCudaExecutionProvider : kCpuExecutionProvider;
+    for (auto& node : graph.Nodes()) {
+      node.SetExecutionProviderType(provider);
+    }
 
-  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+    ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<LayerNormFusion>(), TransformerLevel::Level2));
+    ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
-  ASSERT_TRUE(op_to_count["Cast"] == 0);
-  ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+    ASSERT_TRUE(op_to_count["Cast"] == (ep_has_fp16_layernorm ? 0 : 1));
+    ASSERT_TRUE(op_to_count["LayerNormalization"] == 1);
+  };
+
+  run_test(true);
+  run_test(false);
 }
 
 TEST_F(GraphTransformationTests, LayerNormWithSubDupFusionTest) {

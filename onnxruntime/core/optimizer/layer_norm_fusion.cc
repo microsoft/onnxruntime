@@ -175,18 +175,30 @@ Status LayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       }
     }
 
-    const Node* p_reduce_mean_input_node = graph_utils::GetInputNode(reduce_mean_node, 0);
     bool has_leading_cast = false;
+
+    // CUDA/ROCm and DML support fp16 input to a LayerNormalization kernel.
+    const auto& ep = reduce_mean_node.GetExecutionProviderType();
+    bool is_gpu_ep = (ep == kCudaExecutionProvider || ep == kRocmExecutionProvider || ep == kDmlExecutionProvider);
+
+    const Node* p_reduce_mean_input_node = graph_utils::GetInputNode(reduce_mean_node, 0);
     if (p_reduce_mean_input_node) {
       Node& reduce_mean_input_node = *graph.GetNode(p_reduce_mean_input_node->Index());
       // If input to the 1st ReduceMean is a Cast, and the Cast has same consumer count as subCnt + 1
       if (graph_utils::IsSupportedOptypeVersionAndDomain(reduce_mean_input_node, "Cast", {9, 13}) &&
           reduce_mean_input_node.GetExecutionProviderType() == reduce_mean_node.GetExecutionProviderType() &&
           optimizer_utils::CheckOutputEdges(graph, reduce_mean_input_node, static_cast<size_t>(subCnt) + 1)) {
-        nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
-        has_leading_cast = true;
+        // if the leading cast input is fp16 only the GPU EP's LayerNormalization can have that included.
+        // the CPU EP LayerNormalization does not support fp16 input.
+        bool cast_from_fp16 = reduce_mean_input_node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type() ==
+                              ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+        if (!cast_from_fp16 || is_gpu_ep) {
+          nodes_to_remove.insert(nodes_to_remove.begin(), reduce_mean_input_node);
+          has_leading_cast = true;
+        }
       }
     }
+
     // Apex O2 pattern specific match ends...
 
     // Find the "Div" node after "Sub". It's possible that there is "Cast" node after "Sub" node.
