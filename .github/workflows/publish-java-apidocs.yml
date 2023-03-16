@@ -34,9 +34,10 @@ jobs:
       - name: Log source commit
         run: git rev-parse --short HEAD > java/build/docs/javadoc/source-version.txt
       - name: Download deployed site
-        uses: actions/download-artifact@v3
+        uses: dawidd6/action-download-artifact@v2
         with:
           name: github-pages
+          workflow: jekyll-gh-pages.yml
           path: site
       - name: Move Java docs into site
         run: |
