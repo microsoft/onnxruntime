@@ -192,8 +192,6 @@ Follow the [Black formatter](https://black.readthedocs.io)'s coding style when p
 
 Please adhere to the [PEP8 Style Guide](https://www.python.org/dev/peps/pep-0008/). We use [Google's python style guide](https://google.github.io/styleguide/pyguide.html) as the style guide which is an extension to PEP8.
 
-Code can be validated with [flake8](https://pypi.org/project/flake8/) using the configuration file in the root directory called [.flake8](https://github.com/microsoft/onnxruntime/blob/main/.flake8).
-
 Use `pyright`, which is provided as a component of the `pylance` extension in VS Code for static type checking.
 
 Auto-formatting is done with `black` and `isort`. The tools are configured in `pyproject.toml`. From the root of the repository, you can run
