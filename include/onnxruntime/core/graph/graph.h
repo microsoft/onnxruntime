@@ -220,19 +220,21 @@ class Node {
 
   /** Gets the Node's input definitions. */
   gsl::span<const NodeArg* const> InputDefs() const noexcept {
-    return definitions_.input_defs;
+    // the next line works on more recent compilers: gcc 10+, clang 7+
+    // return definitions_.input_defs;
+    return {definitions_.input_defs.data(), definitions_.input_defs.size()};
   }
 
   /** Gets the implicit inputs to this Node.
   If this Node contains a subgraph, these are the NodeArg's that are implicitly consumed by Nodes within that
   subgraph. e.g. If and Loop operators.*/
   gsl::span<const NodeArg* const> ImplicitInputDefs() const noexcept {
-    return definitions_.implicit_input_defs;
+    return {definitions_.implicit_input_defs.data(), definitions_.implicit_input_defs.size()};
   }
 
   /** Gets the Node's output definitions. */
   gsl::span<const NodeArg* const> OutputDefs() const noexcept {
-    return definitions_.output_defs;
+    return {definitions_.output_defs.data(), definitions_.output_defs.size()};
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
