@@ -27,7 +27,7 @@ Support for creating a CoreML-aware ORT format model, similar to [creating an NN
 
 ## 1. ONNX Model Optimization Example
 
-ONNX Runtime applies optimizations to the ONNX model to improve inferencing performance. These optimizations occur prior to exporting an ORT format model. See the [graph optimization](./graph-optimizations.md) documentation for further details of the available optimizations.
+ONNX Runtime applies optimizations to the ONNX model to improve inferencing performance. These optimizations occur prior to exporting an ORT format model. See the [graph optimization](./model-optimizations/graph-optimizations.md) documentation for further details of the available optimizations.
 
 It is important to understand how the different optimization levels affect the nodes in the model, as this will determine how much of the model can be executed using NNAPI or CoreML.
 
