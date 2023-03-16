@@ -211,6 +211,7 @@ In addition to general [requirements](#requirements), please note additional req
 ||GPU (DirectML): [**onnxruntime-directml**](https://pypi.org/project/onnxruntime-directml/) | [ort-nightly-directml (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview/)|[View](../execution-providers/DirectML-ExecutionProvider.md#requirements)|
 ||OpenVINO: [**intel/onnxruntime**](https://github.com/intel/onnxruntime/releases/latest) - *Intel managed*||[View](../build/eps.md#openvino)|
 ||TensorRT (Jetson): [**Jetson Zoo**](https://elinux.org/Jetson_Zoo#ONNX_Runtime) - *NVIDIA managed*|||
+||Azure (Cloud): [**onnxruntime-azure**](https://pypi.org/project/onnxruntime-azure/)|||
 |C#/C/C++|CPU: [**Microsoft.ML.OnnxRuntime**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime) |[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)||
 ||GPU (CUDA/TensorRT): [**Microsoft.ML.OnnxRuntime.Gpu**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.gpu)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_packaging?_a=feed&feed=ORT-Nightly)|[View](../execution-providers/CUDA-ExecutionProvider)|
 ||GPU (DirectML): [**Microsoft.ML.OnnxRuntime.DirectML**](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML)|[ort-nightly (dev)](https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly/PyPI/ort-nightly-directml/overview)|[View](../execution-providers/DirectML-ExecutionProvider)|

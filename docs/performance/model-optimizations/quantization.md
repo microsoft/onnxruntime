@@ -48,7 +48,7 @@ For the latter two cases, you don't need to quantize the model with the quantiza
 
 The picture below shows the equivalent representation with the QOperator and QDQ formats for quantized Conv. [This end-to-end example](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/quantization/image_classification/cpu/run.py) demonstrates the two formats.
 
-![Changes to nodes from basic and extended optimizations](../../images/QDQ_Format.png)
+![Changes to nodes from basic and extended optimizations](../../../images/QDQ_Format.png)
 
 ## Quantizing an ONNX model
 

@@ -69,9 +69,6 @@ model on either the CPU or MIGraphX Execution Provider.
 ## Configuration Options
 MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.
 
-## Performance Tuning
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
-
 ## Samples
 
 ### Python

@@ -3,7 +3,9 @@ title: ORT model format runtime optimization
 grand_parent: Performance
 parent: Model optimizations
 nav_order: 5
-redirect_from: /docs/performance/ort-format-model-runtime-optimization
+redirect_from: 
+- /docs/performance/ort-format-model-runtime-optimization
+- /docs/reference/mobile/ort-format-model-runtime-optimization
 ---
 {::options toc_levels="2" /}
 
@@ -23,7 +25,7 @@ The ORT format model was designed to be used with ONNX Runtime [minimal builds](
 
 In ONNX Runtime **1.11 and later**, there is limited support for graph optimizations at runtime for ORT format models. This only applies to extended minimal builds or full builds.
 
-In ONNX Runtime **1.10 and earlier**, there is **no support** for graph optimizations at runtime for ORT format models. Any graph optimizations must be done at model conversion time.
+In ONNX Runtime **1.10 and earlier**, there is **no support** for graph optimizations at runtime for ORT format models. Any graph optimizations must be done at model conversion time. See [this page](./../mobile-performance-tuning.md) for guidance using older ORT versions. 
 
 As a rule, [basic graph optimizations](./graph-optimizations.md#basic-graph-optimizations) are semantics-preserving and result in a valid ONNX graph. The basic optimizations can and generally should be baked in to the converted ORT format model at conversion time - this is the default behavior of the conversion script. In fact, any runtime optimization support for ORT format models will not include basic optimizations at all.
 

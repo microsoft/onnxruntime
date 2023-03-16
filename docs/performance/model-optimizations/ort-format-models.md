@@ -120,34 +120,34 @@ python -m onnxruntime.tools.convert_onnx_models_to_ort --help
 ```
 
 ```output
-usage: convert_onnx_models_to_ort.py [-h] [--optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]] [--enable_type_reduction] [--custom_op_library CUSTOM_OP_LIBRARY] [--save_optimized_onnx_model] [--allow_conversion_failures] [--nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS]
-                                     [--target_platform {arm,amd64}]
-                                     model_path_or_dir
+  usage: convert_onnx_models_to_ort.py [-h] [--optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]] [--enable_type_reduction] [--custom_op_library CUSTOM_OP_LIBRARY] [--save_optimized_onnx_model] [--allow_conversion_failures] [--nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS]
+                                      [--target_platform {arm,amd64}]
+                                      model_path_or_dir
 
-Convert the ONNX format model/s in the provided directory to ORT format models. All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the same directory. A configuration file will also be created containing the list of required
-operators for all converted models. This configuration file should be used as input to the minimal build via the `--include_ops_by_config` parameter.
+  Convert the ONNX format model/s in the provided directory to ORT format models. All files with a `.onnx` extension will be processed. For each one, an ORT format model will be created in the same directory. A configuration file will also be created containing the list of required
+  operators for all converted models. This configuration file should be used as input to the minimal build via the `--include_ops_by_config` parameter.
 
-positional arguments:
-  model_path_or_dir     Provide path to ONNX model or directory containing ONNX model/s to convert. All files with a .onnx extension, including those in subdirectories, will be processed.
+  positional arguments:
+    model_path_or_dir     Provide path to ONNX model or directory containing ONNX model/s to convert. All files with a .onnx extension, including those in subdirectories, will be processed.
 
-optional arguments:
-  -h, --help            show this help message and exit
-  --optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]
-                        Style of optimization to perform on the ORT format model. Multiple values may be provided. The conversion will run once for each value. The general guidance is to use models optimized with 'Runtime' style when using NNAPI or CoreML and 'Fixed' style otherwise.
-                        'Fixed': Run optimizations directly before saving the ORT format model. This bakes in any platform-specific optimizations. 'Runtime': Run basic optimizations directly and save certain other optimizations to be applied at runtime if possible. This is useful when
-                        using a compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) number of nodes. The saved optimizations can further optimize nodes not assigned to the compiling EP at runtime.
-  --enable_type_reduction
-                        Add operator specific type information to the configuration file to potentially reduce the types supported by individual operator implementations.
-  --custom_op_library CUSTOM_OP_LIBRARY
-                        Provide path to shared library containing custom operator kernels to register.
-  --save_optimized_onnx_model
-                        Save the optimized version of each ONNX model. This will have the same level of optimizations applied as the ORT format model.
-  --allow_conversion_failures
-                        Whether to proceed after encountering model conversion failures.
-  --nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS
-                        Specify the list of NNAPI EP partitioning stop ops. In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session options config entry.
-  --target_platform {arm,amd64}
-                        Specify the target platform where the exported model will be used. This parameter can be used to choose between platform-specific options, such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different optimizer level options, etc.
+  optional arguments:
+    -h, --help            show this help message and exit
+    --optimization_style {Fixed,Runtime} [{Fixed,Runtime} ...]
+                          Style of optimization to perform on the ORT format model. Multiple values may be provided. The conversion will run once for each value. The general guidance is to use models optimized with 'Runtime' style when using NNAPI or CoreML and 'Fixed' style otherwise.
+                          'Fixed': Run optimizations directly before saving the ORT format model. This bakes in any platform-specific optimizations. 'Runtime': Run basic optimizations directly and save certain other optimizations to be applied at runtime if possible. This is useful when
+                          using a compiling EP like NNAPI or CoreML that may run an unknown (at model conversion time) number of nodes. The saved optimizations can further optimize nodes not assigned to the compiling EP at runtime.
+    --enable_type_reduction
+                          Add operator specific type information to the configuration file to potentially reduce the types supported by individual operator implementations.
+    --custom_op_library CUSTOM_OP_LIBRARY
+                          Provide path to shared library containing custom operator kernels to register.
+    --save_optimized_onnx_model
+                          Save the optimized version of each ONNX model. This will have the same level of optimizations applied as the ORT format model.
+    --allow_conversion_failures
+                          Whether to proceed after encountering model conversion failures.
+    --nnapi_partitioning_stop_ops NNAPI_PARTITIONING_STOP_OPS
+                          Specify the list of NNAPI EP partitioning stop ops. In particular, specify the value of the "ep.nnapi.partitioning_stop_ops" session options config entry.
+    --target_platform {arm,amd64}
+                          Specify the target platform where the exported model will be used. This parameter can be used to choose between platform-specific options, such as QDQIsInt8Allowed(arm), NCHWc (amd64) and NHWC (arm/amd64) format, different optimizer level options, etc.
 ```
 
 #### Optional script arguments

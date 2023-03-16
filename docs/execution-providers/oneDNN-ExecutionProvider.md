@@ -8,14 +8,14 @@ redirect_from: /docs/reference/execution-providers/oneDNN-ExecutionProvider
 
 # oneDNN Execution Provider
 {: .no_toc }
+*Formerly "DNNL"*
 
 Accelerate performance of ONNX Runtime using Intel® Math Kernel Library for Deep Neural Networks (Intel® DNNL) optimized primitives with the Intel oneDNN execution provider.
 
 Intel® oneAPI Deep Neural Network Library is an open-source performance library for deep-learning applications. The library accelerates deep-learning applications and frameworks on Intel® architecture and Intel® Processor Graphics Architecture. Intel DNNL contains vectorized and threaded building blocks that you can use to implement deep neural networks (DNN) with C and C++ interfaces. 
 
-The DNNL Execution Provider (EP) for ONNX Runtime is developed by a partnership between Intel and Microsoft.
+The oneDNN Execution Provider (EP) for ONNX Runtime is developed by a partnership between Intel and Microsoft.
 
-*Formerly "DNNL"*
 
 ## Contents
 {: .no_toc }
@@ -47,9 +47,6 @@ The C API details are [here](../get-started/with-c.md).
 
 When using the python wheel from the ONNX Runtime built with DNNL execution provider, it will be automatically prioritized over the CPU execution provider. Python APIs details are [here](https://aka.ms/onnxruntime-python).
 
-## Performance Tuning
-
-For performance tuning, please see guidance on this page: [ONNX Runtime Perf Tuning](../performance/tune-performance.md)
 
 ### Subgraph Optimization
 
@@ -69,7 +66,7 @@ Unique id for subgraph is set as an attribute.
 
 DnnlNode has an index to its inputs and outputs and pointer to its parent nodes. DnnlNode directly reads blocked memory from its parent to avoid data reordering.
 
-![MKL-DNN Node](../../../images/mkl-dnn_node.png)
+![MKL-DNN Node](../../images/mkl-dnn_node.png)
 
 #### Subgraph Classes
 
@@ -77,7 +74,7 @@ Primitive like DnnlConv, DnnlPool, etc are derived from DnnlKernel base class.
 
 The following UML diagram captures Subgraph classes.
 
-![MKL-DNN subgraph](../../../images/mkl-dnn_subgraph.png)
+![MKL-DNN subgraph](../../images/mkl-dnn_subgraph.png)
 
 #### Subgraph Execution
 
@@ -129,4 +126,4 @@ In SubgraphPrimitve::Compute() method, we iterate thru Dnnl Kernels and bind inp
 *	CPU
 
 ## Additional Resources
-* [DNNL documentation](https://intel.github.io/mkl-dnn/)
+* [oneDNN documentation](https://oneapi-src.github.io/oneDNN/index.html)
