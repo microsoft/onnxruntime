@@ -1,3 +1,17 @@
+diff --git a/include/cute/numeric/complex.hpp b/include/cute/numeric/complex.hpp
+index 3790ebd3..1cbc269a 100644
+--- a/include/cute/numeric/complex.hpp
++++ b/include/cute/numeric/complex.hpp
+@@ -38,6 +38,9 @@
+ //#  include <complex>
+ //#endif
+ 
++// MSVC build
++#pragma warning(disable:4068)
++
+ // With CUDA 11.4, builds show spurious "-Wconversion" warnings
+ // on line 656 of thrust/detail/type_traits.h.
+ // These pragmas suppress the warnings.
 diff --git a/include/cutlass/functional.h b/include/cutlass/functional.h
 index 59aec46a..b6a6f4f5 100644
 --- a/include/cutlass/functional.h
