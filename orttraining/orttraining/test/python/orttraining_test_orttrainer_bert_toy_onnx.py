@@ -6,7 +6,6 @@ from functools import partial
 
 import _test_commons
 import _test_helpers
-import numpy as np  # noqa: F401
 import onnx
 import pytest
 import torch
@@ -17,9 +16,7 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
 from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp, checkpoint  # noqa: F401
-from onnxruntime.training import model_desc_validation as md_val  # noqa: F401
-from onnxruntime.training import optim, orttrainer  # noqa: F401
+from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################

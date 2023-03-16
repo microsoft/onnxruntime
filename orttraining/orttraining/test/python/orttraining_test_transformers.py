@@ -1,15 +1,12 @@
-import os  # noqa: F401
 import random
-import shutil  # noqa: F401
 import unittest
 
 import numpy as np
-import pytest  # noqa: F401
 import torch
 from numpy.testing import assert_allclose
 from orttraining_test_data_loader import BatchArgsOption, ids_tensor
 from orttraining_test_utils import get_lr, run_test
-from transformers import BertConfig, BertForPreTraining, BertModel  # noqa: F401
+from transformers import BertConfig, BertForPreTraining
 
 import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401

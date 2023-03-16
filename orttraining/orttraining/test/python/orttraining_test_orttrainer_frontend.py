@@ -13,13 +13,11 @@ from numpy.testing import assert_allclose
 from packaging.version import Version as StrictVersion
 
 from onnxruntime import SessionOptions, set_seed
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription  # noqa: F401
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription  # noqa: F401
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint  # noqa: F401
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp
 from onnxruntime.training import model_desc_validation as md_val
-from onnxruntime.training import optim, orttrainer  # noqa: F401
+from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################

@@ -1,14 +1,8 @@
-import copy  # noqa: F401
 import os
-import sys  # noqa: F401
 import unittest
 
-import onnx  # noqa: F401
-import pytest  # noqa: F401
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa: F401
-from numpy.testing import assert_allclose, assert_array_equal  # noqa: F401
 from orttraining_test_bert_postprocess import postprocess_model
 from orttraining_test_data_loader import create_ort_test_dataloader
 from orttraining_test_transformers import BertForPreTraining, BertModelTest
