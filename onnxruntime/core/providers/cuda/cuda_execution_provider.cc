@@ -257,15 +257,15 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   OverrideTunableOpInfoByEnv(info_);
 
   // setup CUDA allocator
-  InsertAllocator(CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
-                                      info_.external_allocator_info, info_.default_memory_arena_cfg));
-  // cuda pinned memory allocator
-  AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
-      });
-  InsertAllocator(CreateAllocator(pinned_memory_info));
+//  InsertAllocator(CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+//                                      info_.external_allocator_info, info_.default_memory_arena_cfg));
+//  // cuda pinned memory allocator
+//  AllocatorCreationInfo pinned_memory_info(
+//      [](OrtDevice::DeviceId device_id) {
+//        ORT_UNUSED_PARAMETER(device_id);
+//        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
+//      });
+//  InsertAllocator(CreateAllocator(pinned_memory_info));
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
@@ -2444,6 +2444,25 @@ OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
     return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, default_device_.Id());
   }
   return default_device_;
+}
+
+std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> ret;
+  ret.reserve(2);
+  ret.push_back(CreateCudaAllocator(info_.device_id, info_.gpu_mem_limit, info_.arena_extend_strategy,
+      info_.external_allocator_info, info_.default_memory_arena_cfg));
+  AllocatorCreationInfo pinned_memory_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+      },
+      // TODO: should we use info_.device_id instead of DEFAULT_CPU_ALLOCATOR_DEVICE_ID?
+      // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb
+      // says the pinned memory allocated by cudaMallocHost is associated with a specific device, so it may be more
+      // correct to use the GPU device id, unless we wanted to share the pinned memory allocator across devices,
+      // at the risk the lifetime isn't managed correctly if one of those devices go away.
+      0);
+  ret.push_back(CreateAllocator(pinned_memory_info));
+  return ret;
 }
 
 }  // namespace onnxruntime

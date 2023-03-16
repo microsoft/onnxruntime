@@ -151,26 +151,48 @@ XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProvide
   // create our allocator
   // because xnn_initialize only take effect for the first invoke.
   // we need to hold the reference count to the first allocator we created, the stored_allocator.
+//  const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
+//  if (stored_allocator) {
+//    InsertAllocator(stored_allocator);
+//  } else {
+//    const AllocatorCreationInfo allocator_info(
+//        [](int) {
+//          // lazy create the allocator
+//          return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
+//                                                              OrtAllocatorType::OrtDeviceAllocator));
+//        });
+//    auto cpu_alloc = CreateAllocator(allocator_info);
+//    InsertAllocator(cpu_alloc);
+//    stored_allocator = cpu_alloc;
+//  }
+//
+//  xnn_allocator->context = stored_allocator.get();
+//  const xnn_status st = xnn_initialize(xnn_allocator);
+//  if (st != xnn_status_success) {
+//    ORT_THROW("XNNPACK initialization failed with status ", st);
+//  }
+}
+
+std::vector<AllocatorPtr> XnnpackExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> ret;
+  ret.reserve(1);
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
-  if (stored_allocator) {
-    InsertAllocator(stored_allocator);
-  } else {
+  if (!stored_allocator) {
     const AllocatorCreationInfo allocator_info(
         [](int) {
           // lazy create the allocator
           return std::make_unique<CPUAllocator>(OrtMemoryInfo(kXnnpackExecutionProvider,
                                                               OrtAllocatorType::OrtDeviceAllocator));
         });
-    auto cpu_alloc = CreateAllocator(allocator_info);
-    InsertAllocator(cpu_alloc);
-    stored_allocator = cpu_alloc;
+    stored_allocator = CreateAllocator(allocator_info);
   }
-
   xnn_allocator->context = stored_allocator.get();
   const xnn_status st = xnn_initialize(xnn_allocator);
   if (st != xnn_status_success) {
     ORT_THROW("XNNPACK initialization failed with status ", st);
   }
+  ret.push_back(stored_allocator);
+  return ret;
 }
 
 // For ops are not lay-out sensitive and does not defined in

@@ -361,6 +361,14 @@ class InferenceSession(Session):
 
         # internal parameters that we don't expect to be used in general so aren't documented
         disabled_optimizers = kwargs["disabled_optimizers"] if "disabled_optimizers" in kwargs else None
+        if "global_providers" in kwargs:
+            if provider_options is None:
+                provider_options = []
+                for i in range(len(kwargs['global_providers'])):
+                    provider_options.append({'UseGlobal':str(kwargs['global_providers'][i])})
+            else:
+                for i in range(len(kwargs['global_providers'])):
+                    provider_options[i]['UseGlobal'] = str(kwargs['global_providers'][i])
 
         try:
             self._create_inference_session(providers, provider_options, disabled_optimizers)

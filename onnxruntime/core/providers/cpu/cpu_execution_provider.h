@@ -33,6 +33,7 @@ class CPUExecutionProvider : public IExecutionProvider {
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
  private:
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   CPUExecutionProviderInfo info_;
   std::vector<FuseRuleFn> fuse_rules_;
   AllocatorPtr allocator_;

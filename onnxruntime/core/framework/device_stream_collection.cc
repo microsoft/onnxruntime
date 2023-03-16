@@ -38,19 +38,20 @@ class DeviceStreamCollectionImpl {
     // only clean the streams that is owned by current context
     for (auto& stream : owned_streams_) {
       if (stream) {
-        for (auto& ep : eps_) {
-          auto& allocators = ep->CreatePreferredAllocators();
-          for (auto& alloc : allocators) {
-            if (alloc->Info().device == stream->GetDevice() &&
-                alloc->Info().alloc_type == OrtArenaAllocator) {
-              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
-              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
-              if (stream_aware_alloc) {
-                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
-              }
-            }
-          }
-        }
+//        for (auto& ep : eps_) {
+//            // TODO: Get allocators from session_state
+//          auto& allocators = ep->CreatePreferredAllocators();
+//          for (auto& alloc : allocators) {
+//            if (alloc->Info().device == stream->GetDevice() &&
+//                alloc->Info().alloc_type == OrtArenaAllocator) {
+//              auto* arena_alloc = static_cast<BFCArena*>(alloc.get());
+//              auto* stream_aware_alloc = StreamAwareArena::FromBFCArena(*arena_alloc);
+//              if (stream_aware_alloc) {
+//                stream_aware_alloc->ReleaseStreamBuffers(stream.get());
+//              }
+//            }
+//          }
+//        }
       }
     }
     return Status::OK();

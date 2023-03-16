@@ -127,6 +127,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
  private:
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
   CUDAExecutionProviderInfo info_;
   cudaDeviceProp device_prop_;
   bool external_stream_ = false;

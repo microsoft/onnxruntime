@@ -294,15 +294,23 @@ class IExecutionProvider {
     return nullptr;
   }
 
-  virtual const std::vector<AllocatorPtr>& CreatePreferredAllocators() const;
-
   virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const;
+
+  inline std::vector<AllocatorPtr>& GetCachedAllocators() {
+    std::vector<AllocatorPtr> preferred_allocators = CreatePreferredAllocators();
+    for (int i = 0; i < preferred_allocators.size(); i++) {
+      allocator_list_.push_back(preferred_allocators[i]);
+    }
+    return allocator_list_;
+  }
 
  private:
   const std::string type_;
 
   // It will be set when this object is registered to a session
   const logging::Logger* logger_ = nullptr;
+
+  virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
  protected:
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

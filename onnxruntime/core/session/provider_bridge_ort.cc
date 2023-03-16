@@ -299,9 +299,9 @@ struct ProviderHostImpl : ProviderHost {
     return p->IExecutionProvider::GenerateMetaDefId(graph_viewer, model_hash);
   }
 
-  const std::vector<AllocatorPtr>& IExecutionProvider__CreatePreferredAllocators(const IExecutionProvider* p) override {
-    return p->IExecutionProvider::CreatePreferredAllocators();
-  }
+//  std::vector<AllocatorPtr> IExecutionProvider__CreatePreferredAllocators(IExecutionProvider* p) override {
+//    return p->IExecutionProvider::CreatePreferredAllocators();
+//  }
 
   OrtDevice IExecutionProvider__GetOrtDeviceByMemType(const IExecutionProvider* p, OrtMemType mem_type) override {
     return p->IExecutionProvider::GetOrtDeviceByMemType(mem_type);

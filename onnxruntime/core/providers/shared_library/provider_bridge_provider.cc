@@ -302,9 +302,9 @@ int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_
   return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
 }
 
-const std::vector<AllocatorPtr>& IExecutionProvider::CreatePreferredAllocators() const {
-  return g_host->IExecutionProvider__CreatePreferredAllocators(this);
-}
+//std::vector<AllocatorPtr> IExecutionProvider::CreatePreferredAllocators() {
+//  return g_host->IExecutionProvider__CreatePreferredAllocators(this);
+//}
 
 OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   return g_host->IExecutionProvider__GetOrtDeviceByMemType(this, mem_type);
