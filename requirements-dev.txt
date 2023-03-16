@@ -5,7 +5,8 @@ flatbuffers
 isort
 jinja2
 numpy
-onnx
+--extra-index-url https://test.pypi.org/simple/
+onnx-test-protobufv21==1.13.1
 onnxmltools
 packaging
 pandas
