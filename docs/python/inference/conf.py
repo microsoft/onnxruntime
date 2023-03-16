@@ -18,7 +18,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "_common"))
 
 # -- Project information -----------------------------------------------------
 
-project = "ONNX Runtime"
+project = "Python API"
 copyright = "2018-2023, Microsoft"
 author = "Microsoft"
 version = onnxruntime.__version__
