@@ -1,10 +1,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-import argparse
+import argparse  # noqa: F401
 import collections
 import csv
-import re
+import re  # noqa: F401
 import sys
 
 Comparison = collections.namedtuple("Comparison", ["name", "fn"])

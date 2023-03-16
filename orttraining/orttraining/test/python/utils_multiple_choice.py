@@ -2,8 +2,8 @@
 # https://github.com/huggingface/transformers/blob/master/examples/multiple-choice/utils_multiple_choice.py
 
 import csv
-import glob
-import json
+import glob  # noqa: F401
+import json  # noqa: F401
 import logging
 import os
 from dataclasses import dataclass
@@ -14,7 +14,7 @@ import torch
 import tqdm
 from filelock import FileLock
 from torch.utils.data.dataset import Dataset
-from transformers import PreTrainedTokenizer, is_tf_available, is_torch_available
+from transformers import PreTrainedTokenizer, is_tf_available, is_torch_available  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

@@ -13,11 +13,11 @@ from numpy.testing import assert_allclose
 from packaging.version import Version as StrictVersion
 
 from onnxruntime import SessionOptions, set_seed
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription  # noqa: F401
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription  # noqa: F401
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint
+from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint  # noqa: F401
 from onnxruntime.training import model_desc_validation as md_val
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
@@ -193,9 +193,9 @@ def testORTTrainerModelDescValidSchemas(input_dict, input_dtype, output_dtype):
     assert model_description.loss_scale_input.dtype == torch.float32
 
     # Append type to inputs/outputs tuples
-    for idx, i_desc in enumerate(model_description.inputs):
+    for idx, i_desc in enumerate(model_description.inputs):  # noqa: B007
         model_description.add_type_to_input_description(idx, input_dtype[idx])
-    for idx, o_desc in enumerate(model_description.outputs):
+    for idx, o_desc in enumerate(model_description.outputs):  # noqa: B007
         model_description.add_type_to_output_description(idx, output_dtype[idx])
 
     # Verify inputs/outputs tuples are replaced by the typed counterparts
@@ -292,7 +292,7 @@ def testDynamicLossScaler():
 
     # Performing 24 updates to half the loss scale each time
     loss_scale = float(1 << 16) * (2**8)
-    for count in range(1, 25):
+    for count in range(1, 25):  # noqa: B007
         new_loss_scale = default_scaler.update(train_step_info)
         loss_scale /= 2
         assert default_scaler._stable_steps_count == 0
@@ -302,7 +302,7 @@ def testDynamicLossScaler():
     assert_allclose(new_loss_scale, 1.0, rtol=rtol, err_msg="loss scale mismatch")
 
     # After 25 updates, min_loss_scale is reached and loss scale is not halfed from that point on
-    for count in range(1, 5):
+    for count in range(1, 5):  # noqa: B007
         new_loss_scale = default_scaler.update(train_step_info)
         assert default_scaler._stable_steps_count == 0
         assert_allclose(new_loss_scale, loss_scale, rtol=rtol, err_msg="loss scale mismatch")

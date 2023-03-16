@@ -6,7 +6,7 @@ import pytest
 import torch
 from _test_commons import _load_pytorch_transformer_model
 
-from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer
+from onnxruntime.training import _checkpoint_storage, amp, checkpoint, optim, orttrainer  # noqa: F401
 
 # Helper functions
 
@@ -34,7 +34,7 @@ def _create_trainer(zero_enabled=False):
     return trainer
 
 
-class _training_session_mock:
+class _training_session_mock:  # noqa: N801
     """Mock object for the ORTTrainer _training_session member"""
 
     def __init__(self, model_states, optimizer_states, partition_info):

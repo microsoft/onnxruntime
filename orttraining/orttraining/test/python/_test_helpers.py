@@ -11,7 +11,7 @@ from onnxruntime.training import orttrainer
 try:
     from onnxruntime.training.ortmodule import ORTModule
     from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
-    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+    from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory  # noqa: F401
 except ImportError:
     # Some pipelines do not contain ORTModule
     pass
@@ -198,7 +198,7 @@ def _get_name(name):
 # Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
 # none_pt_params is to tell what these weights are, so we will not compare the tensors.
 def assert_gradients_match_and_reset_gradient(
-    ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-04, atol=1e-05
+    ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-04, atol=1e-05  # noqa: B006
 ):
     ort_named_params = list(ort_model.named_parameters())
     pt_named_params = list(pt_model.named_parameters())
@@ -299,8 +299,8 @@ def run_training_test_and_compare(
     pt_model_label_input,
     run_forward_twice=False,
     ignore_grad_compare=False,
-    expected_outputs=[],
-    expected_grads=[],
+    expected_outputs=[],  # noqa: B006
+    expected_grads=[],  # noqa: B006
 ):
     cpu = torch.device("cpu")
 
@@ -344,8 +344,8 @@ def run_training_test_on_device_and_compare(
     barrier_func,
     run_forward_twice=False,
     ignore_grad_compare=False,
-    expected_outputs=[],
-    expected_grads=[],
+    expected_outputs=[],  # noqa: B006
+    expected_grads=[],  # noqa: B006
 ):
     repeats = 16
     for _i in range(repeats):

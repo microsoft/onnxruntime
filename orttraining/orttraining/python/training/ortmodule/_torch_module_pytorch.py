@@ -83,7 +83,7 @@ class TorchModulePytorch(TorchModuleInterface):
     def _replicate_for_data_parallel(self):
         return self._original_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         self._original_module.add_module(name, module)
 
     @TorchModuleInterface.module.getter

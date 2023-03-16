@@ -1,5 +1,5 @@
 import cerberus
-import torch
+import torch  # noqa: F401
 
 import onnxruntime as ort
 
@@ -462,7 +462,7 @@ class ORTTrainerOptions:
             fp16_enabled = opts.mixed_precision.enabled
     """
 
-    def __init__(self, options={}):
+    def __init__(self, options={}):  # noqa: B006
         # Keep a copy of original input for debug
         self._original_opts = dict(options)
 
@@ -538,7 +538,7 @@ def _check_is_callable(field, value, error):
         result = value is None or callable(value)
     except Exception:
         # Python 3 but < 3.2
-        if hasattr(value, "__call__"):
+        if hasattr(value, "__call__"):  # noqa: B004
             result = True
     if not result:
         error(field, "Must be callable or None")

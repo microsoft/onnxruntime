@@ -1,11 +1,11 @@
-import os.path
+import os.path  # noqa: F401
 import struct
-import sys
+import sys  # noqa: F401
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
-from onnx import *
-from onnx import helper, numpy_helper
+from onnx import *  # noqa: F403
+from onnx import helper, numpy_helper  # noqa: F401
 
 
 def run_postprocess(model):
@@ -263,7 +263,7 @@ def layer_norm_transform(model):
     # output
     graph = model.graph
 
-    nodes_ReduceMean = find_nodes(graph, "ReduceMean")
+    nodes_ReduceMean = find_nodes(graph, "ReduceMean")  # noqa: N806
 
     id = 0
     layer_norm_nodes = []
@@ -395,7 +395,7 @@ def layer_norm_transform(model):
 # Fuse SoftmaxCrossEntropy
 
 
-def fuse_softmaxNLL_to_softmaxCE(onnx_model):
+def fuse_softmaxNLL_to_softmaxCE(onnx_model):  # noqa: N802
     # Converting below subgraph
     #
     #    (subgraph)
@@ -419,7 +419,7 @@ def fuse_softmaxNLL_to_softmaxCE(onnx_model):
         nll_count = nll_count + 1
         nll_loss_node = None
         nll_loss_node_index = 0
-        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
+        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
                 nll_loss_node = node
                 break
@@ -431,7 +431,7 @@ def fuse_softmaxNLL_to_softmaxCE(onnx_model):
         softmax_node_index = 0
         label_input_name = None
         weight_input_name = None
-        for softmax_node_index, node in enumerate(onnx_model.graph.node):
+        for softmax_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "LogSoftmax":
                 # has to be connected to nll_loss
                 if len(nll_loss_node.input) > 2:

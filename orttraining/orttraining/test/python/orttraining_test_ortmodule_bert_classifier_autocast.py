@@ -13,9 +13,9 @@ import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
 from transformers import (
-    AdamW,
+    AdamW,  # noqa: F401
     AutoConfig,
-    BertConfig,
+    BertConfig,  # noqa: F401
     BertForSequenceClassification,
     BertTokenizer,
     get_linear_schedule_with_warmup,
@@ -149,8 +149,8 @@ def test(model, validation_dataloader, device, args):
     t0 = time.time()
 
     # Tracking variables
-    eval_loss, eval_accuracy = 0, 0
-    nb_eval_steps, nb_eval_examples = 0, 0
+    eval_loss, eval_accuracy = 0, 0  # noqa: F841
+    nb_eval_steps, nb_eval_examples = 0, 0  # noqa: F841
 
     # Evaluate data for one epoch
     for batch in validation_dataloader:
@@ -240,7 +240,7 @@ def load_dataset(args):
 
     # Set the max length of encoded sentence.
     # 64 is slightly larger than the maximum training sentence length of 47...
-    MAX_LEN = 64
+    MAX_LEN = 64  # noqa: N806
 
     # Tokenize all of the sentences and map the tokens to their word IDs.
     input_ids = []

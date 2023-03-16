@@ -247,7 +247,7 @@ def test_checkpoint_storage_for_custom_user_dict_succeeds(checkpoint_storage_tes
 
     loaded_dict = _checkpoint_storage.load(pytest.checkpoint_path)
     assert (loaded_dict["a"] == to_save["a"].numpy()).all()
-    try:
+    try:  # noqa: SIM105
         loaded_dict["user_dict"] = loaded_dict["user_dict"].decode()
     except AttributeError:
         pass

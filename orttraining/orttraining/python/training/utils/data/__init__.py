@@ -2,4 +2,4 @@
 # Licensed under the MIT License.
 # __init__.py
 
-from .sampler import LoadBalancingDistributedBatchSampler, LoadBalancingDistributedSampler
+from .sampler import LoadBalancingDistributedBatchSampler, LoadBalancingDistributedSampler  # noqa: F401

@@ -132,7 +132,7 @@ def experimental_load_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix=
         return _load_single_checkpoint(ort_trainer, checkpoint_dir, checkpoint_prefix, is_partitioned, strict)
 
 
-class _AGGREGATION_MODE(Enum):
+class _AGGREGATION_MODE(Enum):  # noqa: N801
     Zero = 0
     Megatron = 1
 
@@ -320,8 +320,8 @@ def _aggregate_trainer_options(rank_state_dict, state_dict, partial_aggregation)
     world_rank = _utils.state_dict_trainer_options_world_rank_key()
     world_size = _utils.state_dict_trainer_options_world_size_key()
     optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
-    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
-    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()  # noqa: N806
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()  # noqa: N806
 
     state_dict[trainer_options][mixed_precision] = rank_state_dict[trainer_options][mixed_precision]
     state_dict[trainer_options][zero_stage] = 0
@@ -423,7 +423,7 @@ def _aggregate_over_ranks(
         assert (
             ranks[i] == rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
         ), "Unexpected rank in file at path {}. Expected {}, got {}".format(
-            path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]
+            path, rank, rank_state_dict[_utils.state_dict_trainer_options_key()][world_rank]  # noqa: F821
         )
         if loaded_mixed_precision is None:
             loaded_mixed_precision = rank_state_dict[_utils.state_dict_trainer_options_key()][mixed_precision]
@@ -485,7 +485,7 @@ def _aggregate_over_ranks(
     return _to_pytorch_format(state_dict) if pytorch_format else state_dict
 
 
-def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):
+def _aggregate_over_D_H(ordered_paths, D_groups, H_groups, pytorch_format):  # noqa: N802
     """Aggregate checkpoint files and return a single state dictionary for the D+H
     (Zero+Megatron) partitioning strategy.
     For D+H aggregation scenario, the first pass of aggregation(partial aggregation) is over D groups
@@ -541,14 +541,14 @@ def aggregate_checkpoints(paths, pytorch_format=True):
     """
 
     loaded_trainer_options = _checkpoint_storage.load(paths[0], key=_utils.state_dict_trainer_options_key())
-    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
-    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+    D_size = _utils.state_dict_trainer_options_data_parallel_size_key()  # noqa: N806
+    H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()  # noqa: N806
     world_size = _utils.state_dict_trainer_options_world_size_key()
 
-    D_size = loaded_trainer_options[D_size]
-    H_size = loaded_trainer_options[H_size]
+    D_size = loaded_trainer_options[D_size]  # noqa: N806
+    H_size = loaded_trainer_options[H_size]  # noqa: N806
     world_size = loaded_trainer_options[world_size]
-    D_groups, H_groups = _get_parallellism_groups(D_size, H_size, world_size)
+    D_groups, H_groups = _get_parallellism_groups(D_size, H_size, world_size)  # noqa: N806
 
     combine_zero = loaded_trainer_options[_utils.state_dict_trainer_options_zero_stage_key()] > 0
     combine_megatron = len(H_groups[0]) > 1
@@ -631,8 +631,8 @@ def _list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension=".ort.pt
 
 
 def _get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None):
-    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"
-    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"
+    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"  # noqa: N806
+    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"  # noqa: N806
 
     if is_partitioned:
         filename = MULTIPLE_CHECKPOINT_FILENAME.format(

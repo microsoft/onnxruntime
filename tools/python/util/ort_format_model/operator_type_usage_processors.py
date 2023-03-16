@@ -113,10 +113,10 @@ class DefaultTypeUsageProcessor(TypeUsageProcessor):
         self,
         domain: str,
         optype: str,
-        inputs: [int] = [0],
-        outputs: [int] = [],
-        required_input_types: typing.Dict[int, typing.Set[str]] = {},
-        required_output_types: typing.Dict[int, typing.Set[str]] = {},
+        inputs: [int] = [0],  # noqa: B006
+        outputs: [int] = [],  # noqa: B006
+        required_input_types: typing.Dict[int, typing.Set[str]] = {},  # noqa: B006
+        required_output_types: typing.Dict[int, typing.Set[str]] = {},  # noqa: B006
     ):
         """
         Create DefaultTypeUsageProcessor. Types for one or more inputs and/or outputs can be tracked by the processor.

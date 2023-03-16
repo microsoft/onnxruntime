@@ -3,13 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import os
-import sys
+import os  # noqa: F401
+import sys  # noqa: F401
 
 from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_inference_collection import (
     InferenceSession,
-    IOBinding,
+    IOBinding,  # noqa: F401
     Session,
     check_and_normalize_provider_args,
 )

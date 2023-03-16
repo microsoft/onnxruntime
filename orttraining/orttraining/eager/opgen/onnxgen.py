@@ -98,7 +98,7 @@ with open(out_file, "w") as fp:
         writeline()
 
     writeline("onnx_ops = {")
-    for i, (op_name, schema) in enumerate(onnx_ops.items()):
+    for i, (op_name, schema) in enumerate(onnx_ops.items()):  # noqa: B007
         writeline(f"  '{op_name}': {schema.name},")
     write("}")
 

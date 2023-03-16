@@ -8,7 +8,7 @@ import unittest
 import numpy as np
 import onnxmltools
 from keras import Sequential
-from keras import backend as K  # noqa: N812
+from keras import backend as K
 from keras.layers import Conv2D, Layer, MaxPooling2D
 
 import onnxruntime as onnxrt

@@ -15,8 +15,8 @@ def list_checkpoint_files(checkpoint_dir, checkpoint_prefix, extension=".ort.pt"
 
 
 def get_checkpoint_name(prefix, is_partitioned, world_rank=None, world_size=None):
-    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"
-    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"
+    SINGLE_CHECKPOINT_FILENAME = "{prefix}.ort.pt"  # noqa: N806
+    MULTIPLE_CHECKPOINT_FILENAME = "{prefix}.ZeRO.{world_rank}.{world_size}.ort.pt"  # noqa: N806
 
     if is_partitioned:
         filename = MULTIPLE_CHECKPOINT_FILENAME.format(

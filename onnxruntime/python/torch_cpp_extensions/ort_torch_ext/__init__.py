@@ -3,7 +3,7 @@ from functools import wraps
 
 import torch  # noqa: F401
 
-from onnxruntime.capi import _pybind_state as _C  # noqa: N812
+from onnxruntime.capi import _pybind_state as _C
 
 from .aten_op_executor import execute_aten_operator_address, is_tensor_argument_address
 

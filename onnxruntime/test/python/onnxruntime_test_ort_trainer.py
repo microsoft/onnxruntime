@@ -9,7 +9,7 @@ import numpy as np
 import onnx
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa: N812
+import torch.nn.functional as F
 from helper import get_name
 from numpy.testing import assert_allclose
 from torchvision import datasets, transforms

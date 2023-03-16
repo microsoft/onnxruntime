@@ -9,7 +9,7 @@ import torch.multiprocessing as mp
 import torchvision
 from fairscale.nn.data_parallel import ShardedDataParallel as ShardedDDP
 from fairscale.optim.oss import OSS
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 from torchvision import datasets, transforms
 
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule

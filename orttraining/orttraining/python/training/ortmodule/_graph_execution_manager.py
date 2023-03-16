@@ -8,7 +8,7 @@ import inspect
 import io
 import os
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod  # noqa: F401
 from enum import IntFlag
 from functools import reduce
 
@@ -424,7 +424,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                     **self._export_extra_kwargs,
                 )
         except Exception as e:
-            raise wrap_exception(
+            raise wrap_exception(  # noqa: B904
                 ORTModuleONNXModelException,
                 RuntimeError(
                     f"There was an error while exporting the PyTorch model to ONNX: "

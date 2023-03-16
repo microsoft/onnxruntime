@@ -160,7 +160,7 @@ def test_ortmodule_fallback_device__mismatch(is_training, fallback_enabled, matc
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     data_device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -224,7 +224,7 @@ def test_ortmodule_fallback_output(is_training, fallback_enabled, matching_polic
     os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     pt_model = NeuralNetCustomClassOutput(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
@@ -336,7 +336,7 @@ def test_ortmodule_fallback_torch_model(is_training, fallback_enabled, matching_
     os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -390,7 +390,7 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
         os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
         device = "cuda"
-        N, D_in, H, D_out = 64, 784, 500, 10
+        N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
         x = torch.randn(N, D_in, device=device)
 
         pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -453,7 +453,7 @@ def test_ortmodule_fallback_init__missing_cpp_extensions(
         os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
 
         device = "cuda"
-        N, D_in, H, D_out = 64, 784, 500, 10
+        N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
         x = torch.randn(N, D_in, device=device)
 
         pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -542,7 +542,7 @@ def test_ortmodule_fallback_warn_message(is_training, persist_fallback):
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     data_device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
 
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out)
     ort_model = ORTModule(copy.deepcopy(pt_model))

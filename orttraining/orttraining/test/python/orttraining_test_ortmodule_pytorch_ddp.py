@@ -2,7 +2,7 @@
 # For details, see https://pytorch.org/tutorials/intermediate/ddp_tutorial.html.
 import argparse
 import os
-import sys
+import sys  # noqa: F401
 import tempfile
 
 import torch
@@ -10,9 +10,9 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.nn as nn
 import torch.optim as optim
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 
-import onnxruntime
+import onnxruntime  # noqa: F401
 from onnxruntime.training.ortmodule import ORTModule
 
 
@@ -101,7 +101,7 @@ def demo_checkpoint(rank, world_size, use_ort_module):
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(ddp_model.parameters(), lr=0.001)
 
-    CHECKPOINT_PATH = os.path.join(tempfile.gettempdir(), "model.checkpoint")
+    CHECKPOINT_PATH = os.path.join(tempfile.gettempdir(), "model.checkpoint")  # noqa: N806
     if rank == 0:
         # All processes should see same parameters as they all start from same
         # random parameters and gradients are synchronized in backward passes.

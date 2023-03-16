@@ -4,7 +4,7 @@ import sys
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference
+from onnx import numpy_helper
 
 if len(sys.argv) < 2:
     print("Please give model path...")
@@ -345,6 +345,6 @@ align_attention_mask_dim(model)
 # set opset version to 10
 model.opset_import[0].version = 10
 
-f = open(output_model_name, "wb")
+f = open(output_model_name, "wb")  # noqa: SIM115
 f.write(model.SerializeToString())
 f.close()

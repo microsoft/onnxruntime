@@ -60,6 +60,7 @@ select = [
 ignore = [
     "E501", # Line length controlled by black
     "N803", # Argument casing
+    "N812", # Allow import torch.nn.functional as F
     "N999", # Module names
     "SIM102", # We don't perfer always combining if branches
     "SIM108", # We don't encourage ternary operators

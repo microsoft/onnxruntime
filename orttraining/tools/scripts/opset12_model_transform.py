@@ -16,7 +16,7 @@ import sys
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference
+from onnx import TensorProto, helper, numpy_helper, shape_inference  # noqa: F401
 
 if len(sys.argv) < 2:
     print("Please give model path...")

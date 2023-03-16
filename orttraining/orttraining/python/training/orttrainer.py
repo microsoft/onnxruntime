@@ -44,7 +44,7 @@ class TrainStepInfo:
 
     """
 
-    def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):
+    def __init__(self, optimizer_config, all_finite=True, fetches=[], optimization_step=0, step=0):  # noqa: B006
         assert isinstance(optimizer_config, optim._OptimizerConfig), "optimizer_config must be a optim._OptimizerConfig"
         assert isinstance(all_finite, bool), "all_finite must be a bool"
         assert isinstance(fetches, list) and all(
@@ -298,7 +298,7 @@ class ORTTrainer:
 
     def _check_model_export(self, input):
         from numpy.testing import assert_allclose
-        from onnx import TensorProto, helper, numpy_helper
+        from onnx import TensorProto, helper, numpy_helper  # noqa: F401
 
         onnx_model_copy = copy.deepcopy(self._onnx_model)
 
@@ -582,7 +582,7 @@ class ORTTrainer:
 
         return onnx_model
 
-    def _create_ort_training_session(self, optimizer_state_dict={}, session_options=None, provider_options=None):
+    def _create_ort_training_session(self, optimizer_state_dict={}, session_options=None, provider_options=None):  # noqa: B006
         # Validating frozen_weights names
         unused_frozen_weights = [
             n
@@ -728,7 +728,7 @@ class ORTTrainer:
                 if gpu_ep_name not in providers:
                     raise RuntimeError(
                         "ORTTrainer options specify a CUDA device but the {} provider is unavailable.".format(
-                            cuda_ep_name
+                            cuda_ep_name  # noqa: F821
                         )
                     )
 
@@ -776,7 +776,7 @@ class ORTTrainer:
             provider_options=self.options._validated_opts["provider_options"],
         )
 
-    def _init_session(self, optimizer_state_dict={}, session_options=None, provider_options=None):
+    def _init_session(self, optimizer_state_dict={}, session_options=None, provider_options=None):  # noqa: B006
         if self._onnx_model is None:
             return
 
@@ -1017,8 +1017,8 @@ class ORTTrainer:
         world_rank = _utils.state_dict_trainer_options_world_rank_key()
         world_size = _utils.state_dict_trainer_options_world_size_key()
         optimizer_name = _utils.state_dict_trainer_options_optimizer_name_key()
-        D_size = _utils.state_dict_trainer_options_data_parallel_size_key()
-        H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()
+        D_size = _utils.state_dict_trainer_options_data_parallel_size_key()  # noqa: N806
+        H_size = _utils.state_dict_trainer_options_horizontal_parallel_size_key()  # noqa: N806
 
         state_dict[_utils.state_dict_trainer_options_key()] = {}
         state_dict[_utils.state_dict_trainer_options_key()][mixed_precision] = self.options.mixed_precision.enabled
@@ -1279,7 +1279,7 @@ class ORTTrainer:
             # optimizer_name can be either a regular string or a byte string.
             # if it is a byte string, convert to regular string using decode()
             # if it is a regular string, do nothing to it
-            try:
+            try:  # noqa: SIM105
                 optimizer_name = optimizer_name.decode()
             except AttributeError:
                 pass
@@ -1457,7 +1457,7 @@ class ORTTrainer:
             provider_options=self.options._validated_opts["provider_options"],
         )
 
-    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):
+    def save_checkpoint(self, path, user_dict={}, include_optimizer_states=True):  # noqa: B006
         """Persists ORTTrainer state dictionary on disk along with user_dict.
 
         Saves the state_dict along with the user_dict to a file specified by path.

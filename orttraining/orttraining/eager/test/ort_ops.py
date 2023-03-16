@@ -5,7 +5,7 @@
 
 import unittest
 
-import numpy as np
+import numpy as np  # noqa: F401
 import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import param, parameterized
@@ -610,19 +610,19 @@ class OrtOpTests(unittest.TestCase):
     # ["det"          ]]
 
     # The function renames the test function: ops/math_sign_ops (e.g. abs)+ the test name(e.g. out), results in: test_abs_out
-    def rename_func(testcase_func, param_num, param):
+    def rename_func(testcase_func, param_num, param):  # noqa: N805
         return f"test_{parameterized.to_safe_name(str(param.args[0]))}{testcase_func.__name__[7:]}"
 
     # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op(self, test_name, tensor_test=torch.rand(6)):
+    def test_op(self, test_name, tensor_test=torch.rand(6)):  # noqa: B008
         # compile eval- creates a code object that evaluates the operator (for example torch.abs(tensor_test)) and returns its result.
         cpu_result = eval(compile("torch." + test_name + "(tensor_test)", "<string>", "eval"))
         ort_result = eval(compile("torch." + test_name + "(tensor_test.to(self.get_device()))", "<string>", "eval"))
         assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_(self, test_name, tensor_test=torch.rand(6)):
+    def test_op_(self, test_name, tensor_test=torch.rand(6)):  # noqa: B008
         device = self.get_device()
 
         cpu_tensor = tensor_test
@@ -634,7 +634,7 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_out(self, test_name, tensor_test=torch.rand(6)):
+    def test_op_out(self, test_name, tensor_test=torch.rand(6)):  # noqa: B008
         ##relu -don't have output
         if test_name == "relu":
             self.skipTest(f"no {test_name}_output")

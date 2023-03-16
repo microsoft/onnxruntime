@@ -2,10 +2,10 @@ import argparse
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event, Thread
+from threading import Event, Thread  # noqa: F401
 
 from azureml._run_impl.run_watcher import RunWatcher
-from azureml.core import Experiment, Run, Workspace
+from azureml.core import Experiment, Run, Workspace  # noqa: F401
 from requests import Session
 
 parser = argparse.ArgumentParser()

@@ -1,12 +1,12 @@
-import copy
-import inspect
-import math
+import copy  # noqa: F401
+import inspect  # noqa: F401
+import math  # noqa: F401
 import os
 from functools import partial
 
 import _test_commons
 import _test_helpers
-import numpy as np
+import numpy as np  # noqa: F401
 import onnx
 import pytest
 import torch
@@ -17,8 +17,8 @@ from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
 from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
 from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp, checkpoint
-from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import TrainStepInfo, _utils, amp, checkpoint  # noqa: F401
+from onnxruntime.training import model_desc_validation as md_val  # noqa: F401
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 
@@ -138,7 +138,7 @@ def load_bert_onnx_model():
 
 
 class CustomLossScaler(amp.LossScaler):
-    def __init__(self, loss_scale=float(1 << 16)):
+    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
         super().__init__(loss_scale)
         self._initial_loss_scale = loss_scale
         self.loss_scale = loss_scale
@@ -155,7 +155,7 @@ class CustomLossScaler(amp.LossScaler):
 
 
 class LegacyCustomLossScaler:
-    def __init__(self, loss_scale=float(1 << 16)):
+    def __init__(self, loss_scale=float(1 << 16)):  # noqa: B008
         self._initial_loss_scale = loss_scale
         self.loss_scale_ = loss_scale
 
@@ -166,7 +166,7 @@ class LegacyCustomLossScaler:
         self.loss_scale_ *= 0.9
 
 
-def legacy_model_params(lr, device=torch.device("cuda", 0)):
+def legacy_model_params(lr, device=torch.device("cuda", 0)):  # noqa: B008
     legacy_model_desc = legacy_bert_model_description()
     learning_rate_description = legacy_ort_trainer_learning_rate_description()
     learning_rate = torch.tensor([lr]).to(device)

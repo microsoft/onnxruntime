@@ -1,7 +1,7 @@
 # adapted from run_multiple_choice.py of huggingface transformers
 # https://github.com/huggingface/transformers/blob/master/examples/multiple-choice/run_multiple_choice.py
 
-import dataclasses
+import dataclasses  # noqa: F401
 import logging
 import os
 import unittest
@@ -9,24 +9,24 @@ from dataclasses import dataclass, field
 from typing import Dict, Optional
 
 import numpy as np
-import torch
-from numpy.testing import assert_allclose
-from orttraining_run_glue import verify_old_and_new_api_are_equal
+import torch  # noqa: F401
+from numpy.testing import assert_allclose  # noqa: F401
+from orttraining_run_glue import verify_old_and_new_api_are_equal  # noqa: F401
 from orttraining_transformer_trainer import ORTTransformerTrainer
 from transformers import (
     AutoConfig,
     AutoModelForMultipleChoice,
     AutoTokenizer,
     EvalPrediction,
-    HfArgumentParser,
-    Trainer,
+    HfArgumentParser,  # noqa: F401
+    Trainer,  # noqa: F401
     TrainingArguments,
     set_seed,
 )
 from utils_multiple_choice import MultipleChoiceDataset, Split, SwagProcessor
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +152,7 @@ class ORTMultipleChoiceTest(unittest.TestCase):
             label_list = processor.get_labels()
             num_labels = len(label_list)
         except KeyError:
-            raise ValueError("Task not found: %s" % (data_args.task_name))
+            raise ValueError("Task not found: %s" % (data_args.task_name))  # noqa: B904
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,

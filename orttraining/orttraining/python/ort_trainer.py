@@ -140,13 +140,13 @@ def ort_training_session_run_helper(session, iobinding, inputs, input_descs, out
     return torch_outputs
 
 
-def FuseSofmaxNLLToSoftmaxCE(onnx_model):
+def FuseSofmaxNLLToSoftmaxCE(onnx_model):  # noqa: N802
     nll_count = 0
     while True:
         nll_count = nll_count + 1
         nll_loss_node = None
         nll_loss_node_index = 0
-        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):
+        for nll_loss_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "nll_loss" or node.op_type == "NegativeLogLikelihoodLoss":
                 nll_loss_node = node
                 break
@@ -158,7 +158,7 @@ def FuseSofmaxNLLToSoftmaxCE(onnx_model):
         softmax_node_index = 0
         label_input_name = None
         weight_input_name = None
-        for softmax_node_index, node in enumerate(onnx_model.graph.node):
+        for softmax_node_index, node in enumerate(onnx_model.graph.node):  # noqa: B007
             if node.op_type == "LogSoftmax":
                 # has to be connected to nll_loss
                 if len(nll_loss_node.input) > 2:
@@ -238,7 +238,7 @@ def dtype_torch_to_numpy(torch_dtype):
         raise Exception("Torch type to numpy type mapping unavailable for: " + str(torch_dtype))
 
 
-class model_loss_cls(torch.nn.Module):
+class model_loss_cls(torch.nn.Module):  # noqa: N801
     def __init__(self, model, loss_fn):
         super().__init__()
         self.model_ = model
@@ -450,7 +450,7 @@ def create_ort_training_session_with_optimizer(
     allreduce_post_accumulation=False,
     deepspeed_zero_stage=0,
     enable_grad_norm_clip=True,
-    frozen_weights=[],
+    frozen_weights=[],  # noqa: B006
     opset_version=DEFAULT_OPSET_VERSION,
     use_deterministic_compute=False,
     use_memory_efficient_gradient=False,
@@ -521,7 +521,7 @@ def create_ort_training_session_with_optimizer(
     ort_parameters.optimizer_attributes_map = optimizer_attributes_map
     ort_parameters.optimizer_int_attributes_map = optimizer_int_attributes_map
 
-    sessionOptions = ort.SessionOptions()
+    sessionOptions = ort.SessionOptions()  # noqa: N806
     sessionOptions.use_deterministic_compute = use_deterministic_compute
     if len(optimized_model_filepath) > 0:
         sessionOptions.optimized_model_filepath = optimized_model_filepath
@@ -649,7 +649,7 @@ class ORTTrainer:
         loss_scaler=None,
         deepspeed_zero_stage=0,
         enable_grad_norm_clip=True,
-        frozen_weights=[],
+        frozen_weights=[],  # noqa: B006
         _opset_version=DEFAULT_OPSET_VERSION,
         _enable_internal_postprocess=True,
         _extra_postprocess=None,
@@ -1203,10 +1203,10 @@ class LossScaler:
         self,
         loss_scale_input_name,
         is_dynamic_scale,
-        loss_scale=float(1 << 16),
+        loss_scale=float(1 << 16),  # noqa: B008
         up_scale_window=2000,
         min_loss_scale=1.0,
-        max_loss_scale=float(1 << 24),
+        max_loss_scale=float(1 << 24),  # noqa: B008
     ):
         super().__init__()
         self.loss_scale_input_name_ = loss_scale_input_name

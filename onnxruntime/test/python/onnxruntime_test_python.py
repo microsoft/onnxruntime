@@ -1383,7 +1383,7 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def testRegisterCustomEPsLibrary(self):  # noqa: N802
-        from onnxruntime.capi import _pybind_state as C  # noqa: N812
+        from onnxruntime.capi import _pybind_state as C
 
         available_eps = C.get_available_providers()
         # skip amd gpu build

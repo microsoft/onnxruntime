@@ -3,7 +3,7 @@
 import os
 import subprocess
 import sys
-from subprocess import CalledProcessError
+from subprocess import CalledProcessError  # noqa: F401
 
 import onnx
 import pybind11

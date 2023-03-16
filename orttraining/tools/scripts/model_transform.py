@@ -2,7 +2,7 @@ import sys
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference
+from onnx import TensorProto, helper, numpy_helper, shape_inference  # noqa: F401
 
 if len(sys.argv) < 2:
     print("Please give model path...")
@@ -298,13 +298,13 @@ add_expand_shape(model)
 # set opset version to 10
 model.opset_import[0].version = 10
 
-f = open(output_model_name, "wb")
+f = open(output_model_name, "wb")  # noqa: SIM115
 f.write(model.SerializeToString())
 f.close()
 
 # Use ORT to verify the converted model. Notice that you must use python package from the
 # training branch because training requires some extra ops.
-import onnxruntime as ort
+import onnxruntime as ort  # noqa: E402
 
 # We convert model to accept variable-length batch size, so it can be any positive integer.
 batch = 3

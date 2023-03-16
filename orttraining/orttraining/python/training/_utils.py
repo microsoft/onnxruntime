@@ -6,11 +6,11 @@
 import importlib.util
 import os
 import sys
-from functools import wraps
+from functools import wraps  # noqa: F401
 
 import numpy as np
 import torch
-from onnx import TensorProto
+from onnx import TensorProto  # noqa: F401
 from packaging.version import Version
 
 

@@ -18,7 +18,7 @@ from ._fallback_exceptions import (
     ORTModuleIOError,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
-    wrap_exception,
+    wrap_exception,  # noqa: F401
 )
 
 

@@ -13,10 +13,10 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-import sys
-import threading
-import time
-from io import StringIO
+import sys  # noqa: E402, F811
+import threading  # noqa: E402
+import time  # noqa: E402
+from io import StringIO  # noqa: E402, F401
 
 
 class OutputGrabber:
@@ -82,7 +82,7 @@ class OutputGrabber:
         # Close the duplicate stream:
         os.close(self.streamfd)
 
-    def readOutput(self):
+    def readOutput(self):  # noqa: N802
         """
         Read the stream data (one byte at a time)
         and save the text in `capturedtext`.

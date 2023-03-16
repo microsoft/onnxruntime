@@ -18,7 +18,7 @@ from onnxruntime.datasets import get_example
 
 example = get_example("logreg_iris.onnx")
 
-import onnx
+import onnx  # noqa: E402
 
 model = onnx.load(example)
 
@@ -33,7 +33,7 @@ print(f"producer_version={model.producer_version}")
 #############################
 # With *ONNX Runtime*:
 
-import onnxruntime as rt
+import onnxruntime as rt  # noqa: E402
 
 sess = rt.InferenceSession(example, providers=rt.get_available_providers())
 meta = sess.get_modelmeta()

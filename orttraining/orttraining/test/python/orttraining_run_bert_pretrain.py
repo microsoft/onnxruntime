@@ -31,7 +31,7 @@ import onnxruntime as ort
 import onnxruntime.capi.pt_patch
 from onnxruntime.training import amp, optim, orttrainer
 from onnxruntime.training.checkpoint import aggregate_checkpoints
-from onnxruntime.training.optim import LinearWarmupLRScheduler, PolyWarmupLRScheduler
+from onnxruntime.training.optim import LinearWarmupLRScheduler, PolyWarmupLRScheduler  # noqa: F401
 
 # we cannot make full convergence run in nightly pipeling because of its timeout limit,
 # max_steps is still needed to calculate learning rate. force_to_stop_max_steps is used to
@@ -110,7 +110,7 @@ def create_pretraining_dataset(input_file, max_pred_length, args):
     return train_dataloader, input_file
 
 
-class pretraining_dataset(Dataset):
+class pretraining_dataset(Dataset):  # noqa: N801
     def __init__(self, input_file, max_pred_length):
         logger.info("pretraining_dataset: %s, max_pred_length: %d", input_file, max_pred_length)
         self.input_file = input_file
@@ -150,7 +150,7 @@ class pretraining_dataset(Dataset):
         return [input_ids, segment_ids, input_mask, masked_lm_labels, next_sentence_labels]
 
 
-import argparse
+import argparse  # noqa: E402
 
 
 def parse_arguments():
@@ -722,8 +722,8 @@ if __name__ == "__main__":
         # In case ORT is not built with MPI/NCCL, there are no get_mpi_context_xxx internal apis.
         from onnxruntime.capi._pybind_state import (
             get_mpi_context_local_rank,
-            get_mpi_context_local_size,
-            get_mpi_context_world_rank,
+            get_mpi_context_local_size,  # noqa: F401
+            get_mpi_context_world_rank,  # noqa: F401
             get_mpi_context_world_size,
         )
 

@@ -4,7 +4,7 @@
 
 import argparse
 import logging
-import os
+import os  # noqa: F401
 import sys
 
 from _test_commons import run_subprocess

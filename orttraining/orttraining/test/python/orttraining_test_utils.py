@@ -1,10 +1,10 @@
 import torch
-from orttraining_test_bert_postprocess import postprocess_model
+from orttraining_test_bert_postprocess import postprocess_model  # noqa: F401
 from orttraining_test_data_loader import BatchArgsOption, create_ort_test_dataloader, split_batch
 
 from onnxruntime.capi.ort_trainer import IODescription, ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp
-from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.training import TrainStepInfo, _utils, amp  # noqa: F401
+from onnxruntime.training import model_desc_validation as md_val  # noqa: F401
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 from onnxruntime.training.optim import _LRScheduler
@@ -13,7 +13,7 @@ from onnxruntime.training.optim import _LRScheduler
 def warmup_cosine(x, warmup=0.002):
     if x < warmup:
         return x / warmup
-    return 0.5 * (1.0 + torch.cos(math.pi * x))
+    return 0.5 * (1.0 + torch.cos(math.pi * x))  # noqa: F821
 
 
 def warmup_constant(x, warmup=0.002):

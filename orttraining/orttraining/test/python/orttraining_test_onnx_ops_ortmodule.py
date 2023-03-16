@@ -49,9 +49,9 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         pt_model_cls, op_grad_type, kwargs = self.get_torch_model_name(name, device)
         if kwargs is None:
             kwargs = {}
-        N = 32
+        N = 32  # noqa: N806
         pt_model = pt_model_cls().to(device)
-        D_in = pt_model.fc1.in_features
+        D_in = pt_model.fc1.in_features  # noqa: N806
         ort_model = ORTModule(copy.deepcopy(pt_model))
 
         def run_step(model, x):

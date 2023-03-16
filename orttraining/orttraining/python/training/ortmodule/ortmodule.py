@@ -16,11 +16,11 @@ from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
-from ._torch_module_pytorch import TorchModulePytorch
+from ._torch_module_pytorch import TorchModulePytorch  # noqa: F401
 from .debug_options import DebugOptions
 
 # Needed to override PyTorch methods
-T = TypeVar("T", bound="Module")
+T = TypeVar("T", bound="Module")  # noqa: F821
 
 
 class ORTModule(torch.nn.Module):
@@ -148,7 +148,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
         self._torch_module.add_module(name, module)
@@ -179,7 +179,7 @@ class ORTModule(torch.nn.Module):
         self._torch_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[["Module"], None]) -> T:
+    def apply(self: T, fn: Callable[["Module"], None]) -> T:  # noqa: F821
         """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
@@ -206,7 +206,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module.state_dict(destination=destination, prefix=prefix, keep_vars=keep_vars)
 
-    def load_state_dict(self, state_dict: "OrderedDict[str, Tensor]", strict: bool = True):
+    def load_state_dict(self, state_dict: "OrderedDict[str, Tensor]", strict: bool = True):  # noqa: F821
         """Override :meth:`~torch.nn.Module.load_state_dict` to delegate execution to ONNX Runtime"""
 
         return self._torch_module.load_state_dict(state_dict, strict=strict)
@@ -260,12 +260,12 @@ class ORTModule(torch.nn.Module):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
-    def named_children(self) -> Iterator[Tuple[str, "Module"]]:
+    def named_children(self) -> Iterator[Tuple[str, "Module"]]:  # noqa: F821
         """Override :meth:`~torch.nn.Module.named_children`"""
 
         yield from self._torch_module.named_children()
 
-    def modules(self) -> Iterator["Module"]:
+    def modules(self) -> Iterator["Module"]:  # noqa: F821
         """Override :meth:`~torch.nn.Module.modules`"""
 
         yield from self._torch_module.modules()

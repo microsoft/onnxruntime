@@ -99,5 +99,5 @@ class TorchModuleInterface:
     def _replicate_for_data_parallel(self):
         raise NotImplementedError(f"_replicate_for_data_parallel is not implemented for {type(self)}.")
 
-    def add_module(self, name: str, module: Optional["Module"]) -> None:
+    def add_module(self, name: str, module: Optional["Module"]) -> None:  # noqa: F821
         raise NotImplementedError(f"add_module is not implemented for {type(self)}.")

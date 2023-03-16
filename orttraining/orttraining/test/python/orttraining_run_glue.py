@@ -1,6 +1,6 @@
 # adapted from run_glue.py of huggingface transformers
 
-import dataclasses
+import dataclasses  # noqa: F401
 import logging
 import os
 import unittest
@@ -24,13 +24,13 @@ from transformers import (
 )
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
 
 try:
     from onnxruntime.capi._pybind_state import (
         get_mpi_context_local_rank,
-        get_mpi_context_local_size,
-        get_mpi_context_world_rank,
+        get_mpi_context_local_size,  # noqa: F401
+        get_mpi_context_world_rank,  # noqa: F401
         get_mpi_context_world_size,
     )
 
@@ -40,7 +40,7 @@ except ImportError:
     pass
 
 
-import torch
+import torch  # noqa: F401
 from orttraining_transformer_trainer import ORTTransformerTrainer
 
 logger = logging.getLogger(__name__)
@@ -229,7 +229,7 @@ class ORTGlueTest(unittest.TestCase):
             num_labels = glue_tasks_num_labels[data_args.task_name]
             output_mode = glue_output_modes[data_args.task_name]
         except KeyError:
-            raise ValueError("Task not found: %s" % (data_args.task_name))
+            raise ValueError("Task not found: %s" % (data_args.task_name))  # noqa: B904
 
         config = AutoConfig.from_pretrained(
             model_args.config_name if model_args.config_name else model_args.model_name_or_path,

@@ -4,28 +4,28 @@ import json
 import logging
 import os
 import random
-from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple  # noqa: F401
 
 import numpy as np
 import torch
-from orttraining_test_bert_postprocess import postprocess_model
-from torch import nn
+from orttraining_test_bert_postprocess import postprocess_model  # noqa: F401
+from torch import nn  # noqa: F401
 from torch.utils.data.dataloader import DataLoader
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from torch.utils.data.sampler import RandomSampler, SequentialSampler  # noqa: F401
 from tqdm import tqdm, trange
-from transformers.data.data_collator import DataCollator, DefaultDataCollator
+from transformers.data.data_collator import DataCollator, DefaultDataCollator  # noqa: F401
 from transformers.modeling_utils import PreTrainedModel
 from transformers.training_args import TrainingArguments
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp
-from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
+from onnxruntime.training import TrainStepInfo, _utils, amp  # noqa: F401
+from onnxruntime.training import model_desc_validation as md_val  # noqa: F401
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
-from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler
+from onnxruntime.training.optim import LinearWarmupLRScheduler, _LRScheduler  # noqa: F401
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -33,7 +33,7 @@ try:
     _has_tensorboard = True
 except ImportError:
     try:
-        from tensorboardX import SummaryWriter
+        from tensorboardX import SummaryWriter  # noqa: F401
 
         _has_tensorboard = True
     except ImportError:

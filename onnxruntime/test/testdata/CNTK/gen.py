@@ -3,7 +3,7 @@
 
 import os
 
-import cntk as C  # noqa: N812
+import cntk as C
 import numpy as np
 import onnx
 from onnx import numpy_helper

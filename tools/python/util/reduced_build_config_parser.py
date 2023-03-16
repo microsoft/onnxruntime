@@ -5,7 +5,7 @@ import os
 
 # Check if the flatbuffers module is available. If not we cannot handle type reduction information in the config.
 try:
-    import flatbuffers
+    import flatbuffers  # noqa: F401
 
     have_flatbuffers = True
     from .ort_format_model import GloballyAllowedTypesOpTypeImplFilter, OperatorTypeUsageManager

@@ -3,7 +3,7 @@
 
 import unittest
 
-import onnxruntime_pybind11_state as torch_ort
+import onnxruntime_pybind11_state as torch_ort  # noqa: F401
 import torch
 
 

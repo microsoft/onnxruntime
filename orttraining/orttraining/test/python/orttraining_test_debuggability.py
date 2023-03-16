@@ -1,21 +1,21 @@
-import inspect
-import os
+import inspect  # noqa: F401
+import os  # noqa: F401
 
-import _test_helpers
-import onnx
+import _test_helpers  # noqa: F401
+import onnx  # noqa: F401
 import pytest
 import torch
-import torchvision
+import torchvision  # noqa: F401
 from _test_commons import _load_pytorch_transformer_model
-from numpy.testing import assert_allclose
+from numpy.testing import assert_allclose  # noqa: F401
 
 from onnxruntime import set_seed
-from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription
-from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler
-from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription
-from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
-from onnxruntime.training import TrainStepInfo, _utils, amp
-from onnxruntime.training import model_desc_validation as md_val
+from onnxruntime.capi.ort_trainer import IODescription as Legacy_IODescription  # noqa: F401
+from onnxruntime.capi.ort_trainer import LossScaler as Legacy_LossScaler  # noqa: F401
+from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescription  # noqa: F401
+from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer  # noqa: F401
+from onnxruntime.training import TrainStepInfo, _utils, amp  # noqa: F401
+from onnxruntime.training import model_desc_validation as md_val  # noqa: F401
 from onnxruntime.training import optim, orttrainer
 from onnxruntime.training import orttrainer_options as orttrainer_options
 

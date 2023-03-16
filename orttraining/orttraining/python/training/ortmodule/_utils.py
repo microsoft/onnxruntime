@@ -12,7 +12,7 @@ import random
 import traceback
 import types
 import warnings
-from typing import List
+from typing import List  # noqa: F401
 
 import numpy as np
 import torch

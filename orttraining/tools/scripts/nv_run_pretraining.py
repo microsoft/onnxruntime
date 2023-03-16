@@ -31,16 +31,16 @@ import numpy as np
 import torch
 from apex import amp
 from apex.amp import _amp_state
-from apex.parallel import DistributedDataParallel as DDP
+from apex.parallel import DistributedDataParallel as DDP  # noqa: N817
 from apex.parallel.distributed import flat_dist_call
-from file_utils import PYTORCH_PRETRAINED_BERT_CACHE
+from file_utils import PYTORCH_PRETRAINED_BERT_CACHE  # noqa: F401
 from modeling import BertConfig, BertForPreTraining
 from optimization import BertLAMB
-from schedulers import LinearWarmUpScheduler
-from tokenization import BertTokenizer
-from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from tqdm import tqdm, trange
+from schedulers import LinearWarmUpScheduler  # noqa: F401
+from tokenization import BertTokenizer  # noqa: F401
+from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler  # noqa: F401
+from torch.utils.data.distributed import DistributedSampler  # noqa: F401
+from tqdm import tqdm, trange  # noqa: F401
 from utils import is_main_process
 
 logging.basicConfig(
@@ -59,7 +59,7 @@ def create_pretraining_dataset(input_file, max_pred_length, shared_list, args):
     return train_dataloader, input_file
 
 
-class pretraining_dataset(Dataset):
+class pretraining_dataset(Dataset):  # noqa: N801
     def __init__(self, input_file, max_pred_length):
         self.input_file = input_file
         self.max_pred_length = max_pred_length

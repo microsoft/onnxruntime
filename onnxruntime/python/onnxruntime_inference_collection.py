@@ -7,7 +7,7 @@ import collections.abc
 import os
 import warnings
 
-from onnxruntime.capi import _pybind_state as C  # noqa: N812
+from onnxruntime.capi import _pybind_state as C
 
 
 def get_ort_device_type(device_type, device_index):

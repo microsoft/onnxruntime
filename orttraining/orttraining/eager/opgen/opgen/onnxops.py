@@ -3037,7 +3037,7 @@ class MaxUnpool(ONNXOp):
      pooling op that the unpooling op is trying to invert.
     """
 
-    def __init__(self, X, I, output_shape, kernel_shape=None, pads=None, strides=None):
+    def __init__(self, X, I, output_shape, kernel_shape=None, pads=None, strides=None):  # noqa: E741
         super().__init__(
             "MaxUnpool",
             1,

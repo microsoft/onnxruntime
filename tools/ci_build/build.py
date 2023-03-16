@@ -56,9 +56,9 @@ def _check_python_version():
     # According to the BUILD.md, python 3.5+ is required:
     # Python 2 is definitely not supported and it should be safer to consider
     # it won't run with python 4:
-    if sys.version_info[0] != 3:
+    if sys.version_info[0] != 3:  # noqa: YTT201
         raise BuildError("Bad python major version: expecting python 3, found version " "'{}'".format(sys.version))
-    if sys.version_info[1] < 6:
+    if sys.version_info[1] < 6:  # noqa: YTT203
         raise BuildError("Bad python minor version: expecting python 3.6+, found version " "'{}'".format(sys.version))
 
 
@@ -737,7 +737,7 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(
-    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None
+    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None  # noqa: B006
 ):
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
@@ -776,7 +776,7 @@ def update_submodules(source_dir):
 
 def is_docker():
     path = "/proc/self/cgroup"
-    return os.path.exists("/.dockerenv") or os.path.isfile(path) and any("docker" in line for line in open(path))
+    return os.path.exists("/.dockerenv") or os.path.isfile(path) and any("docker" in line for line in open(path))  # noqa: SIM115
 
 
 def install_python_deps(numpy_version=""):
@@ -823,7 +823,7 @@ def use_dev_mode(args):
         return False
     if args.ios and is_macOS():
         return False
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")
+    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
     if SYSTEM_COLLECTIONURI and SYSTEM_COLLECTIONURI != "https://dev.azure.com/onnxruntime/":
         return False
     return True
@@ -1311,9 +1311,9 @@ def generate_build_tree(
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(2)
-            MM = build_matches.group(3)
-            DD = build_matches.group(4)
+            YY = build_matches.group(2)  # noqa: N806
+            MM = build_matches.group(3)  # noqa: N806
+            DD = build_matches.group(4)  # noqa: N806
 
             # Get ORT major and minor number
             with open(os.path.join(source_dir, "VERSION_NUMBER")) as f:
@@ -1837,7 +1837,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     )
 
             try:
-                import onnx
+                import onnx  # noqa: F401
 
                 onnx_test = True
             except ImportError as error:
@@ -1897,8 +1897,8 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
             if not args.skip_keras_test:
                 try:
-                    import keras
-                    import onnxmltools
+                    import keras  # noqa: F401
+                    import onnxmltools  # noqa: F401
 
                     onnxml_test = True
                 except ImportError:
@@ -2304,7 +2304,7 @@ def generate_documentation(source_dir, build_dir, configs, validate):
                 raise BuildError("Generated documents have diffs. Check build output for details.")
 
         except subprocess.CalledProcessError:
-            raise BuildError("git diff returned non-zero error code")
+            raise BuildError("git diff returned non-zero error code")  # noqa: B904
 
 
 def main():

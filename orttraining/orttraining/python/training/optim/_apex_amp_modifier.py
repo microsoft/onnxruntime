@@ -22,7 +22,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
             ["_post_amp_backward", "zero_grad"], require_apex=True, require_torch_non_finite_check=False
         )
 
-    def override_function(m_self):
+    def override_function(m_self):  # noqa: N805
         from apex import amp as apex_amp
 
         from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops

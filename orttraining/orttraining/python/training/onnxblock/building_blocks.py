@@ -13,7 +13,7 @@ import onnxruntime.training.onnxblock.model_accessor as accessor
 class Block(ABC):
     """Base class for all building blocks that can be stacked on top of each other."""
 
-    def __init__(self):
+    def __init__(self):  # noqa: B027
         ...
 
     @abstractmethod

@@ -213,7 +213,7 @@ CustomGradientRegistry.register_custom_stop_gradient_edges([0], "org.pytorch.ate
 
 
 @register_gradient("org.pytorch.aten", "ATen", "numpy_T", "")
-def numpy_T_gradient():
+def numpy_T_gradient():  # noqa: N802
     return [
         (
             ("ATen", "org.pytorch.aten"),

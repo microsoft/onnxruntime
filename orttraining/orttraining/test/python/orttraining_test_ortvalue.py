@@ -226,7 +226,7 @@ class TestOrtValue(unittest.TestCase):
             loss.backward()
             return prediction, loss
 
-        N, D_in, H, D_out = 120, 1536, 500, 1536
+        N, D_in, H, D_out = 120, 1536, 500, 1536  # noqa: N806
         pt_model = NeuralNetTanh(D_in, H, D_out)
         ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -252,7 +252,7 @@ class TestOrtValue(unittest.TestCase):
                 return out1, out2
 
         device = "cpu"
-        N, D_in, D_out = 8, 16, 2
+        N, D_in, D_out = 8, 16, 2  # noqa: N806
         model = NeuralNetBoolInputOutput(D_in, D_out).to(device)
         model = ORTModule(model)
         condition = torch.randint(2, (N, D_in), dtype=torch.bool, device=device)

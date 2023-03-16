@@ -10,7 +10,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from onnxruntime.training.ortmodule.torch_cpp_extensions import torch_interop_utils
 
-from ._fallback import ORTModuleFallbackException, ORTModuleIOError, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleFallbackException, ORTModuleIOError, _FallbackManager, wrap_exception  # noqa: F401
 
 
 def wrap_as_dlpack_or_not(grad_flag, tensor_flag, inplace_flag, training_mode_flag, arg):
@@ -177,7 +177,7 @@ def call_python_forward_function(
         print("Exception happens when running ", forward_function)
         sys.stdout.flush()
         sys.stderr.flush()
-        raise wrap_exception(ORTModuleFallbackException, e)
+        raise wrap_exception(ORTModuleFallbackException, e)  # noqa: B904
 
 
 def call_python_backward_function(
@@ -235,4 +235,4 @@ def call_python_backward_function(
             print("Exception happens when running ", backward_function)
             sys.stdout.flush()
             sys.stderr.flush()
-            raise wrap_exception(ORTModuleFallbackException, e)
+            raise wrap_exception(ORTModuleFallbackException, e)  # noqa: B904

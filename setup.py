@@ -113,7 +113,7 @@ manylinux_tags = [
 is_manylinux = environ.get("AUDITWHEEL_PLAT", None) in manylinux_tags
 
 
-class build_ext(_build_ext):
+class build_ext(_build_ext):  # noqa: N801
     def build_extension(self, ext):
         dest_file = self.get_ext_fullpath(ext.name)
         logger.info("copying %s -> %s", ext.sources[0], dest_file)
@@ -123,7 +123,7 @@ class build_ext(_build_ext):
 try:
     from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
-    class bdist_wheel(_bdist_wheel):
+    class bdist_wheel(_bdist_wheel):  # noqa: N801
         """Helper functions to create wheel package"""
 
         if is_openvino and is_manylinux:

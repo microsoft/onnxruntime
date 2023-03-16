@@ -7,17 +7,17 @@
 import argparse
 import os
 
-import numpy as np
+import numpy as np  # noqa: F401
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+import torch.optim as optim  # noqa: F401
 from mpi4py import MPI
 from torchvision import datasets, transforms
 
 from onnxruntime.capi.ort_trainer import IODescription, ModelDescription, ORTTrainer
 
-try:
+try:  # noqa: SIM105
     from onnxruntime.capi._pybind_state import set_cuda_device_id
 except ImportError:
     pass
@@ -193,7 +193,7 @@ def main():
 
     for epoch in range(1, args.epochs + 1):
         train_with_trainer(args, trainer, device, train_loader, epoch)
-        import pdb
+        import pdb  # noqa: F401
 
         test_with_trainer(args, trainer, device, test_loader)
 

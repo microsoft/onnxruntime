@@ -25,7 +25,7 @@ from sklearn.datasets import load_boston
 boston = load_boston()
 X, y = boston.data, boston.target
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split  # noqa: E402
 
 X_train, X_test, y_train, y_test = train_test_split(X, y)
 X_train_dict = pandas.DataFrame(X_train[:, 1:]).T.to_dict().values()
@@ -34,9 +34,9 @@ X_test_dict = pandas.DataFrame(X_test[:, 1:]).T.to_dict().values()
 ####################################
 # We create a pipeline.
 
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.feature_extraction import DictVectorizer
-from sklearn.pipeline import make_pipeline
+from sklearn.ensemble import GradientBoostingRegressor  # noqa: E402
+from sklearn.feature_extraction import DictVectorizer  # noqa: E402
+from sklearn.pipeline import make_pipeline  # noqa: E402
 
 pipe = make_pipeline(DictVectorizer(sparse=False), GradientBoostingRegressor())
 
@@ -45,7 +45,7 @@ pipe.fit(X_train_dict, y_train)
 ####################################
 # We compute the prediction on the test set
 # and we show the confusion matrix.
-from sklearn.metrics import r2_score
+from sklearn.metrics import r2_score  # noqa: E402
 
 pred = pipe.predict(X_test_dict)
 print(r2_score(y_test, pred))
@@ -58,8 +58,8 @@ print(r2_score(y_test, pred))
 # `sklearn-onnx <https://github.com/onnx/sklearn-onnx>`_
 # to convert the model into ONNX format.
 
-from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType, SequenceType
+from skl2onnx import convert_sklearn  # noqa: E402
+from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType, SequenceType  # noqa: E402, F401
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
@@ -70,12 +70,12 @@ with open("pipeline_vectorize.onnx", "wb") as f:
 ##################################
 # We load the model with ONNX Runtime and look at
 # its input and output.
-import onnxruntime as rt
-from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument
+import onnxruntime as rt  # noqa: E402
+from onnxruntime.capi.onnxruntime_pybind11_state import InvalidArgument  # noqa: E402
 
 sess = rt.InferenceSession("pipeline_vectorize.onnx", providers=rt.get_available_providers())
 
-import numpy
+import numpy  # noqa: E402, F401
 
 inp, out = sess.get_inputs()[0], sess.get_outputs()[0]
 print(f"input name='{inp.name}' and shape={inp.shape} and type={inp.type}")

@@ -3,9 +3,9 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import fileinput
+import fileinput  # noqa: F401
 import os
-import sys
+import sys  # noqa: F401
 
 from setuptools import setup
 from torch.utils import cpp_extension

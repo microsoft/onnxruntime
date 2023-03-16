@@ -111,7 +111,7 @@ class SGDConfig(_OptimizerConfig):
         sgd_optim1 = SGDConfig(lr=0.001)
     """
 
-    def __init__(self, params=[], lr=0.001):
+    def __init__(self, params=[], lr=0.001):  # noqa: B006
         super().__init__(name="SGDOptimizer", params=params, defaults={"lr": lr})
         assert isinstance(params, list) and len(params) == 0, "'params' must be an empty list for SGD optimizer"
 
@@ -154,7 +154,7 @@ class AdamConfig(_OptimizerConfig):
 
     def __init__(
         self,
-        params=[],
+        params=[],  # noqa: B006
         lr=0.001,
         alpha=0.9,
         beta=0.999,
@@ -229,7 +229,7 @@ class LambConfig(_OptimizerConfig):
 
     def __init__(
         self,
-        params=[],
+        params=[],  # noqa: B006
         lr=0.001,
         alpha=0.9,
         beta=0.999,

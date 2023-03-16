@@ -4,15 +4,14 @@
 # There was no copyright statement on the file at the time of copying.
 
 import argparse
-import io
 import os
 import pathlib
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Set, Text, Tuple
+from typing import Any, Dict, List, Sequence, Set, Text, Tuple  # noqa: F401
 
 import numpy as np  # type: ignore
-from onnx import AttributeProto, FunctionProto
+from onnx import AttributeProto, FunctionProto  # noqa: F401
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
@@ -165,7 +164,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
                 def format_value(value):  # type: (Any) -> Text
                     if isinstance(value, float):
                         value = np.round(value, 5)
-                    if isinstance(value, (bytes, bytearray)) and sys.version_info[0] == 3:
+                    if isinstance(value, (bytes, bytearray)) and sys.version_info[0] == 3:  # noqa: YTT201
                         value = value.decode("utf-8")
                     return str(value)
 
@@ -237,7 +236,7 @@ def display_schema(schema, versions):  # type: (OpSchema, Sequence[OpSchema]) ->
             allowed_type_str = ""
             if len(allowed_types) > 0:
                 allowed_type_str = allowed_types[0]
-            for allowedType in allowed_types[1:]:
+            for allowedType in allowed_types[1:]:  # noqa: N806
                 allowed_type_str += ", " + allowedType
             s += f"<dt><tt>{type_constraint.type_param_str}</tt> : {allowed_type_str}</dt>\n"
             s += f"<dd>{type_constraint.description}</dd>\n"
@@ -359,7 +358,7 @@ def main(output_path: str, domain_filter: [str]):
             fout.write(s)
 
             for _, namemap in supportmap:
-                for n, schema, versions in namemap:
+                for n, schema, versions in namemap:  # noqa: B007
                     s = '  * {}<a href="#{}">{}</a>\n'.format(
                         support_level_str(schema.support_level),
                         format_name_with_domain(domain, n),

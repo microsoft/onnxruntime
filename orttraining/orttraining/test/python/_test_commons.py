@@ -26,7 +26,7 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):
+def run_subprocess(args, cwd=None, capture=False, dll_path=None, shell=False, env={}, log=None):  # noqa: B006
     if log:
         log.info(f"Running subprocess in '{cwd or os.getcwd()}'\n{args}")
     my_env = os.environ.copy()

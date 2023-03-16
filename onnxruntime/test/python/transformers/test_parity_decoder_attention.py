@@ -17,7 +17,7 @@ from typing import Dict, List, Optional, Tuple  # noqa: F401
 import numpy
 import torch
 from torch import Tensor, nn
-from torch.nn import functional as F  # noqa: N812
+from torch.nn import functional as F
 
 torch.manual_seed(0)
 

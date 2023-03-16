@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import warnings
+import warnings  # noqa: F401
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
@@ -271,7 +271,7 @@ def adaptive_avg_pool2d(g, self, output_size):
 
 
 @register_symbolic("numpy_T")
-def numpy_T(g, self):
+def numpy_T(g, self):  # noqa: N802
     # Numpy-style `a.T`: returns the tensor
     # with dims reversed
     rank = sym_help._get_tensor_rank(self)
@@ -301,7 +301,7 @@ def squeeze(g, self, dim=None):
 # exporting to Split with SplitGrad as gradient graph.
 # Exporter will fail to register symbolic with non-empty domain when torch version is < 1.11.0.
 @register_symbolic("ConstantChunk", "prim", torch_version_start="1.11.0")
-def prim_ConstantChunk(g, self, chunks, dim):
+def prim_ConstantChunk(g, self, chunks, dim):  # noqa: N802
     if chunks == 1:
         return self
     input_shape_dim = g.op(
@@ -759,9 +759,9 @@ def group_norm(g, input, num_groups, weight, bias, eps, cudnn_enabled):
 
     shape = g.op("Shape", input)
     size = g.op("Size", input)
-    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)
-    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)
-    HxW = g.op("Div", size, g.op("Mul", N, C))
+    N = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(0, dtype=torch.long)), axis_i=0)  # noqa: N806
+    C = g.op("Gather", shape, g.op("Constant", value_t=torch.tensor(1, dtype=torch.long)), axis_i=0)  # noqa: N806
+    HxW = g.op("Div", size, g.op("Mul", N, C))  # noqa: N806
     return g.op(
         "org.pytorch.aten::ATen",
         input,

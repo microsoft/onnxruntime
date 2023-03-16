@@ -117,11 +117,11 @@ class Token:
         )
 
 
-class Reader(ABC):
-    def open(self):
+class Reader(ABC):  # noqa: B024
+    def open(self):  # noqa: B027
         pass
 
-    def close(self):
+    def close(self):  # noqa: B027
         pass
 
     def read_char(self) -> str:

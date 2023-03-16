@@ -9,7 +9,7 @@ import pytest
 import torch
 
 # Import ORT modules.
-from _test_helpers import *
+from _test_helpers import *  # noqa: F403
 from packaging.version import Version
 from torch.nn.parameter import Parameter
 
@@ -28,10 +28,10 @@ def torch_version_lower_than(v):
 @pytest.fixture(scope="session", autouse=True)
 def run_before_test_session(request):
     def insert_disable_fallback_in_env():
-        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"
+        os.environ["ORTMODULE_FALLBACK_POLICY"] = "FALLBACK_DISABLE"  # noqa: F405
 
     def remove_disable_fallback_from_env():
-        del os.environ["ORTMODULE_FALLBACK_POLICY"]
+        del os.environ["ORTMODULE_FALLBACK_POLICY"]  # noqa: F405
 
     insert_disable_fallback_in_env()
     request.addfinalizer(remove_disable_fallback_from_env)
@@ -86,7 +86,7 @@ def test_gelu():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_GeLU_custom_func_rets_not_as_module_output():
@@ -144,7 +144,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_GeLU_multiple_forward_runs():
@@ -196,7 +196,7 @@ def test_GeLU_multiple_forward_runs():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)  # noqa: F405
 
 
 def test_MegatronF():
@@ -236,7 +236,7 @@ def test_MegatronF():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_ScalarAndTuple():
@@ -283,7 +283,7 @@ def test_ScalarAndTuple():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_ScalarAndTupleReordered():
@@ -330,7 +330,7 @@ def test_ScalarAndTupleReordered():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 @pytest.mark.skip(
@@ -380,7 +380,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGrad():
     label_input = torch.ones([output_size])
 
     # Test when input is in-place updated, but does not require gradient.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)  # noqa: F405
 
 
 @pytest.mark.skip(
@@ -429,7 +429,7 @@ def test_InplaceUpdateInputNotAsOutputNotRequireGrad():
     # which is a duplicated computation with the PythonOp.
     # So for the weights that are used twice BUT SHOULD only used once, the gradients are almost 2x than PyTorch's grad,
     # this is the reason we ignore the gradient compare here.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)  # noqa: F405
 
 
 @pytest.mark.skip(reason="disable due to exporter bug https://github.com/microsoft/onnx-converters-private/issues/37.")
@@ -476,7 +476,7 @@ def test_InplaceUpdateInputAsOutputNotRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 @pytest.mark.skip(
@@ -528,7 +528,7 @@ def test_InplaceUpdateInputAsOutputRequireGrad():
     # duplicated computation with the PythonOp.  Thus, for the weights that are used twice BUT SHOULD
     # only used once, the gradients are almost 2x than PyTorch's grad, this is the reason we
     # ignore the gradient compare here.
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)  # noqa: F405
 
 
 @pytest.mark.skip(
@@ -580,7 +580,7 @@ def test_InplaceUpdateInputNotAsOutputRequireGrad():
     # should reuse the input torch tensor @140214095996104, 140212816617984 but actually not." It seems
     # if we don't have mark_dirty() in auto grad forward, the result is not using the input_,
     # (maybe a view of it, because data address is same)
-    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)
+    run_training_test_and_compare(model_builder, input_generator, label_input, ignore_grad_compare=True)  # noqa: F405
 
 
 ##########################################################################################
@@ -630,7 +630,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_EvalTest():
@@ -671,7 +671,7 @@ def test_EvalTest():
     label_input = torch.ones([output_size])
 
     # Test pure inferencing scenarios, when inputs don't requires_grad.
-    run_evaluate_test_and_compare(model_builder, input_generator, label_input)
+    run_evaluate_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 @pytest.mark.skipif(
@@ -735,7 +735,7 @@ def test_TwoOutputFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 def test_InnerModuleCall():
@@ -801,12 +801,12 @@ def test_InnerModuleCall():
     # Test indirect ORTModule call from custom function
     result_pth = get_inner_module_call_result(x.detach(), "cuda:0", False)
     result_ort = get_inner_module_call_result(x.detach(), "cuda:0", True)
-    compare_tensor_list(result_ort, result_pth)
+    compare_tensor_list(result_ort, result_pth)  # noqa: F405
 
     # Test indirect ORTModule call from custom function
     result_ort = get_inner_module_call_result(x.detach(), "cpu", True)
     result_pth = get_inner_module_call_result(x.detach(), "cpu", False)
-    compare_tensor_list(result_ort, result_pth)
+    compare_tensor_list(result_ort, result_pth)  # noqa: F405
 
 
 @pytest.mark.skipif(
@@ -859,9 +859,9 @@ def test_Share_Input():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
-    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
+    run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)  # noqa: F405
 
 
 def test_MultipleStream_InForwardFunction():
@@ -907,7 +907,7 @@ def test_MultipleStream_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    run_training_test_and_compare(  # noqa: F405
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -955,7 +955,7 @@ def test_NonDefaultStream_InForwardFunction1():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    run_training_test_and_compare(  # noqa: F405
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1002,7 +1002,7 @@ def test_NonDefaultStream_InForwardFunction2():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    run_training_test_and_compare(  # noqa: F405
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1051,7 +1051,7 @@ def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
     label_input = torch.ones([output_size])
 
     # Test multi-input and multi-output custom function.
-    run_training_test_and_compare(
+    run_training_test_and_compare(  # noqa: F405
         model_builder, input_generator, label_input, expected_outputs=[torch.tensor([0.224, 0.272])]
     )
 
@@ -1145,7 +1145,7 @@ def test_checkpoint_function():
         print("Ref:")
         print(y_ref)
 
-        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = "1"
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = "1"  # noqa: F405
 
         m = ORTModule(m)
 
@@ -1160,7 +1160,7 @@ def test_checkpoint_function():
         print("Train:")
         assert torch.allclose(y_ref, y_train)
 
-        del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+        del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]  # noqa: F405
 
     run()
 
@@ -1193,7 +1193,7 @@ def test_skipped_autograd_function():
 
     output_size = 1024
 
-    os.environ[
+    os.environ[  # noqa: F405
         "ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"
     ] = "orttraining_test_ortmodule_autograd.test_skipped_autograd_function.<locals>.TestSkippedFunction"
 
@@ -1207,7 +1207,7 @@ def test_skipped_autograd_function():
 
     assert not can_run
 
-    del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]
+    del os.environ["ORTMODULE_SKIPPED_AUTOGRAD_FUNCTIONS"]  # noqa: F405
 
 
 def test_pythonop_training_mode():
@@ -1331,4 +1331,4 @@ def test_python_op_save_input_for_backward():
         return torch.randn(output_size, output_size, dtype=torch.float).requires_grad_()
 
     label_input = torch.ones([output_size])
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405

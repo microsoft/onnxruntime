@@ -10,12 +10,12 @@ import _test_helpers
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.parallel import DistributedDataParallel as DDP  # noqa: N817
 from torch.nn.parameter import Parameter
 
 import onnxruntime
 from onnxruntime.training.ortmodule import ORTModule
-from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory
+from onnxruntime.training.ortmodule._graph_execution_manager_factory import GraphExecutionManagerFactory  # noqa: F401
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     try:
         mp.spawn(test_Distributed_ReduceWithMarkDirtyModel, nprocs=size, args=(size,))
     except Exception:
-        import sys
+        import sys  # noqa: F811
 
         sys.stdout.flush()
         sys.stderr.flush()

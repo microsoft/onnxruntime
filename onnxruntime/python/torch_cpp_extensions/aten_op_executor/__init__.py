@@ -1,7 +1,7 @@
 import threading
 from functools import wraps
 
-from onnxruntime.capi import _pybind_state as _C  # noqa: N812
+from onnxruntime.capi import _pybind_state as _C
 
 
 def run_once_aten_op_executor(f):

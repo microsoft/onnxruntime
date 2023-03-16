@@ -1,7 +1,7 @@
-import os
+import os  # noqa: F401
 import unittest
 
-import numpy as np
+import numpy as np  # noqa: F401
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

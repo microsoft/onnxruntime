@@ -104,7 +104,7 @@ def main():
 
     out_file = sys.stdout
     if args.write_to:
-        out_file = open(args.write_to, "w")
+        out_file = open(args.write_to, "w")  # noqa: SIM115
 
     if args.base_binary_path:
         diffs = diff_sections_total_size(args.base_binary_path, args.binary_path, args.readelf_path)

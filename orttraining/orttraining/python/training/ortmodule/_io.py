@@ -11,7 +11,7 @@ from collections import abc
 
 import torch
 
-from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception
+from ._fallback import ORTModuleIOError, ORTModuleONNXModelException, _FallbackManager, wrap_exception  # noqa: F401
 from ._utils import warn_of_constant_inputs
 
 
@@ -224,7 +224,7 @@ def _combine_input_buffers_initializers(
 
         if inp is None:
             # Registered buffers are translated to user_input+initializer in ONNX
-            try:
+            try:  # noqa: SIM105
                 inp = buffer_names_dict[name]
             except KeyError:
                 # ONNX input name is not present in the registered buffer dict.
