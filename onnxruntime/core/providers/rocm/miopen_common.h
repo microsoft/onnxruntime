@@ -14,8 +14,7 @@ const double MIOPEN_BN_MIN_EPSILON = 1e-5;
 namespace onnxruntime {
 namespace rocm {
 
-// Define miopenTensorLayout_t there if ROCm version < 5.3.0.
-#ifndef USE_MIOPEN_TENSOR_LAYOUT
+#if MIOPEN_VERSION < 21800
 typedef enum {
   miopenTensorNCHW = 0,
   miopenTensorNHWC = 1,

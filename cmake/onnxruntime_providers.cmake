@@ -1378,6 +1378,33 @@ if (onnxruntime_USE_ROCM)
   find_package(hiprand REQUIRED)
   find_package(rocblas REQUIRED)
   find_package(MIOpen REQUIRED)
+
+  # MIOpen version
+  if(NOT DEFINED ENV{MIOPEN_PATH})
+    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME}/miopen)
+  else()
+    set(MIOPEN_PATH $ENV{MIOPEN_PATH})
+  endif()
+
+  file(READ ${MIOPEN_PATH}/include/miopen/version.h MIOPEN_HEADER_CONTENTS)
+        string(REGEX MATCH "define MIOPEN_VERSION_MAJOR * +([0-9]+)"
+                                 MIOPEN_VERSION_MAJOR "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_MAJOR * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_MAJOR "${MIOPEN_VERSION_MAJOR}")
+        string(REGEX MATCH "define MIOPEN_VERSION_MINOR * +([0-9]+)"
+                                 MIOPEN_VERSION_MINOR "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_MINOR * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_MINOR "${MIOPEN_VERSION_MINOR}")
+        string(REGEX MATCH "define MIOPEN_VERSION_PATCH * +([0-9]+)"
+                                 MIOPEN_VERSION_PATCH "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_PATCH * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_PATCH "${MIOPEN_VERSION_PATCH}")
+  set(MIOPEN_VERSION_DEV "${MIOPEN_VERSION_MAJOR}.${MIOPEN_VERSION_MINOR}.${MIOPEN_VERSION_PATCH}")
+  math(EXPR MIOPEN_VERSION_DEV_INT "(${MIOPEN_VERSION_MAJOR}*10000) + (${MIOPEN_VERSION_MINOR}*100) + ${MIOPEN_VERSION_PATCH}")
+  message("MIOPEN_VERSION_DEV: ${MIOPEN_VERSION_DEV}")
+  message("MIOPEN_VERSION_DEV_INT:   ${MIOPEN_VERSION_DEV_INT}")
+  add_definitions(-DMIOPEN_VERSION=${MIOPEN_VERSION_DEV_INT})
+
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
   set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
