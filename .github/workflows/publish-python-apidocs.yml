@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 jobs:
-  publish:
+  build:
     name: Generate Python API docs
     runs-on: ubuntu-latest
     steps:
