@@ -1,0 +1,196 @@
+diff --git a/include/cutlass/functional.h b/include/cutlass/functional.h
+index 59aec46a..b6a6f4f5 100644
+--- a/include/cutlass/functional.h
++++ b/include/cutlass/functional.h
+@@ -89,82 +89,82 @@ struct multiplies {
+   }
+ };
+ 
+-#if defined(__CUDA_ARCH__)
+-/// Partial specializations needed when __CUDA_NO_HALF2_OPERATORS__ is set
+-template<>
+-struct plus<__half2> {
+-  CUTLASS_HOST_DEVICE
+-  __half2 operator()(__half2 lhs, __half2 const &rhs) const {
+-    return __hadd2(lhs, rhs);
+-  }
+-};
+-
+-template<>
+-struct minus<__half2> {
+-  CUTLASS_HOST_DEVICE
+-  __half2 operator()(__half2 lhs, __half2 const &rhs) const {
+-    return __hsub2(lhs, rhs);
+-  }
+-};
+-
+-template<>
+-struct multiplies<__half2> {
+-  CUTLASS_HOST_DEVICE
+-  __half2 operator()(__half2 lhs, __half2 const &rhs) const {
+-    return __hmul2(lhs, rhs);
+-  }
+-};
+-
+-/// Partial specializations needed when __CUDA_NO_HALF_OPERATORS__ is set
+-template<>
+-struct plus<__half> {
+-  CUTLASS_HOST_DEVICE
+-  __half operator()(__half lhs, __half const &rhs) const {
+-    return __hadd(lhs, rhs);
+-  }
+-};
+-
+-template<>
+-struct minus<__half> {
+-  CUTLASS_HOST_DEVICE
+-  __half operator()(__half lhs, __half const &rhs) const {
+-    return __hsub(lhs, rhs);
+-  }
+-};
+-
+-template<>
+-struct multiplies<__half> {
+-  CUTLASS_HOST_DEVICE
+-  __half operator()(__half lhs, __half const &rhs) const {
+-    return __hmul(lhs, rhs);
+-  }
+-};
+-#endif // defined(__CUDA_ARCH__)
++// #if defined(__CUDA_ARCH__)
++// /// Partial specializations needed when __CUDA_NO_HALF2_OPERATORS__ is set
++// template<>
++// struct plus<__half2> {
++//   CUTLASS_HOST_DEVICE
++//   __half2 operator()(__half2 lhs, __half2 const &rhs) const {
++//     return __hadd2(lhs, rhs);
++//   }
++// };
++
++// template<>
++// struct minus<__half2> {
++//   CUTLASS_HOST_DEVICE
++//   __half2 operator()(__half2 lhs, __half2 const &rhs) const {
++//     return __hsub2(lhs, rhs);
++//   }
++// };
++
++// template<>
++// struct multiplies<__half2> {
++//   CUTLASS_HOST_DEVICE
++//   __half2 operator()(__half2 lhs, __half2 const &rhs) const {
++//     return __hmul2(lhs, rhs);
++//   }
++// };
++
++// /// Partial specializations needed when __CUDA_NO_HALF_OPERATORS__ is set
++// template<>
++// struct plus<__half> {
++//   CUTLASS_HOST_DEVICE
++//   __half operator()(__half lhs, __half const &rhs) const {
++//     return __hadd(lhs, rhs);
++//   }
++// };
++
++// template<>
++// struct minus<__half> {
++//   CUTLASS_HOST_DEVICE
++//   __half operator()(__half lhs, __half const &rhs) const {
++//     return __hsub(lhs, rhs);
++//   }
++// };
++
++// template<>
++// struct multiplies<__half> {
++//   CUTLASS_HOST_DEVICE
++//   __half operator()(__half lhs, __half const &rhs) const {
++//     return __hmul(lhs, rhs);
++//   }
++// };
++// #endif // defined(__CUDA_ARCH__)
+ 
+ 
+ // Maximum with nan propogation
+-// To propgate the NANs, the "max" of a two element that contains NaNs should also return a NaN 
+-template <typename T>
+-struct maximum_with_nan_propogation {
+-  CUTLASS_HOST_DEVICE
+-  T operator()(T const &lhs, T const &rhs) const {
+-    return lhs > rhs or std::isnan(lhs) ? lhs : rhs;
+-  }
+-};
+-
+-template <>
+-struct maximum_with_nan_propogation<float> {
+-  CUTLASS_HOST_DEVICE
+-  float operator()(float const lhs, float const rhs) const {
+-    float res;
+-#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+-    asm volatile("max.NaN.f32 %0, %1, %2;\n" : "=f"(res) : "f"(lhs), "f"(rhs));
+-#else
+-    res = lhs > rhs or std::isnan(lhs) ? lhs : rhs;
+-#endif
+-    return res;
+-  }
+-};
++// To propgate the NANs, the "max" of a two element that contains NaNs should also return a NaN
++// template <typename T>
++// struct maximum_with_nan_propogation {
++//   CUTLASS_HOST_DEVICE
++//   T operator()(T const &lhs, T const &rhs) const {
++//     return lhs > rhs or std::isnan(lhs) ? lhs : rhs;
++//   }
++// };
++
++// template <>
++// struct maximum_with_nan_propogation<float> {
++//   CUTLASS_HOST_DEVICE
++//   float operator()(float const lhs, float const rhs) const {
++//     float res;
++// #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
++//     asm volatile("max.NaN.f32 %0, %1, %2;\n" : "=f"(res) : "f"(lhs), "f"(rhs));
++// #else
++//     res = lhs > rhs or std::isnan(lhs) ? lhs : rhs;
++// #endif
++//     return res;
++//   }
++// };
+ 
+ /// Squares with optional conversion
+ template <typename T, typename Output = T>
+@@ -233,7 +233,7 @@ struct negate {
+   }
+ };
+ 
+-/// Greater equal 
++/// Greater equal
+ template <typename T>
+ struct greater_equal {
+   CUTLASS_HOST_DEVICE
+@@ -242,7 +242,7 @@ struct greater_equal {
+   }
+ };
+ 
+-/// Greater  
++/// Greater
+ template <typename T>
+ struct greater {
+   CUTLASS_HOST_DEVICE
+@@ -251,7 +251,7 @@ struct greater {
+   }
+ };
+ 
+-/// Less equal 
++/// Less equal
+ template <typename T>
+ struct less_equal {
+   CUTLASS_HOST_DEVICE
+@@ -260,7 +260,7 @@ struct less_equal {
+   }
+ };
+ 
+-/// Less  
++/// Less
+ template <typename T>
+ struct less {
+   CUTLASS_HOST_DEVICE
