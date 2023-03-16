@@ -17,7 +17,7 @@ struct LSTMAttributes {
   int num_directions;
   rnn::detail::ActivationFuncs activation_funcs;
   float clip;
-  int64_t input_forget;
+  int input_forget;
   int hidden_size;
 };
 

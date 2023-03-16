@@ -11,16 +11,16 @@ namespace onnxruntime::lstm {
 template <typename T>
 class LSTMGradImpl {
  public:
-  LSTMGradImpl(size_t sequence_length, size_t batch_size, size_t hidden_size, size_t input_size,
+  LSTMGradImpl(int sequence_length, int batch_size, int hidden_size, int input_size,
                concurrency::ThreadPool* thread_pool, AllocatorPtr allocator);
 
   void ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradOutputs<T>& outputs);
 
  private:
-  const size_t sequence_length_;
-  const size_t batch_size_;
-  const size_t hidden_size_;
-  const size_t input_size_;
+  const int sequence_length_;
+  const int batch_size_;
+  const int hidden_size_;
+  const int input_size_;
   concurrency::ThreadPool* thread_pool_;
   AllocatorPtr allocator_;
   IAllocatorUniquePtr<T> grad_a_ptr_;

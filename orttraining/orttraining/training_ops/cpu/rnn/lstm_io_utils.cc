@@ -8,7 +8,7 @@ namespace onnxruntime::lstm {
 namespace {
 
 template <typename T>
-rnn::detail::GemmWeights<T> LoadWeights(const Tensor* weights, size_t index) {
+rnn::detail::GemmWeights<T> LoadWeights(const Tensor* weights, const int index) {
   // index represents the direction of the weight to be loaded.
   // For example,
   //   in a uni-directional lstm, index can only ever be 0.
@@ -23,58 +23,57 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                         const Tensor* SL, const Tensor* H0, const Tensor* C0, const Tensor* P,
                         const int directions, const int hidden_size) {
   const auto& X_shape = X->Shape();
-  ORT_ENFORCE(X_shape.NumDimensions() == 3, "Input X must have 3 dimensions only. Actual:", X_shape);
-  // const int64_t sequence_length = X_shape[0];
-  const int64_t batch_size = X_shape[1];
-  const int64_t input_size = X_shape[2];
+  ORT_ENFORCE(X_shape.NumDimensions() == 3U, "Input X must have 3 dimensions only. Actual:", X_shape);
+  const int batch_size = narrow<int>(X_shape[1]);
+  const int input_size = narrow<int>(X_shape[2]);
 
   const auto& W_shape = W->Shape();
-  ORT_ENFORCE(W_shape.NumDimensions() == 3 &&
-                  W_shape[0] == directions &&
-                  W_shape[1] == 4 * hidden_size &&
-                  W_shape[2] == input_size,
+  ORT_ENFORCE(W_shape.NumDimensions() == 3U &&
+                  narrow<int>(W_shape[0]) == directions &&
+                  narrow<int>(W_shape[1]) == 4 * hidden_size &&
+                  narrow<int>(W_shape[2]) == input_size,
               "Input W must have shape {", directions, ", ", 4 * hidden_size, ", ", input_size, "}. Actual:", W_shape);
 
   const auto& R_shape = R->Shape();
-  ORT_ENFORCE(R_shape.NumDimensions() == 3 &&
-                  R_shape[0] == directions &&
-                  R_shape[1] == 4 * hidden_size &&
-                  R_shape[2] == hidden_size,
+  ORT_ENFORCE(R_shape.NumDimensions() == 3U &&
+                  narrow<int>(R_shape[0]) == directions &&
+                  narrow<int>(R_shape[1]) == 4 * hidden_size &&
+                  narrow<int>(R_shape[2]) == hidden_size,
               "Input R must have shape {", directions, ", ", 4 * hidden_size, ", ", hidden_size, "}. Actual:", R_shape);
 
   if (B != nullptr) {
     const auto& B_shape = B->Shape();
-    ORT_ENFORCE(B_shape.NumDimensions() == 2 &&
-                    B_shape[0] == directions &&
-                    B_shape[1] == 8 * hidden_size,
+    ORT_ENFORCE(B_shape.NumDimensions() == 2U &&
+                    narrow<int>(B_shape[0]) == directions &&
+                    narrow<int>(B_shape[1]) == 8 * hidden_size,
                 "Input B must have shape {", directions, ", ", 8 * hidden_size, "}. Actual:", B_shape);
   }
 
   ORT_ENFORCE(!SL, "Varying sequence lengths is not supported yet for LSTMTraining and LSTMGrad.");
 
   if (H0 != nullptr) {
-    auto& H0_shape = H0->Shape();
-    ORT_ENFORCE(H0_shape.NumDimensions() == 3 &&
-                    H0_shape[0] == directions &&
-                    H0_shape[1] == batch_size &&
-                    H0_shape[2] == hidden_size,
+    const auto& H0_shape = H0->Shape();
+    ORT_ENFORCE(H0_shape.NumDimensions() == 3U &&
+                    narrow<int>(H0_shape[0]) == directions &&
+                    narrow<int>(H0_shape[1]) == batch_size &&
+                    narrow<int>(H0_shape[2]) == hidden_size,
                 "Input H0 must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", H0_shape);
   }
 
   if (C0 != nullptr) {
-    auto& C0_shape = C0->Shape();
-    ORT_ENFORCE(C0_shape.NumDimensions() == 3 &&
-                    C0_shape[0] == directions &&
-                    C0_shape[1] == batch_size &&
-                    C0_shape[2] == hidden_size,
+    const auto& C0_shape = C0->Shape();
+    ORT_ENFORCE(C0_shape.NumDimensions() == 3U &&
+                    narrow<int>(C0_shape[0]) == directions &&
+                    narrow<int>(C0_shape[1]) == batch_size &&
+                    narrow<int>(C0_shape[2]) == hidden_size,
                 "Input C0 must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", C0_shape);
   }
 
   if (P != nullptr) {
     const auto& P_shape = P->Shape();
-    ORT_ENFORCE(P_shape.NumDimensions() == 2 &&
-                    P_shape[0] == directions &&
-                    P_shape[1] == 3 * hidden_size,
+    ORT_ENFORCE(P_shape.NumDimensions() == 2U &&
+                    narrow<int>(P_shape[0]) == directions &&
+                    narrow<int>(P_shape[1]) == 3 * hidden_size,
                 "Input P must have shape {", directions, ", ", 3 * hidden_size, "}. Actual:", P_shape);
   }
 }
@@ -83,65 +82,64 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                             const Tensor* grad_HAll, const Tensor* grad_Ht, const Tensor* grad_Ct,
                             const int directions, const int hidden_size) {
   const auto& X_shape = X->Shape();
-  const int64_t sequence_length = X_shape[0];
-  const int64_t batch_size = X_shape[1];
-  // const int64_t input_size = X_shape[2];
+  const int sequence_length = narrow<int>(X_shape[0]);
+  const int batch_size = narrow<int>(X_shape[1]);
 
   if (HAll != nullptr) {
-    auto& HAll_shape = HAll->Shape();
-    ORT_ENFORCE(HAll_shape.NumDimensions() == 4 &&
-                    HAll_shape[0] == sequence_length &&
-                    HAll_shape[1] == directions &&
-                    HAll_shape[2] == batch_size &&
-                    HAll_shape[3] == hidden_size,
+    const auto& HAll_shape = HAll->Shape();
+    ORT_ENFORCE(HAll_shape.NumDimensions() == 4U &&
+                    narrow<int>(HAll_shape[0]) == sequence_length &&
+                    narrow<int>(HAll_shape[1]) == directions &&
+                    narrow<int>(HAll_shape[2]) == batch_size &&
+                    narrow<int>(HAll_shape[3]) == hidden_size,
                 "Input HAll must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", HAll_shape);
   }
 
   if (CAll != nullptr) {
-    auto& CAll_shape = CAll->Shape();
-    ORT_ENFORCE(CAll_shape.NumDimensions() == 4 &&
-                    CAll_shape[0] == sequence_length &&
-                    CAll_shape[1] == directions &&
-                    CAll_shape[2] == batch_size &&
-                    CAll_shape[3] == hidden_size,
+    const auto& CAll_shape = CAll->Shape();
+    ORT_ENFORCE(CAll_shape.NumDimensions() == 4U &&
+                    narrow<int>(CAll_shape[0]) == sequence_length &&
+                    narrow<int>(CAll_shape[1]) == directions &&
+                    narrow<int>(CAll_shape[2]) == batch_size &&
+                    narrow<int>(CAll_shape[3]) == hidden_size,
                 "Input CAll must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", CAll_shape);
   }
 
   if (IOFC != nullptr) {
-    auto& IOFC_shape = IOFC->Shape();
-    ORT_ENFORCE(IOFC_shape.NumDimensions() == 4 &&
-                    IOFC_shape[0] == sequence_length &&
-                    IOFC_shape[1] == directions &&
-                    IOFC_shape[2] == batch_size &&
-                    IOFC_shape[3] == 4 * hidden_size,
+    const auto& IOFC_shape = IOFC->Shape();
+    ORT_ENFORCE(IOFC_shape.NumDimensions() == 4U &&
+                    narrow<int>(IOFC_shape[0]) == sequence_length &&
+                    narrow<int>(IOFC_shape[1]) == directions &&
+                    narrow<int>(IOFC_shape[2]) == batch_size &&
+                    narrow<int>(IOFC_shape[3]) == 4 * hidden_size,
                 "Input IOFC must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", 4 * hidden_size, "}. Actual:", IOFC_shape);
   }
 
   if (grad_HAll != nullptr) {
-    auto& grad_HAll_shape = grad_HAll->Shape();
-    ORT_ENFORCE(grad_HAll_shape.NumDimensions() == 4 &&
-                    grad_HAll_shape[0] == sequence_length &&
-                    grad_HAll_shape[1] == directions &&
-                    grad_HAll_shape[2] == batch_size &&
-                    grad_HAll_shape[3] == hidden_size,
+    const auto& grad_HAll_shape = grad_HAll->Shape();
+    ORT_ENFORCE(grad_HAll_shape.NumDimensions() == 4U &&
+                    narrow<int>(grad_HAll_shape[0]) == sequence_length &&
+                    narrow<int>(grad_HAll_shape[1]) == directions &&
+                    narrow<int>(grad_HAll_shape[2]) == batch_size &&
+                    narrow<int>(grad_HAll_shape[3]) == hidden_size,
                 "Input grad_HAll_shape must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_HAll_shape);
   }
 
   if (grad_Ht != nullptr) {
-    auto& grad_Ht_shape = grad_Ht->Shape();
-    ORT_ENFORCE(grad_Ht_shape.NumDimensions() == 3 &&
-                    grad_Ht_shape[0] == directions &&
-                    grad_Ht_shape[1] == batch_size &&
-                    grad_Ht_shape[2] == hidden_size,
+    const auto& grad_Ht_shape = grad_Ht->Shape();
+    ORT_ENFORCE(grad_Ht_shape.NumDimensions() == 3U &&
+                    narrow<int>(grad_Ht_shape[0]) == directions &&
+                    narrow<int>(grad_Ht_shape[1]) == batch_size &&
+                    narrow<int>(grad_Ht_shape[2]) == hidden_size,
                 "Input grad_Ht_shape must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ht_shape);
   }
 
   if (grad_Ct != nullptr) {
-    auto& grad_Ct_shape = grad_Ct->Shape();
-    ORT_ENFORCE(grad_Ct_shape.NumDimensions() == 3 &&
-                    grad_Ct_shape[0] == directions &&
-                    grad_Ct_shape[1] == batch_size &&
-                    grad_Ct_shape[2] == hidden_size,
+    const auto& grad_Ct_shape = grad_Ct->Shape();
+    ORT_ENFORCE(grad_Ct_shape.NumDimensions() == 3U &&
+                    narrow<int>(grad_Ct_shape[0]) == directions &&
+                    narrow<int>(grad_Ct_shape[1]) == batch_size &&
+                    narrow<int>(grad_Ct_shape[2]) == hidden_size,
                 "Input grad_Ct must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ct_shape);
   }
 }
@@ -176,7 +174,7 @@ LSTMAttributes::LSTMAttributes(const OpKernelInfo& info) {
   clip = info.GetAttrOrDefault<float>("clip", std::numeric_limits<float>::max());
   ORT_ENFORCE(clip == std::numeric_limits<float>::max(), "Clip is not supported for LSTM and LSTMGrad yet.");
 
-  input_forget = info.GetAttrOrDefault<int64_t>("input_forget", 0);
+  input_forget = narrow<int>(info.GetAttrOrDefault<int64_t>("input_forget", 0));
   ORT_ENFORCE(input_forget == 0, "Combining the input and forget gates is not yet supported in the LSTMGrad kernel.");
 
   int64_t hidden_size_int64_t;
@@ -231,18 +229,21 @@ LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, cons
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  all_hidden_states = HAll ? HAll->MutableDataAsSpan<T>()
-                           : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * hidden_size,
-                                                   hall_ptr_, true, static_cast<T>(0));
+  ORT_ENFORCE(HAll, "All hidden states output is required for LSTMTraining to compute gradients.");
+  all_hidden_states = HAll->MutableDataAsSpan<T>();
   final_hidden_state = Ht ? Ht->MutableDataAsSpan<T>()
                           : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
                                                   h_final_ptr_, true, static_cast<T>(0));
   final_cell_state = Ct ? Ct->MutableDataAsSpan<T>()
                         : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
                                                 c_final_ptr_, true, static_cast<T>(0));
+
+  ORT_ENFORCE(CAll, "All cell states output is required for LSTMTraining to compute gradients.");
   all_cell_states = CAll ? CAll->MutableDataAsSpan<T>()
                          : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * hidden_size,
                                                  call_ptr_, true, static_cast<T>(0));
+
+  ORT_ENFORCE(IOFC, "i, o, f, c gate computation output is required for LSTMTraining to compute gradients.");
   iofc = IOFC ? IOFC->MutableDataAsSpan<T>()
               : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * 4 * hidden_size,
                                       iofc_ptr_, true, static_cast<T>(0));
@@ -283,17 +284,24 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
   recurrence_weights = R->DataAsSpan<T>();
   sequence_lengths = SL ? SL->DataAsSpan<int>() : gsl::span<const int>();
   initial_hidden_state = H0 ? H0->DataAsSpan<T>()
-                            : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size, initial_hidden_state_ptr_, true, static_cast<T>(0));
+                            : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size,
+                                                    initial_hidden_state_ptr_, true, static_cast<T>(0));
   initial_cell_state = C0 ? C0->DataAsSpan<T>()
-                          : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size, initial_cell_state_ptr_, true, static_cast<T>(0));
-  all_hidden_states = HAll ? HAll->DataAsSpan<T>() : gsl::span<const T>();
-  all_cell_states = CAll ? CAll->DataAsSpan<T>() : gsl::span<const T>();
-  iofc = IOFC ? IOFC->DataAsSpan<T>() : gsl::span<const T>();
+                          : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size,
+                                                  initial_cell_state_ptr_, true, static_cast<T>(0));
+
+  ORT_ENFORCE(HAll, "All hidden states input to LSTMGrad must exist to compute the gradients.");
+  all_hidden_states = HAll->DataAsSpan<T>();
+
+  ORT_ENFORCE(CAll, "All cell states input to LSTMGrad must exist to compute the gradients.");
+  all_cell_states = CAll->DataAsSpan<T>();
+
+  ORT_ENFORCE(IOFC, "i, o, f, c gate computation input to LSTMGrad must exist to compute the gradients.");
+  iofc = IOFC->DataAsSpan<T>();
+
   grad_all_hidden_states = grad_HAll ? grad_HAll->DataAsSpan<T>() : gsl::span<const T>();
-  grad_final_hidden_state = grad_Ht ? grad_Ht->DataAsSpan<T>()
-                                    : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size, grad_final_hidden_state_ptr_, true, static_cast<T>(0));
-  grad_final_cell_state = grad_Ct ? grad_Ct->DataAsSpan<T>()
-                                  : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size, grad_final_cell_state_ptr_, true, static_cast<T>(0));
+  grad_final_hidden_state = grad_Ht ? grad_Ht->DataAsSpan<T>() : gsl::span<const T>();
+  grad_final_cell_state = grad_Ct ? grad_Ct->DataAsSpan<T>() : gsl::span<const T>();
 }
 
 template <typename T>
@@ -318,14 +326,16 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
-  grad_input = dX->MutableDataAsSpan<T>();
+  grad_input = dX ? dX->MutableDataAsSpan<T>() : gsl::span<T>();
   grad_weights = dW->MutableDataAsSpan<T>();
   grad_recurrence_weights = dR->MutableDataAsSpan<T>();
   grad_bias = dB ? dB->MutableDataAsSpan<T>() : gsl::span<T>();
   grad_initial_cell_state = dC0 ? dC0->MutableDataAsSpan<T>()
-                                : rnn::detail::Allocate(alloc, batch_size * hidden_size, grad_initial_cell_state_ptr_, true, static_cast<T>(0));
+                                : rnn::detail::Allocate(alloc, batch_size * hidden_size,
+                                                        grad_initial_cell_state_ptr_, true, static_cast<T>(0));
   grad_initial_hidden_state = dH0 ? dH0->MutableDataAsSpan<T>()
-                                  : rnn::detail::Allocate(alloc, batch_size * hidden_size, grad_initial_hidden_state_ptr_, true, static_cast<T>(0));
+                                  : rnn::detail::Allocate(alloc, batch_size * hidden_size,
+                                                          grad_initial_hidden_state_ptr_, true, static_cast<T>(0));
   grad_peephole_weights = dP ? dP->MutableDataAsSpan<T>() : gsl::span<T>();
 }
 

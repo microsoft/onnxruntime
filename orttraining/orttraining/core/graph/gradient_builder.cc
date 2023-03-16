@@ -1896,21 +1896,46 @@ IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
+  std ::vector<ArgDef> input_args;
+
   // Add inputs of the LSTMTraining node as inputs of the LSTMGrad node
-  std::vector<ArgDef> input_args({I(0), I(1), I(2)});
-  for (int i = 3; i < GetSrcNodeInputSize(); i++) {
-    input_args.push_back(I(i));
+  // Add inputs from the source node for X, W, R, B, SL, H0, C0, P
+  // Add empty argdef for non existing inputs
+  const int input_size = GetSrcNodeInputSize();
+  for (int i = 0; i < 8; i++) {
+    if (i < input_size && I(i).Exists()) {
+      input_args.push_back(I(i));
+    } else {
+      input_args.push_back(ArgDef());
+    }
   }
 
-  // Add HAll, CAll, IOFC outputs of the LSTMTraining node as inputs of the LSTMGrad node
-  input_args.push_back(O(0));  // all hidden states output of the LSTMTraining node
-  input_args.push_back(O(3));  // all cell states output of the LSTMTraining node
-  input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMTraining node
+  if (O(0).Exists()) {
+    input_args.push_back(O(0));  // all hidden states output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  if (O(3).Exists()) {
+    input_args.push_back(O(3));  // all cell states output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
+
+  if (O(4).Exists()) {
+    input_args.push_back(O(4));  // i, o, f, c gate computations output of the LSTMTraining node
+  } else {
+    input_args.push_back(ArgDef());
+  }
 
   // Add gradients of the outputs of the LSTMTraining node as inputs to the LSTMGrad node
   // Gradients of the outputs of the LSTMTraining node include grad_HAll, grad_HFinal, grad_CFinal
   for (int o = 0; o < 3; ++o) {
-    input_args.push_back(GO(o));
+    if (GO(o).Exists() && IsGradientAvailableForSrcNodeOutput(o)) {
+      input_args.push_back(GO(o));
+    } else {
+      input_args.push_back(ArgDef());
+    }
   }
 
   // Add gradients of the LSTMTraining inputs as outputs of the LSTMGrad node
@@ -1923,11 +1948,13 @@ IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
   //   6) C0 (initial cell state tensor)
   //   7) P (peephole weight tensor)
   std::vector<ArgDef> output_args;
-  constexpr size_t sequence_length_input_index = 4;
+  constexpr int sequence_length_input_index = 4;
   for (int i = 0; i < GetSrcNodeInputSize(); ++i) {
     if (sequence_length_input_index == i) continue;
-    if (IsGradientRequiredForSrcNodeInput(i)) {
+    if (I(i).Exists() && IsGradientRequiredForSrcNodeInput(i)) {
       output_args.push_back(GI(i));
+    } else {
+      output_args.push_back(ArgDef());
     }
   }
 

@@ -44,7 +44,16 @@ class LSTM:
         self._forward_model = None
         self._backward_model = None
 
-    def forward_np(self, X, W, R, B=None, H0=None, C0=None, P=None):
+    def forward_np(
+        self,
+        inputs,
+        weights,
+        recurrence_weights,
+        bias=None,
+        initial_hidden_state=None,
+        initial_cell_state=None,
+        peephole_weights=None,
+    ):
         """Computes the LSTM forward pass using numpy.
 
         The computation follows the following rules:
@@ -57,139 +66,187 @@ class LSTM:
 
 
         Args:
-            X (np.array): the input tensor of shape (sequence_length, batch_size, input_size)
-            W (np.array): the weight tensor of shape (num_directions, 4 * hidden_size, input_size)
-            R (np.array): the recurrence weight tensor of shape (num_directions, 4 * hidden_size, hidden_size)
-            B (np.array, optional): the bias tensor of shape (num_directions, 8 * hidden_size). Defaults to None.
-            H0 (np.array, optional): the initial hidden state tensor of shape (num_directions, batch_size, hidden_size). Defaults to None.
-            C0 (np.array, optional): the initial cell state tensor of shape (num_directions, batch_size, hidden_size). Defaults to None.
-            P (np.array, optional): the peephole weight tensor of shape (num_directions, 3 * hidden_size). Defaults to None.
+            input (np.array): the input tensor of shape (sequence_length, batch_size, input_size)
+            weights (np.array): the weight tensor of shape
+                                (num_directions, 4 * hidden_size, input_size)
+            recurrence_weights (np.array): the recurrence weight tensor of shape
+                                           (num_directions, 4 * hidden_size, hidden_size)
+            bias (np.array, optional): the bias tensor of shape
+                                       (num_directions, 8 * hidden_size). Defaults to None.
+            H0 (np.array, optional): the initial hidden state tensor of shape
+                                     (num_directions, batch_size, hidden_size).
+                                     Defaults to None.
+            C0 (np.array, optional): the initial cell state tensor of shape
+                                     (num_directions, batch_size, hidden_size).
+                                     Defaults to None.
+            P (np.array, optional): the peephole weight tensor of shape
+                                    (num_directions, 3 * hidden_size).
+                                    Defaults to None.
 
         Returns:
-            HAll (np.array): all hidden states tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
-            HFinal (np.array): the final hidden state tensor of shape (num_directions, batch_size, hidden_size)
-            CFinal (np.array): the final cell state tensor of shape (num_directions, batch_size, hidden_size)
-            CAll (np.array): all cell states tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
-            IOFC (np.array): all intermediate values of the gates tensor of shape (sequence_length, num_directions, batch_size, 4 * hidden_size)
+            HAll (np.array): all hidden states tensor of shape
+                             (sequence_length, num_directions, batch_size, hidden_size)
+            HFinal (np.array): the final hidden state tensor of shape
+                               (num_directions, batch_size, hidden_size)
+            CFinal (np.array): the final cell state tensor of shape
+                               (num_directions, batch_size, hidden_size)
+            CAll (np.array): all cell states tensor of shape
+                             (sequence_length, num_directions, batch_size, hidden_size)
+            IOFC (np.array): all intermediate values of the gates tensor of shape
+                             (sequence_length, num_directions, batch_size, 4 * hidden_size)
         """
-        HAll = np.zeros((self._sequence_length, self._num_directions, self._batch_size, self._hidden_size), np.float32)
-        Ht = np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
-        Ct = np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
-        CAll = np.zeros((self._sequence_length, self._num_directions, self._batch_size, self._hidden_size), np.float32)
-        IOFC = np.zeros(
+        all_hidden_states = np.zeros(
+            (self._sequence_length, self._num_directions, self._batch_size, self._hidden_size), np.float32
+        )
+        final_hidden_state = np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
+        final_cell_state = np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
+        all_cell_states = np.zeros(
+            (self._sequence_length, self._num_directions, self._batch_size, self._hidden_size), np.float32
+        )
+        iofc = np.zeros(
             (self._sequence_length, self._num_directions, self._batch_size, 4 * self._hidden_size), np.float32
         )
         for idx in range(self._batch_size):
-            Hprev = H0[0, idx, :] if H0 is not None else np.zeros((self._hidden_size), np.float32)
-            Cprev = C0[0, idx, :] if C0 is not None else np.zeros((self._hidden_size), np.float32)
+            prev_h = (
+                initial_hidden_state[0, idx, :]
+                if initial_hidden_state is not None
+                else np.zeros((self._hidden_size), np.float32)
+            )
+            prev_c = (
+                initial_cell_state[0, idx, :]
+                if initial_cell_state is not None
+                else np.zeros((self._hidden_size), np.float32)
+            )
             for t in range(self._sequence_length):
-                Xt = X[t, idx, :]
-                Wi = np.squeeze(W[:, : self._hidden_size, :], axis=0)
-                Wo = np.squeeze(W[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
-                Wf = np.squeeze(W[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
-                Wc = np.squeeze(W[:, 3 * self._hidden_size :, :], axis=0)
+                current_input = inputs[t, idx, :]
+                weights_i = np.squeeze(weights[:, : self._hidden_size, :], axis=0)
+                weights_o = np.squeeze(weights[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
+                weights_f = np.squeeze(weights[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
+                weights_c = np.squeeze(weights[:, 3 * self._hidden_size :, :], axis=0)
 
-                Ri = np.squeeze(R[:, : self._hidden_size, :], axis=0)
-                Ro = np.squeeze(R[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
-                Rf = np.squeeze(R[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
-                Rc = np.squeeze(R[:, 3 * self._hidden_size :, :], axis=0)
+                rweights_i = np.squeeze(recurrence_weights[:, : self._hidden_size, :], axis=0)
+                rweights_o = np.squeeze(recurrence_weights[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
+                rweights_f = np.squeeze(recurrence_weights[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
+                rweights_c = np.squeeze(recurrence_weights[:, 3 * self._hidden_size :, :], axis=0)
 
-                WBi = (
-                    np.squeeze(B[:, : self._hidden_size], axis=0)
-                    if B is not None
+                wb_i = (
+                    np.squeeze(bias[:, : self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                WBo = (
-                    np.squeeze(B[:, self._hidden_size : 2 * self._hidden_size], axis=0)
-                    if B is not None
+                wb_o = (
+                    np.squeeze(bias[:, self._hidden_size : 2 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                WBf = (
-                    np.squeeze(B[:, 2 * self._hidden_size : 3 * self._hidden_size], axis=0)
-                    if B is not None
+                wb_f = (
+                    np.squeeze(bias[:, 2 * self._hidden_size : 3 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                WBc = (
-                    np.squeeze(B[:, 3 * self._hidden_size : 4 * self._hidden_size], axis=0)
-                    if B is not None
+                wb_c = (
+                    np.squeeze(bias[:, 3 * self._hidden_size : 4 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                RBi = (
-                    np.squeeze(B[:, 4 * self._hidden_size : 5 * self._hidden_size], axis=0)
-                    if B is not None
+                rb_i = (
+                    np.squeeze(bias[:, 4 * self._hidden_size : 5 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                RBo = (
-                    np.squeeze(B[:, 5 * self._hidden_size : 6 * self._hidden_size], axis=0)
-                    if B is not None
+                rb_o = (
+                    np.squeeze(bias[:, 5 * self._hidden_size : 6 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                RBf = (
-                    np.squeeze(B[:, 6 * self._hidden_size : 7 * self._hidden_size], axis=0)
-                    if B is not None
+                rb_f = (
+                    np.squeeze(bias[:, 6 * self._hidden_size : 7 * self._hidden_size], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
-                RBc = (
-                    np.squeeze(B[:, 7 * self._hidden_size :], axis=0)
-                    if B is not None
-                    else np.zeros((self._hidden_size), np.float32)
-                )
-
-                Pi = (
-                    np.squeeze(P[:, : self._hidden_size], axis=0)
-                    if P is not None
-                    else np.zeros((self._hidden_size), np.float32)
-                )
-                Po = (
-                    np.squeeze(P[:, self._hidden_size : 2 * self._hidden_size], axis=0)
-                    if P is not None
-                    else np.zeros((self._hidden_size), np.float32)
-                )
-                Pf = (
-                    np.squeeze(P[:, 2 * self._hidden_size : 3 * self._hidden_size], axis=0)
-                    if P is not None
+                rb_c = (
+                    np.squeeze(bias[:, 7 * self._hidden_size :], axis=0)
+                    if bias is not None
                     else np.zeros((self._hidden_size), np.float32)
                 )
 
-                it = np.dot(Xt, Wi.T) + np.dot(Hprev, Ri.T) + WBi + RBi + Pi * Cprev
-                ft = np.dot(Xt, Wf.T) + np.dot(Hprev, Rf.T) + WBf + RBf + Pf * Cprev
-                ct = np.dot(Xt, Wc.T) + np.dot(Hprev, Rc.T) + WBc + RBc
+                peephole_weights_i = (
+                    np.squeeze(peephole_weights[:, : self._hidden_size], axis=0)
+                    if peephole_weights is not None
+                    else np.zeros((self._hidden_size), np.float32)
+                )
+                peephole_weights_o = (
+                    np.squeeze(peephole_weights[:, self._hidden_size : 2 * self._hidden_size], axis=0)
+                    if peephole_weights is not None
+                    else np.zeros((self._hidden_size), np.float32)
+                )
+                peephole_weights_f = (
+                    np.squeeze(peephole_weights[:, 2 * self._hidden_size : 3 * self._hidden_size], axis=0)
+                    if peephole_weights is not None
+                    else np.zeros((self._hidden_size), np.float32)
+                )
 
-                it = sigmoid(it)
-                ft = sigmoid(ft)
-                ct = np.tanh(ct)
+                input_gate = sigmoid(
+                    np.dot(current_input, weights_i.T)
+                    + np.dot(prev_h, rweights_i.T)
+                    + wb_i
+                    + rb_i
+                    + peephole_weights_i * prev_c
+                )
+                forget_gate = sigmoid(
+                    np.dot(current_input, weights_f.T)
+                    + np.dot(prev_h, rweights_f.T)
+                    + wb_f
+                    + rb_f
+                    + peephole_weights_f * prev_c
+                )
+                control_gate = np.tanh(np.dot(current_input, weights_c.T) + np.dot(prev_h, rweights_c.T) + wb_c + rb_c)
 
-                Ct[0, idx, :] = ft * Cprev + it * ct
+                final_cell_state[0, idx, :] = forget_gate * prev_c + input_gate * control_gate
 
-                ot = np.dot(Xt, Wo.T) + np.dot(Hprev, Ro.T) + WBo + RBo + Po * Ct[0, idx, :]
-                ot = sigmoid(ot)
+                output_gate = sigmoid(
+                    np.dot(current_input, weights_o.T)
+                    + np.dot(prev_h, rweights_o.T)
+                    + wb_o
+                    + rb_o
+                    + peephole_weights_o * final_cell_state[0, idx, :]
+                )
 
-                IOFC[t, 0, idx, : self._hidden_size] = it
-                IOFC[t, 0, idx, self._hidden_size : 2 * self._hidden_size] = ot
-                IOFC[t, 0, idx, 2 * self._hidden_size : 3 * self._hidden_size] = ft
-                IOFC[t, 0, idx, 3 * self._hidden_size :] = ct
+                iofc[t, 0, idx, : self._hidden_size] = input_gate
+                iofc[t, 0, idx, self._hidden_size : 2 * self._hidden_size] = output_gate
+                iofc[t, 0, idx, 2 * self._hidden_size : 3 * self._hidden_size] = forget_gate
+                iofc[t, 0, idx, 3 * self._hidden_size :] = control_gate
 
-                Ht[0, idx, :] = ot * np.tanh(Ct[0, idx, :])
+                final_hidden_state[0, idx, :] = output_gate * np.tanh(final_cell_state[0, idx, :])
 
-                HAll[t, 0, idx, :] = Ht[0, idx, :]
-                CAll[t, 0, idx, :] = Ct[0, idx, :]
+                all_hidden_states[t, 0, idx, :] = final_hidden_state[0, idx, :]
+                all_cell_states[t, 0, idx, :] = final_cell_state[0, idx, :]
 
-                Hprev = Ht[0, idx, :]
-                Cprev = Ct[0, idx, :]
+                prev_h = final_hidden_state[0, idx, :]
+                prev_c = final_cell_state[0, idx, :]
 
-        return HAll, Ht, Ct, CAll, IOFC
+        return all_hidden_states, final_hidden_state, final_cell_state, all_cell_states, iofc
 
-    def forward_ort(self, X, W, R, B=None, H0=None, C0=None, P=None):
+    def forward_ort(
+        self,
+        inputs,
+        weights,
+        recurrence_weights,
+        bias=None,
+        initial_hidden_state=None,
+        initial_cell_state=None,
+        peephole_weights=None,
+    ):
         """Run LSTM forward pass using ONNX Runtime."""
-        ort_inputs = {"X": X, "W": W, "R": R}
-        if B is not None:
-            ort_inputs["B"] = B
-        if H0 is not None:
-            ort_inputs["H0"] = H0
-        if C0 is not None:
-            ort_inputs["C0"] = C0
-        if P is not None:
-            ort_inputs["P"] = P
+        ort_inputs = {"inputs": inputs, "weights": weights, "recurrence_weights": recurrence_weights}
+        if bias is not None:
+            ort_inputs["bias"] = bias
+        if initial_hidden_state is not None:
+            ort_inputs["initial_hidden_state"] = initial_hidden_state
+        if initial_cell_state is not None:
+            ort_inputs["initial_cell_state"] = initial_cell_state
+        if peephole_weights is not None:
+            ort_inputs["peephole_weights"] = peephole_weights
 
         ort_outs = None
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -200,61 +257,74 @@ class LSTM:
 
         return ort_outs
 
-    def forward_graph(self, B=True, SL=False, H0=True, C0=True, P=False):
+    def forward_graph(
+        self,
+        bias=True,
+        sequence_lengths=False,
+        initial_hidden_state=True,
+        initial_cell_state=True,
+        peephole_weights=False,
+    ):
         """Create a graph for LSTM forward pass."""
-        X = helper.make_tensor_value_info(
-            "X", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
+        inputs = helper.make_tensor_value_info(
+            "inputs", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
         )
-        W = helper.make_tensor_value_info(
-            "W", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
+        weights = helper.make_tensor_value_info(
+            "weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
         )
-        R = helper.make_tensor_value_info(
-            "R", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
+        recurrence_weights = helper.make_tensor_value_info(
+            "recurrence_weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
         )
-        B = (
-            helper.make_tensor_value_info("B", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
-            if B
+        bias = (
+            helper.make_tensor_value_info("bias", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
+            if bias
             else None
         )
-        SL = helper.make_tensor_value_info("SL", TensorProto.INT64, [self._batch_size]) if SL else None
-        H0 = (
+        sequence_lengths = (
+            helper.make_tensor_value_info("sequence_lengths", TensorProto.INT64, [self._batch_size])
+            if sequence_lengths
+            else None
+        )
+        initial_hidden_state = (
             helper.make_tensor_value_info(
-                "H0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "initial_hidden_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if H0
+            if initial_hidden_state
             else None
         )
-        C0 = (
+        initial_cell_state = (
             helper.make_tensor_value_info(
-                "C0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "initial_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if C0
+            if initial_cell_state
             else None
         )
-        P = (
-            helper.make_tensor_value_info("P", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size])
-            if P
+        peephole_weights = (
+            helper.make_tensor_value_info(
+                "peephole_weights", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size]
+            )
+            if peephole_weights
             else None
         )
 
-        HAll = helper.make_tensor_value_info(
-            "HAll",
+        all_hidden_states = helper.make_tensor_value_info(
+            "all_hidden_states",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, self._hidden_size],
         )
-        Ht = helper.make_tensor_value_info(
-            "Ht", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+        final_hidden_state = helper.make_tensor_value_info(
+            "final_hidden_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
         )
-        Ct = helper.make_tensor_value_info(
-            "Ct", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+        final_cell_state = helper.make_tensor_value_info(
+            "final_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
         )
-        CAll = helper.make_tensor_value_info(
-            "CAll",
+        all_cell_states = helper.make_tensor_value_info(
+            "all_cell_states",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, self._hidden_size],
         )
-        IOFC = helper.make_tensor_value_info(
-            "IOFC",
+        iofc = helper.make_tensor_value_info(
+            "iofc",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, 4 * self._hidden_size],
         )
@@ -262,16 +332,16 @@ class LSTM:
         lstm = helper.make_node(
             "LSTMTraining",
             inputs=[
-                "X",
-                "W",
-                "R",
-                "B" if B else "",
-                "SL" if SL else "",
-                "H0" if H0 else "",
-                "C0" if C0 else "",
-                "P" if P else "",
+                "inputs",
+                "weights",
+                "recurrence_weights",
+                "bias" if bias else "",
+                "sequence_lengths" if sequence_lengths else "",
+                "initial_hidden_state" if initial_hidden_state else "",
+                "initial_cell_state" if initial_cell_state else "",
+                "peephole_weights" if peephole_weights else "",
             ],
-            outputs=["HAll", "Ht", "Ct", "CAll", "IOFC"],
+            outputs=["all_hidden_states", "final_hidden_state", "final_cell_state", "all_cell_states", "iofc"],
             domain="com.microsoft",
             hidden_size=self._hidden_size,
         )
@@ -279,8 +349,21 @@ class LSTM:
         graph = helper.make_graph(
             [lstm],
             "lstm",
-            [gi for gi in [X, W, R, B, SL, H0, C0, P] if gi],
-            [HAll, Ht, Ct, CAll, IOFC],
+            [
+                gi
+                for gi in [
+                    inputs,
+                    weights,
+                    recurrence_weights,
+                    bias,
+                    sequence_lengths,
+                    initial_hidden_state,
+                    initial_cell_state,
+                    peephole_weights,
+                ]
+                if gi
+            ],
+            [all_hidden_states, final_hidden_state, final_cell_state, all_cell_states, iofc],
         )
 
         self._forward_model = helper.make_model(
@@ -291,7 +374,22 @@ class LSTM:
 
         return self._forward_model
 
-    def backward_np(self, X, W, R, B, H0, C0, P, HAll, CAll, IOFC, dHAll, dHt=None, dCt=None):
+    def backward_np(
+        self,
+        inputs,
+        weights,
+        recurrence_weights,
+        bias,
+        initial_hidden_state,
+        initial_cell_state,
+        peephole_weights,
+        all_hidden_states,
+        all_cell_states,
+        iofc,
+        grad_all_hidden_states,
+        grad_final_hidden_state=None,
+        grad_final_cell_state=None,
+    ):
         """Compute the backward pass of LSTM using numpy.
 
         This is a reference implementation for testing purpose. The equations used here are from
@@ -305,269 +403,361 @@ class LSTM:
 
 
         Args:
-            X (np.ndarray): input tensor of shape (sequence_length, batch_size, input_size)
-            W (np.ndarray): weight tensor of shape (num_directions, 4 * hidden_size, input_size)
-            R (np.ndarray): recurrence weight tensor of shape (num_directions, 4 * hidden_size, hidden_size)
-            B (np.ndarray): bias tensor of shape (num_directions, 8 * hidden_size)
-            H0 (np.ndarray): initial hidden state tensor of shape (num_directions, batch_size, hidden_size)
-            C0 (np.ndarray): initial cell state tensor of shape (num_directions, batch_size, hidden_size)
-            P (np.ndarray): peephole weight tensor of shape (num_directions, 3 * hidden_size)
-            HAll (np.ndarray): output tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
-            CAll (np.ndarray): cell state tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
-            IOFC (np.ndarray): input, output, forget, and cell gate tensor of shape (sequence_length, num_directions, batch_size, 4 * hidden_size)
-            dHAll (np.ndarray): gradient of HAll
-            dHt (np.ndarray): gradient of Ht
-            dCt (np.ndarray): gradient of Ct
+            inputs (np.ndarray): input tensor of shape (sequence_length, batch_size, input_size)
+            weights (np.ndarray): weight tensor of shape (num_directions, 4 * hidden_size, input_size)
+            recurrence_weights (np.ndarray): recurrence weight tensor of shape (num_directions, 4 * hidden_size, hidden_size)
+            bias (np.ndarray): bias tensor of shape (num_directions, 8 * hidden_size)
+            initial_hidden_state (np.ndarray): initial hidden state tensor of shape (num_directions, batch_size, hidden_size)
+            initial_cell_state (np.ndarray): initial cell state tensor of shape (num_directions, batch_size, hidden_size)
+            peephole_weights (np.ndarray): peephole weight tensor of shape (num_directions, 3 * hidden_size)
+            all_hidden_states (np.ndarray): output tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
+            all_cell_states (np.ndarray): cell state tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
+            iofc (np.ndarray): input, output, forget, and cell gate tensor of shape (sequence_length, num_directions, batch_size, 4 * hidden_size)
+            grad_all_hidden_states (np.ndarray): gradient of HAll
+            grad_final_hidden_state (np.ndarray): gradient of Ht
+            grad_final_cell_state (np.ndarray): gradient of Ct
 
         Returns:
-            tuple[np.ndarray]: gradients of X, W, R, B, H0, C0, P
+            tuple[np.ndarray]: gradients of inputs, weights, recurrence_weights, bias, initial_hidden_state, initial_cell_state, peephole_weightsP
         """
-        dX = np.zeros((self._sequence_length, self._batch_size, self.input_size), np.float32)
-        dW = np.zeros((self._num_directions, 4 * self._hidden_size, self.input_size), np.float32)
-        dR = np.zeros((self._num_directions, 4 * self._hidden_size, self._hidden_size), np.float32)
-        dB = np.zeros((self._num_directions, 8 * self._hidden_size), np.float32) if B is not None else None
-        dH0 = (
+        grad_inputs = np.zeros((self._sequence_length, self._batch_size, self.input_size), np.float32)
+        grad_weights = np.zeros((self._num_directions, 4 * self._hidden_size, self.input_size), np.float32)
+        grad_recurrence_weights = np.zeros((self._num_directions, 4 * self._hidden_size, self._hidden_size), np.float32)
+        grad_bias = np.zeros((self._num_directions, 8 * self._hidden_size), np.float32) if bias is not None else None
+        grad_initial_hidden_state = (
             np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
-            if H0 is not None
+            if initial_hidden_state is not None
             else None
         )
-        dC0 = (
+        grad_initial_cell_state = (
             np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
-            if C0 is not None
+            if initial_cell_state is not None
             else None
         )
-        dP = np.zeros((self._num_directions, 3 * self._hidden_size), np.float32) if P is not None else None
+        grad_peephole_weights = (
+            np.zeros((self._num_directions, 3 * self._hidden_size), np.float32)
+            if peephole_weights is not None
+            else None
+        )
 
         for idx in range(self._batch_size):
-            dH = dHt[0, idx, :] if dHt is not None else np.zeros((self._hidden_size), np.float32)
-            dC = dCt[0, idx, :] if dCt is not None else np.zeros((self._hidden_size), np.float32)
+            grad_h = (
+                grad_final_hidden_state[0, idx, :]
+                if grad_final_hidden_state is not None
+                else np.zeros((self._hidden_size), np.float32)
+            )
+            grad_c = (
+                grad_final_cell_state[0, idx, :]
+                if grad_final_cell_state is not None
+                else np.zeros((self._hidden_size), np.float32)
+            )
             for t in reversed(range(self._sequence_length)):
-                Xt = X[t, idx, :]
-                Wi = np.squeeze(W[:, : self._hidden_size, :], axis=0)
-                Wo = np.squeeze(W[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
-                Wf = np.squeeze(W[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
-                Wc = np.squeeze(W[:, 3 * self._hidden_size :, :], axis=0)
+                current_input = inputs[t, idx, :]
+                weights_i = np.squeeze(weights[:, : self._hidden_size, :], axis=0)
+                weights_o = np.squeeze(weights[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
+                weights_f = np.squeeze(weights[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
+                weights_c = np.squeeze(weights[:, 3 * self._hidden_size :, :], axis=0)
 
-                Ri = np.squeeze(R[:, : self._hidden_size, :], axis=0)
-                Ro = np.squeeze(R[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
-                Rf = np.squeeze(R[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
-                Rc = np.squeeze(R[:, 3 * self._hidden_size :, :], axis=0)
+                rweights_i = np.squeeze(recurrence_weights[:, : self._hidden_size, :], axis=0)
+                rweights_o = np.squeeze(recurrence_weights[:, self._hidden_size : 2 * self._hidden_size, :], axis=0)
+                rweights_f = np.squeeze(recurrence_weights[:, 2 * self._hidden_size : 3 * self._hidden_size, :], axis=0)
+                rweights_c = np.squeeze(recurrence_weights[:, 3 * self._hidden_size :, :], axis=0)
 
-                it = IOFC[t, 0, idx, : self._hidden_size]
-                ot = IOFC[t, 0, idx, self._hidden_size : 2 * self._hidden_size]
-                ft = IOFC[t, 0, idx, 2 * self._hidden_size : 3 * self._hidden_size]
-                ct = IOFC[t, 0, idx, 3 * self._hidden_size :]
+                input_gate = iofc[t, 0, idx, : self._hidden_size]
+                output_gate = iofc[t, 0, idx, self._hidden_size : 2 * self._hidden_size]
+                forget_gate = iofc[t, 0, idx, 2 * self._hidden_size : 3 * self._hidden_size]
+                control_gate = iofc[t, 0, idx, 3 * self._hidden_size :]
 
-                dH += dHAll[t, 0, idx, :]
-                dCt2 = dH * ot * (1 - np.tanh(CAll[t, 0, idx, :]) ** 2)
-                dC += dCt2
-                dCtminus1 = dC * ft
-                if t == 0 and dC0 is not None:
-                    dC0[0, idx, :] = dCtminus1
+                grad_h += grad_all_hidden_states[t, 0, idx, :]
+                grad_c += grad_h * output_gate * (1 - np.tanh(all_cell_states[t, 0, idx, :]) ** 2)
+                grad_prev_c = grad_c * forget_gate
+                if t == 0 and grad_initial_cell_state is not None:
+                    grad_initial_cell_state[0, idx, :] = grad_prev_c
 
-                dit = dC * ct
-                dot = dH * np.tanh(CAll[t, 0, idx, :])
-                dft = dC * (CAll[t - 1, 0, idx, :] if t > 0 else C0[0, idx, :])
-                dct = dC * it
-
-                dai = dit * it * (1 - it)
-                dao = dot * ot * (1 - ot)
-                daf = dft * ft * (1 - ft)
-                dac = dct * (1 - ct**2)
-
-                dX[t, idx, :] = np.dot(dai, Wi) + np.dot(dao, Wo) + np.dot(daf, Wf) + np.dot(dac, Wc)
-                dH = np.dot(dai, Ri) + np.dot(dao, Ro) + np.dot(daf, Rf) + np.dot(dac, Rc)
-                if t == 0 and dH0 is not None:
-                    dH0[0, idx, :] = dH
-
-                dW[0, : self._hidden_size, :] += np.dot(np.expand_dims(dai, axis=0).T, np.expand_dims(Xt, axis=0))
-                dW[0, self._hidden_size : 2 * self._hidden_size, :] += np.dot(
-                    np.expand_dims(dao, axis=0).T, np.expand_dims(Xt, axis=0)
+                grad_input_gate = grad_c * control_gate
+                grad_output_gate = grad_h * np.tanh(all_cell_states[t, 0, idx, :])
+                grad_forget_gate = grad_c * (
+                    all_cell_states[t - 1, 0, idx, :]
+                    if t > 0
+                    else initial_cell_state[0, idx, :]
+                    if initial_cell_state is not None
+                    else 0
                 )
-                dW[0, 2 * self._hidden_size : 3 * self._hidden_size, :] += np.dot(
-                    np.expand_dims(daf, axis=0).T, np.expand_dims(Xt, axis=0)
-                )
-                dW[0, 3 * self._hidden_size :, :] += np.dot(np.expand_dims(dac, axis=0).T, np.expand_dims(Xt, axis=0))
+                grad_control_gate = grad_c * input_gate
 
-                Htminus1 = HAll[t - 1, 0, idx, :] if t > 0 else H0[0, idx, :]
-                dR[0, : self._hidden_size, :] += np.dot(np.expand_dims(dai, axis=0).T, np.expand_dims(Htminus1, axis=0))
-                dR[0, self._hidden_size : 2 * self._hidden_size, :] += np.dot(
-                    np.expand_dims(dao, axis=0).T, np.expand_dims(Htminus1, axis=0)
+                grad_input_activation = grad_input_gate * input_gate * (1 - input_gate)
+                grad_output_activation = grad_output_gate * output_gate * (1 - output_gate)
+                grad_forget_activation = grad_forget_gate * forget_gate * (1 - forget_gate)
+                grad_control_activation = grad_control_gate * (1 - control_gate**2)
+
+                grad_inputs[t, idx, :] = (
+                    np.dot(grad_input_activation, weights_i)
+                    + np.dot(grad_output_activation, weights_o)
+                    + np.dot(grad_forget_activation, weights_f)
+                    + np.dot(grad_control_activation, weights_c)
                 )
-                dR[0, 2 * self._hidden_size : 3 * self._hidden_size, :] += np.dot(
-                    np.expand_dims(daf, axis=0).T, np.expand_dims(Htminus1, axis=0)
+                grad_h = (
+                    np.dot(grad_input_activation, rweights_i)
+                    + np.dot(grad_output_activation, rweights_o)
+                    + np.dot(grad_forget_activation, rweights_f)
+                    + np.dot(grad_control_activation, rweights_c)
                 )
-                dR[0, 3 * self._hidden_size :, :] += np.dot(
-                    np.expand_dims(dac, axis=0).T, np.expand_dims(Htminus1, axis=0)
+                if t == 0 and grad_initial_hidden_state is not None:
+                    grad_initial_hidden_state[0, idx, :] = grad_h
+
+                grad_weights[0, : self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_input_activation, axis=0).T, np.expand_dims(current_input, axis=0)
+                )
+                grad_weights[0, self._hidden_size : 2 * self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_output_activation, axis=0).T, np.expand_dims(current_input, axis=0)
+                )
+                grad_weights[0, 2 * self._hidden_size : 3 * self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_forget_activation, axis=0).T, np.expand_dims(current_input, axis=0)
+                )
+                grad_weights[0, 3 * self._hidden_size :, :] += np.dot(
+                    np.expand_dims(grad_control_activation, axis=0).T, np.expand_dims(current_input, axis=0)
                 )
 
-                if dB is not None:
-                    dB[0, : self._hidden_size] += dai
-                    dB[0, self._hidden_size : 2 * self._hidden_size] += dao
-                    dB[0, 2 * self._hidden_size : 3 * self._hidden_size] += daf
-                    dB[0, 3 * self._hidden_size : 4 * self._hidden_size] += dac
-                    dB[0, 4 * self._hidden_size : 5 * self._hidden_size] += dai
-                    dB[0, 5 * self._hidden_size : 6 * self._hidden_size] += dao
-                    dB[0, 6 * self._hidden_size : 7 * self._hidden_size] += daf
-                    dB[0, 7 * self._hidden_size :] += dac
+                prev_h = (
+                    all_hidden_states[t - 1, 0, idx, :]
+                    if t > 0
+                    else initial_hidden_state[0, idx, :]
+                    if initial_hidden_state is not None
+                    else 0
+                )
+                grad_recurrence_weights[0, : self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_input_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
+                )
+                grad_recurrence_weights[0, self._hidden_size : 2 * self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_output_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
+                )
+                grad_recurrence_weights[0, 2 * self._hidden_size : 3 * self._hidden_size, :] += np.dot(
+                    np.expand_dims(grad_forget_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
+                )
+                grad_recurrence_weights[0, 3 * self._hidden_size :, :] += np.dot(
+                    np.expand_dims(grad_control_activation, axis=0).T, np.expand_dims(prev_h, axis=0)
+                )
 
-                if dP is not None:
-                    dP[0, : self._hidden_size] += dai * (CAll[t - 1, 0, idx, :] if t > 0 else C0[0, idx, :])
-                    dP[0, self._hidden_size : 2 * self._hidden_size] += dao * CAll[t, 0, idx, :]
-                    dP[0, 2 * self._hidden_size : 3 * self._hidden_size] += daf * (
-                        CAll[t - 1, 0, idx, :] if t > 0 else C0[0, idx, :]
+                if grad_bias is not None:
+                    grad_bias[0, : self._hidden_size] += grad_input_activation
+                    grad_bias[0, self._hidden_size : 2 * self._hidden_size] += grad_output_activation
+                    grad_bias[0, 2 * self._hidden_size : 3 * self._hidden_size] += grad_forget_activation
+                    grad_bias[0, 3 * self._hidden_size : 4 * self._hidden_size] += grad_control_activation
+                    grad_bias[0, 4 * self._hidden_size : 5 * self._hidden_size] += grad_input_activation
+                    grad_bias[0, 5 * self._hidden_size : 6 * self._hidden_size] += grad_output_activation
+                    grad_bias[0, 6 * self._hidden_size : 7 * self._hidden_size] += grad_forget_activation
+                    grad_bias[0, 7 * self._hidden_size :] += grad_control_activation
+
+                if grad_peephole_weights is not None:
+                    grad_peephole_weights[0, : self._hidden_size] += grad_input_activation * (
+                        all_cell_states[t - 1, 0, idx, :]
+                        if t > 0
+                        else initial_cell_state[0, idx, :]
+                        if initial_cell_state is not None
+                        else 0
+                    )
+                    grad_peephole_weights[0, self._hidden_size : 2 * self._hidden_size] += (
+                        grad_output_activation * all_cell_states[t, 0, idx, :]
+                    )
+                    grad_peephole_weights[
+                        0, 2 * self._hidden_size : 3 * self._hidden_size
+                    ] += grad_forget_activation * (
+                        all_cell_states[t - 1, 0, idx, :]
+                        if t > 0
+                        else initial_cell_state[0, idx, :]
+                        if initial_cell_state is not None
+                        else 0
                     )
 
-                dC = dCtminus1
+                grad_c = grad_prev_c
 
-        return tuple([out for out in [dX, dW, dR, dB, dH0, dC0, dP] if out is not None])
+        return tuple(
+            [
+                out
+                for out in [
+                    grad_inputs,
+                    grad_weights,
+                    grad_recurrence_weights,
+                    grad_bias,
+                    grad_initial_hidden_state,
+                    grad_initial_cell_state,
+                    grad_peephole_weights,
+                ]
+                if out is not None
+            ]
+        )
 
-    def backward_graph(self, B=True, SL=False, H0=True, C0=True, P=False, Ht=False, Ct=False):
+    def backward_graph(
+        self,
+        bias=True,
+        sequence_lengths=False,
+        initial_hidden_state=True,
+        initial_cell_state=True,
+        peephole_weights=False,
+        final_hidden_state=False,
+        final_cell_state=False,
+    ):
         """Generate the ONNX graph for the backward pass of the LSTM operator."""
-        X = helper.make_tensor_value_info(
-            "X", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
+        inputs = helper.make_tensor_value_info(
+            "inputs", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
         )
-        W = helper.make_tensor_value_info(
-            "W", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
+        weights = helper.make_tensor_value_info(
+            "weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
         )
-        R = helper.make_tensor_value_info(
-            "R", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
+        recurrence_weights = helper.make_tensor_value_info(
+            "recurrence_weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
         )
-        B = (
-            helper.make_tensor_value_info("B", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
-            if B
+        bias = (
+            helper.make_tensor_value_info("bias", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
+            if bias
             else None
         )
-        SL = helper.make_tensor_value_info("SL", TensorProto.INT64, [self._batch_size]) if SL else None
-        H0 = (
+        sequence_lengths = (
+            helper.make_tensor_value_info("sequence_lengths", TensorProto.INT64, [self._batch_size])
+            if sequence_lengths
+            else None
+        )
+        initial_hidden_state = (
             helper.make_tensor_value_info(
-                "H0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "initial_hidden_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if H0
+            if initial_hidden_state
             else None
         )
-        C0 = (
+        initial_cell_state = (
             helper.make_tensor_value_info(
-                "C0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "initial_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if C0
+            if initial_cell_state
             else None
         )
-        P = (
-            helper.make_tensor_value_info("P", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size])
-            if P
+        peephole_weights = (
+            helper.make_tensor_value_info(
+                "peephole_weights", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size]
+            )
+            if peephole_weights
             else None
         )
 
-        HAll = helper.make_tensor_value_info(
-            "HAll",
+        all_hidden_states = helper.make_tensor_value_info(
+            "all_hidden_states",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, self._hidden_size],
         )
-        Ht = (
+        final_hidden_state = (
             helper.make_tensor_value_info(
-                "Ht", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "final_hidden_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if Ht
+            if final_hidden_state
             else None
         )
-        Ct = (
+        final_cell_state = (
             helper.make_tensor_value_info(
-                "Ct", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "final_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if Ct
+            if final_cell_state
             else None
         )
-        CAll = helper.make_tensor_value_info(
-            "CAll",
+        all_cell_states = helper.make_tensor_value_info(
+            "all_cell_states",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, self._hidden_size],
         )
-        IOFC = helper.make_tensor_value_info(
-            "IOFC",
+        iofc = helper.make_tensor_value_info(
+            "iofc",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, 4 * self._hidden_size],
         )
-        dHAll = helper.make_tensor_value_info(
-            "dHAll",
+        grad_all_hidden_states = helper.make_tensor_value_info(
+            "grad_all_hidden_states",
             TensorProto.FLOAT,
             [self._sequence_length, self._num_directions, self._batch_size, self._hidden_size],
         )
-        dHt = (
+        grad_final_hidden_state = (
             helper.make_tensor_value_info(
-                "dHt", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "grad_final_hidden_state",
+                TensorProto.FLOAT,
+                [self._num_directions, self._batch_size, self._hidden_size],
             )
-            if Ht
+            if final_hidden_state
             else None
         )
-        dCt = (
+        grad_final_cell_state = (
             helper.make_tensor_value_info(
-                "dCt", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "grad_final_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
-            if Ct
+            if final_cell_state
             else None
         )
 
-        dX = helper.make_tensor_value_info(
-            "dX", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
+        grad_inputs = helper.make_tensor_value_info(
+            "grad_inputs", TensorProto.FLOAT, [self._sequence_length, self._batch_size, self.input_size]
         )
-        dW = helper.make_tensor_value_info(
-            "dW", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
+        grad_weights = helper.make_tensor_value_info(
+            "grad_weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self.input_size]
         )
-        dR = helper.make_tensor_value_info(
-            "dR", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
+        grad_recurrence_weights = helper.make_tensor_value_info(
+            "grad_recurrence_weights",
+            TensorProto.FLOAT,
+            [self._num_directions, 4 * self._hidden_size, self._hidden_size],
         )
-        dB = (
-            helper.make_tensor_value_info("dB", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
-            if B
+        grad_bias = (
+            helper.make_tensor_value_info("grad_bias", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
+            if bias
             else None
         )
-        dH0 = (
+        grad_initial_hidden_state = (
             helper.make_tensor_value_info(
-                "dH0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "grad_initial_hidden_state",
+                TensorProto.FLOAT,
+                [self._num_directions, self._batch_size, self._hidden_size],
             )
-            if H0
+            if initial_hidden_state
             else None
         )
-        dC0 = (
+        grad_initial_cell_state = (
             helper.make_tensor_value_info(
-                "dC0", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
+                "grad_initial_cell_state",
+                TensorProto.FLOAT,
+                [self._num_directions, self._batch_size, self._hidden_size],
             )
-            if C0
+            if initial_cell_state
             else None
         )
-        dP = (
-            helper.make_tensor_value_info("dP", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size])
-            if P
+        grad_peephole_weights = (
+            helper.make_tensor_value_info(
+                "grad_peephole_weights", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size]
+            )
+            if peephole_weights
             else None
         )
 
         lstm = helper.make_node(
             "LSTMGrad",
             inputs=[
-                "X",
-                "W",
-                "R",
-                "B" if B else "",
-                "SL" if SL else "",
-                "H0" if H0 else "",
-                "C0" if C0 else "",
-                "P" if P else "",
-                "HAll" if HAll else "",
-                "CAll" if CAll else "",
-                "IOFC" if IOFC else "",
-                "dHAll" if dHAll else "",
-                "dHt" if dHt else "",
-                "dCt" if dCt else "",
+                "inputs",
+                "weights",
+                "recurrence_weights",
+                "bias" if bias is not None else "",
+                "sequence_lengths" if sequence_lengths is not None else "",
+                "initial_hidden_state" if initial_hidden_state is not None else "",
+                "initial_cell_state" if initial_cell_state is not None else "",
+                "peephole_weights" if peephole_weights is not None else "",
+                "all_hidden_states" if all_hidden_states is not None else "",
+                "all_cell_states" if all_cell_states is not None else "",
+                "iofc" if iofc is not None else "",
+                "grad_all_hidden_states" if grad_all_hidden_states is not None else "",
+                "grad_final_hidden_state" if grad_final_hidden_state is not None else "",
+                "grad_final_cell_state" if grad_final_cell_state else "",
             ],
             outputs=[
-                "dX",
-                "dW",
-                "dR",
-                "dB" if dB else "",
-                "dH0" if dH0 else "",
-                "dC0" if dC0 else "",
-                "dP" if dP else "",
+                "grad_inputs",
+                "grad_weights",
+                "grad_recurrence_weights",
+                "grad_bias" if grad_bias is not None else "",
+                "grad_initial_hidden_state" if grad_initial_hidden_state is not None else "",
+                "grad_initial_cell_state" if grad_initial_cell_state is not None else "",
+                "grad_peephole_weights" if grad_peephole_weights is not None else "",
             ],
             domain="com.microsoft",
             hidden_size=self._hidden_size,
@@ -576,8 +766,39 @@ class LSTM:
         graph = helper.make_graph(
             [lstm],
             "lstm",
-            [gi for gi in [X, W, R, B, SL, H0, C0, P, HAll, CAll, IOFC, dHAll, dHt, dCt] if gi],
-            [go for go in [dX, dW, dR, dB, dH0, dC0, dP] if go],
+            [
+                gi
+                for gi in [
+                    inputs,
+                    weights,
+                    recurrence_weights,
+                    bias,
+                    sequence_lengths,
+                    initial_hidden_state,
+                    initial_cell_state,
+                    peephole_weights,
+                    all_hidden_states,
+                    all_cell_states,
+                    iofc,
+                    grad_all_hidden_states,
+                    grad_final_hidden_state,
+                    grad_final_cell_state,
+                ]
+                if gi
+            ],
+            [
+                go
+                for go in [
+                    grad_inputs,
+                    grad_weights,
+                    grad_recurrence_weights,
+                    grad_bias,
+                    grad_initial_hidden_state,
+                    grad_initial_cell_state,
+                    grad_peephole_weights,
+                ]
+                if go
+            ],
         )
 
         self._backward_model = helper.make_model(
@@ -589,25 +810,46 @@ class LSTM:
         return self._backward_model
 
     def backward_ort(
-        self, X, W, R, B=None, H0=None, C0=None, P=None, HAll=None, CAll=None, IOFC=None, dHAll=None, dHt=None, dCt=None
+        self,
+        inputs,
+        weights,
+        recurrence_weights,
+        bias=None,
+        initial_hidden_state=None,
+        initial_cell_state=None,
+        peephole_weights=None,
+        all_hidden_states=None,
+        all_cell_states=None,
+        iofc=None,
+        grad_all_hidden_states=None,
+        grad_final_hidden_state=None,
+        grad_final_cell_state=None,
     ):
         """Run LSTM backward using ONNX Runtime.
 
         Users must call backward_graph before calling this function.
         """
-        ort_inputs = {"X": X, "W": W, "R": R, "HAll": HAll, "CAll": CAll, "IOFC": IOFC, "dHAll": dHAll}
-        if B is not None:
-            ort_inputs["B"] = B
-        if H0 is not None:
-            ort_inputs["H0"] = H0
-        if C0 is not None:
-            ort_inputs["C0"] = C0
-        if P is not None:
-            ort_inputs["P"] = P
-        if dHt is not None:
-            ort_inputs["dHt"] = dHt
-        if dCt is not None:
-            ort_inputs["dCt"] = dCt
+        ort_inputs = {
+            "inputs": inputs,
+            "weights": weights,
+            "recurrence_weights": recurrence_weights,
+            "all_hidden_states": all_hidden_states,
+            "all_cell_states": all_cell_states,
+            "iofc": iofc,
+            "grad_all_hidden_states": grad_all_hidden_states,
+        }
+        if bias is not None:
+            ort_inputs["bias"] = bias
+        if initial_hidden_state is not None:
+            ort_inputs["initial_hidden_state"] = initial_hidden_state
+        if initial_cell_state is not None:
+            ort_inputs["initial_cell_state"] = initial_cell_state
+        if peephole_weights is not None:
+            ort_inputs["peephole_weights"] = peephole_weights
+        if grad_final_hidden_state is not None:
+            ort_inputs["grad_final_hidden_state"] = grad_final_hidden_state
+        if grad_final_cell_state is not None:
+            ort_inputs["grad_final_cell_state"] = grad_final_cell_state
 
         ort_outs = None
         with tempfile.TemporaryDirectory() as tmpdirname:
@@ -626,7 +868,9 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
     num_directions = 1
 
     lstm = LSTM(sequence_length, batch_size, input_size, hidden_size)
-    _ = lstm.forward_graph(B=True, SL=False, H0=True, C0=True, P=True)
+    _ = lstm.forward_graph(
+        bias=True, sequence_lengths=False, initial_hidden_state=True, initial_cell_state=True, peephole_weights=False
+    )
 
     X = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
     W = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
@@ -634,7 +878,7 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
     B = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
     H0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
     C0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    P = np.random.rand(num_directions, 3 * hidden_size).astype(np.float32)
+    P = None
 
     outs_ort = lstm.forward_ort(X, W, R, B, H0, C0, P)
     outs_np = lstm.forward_np(X, W, R, B, H0, C0, P)
@@ -651,7 +895,15 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
     num_directions = 1
 
     lstm = LSTM(sequence_length, batch_size, input_size, hidden_size)
-    _ = lstm.backward_graph(B=True, SL=False, H0=True, C0=True, P=True, Ht=True, Ct=True)
+    _ = lstm.backward_graph(
+        bias=True,
+        sequence_lengths=False,
+        initial_hidden_state=True,
+        initial_cell_state=True,
+        peephole_weights=False,
+        final_hidden_state=True,
+        final_cell_state=True,
+    )
 
     X = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
     W = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
@@ -659,7 +911,7 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
     B = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
     H0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
     C0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    P = np.random.rand(num_directions, 3 * hidden_size).astype(np.float32)
+    P = None
 
     HAll = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
     CAll = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)

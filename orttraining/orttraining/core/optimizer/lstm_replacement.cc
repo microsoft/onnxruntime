@@ -13,32 +13,35 @@ Status LSTMReplacement::Apply(Graph& graph, Node& lstm_node, RewriteRuleEffect& 
   const auto& lstm_inputs = lstm_node.MutableInputDefs();
   auto& lstm_outputs = lstm_node.MutableOutputDefs();
 
-  const auto lstm_input_type = lstm_inputs.front()->TypeAsProto();
+  ONNX_NAMESPACE::TypeProto lstm_input_type;
+  lstm_input_type.mutable_tensor_type()->set_elem_type(lstm_inputs.front()->TypeAsProto()->tensor_type().elem_type());
 
-  // Add all LSTM cell optional outputs for computation even if not required to ensure all outputs are computed
-  // so that gradient computation can pick them up.
-  if (lstm_outputs.empty()) {
+  if (lstm_outputs.empty() || !lstm_outputs[0]->Exists()) {
+    // Add all LSTM cell optional outputs for computation even if not required to ensure all outputs are computed
+    // so that gradient computation can pick them up.
     NodeArg& all_hidden_states = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("all_hidden_states"),
-                                                          lstm_input_type);
-    lstm_outputs.push_back(&all_hidden_states);
+                                                          &lstm_input_type);
+    if (!lstm_outputs.empty()) {
+      lstm_outputs[0] = &all_hidden_states;
+    } else {
+      lstm_outputs.push_back(&all_hidden_states);
+    }
   }
 
   if (lstm_outputs.size() == 1U) {
-    NodeArg& final_hidden_state = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("final_hidden_state"),
-                                                           lstm_input_type);
-    lstm_outputs.push_back(&final_hidden_state);
+    NodeArg& placeholder = graph.GetOrCreateNodeArg("", nullptr);
+    lstm_outputs.push_back(&placeholder);
   }
 
   if (lstm_outputs.size() == 2U) {
-    NodeArg& final_cell_state = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("final_cell_state"),
-                                                         lstm_input_type);
-    lstm_outputs.push_back(&final_cell_state);
+    NodeArg& placeholder = graph.GetOrCreateNodeArg("", nullptr);
+    lstm_outputs.push_back(&placeholder);
   }
 
   NodeArg& all_cell_states = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("all_cell_states"),
-                                                      lstm_input_type);
+                                                      &lstm_input_type);
   lstm_outputs.push_back(&all_cell_states);
-  NodeArg& iofc = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("iofc"), lstm_input_type);
+  NodeArg& iofc = graph.GetOrCreateNodeArg(graph.GenerateNodeArgName("iofc"), &lstm_input_type);
   lstm_outputs.push_back(&iofc);
 
   // LSTMTraining should have 5 outputs
@@ -47,7 +50,7 @@ Status LSTMReplacement::Apply(Graph& graph, Node& lstm_node, RewriteRuleEffect& 
   auto lstm_attributes = lstm_node.GetAttributes();
   lstm_attributes.erase("layout");
 
-  Node& lstm_internal_node = graph.AddNode(graph.GenerateNodeName(lstm_node.Name() + "_training"),
+  Node& lstm_training_node = graph.AddNode(graph.GenerateNodeName(lstm_node.Name() + "_training"),
                                            "LSTMTraining",
                                            "LSTM with extra outputs for needed for gradient computation.",
                                            lstm_inputs,
@@ -56,8 +59,8 @@ Status LSTMReplacement::Apply(Graph& graph, Node& lstm_node, RewriteRuleEffect& 
                                            kMSDomain);
 
   // Assign provider to this new node. Provider should be same as the provider for old node.
-  lstm_internal_node.SetExecutionProviderType(lstm_node.GetExecutionProviderType());
-  graph_utils::FinalizeNodeFusion(graph, lstm_internal_node, lstm_node);
+  lstm_training_node.SetExecutionProviderType(lstm_node.GetExecutionProviderType());
+  graph_utils::FinalizeNodeFusion(graph, lstm_training_node, lstm_node);
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
   return Status::OK();
 }

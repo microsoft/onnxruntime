@@ -21,22 +21,23 @@ namespace {
 std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& ctx) {
   TensorShapeProto::Dimension num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size;
 
-  auto direction = getAttribute(ctx, "direction", "forward");
+  const auto direction = getAttribute(ctx, "direction", "forward");
   if ((direction == "forward") || (direction == "reverse"))
     num_directions.set_dim_value(1);
   else if (direction == "bidirectional")
     num_directions.set_dim_value(2);
-
-  auto hidden_size_value = getAttribute(ctx, "hidden_size", -1);
-  if (hidden_size_value > 0)
-    hidden_size.set_dim_value(hidden_size_value);
   else
-    fail_shape_inference("Hidden size must be provided.");
+    fail_shape_inference("Attribute direction must be one of forward, reverse, or bidirectional. Actual: ", direction);
+
+  const auto hidden_size_value = ctx.getAttribute("hidden_size");
+  if (!hidden_size_value) {
+    fail_shape_inference("Attribute hidden size not provided.");
+  }
 
   if (hasInputShape(ctx, 0)) {
-    auto& x_shape = getInputShape(ctx, 0);
+    const auto& x_shape = getInputShape(ctx, 0);
     if (x_shape.dim_size() != 3) {
-      fail_shape_inference("Input tensor must have rank 3");
+      fail_shape_inference("Input tensor must have rank 3. Actual: ", x_shape.dim_size());
     }
     sequence_length = x_shape.dim(0);
     batch_size = x_shape.dim(1);
@@ -44,9 +45,9 @@ std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& c
   }
 
   if (hasInputShape(ctx, 1)) {
-    auto& weight_shape = getInputShape(ctx, 1);
+    const auto& weight_shape = getInputShape(ctx, 1);
     if (weight_shape.dim_size() != 3) {
-      fail_shape_inference("Weight tensor must have rank 3");
+      fail_shape_inference("Weight tensor must have rank 3. Actual: ", weight_shape.dim_size());
     }
     hidden_size_x4 = weight_shape.dim(1);
   }
@@ -4286,9 +4287,10 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "LSTMTraining is for computing the LSTM cell keeping training in mind. The difference between this "
-          "and the LSTM cell is the extra outputs that LSTMTraining generates: a) all cell states over all sequence steps."
-          "b) intermediate iofc gate outputs.")
+          "LSTMTraining operator is adapted from LSTM operator (https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14)."
+          "The difference between the two operators is that LSTMTraining generates two additional outputs:"
+          "a) all cell states over all sequence steps. b) intermediate iofc gate outputs."
+          "These extra outputs are needed for the gradient computation while training.")
       .Attr(
           "activations",
           "A list of 3 (or 6 if bidirectional) activation functions "
@@ -4381,9 +4383,10 @@ Return true if all elements are true and false otherwise.
           // Final cell state
           updateOutputShape(ctx, 2, {num_directions, batch_size, hidden_size});
 
-        if (num_outputs > 3)
+        if (num_outputs > 3) {
           // All cell states
           updateOutputShape(ctx, 3, {sequence_length, num_directions, batch_size, hidden_size});
+        }
 
         if (num_outputs > 4)
           // IOFC gate computations
@@ -4394,9 +4397,11 @@ Return true if all elements are true and false otherwise.
       .SetDomain(kMSDomain)
       .SinceVersion(1)
       .SetDoc(
-          "LSTMGrad op that computes the partial derivative of the loss with respect to LSTM inputs: "
+          "LSTMGrad operator that computes the partial derivative of the loss with respect to LSTM inputs: "
           "a) The input sequence, b) Weight parameters, c) Recurrence weight parameters, d) Bias parameters, "
-          "e) Peephole weight parameters, f) Previous cell state, g) Previous hidden state.")
+          "e) Peephole weight parameters, f) Previous cell state, g) Previous hidden state."
+          "This operator computes the gradient of the LSTM operator from opset version 14: "
+          "https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14")
       .Attr(
           "activations",
           "A list of 3 (or 6 if bidirectional) activation functions "

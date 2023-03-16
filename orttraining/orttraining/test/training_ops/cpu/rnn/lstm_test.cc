@@ -14,11 +14,11 @@ TEST(LSTMTest, ForwardCompute) {
 
   OpTester test("LSTMTraining", 1, onnxruntime::kMSDomain);
 
-  const int sequence_length = 2;
-  const int batch_size = 2;
-  const int hidden_size = 3;
-  const int input_size = 2;
-  const int directions = 1;
+  constexpr int sequence_length = 2;
+  constexpr int batch_size = 2;
+  constexpr int hidden_size = 3;
+  constexpr int input_size = 2;
+  constexpr int directions = 1;
 
   test.AddAttribute<int64_t>("hidden_size", hidden_size);
 
@@ -91,11 +91,11 @@ TEST(LSTMTest, BackwardCompute) {
 
   OpTester test("LSTMGrad", 1, onnxruntime::kMSDomain);
 
-  const int sequence_length = 2;
-  const int batch_size = 2;
-  const int hidden_size = 3;
-  const int input_size = 2;
-  const int directions = 1;
+  constexpr int sequence_length = 2;
+  constexpr int batch_size = 2;
+  constexpr int hidden_size = 3;
+  constexpr int input_size = 2;
+  constexpr int directions = 1;
 
   test.AddAttribute<int64_t>("hidden_size", hidden_size);
 
