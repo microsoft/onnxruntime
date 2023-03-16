@@ -50,7 +50,6 @@ stages:
       - MacOS_C_API_Packaging_CPU_x86_64
       - MacOS_C_API_Packaging_CPU_arm64
       - MacOS_C_API_Packaging_CPU_universal2
-      condition: and(succeeded(), eq('${{ parameters.BuildForAllArchs }}', 'true'))
       pool:
         vmImage: 'macOS-12'
       steps:
@@ -83,7 +82,6 @@ stages:
         WithCache: ${{ parameters.WithCache }}
     - job: MacOS_C_API_Package_Publish_x86_64
       dependsOn: MacOS_C_API_Packaging_CPU_x86_64
-      condition: and(succeeded(), ne('${{ parameters.BuildForAllArchs }}', 'true'))
       pool:
         vmImage: 'macOS-12'
       steps:
