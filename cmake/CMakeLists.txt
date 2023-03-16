@@ -207,6 +207,8 @@ option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" 
 option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
+option(onnxruntime_USE_MIOPEN_TENSOR_LAYOUT "use miopenTensorLayout_t from MIOpen " ON)
+
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
 # https://zeux.io/2010/11/22/z7-everything-old-is-new-again/
 cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when using MSVC with CCache" ON "onnxruntime_BUILD_CACHE; MSVC" OFF)
@@ -302,6 +304,8 @@ if (onnxruntime_USE_ROCM)
   if (onnxruntime_USE_COMPOSABLE_KERNEL AND ROCM_VERSION_DEV VERSION_LESS "5.3")
     message(WARNING "composable kernel is only supported on ROCm >= 5.3")
     set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
+    message(WARNING "miopenTensorLayout_t is only supported on ROCm >= 5.3")
+    set(onnxruntime_USE_MIOPEN_TENSOR_LAYOUT OFF)
   endif()
 endif()
 
