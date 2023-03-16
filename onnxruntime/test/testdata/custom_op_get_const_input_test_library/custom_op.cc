@@ -42,5 +42,8 @@ TestCustomOp::TestCustomOp() {}
 
 void* TestCustomOp::CreateKernel(const OrtApi& api, const OrtKernelInfo* info) const { 
     ORT_UNUSED_PARAMETER(api);
+#ifdef _WIN32
+#pragma warning(disable : 26409)
+#endif
     return new TestCustomKernel(info);
 }
