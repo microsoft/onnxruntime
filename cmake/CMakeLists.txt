@@ -303,7 +303,6 @@ if (onnxruntime_USE_ROCM)
     message(WARNING "composable kernel is only supported on ROCm >= 5.3")
     set(onnxruntime_USE_COMPOSABLE_KERNEL OFF)
   endif()
-
 endif()
 
 if (APPLE)
