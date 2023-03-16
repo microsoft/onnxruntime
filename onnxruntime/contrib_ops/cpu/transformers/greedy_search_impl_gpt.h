@@ -170,11 +170,14 @@ Status GreedySearchGpt<T, ParametersT>::UpdateFeeds(
                             increase_position,
                             next_tokens,
                             place_holder,
+                            place_holder,
                             this->parameters_->num_beams,
                             gpt_subgraph_.GetFirstPastInputIndex(),
                             gpt_subgraph_.GetFirstPresentOutputIndex(),
                             gpt_subgraph_.past_present_share_buffer_,
-                            past_sequence_length);
+                            past_sequence_length,
+                            -1,  // Input sequence length needn't be passed in for GreedySearch
+                            false);
 }
 
 template <typename T, typename ParametersT>
@@ -329,7 +332,7 @@ Status GreedySearchGpt<T, ParametersT>::Execute(const FeedsFetchesManager* init_
     // Reorder past state after first run if the GPT subgraph (the one used after the first iteration)
     // contains DecoderMaskedMultiheadAttention nodes
     if (iteration_counter == 1 && gpt_subgraph_.has_decoder_masked_multihead_attention_) {
-      size_t offset = static_cast<int64_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
+      size_t offset = static_cast<size_t>(gpt_subgraph_.GetFirstPresentOutputIndex());
       // We will use the same staging buffer while transposing all the layers' past state
       // and this is okay because we use the same stream to do the staging copy and the transpose
       // operations.
