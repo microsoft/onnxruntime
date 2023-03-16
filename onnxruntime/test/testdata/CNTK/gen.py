@@ -147,7 +147,9 @@ def LSTM(cell_dim, use_scan=True):  # noqa: N802
         if use_scan:
             LSTM_func_root = C.as_composite(LSTM_func.outputs[0].owner.block_root)  # noqa: N806
             args = LSTM_func_root.arguments
-            LSTM_func = LSTM_func_root.clone(C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc})  # noqa: N806
+            LSTM_func = LSTM_func_root.clone(  # noqa: N806
+                C.CloneMethod.share, {args[0]: input, args[1]: dh, args[2]: dc}
+            )
         return LSTM_func
 
     return func

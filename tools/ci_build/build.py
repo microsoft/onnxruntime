@@ -737,8 +737,17 @@ def get_config_build_dir(build_dir, config):
 
 
 def run_subprocess(
-    args, cwd=None, capture_stdout=False, dll_path=None, shell=False, env={}, python_path=None, cuda_home=None  # noqa: B006
+    args,
+    cwd=None,
+    capture_stdout=False,
+    dll_path=None,
+    shell=False,
+    env=None,
+    python_path=None,
+    cuda_home=None,
 ):
+    if env is None:
+        env = {}
     if isinstance(args, str):
         raise ValueError("args should be a sequence of strings, not a string")
 
@@ -776,7 +785,11 @@ def update_submodules(source_dir):
 
 def is_docker():
     path = "/proc/self/cgroup"
-    return os.path.exists("/.dockerenv") or os.path.isfile(path) and any("docker" in line for line in open(path))  # noqa: SIM115
+    return (
+        os.path.exists("/.dockerenv")
+        or os.path.isfile(path)
+        and any("docker" in line for line in open(path))  # noqa: SIM115
+    )
 
 
 def install_python_deps(numpy_version=""):

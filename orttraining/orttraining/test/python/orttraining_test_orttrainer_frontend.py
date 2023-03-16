@@ -19,7 +19,7 @@ from onnxruntime.capi.ort_trainer import ModelDescription as Legacy_ModelDescrip
 from onnxruntime.capi.ort_trainer import ORTTrainer as Legacy_ORTTrainer
 from onnxruntime.training import PropagateCastOpsStrategy, TrainStepInfo, _utils, amp, checkpoint  # noqa: F401
 from onnxruntime.training import model_desc_validation as md_val
-from onnxruntime.training import optim, orttrainer
+from onnxruntime.training import optim, orttrainer  # noqa: F401
 from onnxruntime.training import orttrainer_options as orttrainer_options
 
 ###############################################################################

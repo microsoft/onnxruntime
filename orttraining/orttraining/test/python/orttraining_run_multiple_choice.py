@@ -13,13 +13,13 @@ import torch  # noqa: F401
 from numpy.testing import assert_allclose  # noqa: F401
 from orttraining_run_glue import verify_old_and_new_api_are_equal  # noqa: F401
 from orttraining_transformer_trainer import ORTTransformerTrainer
+from transformers import HfArgumentParser  # noqa: F401
+from transformers import Trainer  # noqa: F401
 from transformers import (
     AutoConfig,
     AutoModelForMultipleChoice,
     AutoTokenizer,
     EvalPrediction,
-    HfArgumentParser,  # noqa: F401
-    Trainer,  # noqa: F401
     TrainingArguments,
     set_seed,
 )

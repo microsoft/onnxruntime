@@ -241,7 +241,9 @@ class GRU_ONNXRuntimeUnitTests:  # noqa: N801
         hidden_size = 3
         input = np.array([1.0, 2.0, 10.0, 11.0]).astype(np.float32).reshape(seq_length, batch_size, input_size)
 
-        W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)  # noqa: N806
+        W = (  # noqa: N806
+            np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
+        )
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)  # noqa: N806
@@ -258,7 +260,9 @@ class GRU_ONNXRuntimeUnitTests:  # noqa: N801
         hidden_size = 3
         input = np.array([[[1.0], [2.0]], [[10.0], [11.0]]]).astype(np.float32)
 
-        W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)  # noqa: N806
+        W = (  # noqa: N806
+            np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
+        )
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)  # noqa: N806
@@ -283,7 +287,9 @@ class GRU_ONNXRuntimeUnitTests:  # noqa: N801
         else:
             input = np.array([[[1.0], [2.0]], [[10.0], [11.0]]]).astype(np.float32)
 
-        W = np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)  # noqa: N806
+        W = (  # noqa: N806
+            np.array([0.1, 0.2, 0.3, 1, 2, 3, 10, 11, 12]).astype(np.float32).reshape(1, 3 * hidden_size, input_size)
+        )
 
         weight_scale = 0.1
         R = weight_scale * np.ones((1, 3 * hidden_size, hidden_size)).astype(np.float32)  # noqa: N806

@@ -2,9 +2,9 @@ import numpy as np
 import onnx
 from onnx import onnx_pb as onnx_proto
 
+from ..quant_utils import BiasToQuantize  # noqa: F401
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,
-    BiasToQuantize,  # noqa: F401
     QuantizedValue,
     QuantizedValueType,
     attribute_to_kwarg,

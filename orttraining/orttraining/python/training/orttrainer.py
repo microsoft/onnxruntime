@@ -582,7 +582,9 @@ class ORTTrainer:
 
         return onnx_model
 
-    def _create_ort_training_session(self, optimizer_state_dict={}, session_options=None, provider_options=None):  # noqa: B006
+    def _create_ort_training_session(self, optimizer_state_dict=None, session_options=None, provider_options=None):
+        if optimizer_state_dict is None:
+            optimizer_state_dict = {}
         # Validating frozen_weights names
         unused_frozen_weights = [
             n

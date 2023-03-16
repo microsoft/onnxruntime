@@ -170,7 +170,10 @@ class CPPParser(ParserBase):
                 parsed_type = TemplateType(  # noqa: F405
                     identifiers,
                     self._parse_list(
-                        TokenKind.LESS_THAN, TokenKind.COMMA, TokenKind.GREATER_THAN, self._parse_template_type_argument  # noqa: F405
+                        TokenKind.LESS_THAN,  # noqa: F405
+                        TokenKind.COMMA,  # noqa: F405
+                        TokenKind.GREATER_THAN,  # noqa: F405
+                        self._parse_template_type_argument,
                     ),
                 )
             elif identifiers[-1].value == "TensorOptions":
@@ -215,7 +218,10 @@ class TorchParser(ParserBase):
         elif self._peek_token(TokenKind.OPEN_BRACKET):  # noqa: F405
             return ArrayExpression(  # noqa: F405
                 self._parse_list(
-                    TokenKind.OPEN_BRACKET, TokenKind.COMMA, TokenKind.CLOSE_BRACKET, self.parse_expression  # noqa: F405
+                    TokenKind.OPEN_BRACKET,  # noqa: F405
+                    TokenKind.COMMA,  # noqa: F405
+                    TokenKind.CLOSE_BRACKET,  # noqa: F405
+                    self.parse_expression,
                 )
             )
         else:
@@ -253,7 +259,12 @@ class TorchParser(ParserBase):
                 )
 
             parsed_type = TupleType(  # noqa: F405
-                self._parse_list(TokenKind.OPEN_PAREN, TokenKind.COMMA, TokenKind.CLOSE_PAREN, parse_tuple_element)  # noqa: F405
+                self._parse_list(
+                    TokenKind.OPEN_PAREN,  # noqa: F405
+                    TokenKind.COMMA,  # noqa: F405
+                    TokenKind.CLOSE_PAREN,  # noqa: F405
+                    parse_tuple_element,
+                )
             )
         elif self._peek_token(TokenKind.IDENTIFIER, "Tensor"):  # noqa: F405
             parsed_type = TensorType(self._read_token())  # noqa: F405

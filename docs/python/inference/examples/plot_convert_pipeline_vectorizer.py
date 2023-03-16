@@ -59,7 +59,12 @@ print(r2_score(y_test, pred))
 # to convert the model into ONNX format.
 
 from skl2onnx import convert_sklearn  # noqa: E402
-from skl2onnx.common.data_types import DictionaryType, FloatTensorType, Int64TensorType, SequenceType  # noqa: E402, F401
+from skl2onnx.common.data_types import (  # noqa: E402, F401
+    DictionaryType,
+    FloatTensorType,
+    Int64TensorType,
+    SequenceType,
+)
 
 # initial_type = [('float_input', DictionaryType(Int64TensorType([1]), FloatTensorType([])))]
 initial_type = [("float_input", DictionaryType(Int64TensorType([1]), FloatTensorType([])))]

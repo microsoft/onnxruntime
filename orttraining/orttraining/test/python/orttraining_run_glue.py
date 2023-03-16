@@ -27,12 +27,9 @@ import onnxruntime
 from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer  # noqa: F401
 
 try:
-    from onnxruntime.capi._pybind_state import (
-        get_mpi_context_local_rank,
-        get_mpi_context_local_size,  # noqa: F401
-        get_mpi_context_world_rank,  # noqa: F401
-        get_mpi_context_world_size,
-    )
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_size  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_mpi_context_world_rank  # noqa: F401
+    from onnxruntime.capi._pybind_state import get_mpi_context_local_rank, get_mpi_context_world_size
 
     has_get_mpi_context_internal_api = True
 except ImportError:

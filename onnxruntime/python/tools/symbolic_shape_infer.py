@@ -302,9 +302,8 @@ class SymbolicShapeInference:
         self.known_vi_ = {i.name: i for i in list(self.out_mp_.graph.input)}
         self.known_vi_.update(
             {
-                        i.name:
-                        helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
-                    for i in self.out_mp_.graph.initializer
+                i.name: helper.make_tensor_value_info(i.name, i.data_type, list(i.dims))
+                for i in self.out_mp_.graph.initializer
             }
         )
 

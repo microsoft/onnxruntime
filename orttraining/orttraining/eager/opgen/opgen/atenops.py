@@ -180,19 +180,37 @@ hand_implemented = {
     "aten::min": ReduceMin("self", keepdims=0),  # noqa: F405
     "aten::cat.out": SignatureOnly(),
     "aten::fill_.Scalar": SignatureOnly(),
-    "aten::ne.Scalar_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::ne.Tensor_out": Cast(Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::eq.Tensor_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::eq.Scalar_out": Cast(Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::bitwise_and.Tensor_out": And("self", "other"),  # This generates a fallback for all but Bool, as expected.  # noqa: F405
+    "aten::ne.Scalar_out": Cast(  # noqa: F405
+        Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::ne.Tensor_out": Cast(  # noqa: F405
+        Not(Equal("self", "other")), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::eq.Tensor_out": Cast(  # noqa: F405
+        Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::eq.Scalar_out": Cast(  # noqa: F405
+        Equal("self", "other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::bitwise_and.Tensor_out": And(  # noqa: F405
+        "self", "other"
+    ),  # This generates a fallback for all but Bool, as expected.
     "aten::masked_select": GatherND("self", Transpose(NonZero(Expand("mask", Shape("self"))))),  # noqa: F405
     "aten::_local_scalar_dense": MakeTorchFallback(),  # This function extracts a scalar value from
     #   a tensor with exactly one value; there's no need to try to do this on an ORT device.
     #   See CPU impl at pytorch/blob/master/aten/src/ATen/native/Scalar.cpp
-    "aten::lt.Scalar_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::lt.Tensor_out": Cast(Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::gt.Scalar_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
-    "aten::gt.Tensor_out": Cast(Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"),  # noqa: F405
+    "aten::lt.Scalar_out": Cast(  # noqa: F405
+        Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::lt.Tensor_out": Cast(  # noqa: F405
+        Less(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::gt.Scalar_out": Cast(  # noqa: F405
+        Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
+    "aten::gt.Tensor_out": Cast(  # noqa: F405
+        Greater(A="self", B="other"), to="GetONNXTensorProtoDataType(out.scalar_type())"  # noqa: F405
+    ),
     "aten::equal": SignatureOnly(),
     "aten::_softmax": Softmax("self", axis="dim"),  # noqa: F405
     "aten::argmax.out": SignatureOnly(),

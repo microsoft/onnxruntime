@@ -709,9 +709,7 @@ class TestOrtTrainer(unittest.TestCase):
 
         loss, _ = trainer.train_step(data, target)
 
-        assert {n.name for n in trainer.onnx_model_.graph.initializer} == {
-            n for n, t in model.named_parameters()
-        }
+        assert {n.name for n in trainer.onnx_model_.graph.initializer} == {n for n, t in model.named_parameters()}
 
     def testMNISTFrozenWeight(self):  # noqa: N802
         torch.manual_seed(1)

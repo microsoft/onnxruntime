@@ -15,7 +15,13 @@ from orttraining_test_transformers import BertForPreTraining, BertModelTest
 from orttraining_test_utils import map_optimizer_attributes
 
 import onnxruntime
-from onnxruntime.capi.ort_trainer import IODescription, LossScaler, ModelDescription, ORTTrainer, generate_sample  # noqa: F401
+from onnxruntime.capi.ort_trainer import (  # noqa: F401
+    IODescription,
+    LossScaler,
+    ModelDescription,
+    ORTTrainer,
+    generate_sample,
+)
 
 torch.manual_seed(1)
 onnxruntime.set_seed(1)

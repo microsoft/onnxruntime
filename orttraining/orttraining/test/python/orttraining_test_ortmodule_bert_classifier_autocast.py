@@ -12,14 +12,9 @@ import torch
 import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from transformers import (
-    AdamW,  # noqa: F401
-    AutoConfig,
-    BertConfig,  # noqa: F401
-    BertForSequenceClassification,
-    BertTokenizer,
-    get_linear_schedule_with_warmup,
-)
+from transformers import AdamW  # noqa: F401
+from transformers import BertConfig  # noqa: F401
+from transformers import AutoConfig, BertForSequenceClassification, BertTokenizer, get_linear_schedule_with_warmup
 
 import onnxruntime
 from onnxruntime.training.ortmodule import DebugOptions, ORTModule

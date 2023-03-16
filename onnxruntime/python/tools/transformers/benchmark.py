@@ -50,11 +50,11 @@ from enum import Enum  # noqa: F401
 import numpy
 import onnx  # noqa: F401
 import psutil
+from benchmark_helper import allocateOutputBuffers  # noqa: F401
 from benchmark_helper import (
     ConfigModifier,
     OptimizerInfo,
     Precision,
-    allocateOutputBuffers,  # noqa: F401
     create_onnxruntime_session,
     get_latency_result,
     inference_ort,
