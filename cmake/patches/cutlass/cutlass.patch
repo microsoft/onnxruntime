@@ -1,3 +1,23 @@
+diff --git a/include/cute/numeric/complex.hpp b/include/cute/numeric/complex.hpp
+index 3790ebd3..cf727d09 100644
+--- a/include/cute/numeric/complex.hpp
++++ b/include/cute/numeric/complex.hpp
+@@ -41,10 +41,14 @@
+ // With CUDA 11.4, builds show spurious "-Wconversion" warnings
+ // on line 656 of thrust/detail/type_traits.h.
+ // These pragmas suppress the warnings.
++#ifdef __GNUC__
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wconversion"
++#endif
+ #include <thrust/complex.h>
++#ifdef __GNUC__
+ #pragma GCC diagnostic pop
++#endif
+ 
+ #include <cute/config.hpp>
+ 
+ namespace cute
 diff --git a/include/cutlass/functional.h b/include/cutlass/functional.h
 index 59aec46a..b6a6f4f5 100644
 --- a/include/cutlass/functional.h
