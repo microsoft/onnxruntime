@@ -13,9 +13,14 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* InputMaskTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceLengthsTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputRelativePositionBiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputPastKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputPastValueTensor;
     const DML_TENSOR_DESC* OutputTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputPresentKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputPresentValueTensor;
     FLOAT MaskFilterValue;
     UINT NumHeads;
+    FLOAT Scale;
 };
 
 // TODO (pavignol): Remove once we update to the latest DML version
@@ -219,43 +224,48 @@ public:
             dmlKeyPaddingMaskIndex,
             dmlUnpaddedKeySequenceLengthsIndex,
             dmlRelativePositionBiasIndex,
+            dmlPastKeyIndex,
+            dmlPastValueIndex,
             dmlInputCount,
         };
 
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == inputCount);
+        enum OutputIndex : uint32_t
+        {
+            outputIndex,
+            outputPresentKeyIndex,
+            outputPresentValueIndex,
+            outputCount,
+        };
 
-        auto numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == inputCount);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == outputCount);
 
         bool maskIsUnpaddedSequenceLengths =
             kernelCreationContext.IsInputValid(keyPaddingMaskIndex) &&
             kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
 
-        // TODO (pavignol): Remove indices once we support additional inputs/outputs
+        bool keyValueIsPast =
+            kernelCreationContext.IsInputValid(keyIndex) &&
+            kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 4;
+
         std::vector<std::optional<uint32_t>> inputIndices = {
             queryIndex,
-            keyIndex,
-            valueIndex,
+            keyValueIsPast ? std::nullopt : std::optional<uint32_t>(keyIndex),
+            keyValueIsPast ? std::nullopt : std::optional<uint32_t>(valueIndex),
             biasIndex,
-            maskIsUnpaddedSequenceLengths ? std::nullopt :std::optional<uint32_t>(keyPaddingMaskIndex),
+            maskIsUnpaddedSequenceLengths ? std::nullopt : std::optional<uint32_t>(keyPaddingMaskIndex),
             maskIsUnpaddedSequenceLengths ? std::optional<uint32_t>(keyPaddingMaskIndex) : std::nullopt,
             relativePositionBiasIndex,
+            keyValueIsPast ? keyIndex : pastKeyIndex,
+            keyValueIsPast ? valueIndex : pastValueIndex,
         };
-        std::vector<std::optional<uint32_t>> outputIndices = {0};
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, 1);
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, std::nullopt, std::nullopt, std::nullopt, 1);
 
         auto queryTensorShape = m_inputTensorDescs[dmlQueryIndex].GetSizes();
+        ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3 || queryTensorShape.size() == 5);
 
-        std::vector<uint32_t> pastKeyTensorShape;
-        std::vector<uint32_t> pastValueTensorShape;
-
-        // TODO (pavignol): Uncomment once we support additional inputs/outputs
-        // std::vector<uint32_t> pastKeyTensorShape = m_inputTensorDescs[pastKeyIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
-        //     ? std::vector<uint32_t>()
-        //     : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastKeyIndex);
-        //
-        // std::vector<uint32_t> pastValueTensorShape = m_inputTensorDescs[pastValueIndex].GetDmlDataType() == DML_TENSOR_TYPE_INVALID
-        //     ? std::vector<uint32_t>()
-        //     : kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(pastValueIndex);
+        const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
+        const uint32_t headSize = queryTensorShape.size() == 5 ? queryTensorShape[4] : queryTensorShape[2] / numHeads;
 
         if (m_inputTensorDescs[dmlKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
         {
@@ -263,13 +273,17 @@ public:
 
             if (m_inputTensorDescs[dmlValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
             {
-                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3);
-                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == 3);
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3 || m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 4);
+                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == m_inputTensorDescs[dmlKeyIndex].GetDimensionCount());
             }
             else
             {
                 ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 5);
             }
+        }
+        else if (m_inputTensorDescs[dmlPastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        {
+            ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3);
         }
         else
         {
@@ -309,15 +323,15 @@ public:
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDimensionCount() == 4);
         }
 
-        // if (m_inputTensorDescs[dmlPastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
-        // {
-        //     ML_CHECK_VALID_ARGUMENT(pastKeyTensorShape.size() == 4);
-        // }
-        //
-        // if (m_inputTensorDescs[dmlPastValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
-        // {
-        //     ML_CHECK_VALID_ARGUMENT(pastValueTensorShape.size() == 4);
-        // }
+        if (m_inputTensorDescs[dmlPastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastKeyIndex].GetDimensionCount() == 4);
+        }
+
+        if (m_inputTensorDescs[dmlPastValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastValueIndex].GetDimensionCount() == 4);
+        }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
@@ -330,27 +344,19 @@ public:
         mhaDesc.InputMaskTensor = inputDescs[dmlKeyPaddingMaskIndex].Desc ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
         mhaDesc.InputUnpaddedKeySequenceLengthsTensor = inputDescs[dmlUnpaddedKeySequenceLengthsIndex].Desc ? &inputDescs[dmlUnpaddedKeySequenceLengthsIndex] : nullptr;
         mhaDesc.InputRelativePositionBiasTensor = inputDescs[dmlRelativePositionBiasIndex].Desc ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
-        mhaDesc.OutputTensor = &outputDescs[0];
+        mhaDesc.InputPastKeyTensor = inputDescs[dmlPastKeyIndex].Desc ? &inputDescs[dmlPastKeyIndex] : nullptr;
+        mhaDesc.InputPastValueTensor = inputDescs[dmlPastValueIndex].Desc ? &inputDescs[dmlPastValueIndex] : nullptr;
+        mhaDesc.OutputTensor = &outputDescs[outputIndex];
+        mhaDesc.OutputPresentKeyTensor = outputDescs[outputPresentKeyIndex].Desc ? &outputDescs[outputPresentKeyIndex] : nullptr;
+        mhaDesc.OutputPresentValueTensor = outputDescs[outputPresentValueIndex].Desc ? &outputDescs[outputPresentValueIndex] : nullptr;
         mhaDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaDesc.NumHeads = numHeads;
-        // TODO (pavignol): Support scale
+        mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
 
         DML_OPERATOR_DESC opDesc = { static_cast<DML_OPERATOR_TYPE>(DML_INTERNAL_OPERATOR_MULTI_HEAD_ATTENTION), &mhaDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);
     }
 };
-
-// TODO (pavignol): Remove this once Past key/value are supported
-void CALLBACK QueryMultiHeadAttention(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
-{
-    if (context->IsInputValid(6) || context->IsInputValid(7))
-    {
-        *isSupported = false;
-        return;
-    }
-
-    *isSupported = true;
-}
 
 DML_OP_DEFINE_CREATION_FUNCTION(MultiHeadAttention, DmlOperatorMultiHeadAttention);
 } // namespace Dml

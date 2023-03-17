@@ -1418,7 +1418,7 @@ public:
 
 private:
     void Initialize(const IKernelInformationAdapter& kernelInformation);
-    int64_t m_numHeads;
+    uint32_t m_numHeads;
 };
 
 using ShapeInferenceHelper_Conv = ConvHelper;

@@ -2541,10 +2541,20 @@ namespace OperatorHelper
         {
             auto valueShape = shapeInfo.GetInputTensorShape(2);
             ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
-            ML_CHECK_VALID_ARGUMENT(valueShape.size() == 3);
-            kvSequenceLength = valueShape[1];
-            vHiddenSize = valueShape[2];
-            headSize = queryShape[2] / gsl::narrow_cast<uint32_t>(m_numHeads);
+            headSize = queryShape[2] / m_numHeads;
+
+            if (valueShape.size() == 3)
+            {
+                kvSequenceLength = valueShape[1];
+                vHiddenSize = valueShape[2];
+            }
+            else
+            {
+                ML_CHECK_VALID_ARGUMENT(valueShape.size() == 4);
+                const uint32_t vHeadSize = valueShape[3];
+                kvSequenceLength = valueShape[2];
+                vHiddenSize = vHeadSize * m_numHeads;
+            }
         }
         else if (shapeInfo.IsInputValid(1))
         {
@@ -2559,20 +2569,28 @@ namespace OperatorHelper
             ML_CHECK_VALID_ARGUMENT(queryShape.size() == 5);
             kvSequenceLength = queryShape[1];
             headSize = queryShape[4];
-            vHiddenSize = headSize * gsl::narrow_cast<uint32_t>(m_numHeads);
+            vHiddenSize = headSize * m_numHeads;
         }
 
         std::vector<EdgeShapes> outputShapes(3);
         outputShapes[0] = EdgeShapes({batchSize, sequenceLength, vHiddenSize});
 
+        uint32_t totalSequenceLength = kvSequenceLength;
+        if (shapeInfo.IsInputValid(6))
+        {
+            ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputTensorDimensionCount(6) == 4);
+            const uint32_t pastSequenceLength = shapeInfo.GetInputTensorShape(6)[2];
+            totalSequenceLength += pastSequenceLength;
+        }
+
         if (shapeInfo.IsOutputValid(1))
         {
-            outputShapes[1] = EdgeShapes({batchSize, gsl::narrow_cast<uint32_t>(m_numHeads), kvSequenceLength, headSize});
+            outputShapes[1] = EdgeShapes({batchSize, m_numHeads, totalSequenceLength, headSize});
         }
 
         if (shapeInfo.IsOutputValid(2))
         {
-            outputShapes[2] = EdgeShapes({batchSize, gsl::narrow_cast<uint32_t>(m_numHeads), kvSequenceLength, headSize});
+            outputShapes[2] = EdgeShapes({batchSize, m_numHeads, totalSequenceLength, headSize});
         }
 
         return outputShapes;
@@ -2580,7 +2598,7 @@ namespace OperatorHelper
 
     void MultiHeadAttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
     {
-        m_numHeads = kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads);
+        m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
     }
 
 } // namespace OperatorHelper
