@@ -366,12 +366,12 @@ __global__ void cuApplyLayerNorm(
         curr += static_cast<U>(skip_vals[i]);
       }
 
-      V gamma_i = (gamma != NULL) ? gamma[i] : (V)1;
-      V beta_i = (beta != NULL) ? beta[i] : (V)0;
+      U gamma_i = (gamma != NULL) ? (U)gamma[i] : (U)1;
+      U beta_i = (beta != NULL) ? (U)beta[i] : (U)0;
       if (simplified) {
-        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * curr);
+        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
       } else {
-        ovals[i] = gamma_i * static_cast<V>(c_inv_std_dev * (curr - mu)) + beta_i;
+        ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * (curr - mu) + beta_i);
       }
 
       if (skip_input_bias_add_ovals != NULL) {
