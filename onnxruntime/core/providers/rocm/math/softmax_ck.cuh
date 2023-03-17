@@ -56,8 +56,8 @@ auto GetCKSoftmaxTypeStringAndOps() {
     auto invoker = impl->MakeInvokerPointer();
 
     auto ck_softmax_op = [impl = std::move(impl), invoker = std::move(invoker)](const SoftmaxParams<InputT, OutputT>* params) -> Status {
-      AccDataType alpha{1.0f};
-      AccDataType beta{0.0f};
+      double alpha{1.0f};
+      double beta{0.0f};
 
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(
           params->is_log_softmax,
@@ -71,7 +71,7 @@ auto GetCKSoftmaxTypeStringAndOps() {
       std::vector<ck::index_t> reduce_dims{3};
 
       auto nop = Nop{};
-      auto arg = impl->MakeArgumentPointer(in_lengths, in_strides, reduce_dims, &alpha, &beta,
+      auto arg = impl->MakeArgumentPointer(in_lengths, in_strides, reduce_dims, alpha, beta,
                                            params->input, params->output, nop, nop);
       TUNABLE_OP_RETURN_UNSUPPORTED_ARGUMENT_IF(!impl->IsSupportedArgument(arg.get()),
                                                 impl->GetTypeString(), " does not support ", params->Signature());

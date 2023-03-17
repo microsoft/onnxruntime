@@ -91,6 +91,9 @@ Status Subgraph::Setup(const SessionState& session_state,
         past_present_share_buffer_ = true;
         // past_sequence_length is on CPU memory
         feed_locations.push_back(OrtDevice());
+      } else if (feed_names[i] == "beam_width") {
+        // beam_width is on CPU memory
+        feed_locations.push_back(OrtDevice());
       } else {
         feed_locations.push_back(default_location.device);
       }

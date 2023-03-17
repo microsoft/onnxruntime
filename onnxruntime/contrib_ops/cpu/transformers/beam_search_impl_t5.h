@@ -193,6 +193,9 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                   parameters->vocab_size,
                   parameters->sequence_length,
                   parameters->max_length,
+                  parameters->num_heads,
+                  parameters->head_size,
+                  false,  // TODO: Support past/present state buffer re-use for T5
                   parameters->output_scores,
                   use_position);
 
