@@ -94,7 +94,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
 - stage: NoAbseil
   dependsOn: [ ]
@@ -114,7 +114,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
 - stage: MinimalBuildWithNoExceptions
   dependsOn: [ ]
@@ -134,7 +134,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
 - stage: DebugNodeInputsOutputs
   dependsOn: [ ]
@@ -154,7 +154,7 @@ stages:
       ORT_EP_NAME: CPU
       GenerateDocumentation: false
       EnablePython: false
-      ort_build_pool_name: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
+      MachinePool: ${{variables.WIN_CPU_BUILD_MACHINE_POOL_NAME}}
 
 #Generate test coverage report and publish the data to a Cloud database. Only runs daily.
 - stage: CodeCoverage
