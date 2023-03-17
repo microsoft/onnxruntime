@@ -40,7 +40,6 @@ std::vector<std::string> GetStackTrace() {
 }
 
 namespace detail {
-#ifndef NDEBUG
 #if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
 class SymbolHelper {
  public:
@@ -139,7 +138,6 @@ std::string CaptureStackTrace::Lookup(void* address_in) const {
   return result.str();
 }
 
-#endif
 #endif
 }  // namespace detail
 }  // namespace onnxruntime
