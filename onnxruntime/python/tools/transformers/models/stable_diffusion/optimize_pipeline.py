@@ -51,6 +51,10 @@ def optimize_sd_pipeline(
     float16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
+    disable_nhwc_conv: bool,
+    disable_attention: bool,
+    disable_group_norm: bool,
+    disable_bias_splitgelu: bool,
 ):
     """Optimize onnx models used in stable diffusion onnx pipeline and optionally convert to float16.
 
@@ -124,6 +128,18 @@ def optimize_sd_pipeline(
         logger.info(f"Optimize {onnx_model_path}...")
 
         fusion_options = FusionOptions(model_type)
+
+        if disable_nhwc_conv:
+            fusion_options.enable_nhwc_conv = False
+
+        if disable_attention:
+            fusion_options.enable_attention = False
+
+        if disable_group_norm:
+            fusion_options.enable_group_norm = False
+
+        if disable_bias_splitgelu:
+            fusion_options.enable_bias_splitgelu = False
 
         if model_type in ["unet"]:
             # Some optimizations are not available in v1.14 or older version: packed QKV and BiasAdd
@@ -286,6 +302,38 @@ def parse_arguments():
     )
     parser.set_defaults(use_external_data_format=False)
 
+    parser.add_argument(
+        "--disable_nhwc_conv",
+        required=False,
+        action="store_true",
+        help="Disable the NhwcConv fusion.",
+    )
+    parser.set_defaults(disable_nhwc_conv=False)
+
+    parser.add_argument(
+        "--disable_attention",
+        required=False,
+        action="store_true",
+        help="Disable the MultiHeadAttention fusion.",
+    )
+    parser.set_defaults(disable_attention=False)
+
+    parser.add_argument(
+        "--disable_group_norm",
+        required=False,
+        action="store_true",
+        help="Disable the GroupNorm fusion.",
+    )
+    parser.set_defaults(disable_attention=False)
+
+    parser.add_argument(
+        "--disable_bias_splitgelu",
+        required=False,
+        action="store_true",
+        help="Disable the BiasSplitGelu fusion.",
+    )
+    parser.set_defaults(disable_bias_splitgelu=False)
+
     args = parser.parse_args()
     return args
 
@@ -303,6 +351,10 @@ def main():
         args.float16,
         args.force_fp32_ops,
         args.inspect,
+        args.disable_nhwc_conv,
+        args.disable_attention,
+        args.disable_group_norm,
+        args.disable_bias_splitgelu,
     )
 
 
