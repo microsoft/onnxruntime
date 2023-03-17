@@ -165,13 +165,18 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(key != nullptr && value != nullptr);
   
   AttentionParameters parameters = {};
+  const float scale = 1.0f;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
                                                                       bias,
                                                                       key_padding_mask,
+                                                                      extra_add_qk,
+                                                                      past_key,
+                                                                      past_value,
                                                                       &parameters,
                                                                       num_heads_,
+                                                                      scale,
                                                                       mask_filter_value_));
 
   const int batch_size = parameters.batch_size;

@@ -263,7 +263,6 @@ class AttentionCPUBase : public AttentionBase {
     const double cost =
         static_cast<double>(sequence_length) * static_cast<double>(v_head_size) * static_cast<double>(sequence_length);
 
-    // auto t5 = std::chrono::high_resolution_clock::now();
     ThreadPool::TryParallelFor(tp, SafeInt<ptrdiff_t>(batch_size) * num_heads_, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
         const T* v = V + kv_input_chunk_length * i;
