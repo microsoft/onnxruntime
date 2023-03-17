@@ -81,7 +81,7 @@ Install the Nuget Package [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.
 
 ```csharp
 SessionOptions sessionOptions = newSessionOptions();
-sessionOptions.GraphOptimizationLevel =GraphOptimizationLevel.ORT_ENABLE_ALL;
+sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 sessionOptions.AppendExecutionProvider_DML(0);
 ```
 
