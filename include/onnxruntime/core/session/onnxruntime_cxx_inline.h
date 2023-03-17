@@ -30,15 +30,19 @@ inline void ThrowOnError(const Status& st) {
   }
 }
 
-inline Status::Status(OrtStatus* status) : Base<OrtStatus>{status} {
+inline Status::Status(OrtStatus* status) noexcept : Base<OrtStatus>{status} {
 }
 
-inline Status::Status(const std::exception& e) {
+inline Status::Status(const std::exception& e) noexcept {
   p_ = GetApi().CreateStatus(ORT_FAIL, e.what());
 }
 
-inline Status::Status(const Exception& e) {
+inline Status::Status(const Exception& e) noexcept {
   p_ = GetApi().CreateStatus(e.GetOrtErrorCode(), e.what());
+}
+
+inline Status::Status(const char* message, OrtErrorCode code) noexcept {
+  p_ = GetApi().CreateStatus(code, message);
 }
 
 inline std::string Status::GetErrorMessage() const {
@@ -48,6 +52,10 @@ inline std::string Status::GetErrorMessage() const {
 
 inline OrtErrorCode Status::GetErrorCode() const {
   return GetApi().GetErrorCode(p_);
+}
+
+inline bool Status::IsOK() const noexcept {
+  return (p_ == nullptr);
 }
 
 // This template converts a C++ type into it's ONNXTensorElementDataType
@@ -1426,6 +1434,72 @@ inline Value Value::CreateOpaque(const char* domain, const char* type_name, cons
 //
 // Custom OP Inlines
 //
+inline Logger::Logger(const OrtLogger* logger) : logger_(logger) {
+  Ort::ThrowOnError(GetApi().Logger_GetLoggingSeverityLevel(this->logger_, &this->cached_severity_level_));
+}
+
+inline OrtLoggingLevel Logger::GetLoggingSeverityLevel() const noexcept {
+  return cached_severity_level_;
+}
+
+inline Status Logger::LogMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path, int line_number,
+                                 const char* func_name, const char* message) const noexcept {
+  OrtStatus* status = GetApi().Logger_LogMessage(logger_, log_severity_level, message, file_path, line_number,
+                                                 func_name);
+  return Status{status};
+}
+
+// Disable warnings about the format string not being a literal (-Wformat-nonliteral and -Wformat-security)
+// for gcc and clang. The alternative is to use actual C-style variadic parameters and apply
+// __attribute__(format(printf...)), which does not work with variadic templates.
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic ignored "-Wformat-security"
+#elif defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#pragma clang diagnostic ignored "-Wformat-security"
+#endif
+template <typename... Args>
+inline Status Logger::LogFormattedMessage(OrtLoggingLevel log_severity_level, const ORTCHAR_T* file_path,
+                                          int line_number, const char* func_name, const char* format,
+                                          Args&&... args) const noexcept {
+  int msg_len = std::snprintf(nullptr, 0U, format, std::forward<Args>(args)...);
+
+  if (msg_len < 0) {  // Formatting error
+    return Status("Failed to log message due to formatting error", OrtErrorCode::ORT_FAIL);
+  }
+
+  OrtStatus* status = nullptr;
+  const size_t buffer_size = static_cast<size_t>(msg_len) + 1U;
+
+  constexpr size_t kStackBufferSize = 1024;
+
+  if (buffer_size < kStackBufferSize) {
+    char buffer[kStackBufferSize];
+    snprintf(buffer, kStackBufferSize, format, std::forward<Args>(args)...);
+    status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer, file_path, line_number, func_name);
+  } else {
+    // std::make_unique is only supported starting at C++14.
+#if (__cplusplus >= 201402L) || (_MSC_VER >= 1900)
+    auto buffer = std::make_unique<char[]>(buffer_size);
+#else
+    std::unique_ptr<char[]> buffer(new char[buffer_size]);
+#endif
+    std::snprintf(buffer.get(), buffer_size, format, std::forward<Args>(args)...);
+    status = GetApi().Logger_LogMessage(logger_, log_severity_level, buffer.get(), file_path, line_number, func_name);
+  }
+
+  return Status{status};
+}
+// Re-enable -Wformat-nonliteral and -Wformat-security
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+
 inline KernelContext::KernelContext(OrtKernelContext* context) : ctx_(context) {
 }
 
@@ -1463,6 +1537,12 @@ inline void* KernelContext::GetGPUComputeStream() const {
   void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
   return out;
+}
+
+inline Logger KernelContext::GetLogger() const {
+  const OrtLogger* out = nullptr;
+  ThrowOnError(GetApi().KernelContext_GetLogger(this->ctx_, &out));
+  return Logger{out};
 }
 
 inline OpAttr::OpAttr(const char* name, const void* data, int len, OrtOpAttrType type) {
@@ -1540,6 +1620,28 @@ inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocato
   OrtValue* out = nullptr;
   ThrowOnError(GetApi().KernelInfoGetAttribute_tensor(this->p_, name, allocator, &out));
   return Value{out};
+}
+
+template <typename T>
+inline std::string KernelInfoImpl<T>::GetNodeName() const {
+  size_t size = 0;
+
+  // Feed nullptr for the data buffer to query the true size of the string value
+  Ort::ThrowOnError(GetApi().KernelInfo_GetNodeName(this->p_, nullptr, &size));
+
+  std::string out;
+  out.resize(size);
+  Ort::ThrowOnError(GetApi().KernelInfo_GetNodeName(this->p_, &out[0], &size));
+  out.resize(size - 1);  // remove the terminating character '\0'
+
+  return out;
+}
+
+template <typename T>
+inline Logger KernelInfoImpl<T>::GetLogger() const {
+  const OrtLogger* out = nullptr;
+  ThrowOnError(GetApi().KernelInfo_GetLogger(this->p_, &out));
+  return Logger{out};
 }
 
 inline void attr_utils::GetAttr(const OrtKernelInfo* p, const char* name, float& out) {
