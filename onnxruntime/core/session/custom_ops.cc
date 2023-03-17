@@ -340,7 +340,7 @@ struct CustomOpKernel : OpKernel {
   void* raw_fn_{};
 };
 
-common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_domains,
+common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
                                      std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
@@ -349,9 +349,6 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
   for (const auto& domain : op_domains) {
     std::unordered_map<std::string, ONNX_NAMESPACE::OpSchema> schema_map;
     std::unordered_map<std::string, std::vector<OnnxTypeVec>> type_map;
-
-    // Container to hold type template parameters
-    // std::unordered_map<const OrtCustomOp*, std::vector<std::string>> type_constraint_ids;
 
 #if !defined(ORT_MINIMAL_BUILD)
     // Domain is not empty - add it to the DomainToVersion ONNX map
@@ -370,7 +367,6 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
     constexpr uint32_t min_ort_version_with_optional_io_support = 8;
     constexpr uint32_t min_ort_version_with_variadic_io_support = 14;
 
-    // std::vector<ONNX_NAMESPACE::OpSchema> schemas_list;
     for (const auto* op : domain->custom_ops_) {
       std::vector<std::string> type_constraint_ids;
       const size_t input_count = op->GetInputTypeCount(op);
@@ -378,6 +374,7 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
 
       auto schema_map_iter = schema_map.find(op->GetName(op));
       if (schema_map_iter == schema_map.end()) {
+        type_map.emplace(op->GetName(op), std::vector<OnnxTypeVec>{});
         ONNX_NAMESPACE::OpSchema schema(op->GetName(op), "custom op registered at runtime", 0);
 
         size_t type_id_counter = 0;
@@ -406,19 +403,6 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
           schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option, is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
-
-          /*
-          const auto type = op->GetInputType(op, i);
-          if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed input
-            schema.Input(i, "Input" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option,
-                         is_homogeneous, min_arity);
-            schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
-            type_constraint_ids[op].push_back("T" + std::to_string(type_id_counter++));
-          } else {
-            schema.Input(i, "Input" + std::to_string(i), "",
-                         DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
-                         is_homogeneous, min_arity);
-          }*/
         }
 
         for (size_t i = 0; i < output_count; i++) {
@@ -446,34 +430,17 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
           schema.Output(i, "Output" + std::to_string(i), "", "T" + std::to_string(type_id_counter), option, is_homogeneous, min_arity);
           schema.TypeConstraint("T" + std::to_string(type_id_counter), DataTypeImpl::ToString(DataTypeImpl::AllTensorTypes()), "all types");
           type_constraint_ids.push_back("T" + std::to_string(type_id_counter++));
-
-          /*
-          const auto type = op->GetOutputType(op, i);
-          if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
-            ORT_ENFORCE(type_id_counter == 1,
-                        "There must be one (and only one) dynamic typed input to the custom op. "
-                        "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                        "which is required for the success of the model loading step. "
-                        "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
-                        "cannot be inferred without which model loading cannot proceed.");
-
-            schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
-          } else {
-            schema.Output(i, "Output" + std::to_string(i), "",
-                          DataTypeImpl::ToString(onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(type)), option,
-                          is_homogeneous, min_arity);
-          }*/
         }
 
         schema.SetDomain(domain->domain_);
         schema.SinceVersion(1);
         schema.AllowUncheckedAttributes();
         schema_map.emplace(schema.Name(), schema);
-        // schemas_list.push_back(schema);
       } else {
         // todo - perform some consistency check here
       }
 
+      type_map[op->GetName(op)].push_back({});
       KernelDefBuilder def_builder;
       def_builder.SetName(op->GetName(op))
           .SetDomain(domain->domain_)
@@ -488,16 +455,16 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
         }
       }
 
-      DataTypeImpl::AllTensorTypes();
-      // def_builder.TypeConstraint(id, DataTypeImpl::AllTensorTypes()); // should limit type here for kernel matching
       size_t type_constraint_indice = 0;
       for (size_t i = 0; i < input_count; i++) {
+        type_map[op->GetName(op)].back().push_back(op->GetInputType(op, i));
         def_builder.TypeConstraint(type_constraint_ids[type_constraint_indice++],
-                                   DataTypeImpl::TensorTypeFromONNXEnum((int)op->GetInputType(op, i))->GetElementType());
+                                   DataTypeImpl::TensorTypeFromONNXEnum((int)op->GetInputType(op, i))->AsTensorType());
       }
       for (size_t i = 0; i < output_count; i++) {
+        type_map[op->GetName(op)].back().push_back(op->GetOutputType(op, i));
         def_builder.TypeConstraint(type_constraint_ids[type_constraint_indice++],
-                                   DataTypeImpl::TensorTypeFromONNXEnum((int)op->GetOutputType(op, i))->GetElementType());
+                                   DataTypeImpl::TensorTypeFromONNXEnum((int)op->GetOutputType(op, i))->AsTensorType());
       }
 
       if (const char* provider_type = op->GetExecutionProviderType(op)) {
@@ -567,48 +534,12 @@ common::Status CreateCustomRegistryT(gsl::span<OrtCustomOpDomain* const> op_doma
     }
 #endif
   }
-    /*
-    // create the KernelDef for each op and register it
-    for (const auto* op : domain->custom_ops_) {
-      KernelDefBuilder def_builder;
-      def_builder.SetName(op->GetName(op))
-          .SetDomain(domain->domain_)
-          .SinceVersion(1);
-
-      // GetInputMemoryType was introduced in ver 13. This check allows custom ops compiled using older versions
-      // to work with newer versions (> 12) of the ORT binary.
-      if (op->version > 12) {
-        auto input_count = op->GetInputTypeCount(op);
-        for (size_t i = 0; i < input_count; i++) {
-          def_builder.InputMemoryType(op->GetInputMemoryType(op, i), i);
-        }
-      }
-
-      for (auto& id : type_constraint_ids[op]) {
-        def_builder.TypeConstraint(id, DataTypeImpl::AllTensorTypes());
-      }
-
-      if (const char* provider_type = op->GetExecutionProviderType(op)) {
-        def_builder.Provider(provider_type);
-      } else {
-        def_builder.Provider(onnxruntime::kCpuExecutionProvider);
-      }
-
-      KernelCreateFn kernel_create_fn = [op](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-        out = std::make_unique<CustomOpKernel>(info, *op);
-        return Status::OK();
-      };
-
-      KernelCreateInfo create_info(def_builder.Build(), kernel_create_fn);
-      ORT_RETURN_IF_ERROR(output->RegisterCustomKernel(create_info));
-    }
-  }*/
  
   return Status::OK();
 }
 
-common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domains,
-                                    std::shared_ptr<CustomRegistry>& output) {
+common::Status CreateCustomRegistryB(gsl::span<OrtCustomOpDomain* const> op_domains,
+                                     std::shared_ptr<CustomRegistry>& output) {
   output = std::make_shared<CustomRegistry>();
 
   for (const auto& domain : op_domains) {
