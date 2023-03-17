@@ -64,7 +64,8 @@ using AddToFeedsFunc = std::function<Status(
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer)>;
+    IAllocatorUniquePtr<char>& buffer,
+    std::map<OrtDevice, AllocatorPtr>& allocators)>;
 
 template <typename T>
 using InitBeamStateFunc = std::function<void(
@@ -189,7 +190,8 @@ Status AddToFeeds(
     Stream* ort_stream,
     std::initializer_list<OrtValue> inputs,
     std::vector<OrtValue>& feeds,
-    IAllocatorUniquePtr<char>& buffer);
+    IAllocatorUniquePtr<char>& buffer,
+    std::map<OrtDevice, AllocatorPtr>& allocators);
 
 template <typename T>
 void InitBeamState(transformers::IBeamSearchState<T>* beam_state,

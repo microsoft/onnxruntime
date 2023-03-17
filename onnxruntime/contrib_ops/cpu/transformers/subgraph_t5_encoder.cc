@@ -138,7 +138,8 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
       ort_stream,
       {encoder_input_ids, encoder_attention_mask, decoder_input_ids},
       feeds,
-      buffer));
+      buffer,
+      session_state_->GetAllocators()));
 
   for (const auto* entry : implicit_inputs) {
     feeds.push_back(*entry);

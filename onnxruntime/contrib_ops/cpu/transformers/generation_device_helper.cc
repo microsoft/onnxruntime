@@ -195,7 +195,8 @@ Status AddToFeeds(const IExecutionProvider* /*execution_provider*/,
                   Stream* /*ort_stream*/,
                   std::initializer_list<OrtValue> inputs,
                   std::vector<OrtValue>& feeds,
-                  IAllocatorUniquePtr<char>& /*buffer*/) {
+                  IAllocatorUniquePtr<char>& /*buffer*/,
+                  std::map<OrtDevice, AllocatorPtr>& /*allocators*/) {
   for (auto& input : inputs) {
     if (input.IsAllocated()) {
       feeds.push_back(input);

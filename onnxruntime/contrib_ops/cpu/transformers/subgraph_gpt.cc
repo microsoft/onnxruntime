@@ -68,7 +68,8 @@ Status GptSubgraph::CreateInitialFeeds(
                                         ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
-                                        buffer));
+                                        buffer,
+                                        session_state_->GetAllocators()));
 
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   if (!past_present_share_buffer_) {
