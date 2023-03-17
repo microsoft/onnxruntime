@@ -5,7 +5,6 @@
 
 namespace onnxruntime {
 
-bool InitProvidersSharedLibrary();
 void UnloadSharedProviders();
 
 }  // namespace onnxruntime

@@ -1044,53 +1044,15 @@ struct ProviderHostImpl : ProviderHost {
 #endif
 
   ProviderHostCPU& GetProviderHostCPU() override { return onnxruntime::GetProviderHostCPU(); }
-} provider_host_;
+};
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
-struct ProviderSharedLibrary {
-  void Ensure() {
-    if (handle_)
-      return;
 
-    auto full_path = Env::Default().GetRuntimePath() +
-                     PathString(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_shared") LIBRARY_EXTENSION);
-    ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, true /*shared_globals on unix*/, &handle_));
-
-    void (*PProvider_SetHost)(void*);
-    ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "Provider_SetHost", (void**)&PProvider_SetHost));
-
-    PProvider_SetHost(&provider_host_);
-  }
-
-  void Unload() {
-    if (handle_) {
-      auto status = Env::Default().UnloadDynamicLibrary(handle_);
-      if (!status.IsOK()) {
-        LOGS_DEFAULT(ERROR) << status.ErrorMessage();
-      }
-      handle_ = nullptr;
-    }
-  }
-
-  ProviderSharedLibrary() = default;
-  ~ProviderSharedLibrary() {
-    // assert(!handle_); // We should already be unloaded at this point (disabled until Python shuts down deterministically)
-  }
-
- private:
-  void* handle_{};
-
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(ProviderSharedLibrary);
-};
-
-static ProviderSharedLibrary s_library_shared;
-
-bool InitProvidersSharedLibrary() try {
-  s_library_shared.Ensure();
-  return true;
-} catch (const std::exception&) {
-  return false;
+extern "C" ProviderHost* Provider_GetHost() {
+  static ProviderHostImpl host;
+  return &host;
 }
 
 struct ProviderLibrary {
@@ -1103,7 +1065,6 @@ struct ProviderLibrary {
     std::lock_guard<std::mutex> lock{mutex_};
     try {
       if (!provider_) {
-        s_library_shared.Ensure();
 
         auto full_path = Env::Default().GetRuntimePath() + filename_;
         ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
@@ -1182,7 +1143,6 @@ void UnloadSharedProviders() {
   s_library_cuda.Unload();
   s_library_cann.Unload();
   s_library_rocm.Unload();
-  s_library_shared.Unload();
   s_library_migraphx.Unload();
 }
 
