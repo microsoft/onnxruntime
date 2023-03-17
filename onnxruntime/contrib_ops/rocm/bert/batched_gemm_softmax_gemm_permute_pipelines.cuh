@@ -148,9 +148,11 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
 
   // optional, bias [B,N,S,T]
   const T* bias_buffer{nullptr};
+  TensorShapeVector bias_dims{};
 
   // optional, mask value
   const int* mask_index_buffer{nullptr};
+  const T* mask_buffer{nullptr};
   TensorShapeVector mask_index_dims{};
 
   // optional, internal
@@ -369,6 +371,9 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   }
 
   static Status LaunchConvertToFilledMaskValue(const GemmSoftmaxGemmPermuteParams<T>* params) {
+    if (params.mask_index_buffer == nullptr) {
+      return Status::OK();
+    }
     constexpr const int kThreadPerBlock = 256;
     constexpr const int kVecSize = 4;
 
@@ -458,7 +463,11 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
         bias_strides[0] = {G1 * M * N, M * N, N, 1};
       }
       if constexpr (USE_MASK) {
-        bias_buffers[kNumBiasBuffer - 1] = params->workspace_buffer;
+        if (params->mask_index_buffer != nullptr) {
+          bias_buffers[kNumBiasBuffer - 1] = params->workspace_buffer;
+        } else {
+          bias_buffers[kNumBiasBuffer - 1] = params->mask_buffer;
+        }
         bias_lengths[kNumBiasBuffer - 1] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
         if (params->mask_index_dims.size() == 2) {          // [B,T]
           bias_strides[kNumBiasBuffer - 1] = {N, 0, 0, 1};

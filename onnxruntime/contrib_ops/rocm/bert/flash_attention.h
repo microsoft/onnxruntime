@@ -25,6 +25,8 @@ class FlashAttention final : public RocmKernel {
 
  private:
   int64_t num_heads_;
+  float mask_filter_value_;
+  float scale_;
 };
 
 }  // namespace rocm
