@@ -805,6 +805,8 @@ Status QkvToContext(
       q, qk_head_size, sequence_length * qk_head_size,
       &zero, scratch1, total_sequence_length, sequence_length * total_sequence_length, batches, device_prop));
 
+  DUMP_TENSOR_D("Q", q, batch_size * num_heads, sequence_length, qk_head_size);
+  DUMP_TENSOR_D("K", k, batch_size * num_heads, qk_head_size, sequence_length);
   DUMP_TENSOR_D("QK", scratch1, batch_size * num_heads, sequence_length, total_sequence_length);
 
   const size_t bytes = GetAttentionScratchSize(element_size, batch_size, num_heads,
@@ -841,6 +843,7 @@ Status QkvToContext(
   }
 
   DUMP_TENSOR_D("Softmax", scratch2, batch_size * num_heads, sequence_length, total_sequence_length);
+  DUMP_TENSOR_D("V", v, batch_size * num_heads, sequence_length, v_head_size);
 
   // compute R*V (as V*R), and store in temp_output (space used by Q): BxNxSxH_v
   T* temp_output = qkv;

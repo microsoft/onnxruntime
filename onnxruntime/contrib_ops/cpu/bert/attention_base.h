@@ -27,9 +27,9 @@ class AttentionBase {
                      const Tensor* past,
                      int batch_size,
                      int head_size,
-                     int sequence_length,
+                     int kv_sequence_length,
                      int& past_sequence_length) const;
-
+  
  protected:
   AttentionBase(const OpKernelInfo& info, bool require_same_hidden_size) {
     int64_t num_heads = 0;

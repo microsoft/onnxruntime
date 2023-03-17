@@ -93,7 +93,6 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       mask_filter_value_,
                                                                       scale_,
                                                                       device_prop.maxThreadsPerBlock));
-
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);
@@ -235,6 +234,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.cumulated_sequence_length_kv_cache = &(this->cumulated_sequence_length_kv_cache_);
 
   cublasHandle_t cublas = GetCublasHandle(context);
+  
   return QkvToContext<CudaT>(
       device_prop, cublas, Stream(context), parameters, data);
 }
