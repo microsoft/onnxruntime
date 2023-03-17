@@ -651,6 +651,6 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception as e:
-        tb = sys.exc_info()
-        print(e.with_traceback(tb[2]))
+    except:
+        import traceback
+        traceback.print_exception(*sys.exc_info())
