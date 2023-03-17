@@ -76,11 +76,13 @@ OrtStatus* OrtSessionOptionsAppendExecutionProvider_DML(
 ```
 
 Example for C# API:
+
+Install the Nuget Package [Microsoft.ML.OnnxRuntime.DirectML](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.DirectML/1.14.1) and use the following code to enable the DirectML EP:
+
 ```csharp
 SessionOptions sessionOptions = newSessionOptions();
 sessionOptions.GraphOptimizationLevel =GraphOptimizationLevel.ORT_ENABLE_ALL;
 sessionOptions.AppendExecutionProvider_DML(0);
-
 ```
 
 ### `OrtSessionOptionsAppendExecutionProviderEx_DML` function
