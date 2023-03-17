@@ -4,12 +4,40 @@ jobs:
     vmImage: 'macOS-12'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 150
   steps:
+    - script: |
+        brew install ccache
+        echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
+      displayName: Install ccache
+
+    - task: Cache@2
+      inputs:
+        key:  ' "$(TODAY)" | ccache | protocol | "$(Build.SourceVersion)" '
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          "$(TODAY)" | ccache | protocol
+      displayName: ccache protocol
+
     - script: |
         $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x64/python/cpu/scripts/install_protobuf.sh \
           -p $(Build.BinariesDirectory)/protobuf_install -d $(Build.SourcesDirectory)/cmake/deps.txt
       displayName: Install protobuf
+
+    - script: |
+        ccache -s
+        ccache -z
+      displayName: Show Cache stats and Clear protolbuf stats
+
+    - task: Cache@2
+      inputs:
+        key: ' "$(TODAY)" | ccache  | onnxruntime | "$(Build.SourceVersion)" '
+        path: $(CCACHE_DIR)
+        restoreKeys: |
+          "$(TODAY)" | ccache | onnxruntime
+      displayName: ccache MacOS Build
 
     - script: |
         sudo xcode-select --switch /Applications/Xcode_13.1.app/Contents/Developer
@@ -29,3 +57,14 @@ jobs:
           --path_to_protoc_exe $(Build.BinariesDirectory)/protobuf_install/bin/protoc \
           --parallel
       displayName: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+      env:
+        CC: clang
+        CXX: clang++
+        CCACHE_CPP2: 1
+        CCACHE_DEPEND: 1
+        CCACHE_SLOPPINESS: modules
+
+    - script: |
+        ccache -s
+        ccache -z
+      displayName: Show Cache stats
