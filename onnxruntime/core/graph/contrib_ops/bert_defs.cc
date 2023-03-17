@@ -332,7 +332,7 @@ An input as above will be packed into 3 tensors like below:
 
 Input tensors contains the hidden embedding of real tokens.
 Token_offset records the offset of token in the unpacked input.
-cumulated_token_count records cumulated lenght of each sequnces length.
+cumulated_token_count records cumulated length of each sequnces length.
 
 The operator only supports BERT like model with padding on right now.
 
@@ -419,11 +419,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "M")
         .Input(4,
                "cumulative_sequence_length",
-               "In packing mode, it specifies the offset of each token(batch_size + 1). cumulative_sequence_length.",
+               "A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.",
                "M")
         .Input(5,
                "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
+               "A tensor with shape (batch_size, num_heads, sequence_length, sequence_length)"
+               "or (1, num_heads, sequence_length, sequence_length)."
+               "It specifies the additional bias to QxK'",
                "T",
                OpSchema::Optional)
         .Output(0,

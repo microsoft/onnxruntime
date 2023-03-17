@@ -69,7 +69,7 @@ __global__ void AddBiasTransposeQKVPacked(const T* input,
                                           const int32_t* token_offset,
                                           int32_t token_count);
 
-// Grid: (B, S)
+// Grid: (S, B)
 // Block: 256
 // For unfused PackedAttention
 //     Input: Tx3xNxH
@@ -138,7 +138,7 @@ __global__ void AddBiasTransposeQKVPacked(
   }
 }
 
-// Grid: (B, S)
+// Grid: (S, B)
 // Block: 256
 // For memory efficient fMHA from CUTLASS. For future use, doesn't support fMHA from CUTLASS yet.
 //     Input: Tx3xNxH
@@ -198,7 +198,7 @@ __global__ void AddBiasTransposeQKVPackedCutlass(
   }
 }
 
-// Grid: (B, S)
+// Grid: (S, B)
 // Block: 256
 // For fMHA from TRT
 //     Input: Tx3xNxH
@@ -547,6 +547,7 @@ Status UnfusedScaledDotProductAttention(
   ORT_RETURN_IF_ERROR(ComputeSoftmaxWithCumSeqLength<T>(
       scaled_qk,
       data.relative_position_bias,
+      parameters.broadcast_res_pos_bias,
       data.cumulative_sequence_length,
       batch_size,
       sequence_length,

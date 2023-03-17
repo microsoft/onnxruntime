@@ -76,7 +76,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   //   bias         (Q/K/V)    : (D + D + D_v)
   //   token_offset            : (B, S)
   //   cu_seq_len_shape        : (B + 1)
-  //   relative_position_bias  : (B, N, S, T) or NULL
+  //   relative_position_bias  : (B, N, S, S), (1, N, S, S) or NULL
 
   const auto& input_dims = input_shape.GetDims();
   if (input_dims.size() != 2) {
@@ -157,6 +157,7 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                            v_hidden_size, "bias_dims[0]=", bias_dims[0]);
   }
 
+  bool broadcast_res_pos_bias = false;
   if (relative_position_bias != nullptr) {
     const auto& relative_position_bias_dims = relative_position_bias->Shape().GetDims();
 
@@ -166,10 +167,13 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
                              relative_position_bias_dims.size());
     }
 
-    if (relative_position_bias_dims[0] != batch_size) {
+    if (relative_position_bias_dims[0] != batch_size && relative_position_bias_dims[0] != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'relative_position_bias' dimension 0 should be same as batch_size, got ",
+                             "Input 'relative_position_bias' dimension 0 should be same as batch_size or 1, got ",
                              relative_position_bias_dims[0]);
+    }
+    if (relative_position_bias_dims[0] == 1) {
+      broadcast_res_pos_bias = true;
     }
 
     if (relative_position_bias_dims[1] != num_heads_) {
@@ -202,39 +206,46 @@ Status PackedAttention<T>::CheckInputs(const TensorShape& input_shape,
   parameters.scale = scale_;
   parameters.token_count = static_cast<int32_t>(token_count);
   parameters.has_relative_position_bias = nullptr != relative_position_bias;
+  parameters.broadcast_res_pos_bias = broadcast_res_pos_bias;
 
   return Status::OK();
 }
 
 template <typename T>
 MHARunner* PackedAttention<T>::TryGettingFusedRunner(const PackedAttentionParameters& parameters) const {
-  auto& device_prop = GetDeviceProp();
+  MHARunner* fused_runner = nullptr;
+
+  bool use_fused_runner = !disable_fused_runner_ &&
+                          !parameters.has_relative_position_bias &&
+                          parameters.hidden_size == parameters.v_hidden_size;
+
+  if(!use_fused_runner) {
+    return fused_runner;
+  }
 
   // Check whether we can use fused kernel
+  auto& device_prop = GetDeviceProp();
   int sm = device_prop.major * 10 + device_prop.minor;
   bool is_fMHA_supported = FusedMHARunnerFP16v2::is_supported(sm,
                                                               parameters.head_size,
                                                               parameters.sequence_length,
                                                               enable_trt_flash_attention_,
                                                               false);
-  bool use_fused_runner = !disable_fused_runner_ &&
-                          !parameters.has_relative_position_bias &&
-                          parameters.hidden_size == parameters.v_hidden_size &&
-                          is_fMHA_supported;
 
-  MHARunner* fused_runner = nullptr;
-  if (use_fused_runner) {
-    // Assuming that num_heads and head_size do not change.
-    if (nullptr == fused_fp16_runner_.get()) {
-      fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
-                                                        enable_trt_flash_attention_, parameters.scale));
-    }
+  if(!is_fMHA_supported) {
+    return fused_runner;
+  }
 
-    // In case some kernel not loaded due to shared memory limit, we need to double check here.
-    const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
-    if (fused_fp16_runner_->isValid(S)) {
-      fused_runner = fused_fp16_runner_.get();
-    }
+  // Assuming that num_heads and head_size do not change.
+  if (nullptr == fused_fp16_runner_.get()) {
+    fused_fp16_runner_.reset(new FusedMHARunnerFP16v2(num_heads_, parameters.head_size, sm, false /* causal_mask*/,
+                                                      enable_trt_flash_attention_, parameters.scale));
+  }
+
+  // In case some kernel not loaded due to shared memory limit, we need to double check here.
+  const int S = fused_fp16_runner_->getSFromMaxSeqLen(parameters.sequence_length);
+  if (fused_fp16_runner_->isValid(S)) {
+    fused_runner = fused_fp16_runner_.get();
   }
 
   return fused_runner;

@@ -72,6 +72,7 @@ struct PackedAttentionParameters {
   float scale;
   int token_count;
   bool has_relative_position_bias;
+  bool broadcast_res_pos_bias;
 };
 
 namespace attention {
