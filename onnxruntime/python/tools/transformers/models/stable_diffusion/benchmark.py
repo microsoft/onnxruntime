@@ -400,10 +400,9 @@ def run_deep_speed(
     import mii
     import torch
    
-    mii_configs = {  # "tensor_parallel": 1,
+    mii_configs = {
         "dtype": "fp16",
         "hf_auth_token": os.environ["HF_AUTH_TOKEN"],
-        # "port_number": 50050
     }
     mii.deploy(task="text-to-image", model=model_name, deployment_name="sd_deploy", mii_config=mii_configs)
 
@@ -412,7 +411,7 @@ def run_deep_speed(
         generator.set_progress_bar_config(disable=True)
 
     def warmup():
-        generator.query({"query": ["warm up"]})
+        generator.query({"query": ["warm up"] * batch_size})
 
     # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
     first_run_memory = measure_gpu_memory(warmup, start_memory)
