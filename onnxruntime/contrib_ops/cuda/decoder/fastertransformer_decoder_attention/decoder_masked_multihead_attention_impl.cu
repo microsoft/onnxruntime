@@ -22,6 +22,8 @@
 // Modifications:
 // (1) Removed some code paths from the original implementation that had features which is not supported by
 //  corresponding ORT kernel - for example- CrossAttention support, FP8, INT8, supports, etc.
+// (2) When dealing with masked tokens, this kernel implementation deviates from FasterTransformer by applying
+// mask filter values. Appropriate commentary exists in the code below.
 
 #include "decoder_masked_multihead_attention_impl.h"
 #include "decoder_masked_multihead_attention_impl_utils.h"
@@ -286,7 +288,6 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
   // Iterate over the keys/timesteps to compute the various (Q*K^T)_{ti} values.
   bool has_beams = params.cache_indir != nullptr;
-
   const int* beam_indices = has_beams ? &params.cache_indir[bi_max_seq_length] : nullptr;
 
   for (int ti = ko; ti < ti_end; ti += K_PER_ITER) {
@@ -294,16 +295,24 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
 
     // The keys loaded from the key cache.
     K_vec_k k_vec[K_VECS_PER_THREAD];
-#pragma unroll
-    for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
-      int jj = ii * params.max_sequence_length + ti;
 
-      if (ti < tlength) {
-        if (has_beams) {
+    if (has_beams) {
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
+
+        if (ti < tlength) {
           const int beam_offset = beam_indices[ti] * params.num_heads * params.max_sequence_length * head_size;
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[beam_offset + jj * QK_ELTS_IN_16B])));
-        } else {
+        }
+      }
+    } else {
+#pragma unroll
+      for (int ii = 0; ii < K_VECS_PER_THREAD; ++ii) {
+        int jj = ii * params.max_sequence_length + ti;
+
+        if (ti < tlength) {
           k_vec[ii] = vec_conversion<K_vec_k, K_vec_m>(
               (*reinterpret_cast<const K_vec_m*>(&k_cache_batch[jj * QK_ELTS_IN_16B])));
         }
@@ -314,9 +323,16 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
     // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
     float qk = Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * inv_sqrt_dh;
 
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    if (is_masked) {
+      qk += params.mask_filter_value;
+    }
+
     // Store the product to shared memory. There's one qk value per timestep. Update the max.
     if (ti < tlength && tidx % THREADS_PER_KEY == 0) {
-      qk_max = is_masked ? qk_max : fmaxf(qk_max, qk);
+      qk_max = fmaxf(qk_max, qk);
       qk_smem[ti] = qk;
     }
   }
@@ -355,8 +371,10 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiheadAttentio
   // Compute the logits and start the sum.
   float sum = 0.f;
   for (int ti = tidx; ti <= tlength; ti += THREADS_PER_BLOCK) {
-    bool is_masked = (params.mask != nullptr) && (params.mask[bi_total_seq_length + ti] == 0);
-    float logit = is_masked ? 0.f : __expf(qk_smem[ti] - qk_max);
+    // This is a deviation from FasterTransformer kernel implementation
+    // but this aligns with ORT's other Attention kernels which strives to
+    // mimic PyTorch when dealing with mask filter values
+    float logit = __expf(qk_smem[ti] - qk_max);
     sum += logit;
     qk_smem[ti] = logit;
   }

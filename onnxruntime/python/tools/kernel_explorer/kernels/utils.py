@@ -93,3 +93,10 @@ def get_gemm_basic_sizes(full=True):
     # ck has various impls to be tested, use the full basic cases will result too many cases to test.
     # So we use a reduced combination here.
     return list(product([1, 4, 127, 133], [3, 16, 128], [3, 129, 1024]))
+
+
+def softmax(x, *, is_log_softmax=False, axis=-1):
+    x = x - np.max(x, axis=axis, keepdims=1)
+    if is_log_softmax:
+        return x - np.log(np.sum(np.exp(x), axis=axis, keepdims=1))
+    return (np.exp(x)) / np.sum(np.exp(x), axis=axis, keepdims=1)

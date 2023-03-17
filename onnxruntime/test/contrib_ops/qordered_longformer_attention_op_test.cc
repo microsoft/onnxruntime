@@ -41,8 +41,8 @@ static void run_qordered_longformer_attention_op_test(
     return;
   }
 
-  // Needs Turing or higher architecture
-  if (NeedSkipIfCudaArchLowerThan(750)) {
+  // Needs Turing architecture
+  if (NeedSkipIfCudaArchLowerThan(750) || NeedSkipIfCudaArchGreaterEqualThan(800)) {
     return;
   }
 

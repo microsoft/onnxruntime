@@ -44,6 +44,12 @@ def parse_args():
 
     parser.add_argument("--manylinux-src", default="manylinux", help="Path to manylinux src folder")
 
+    parser.add_argument(
+        "--multiple_repos",
+        action="store_true",
+        help="used in packaging pipeline, which couldn't use get-docker-images-steps.yml",
+    )
+
     return parser.parse_args()
 
 
@@ -75,6 +81,25 @@ def main():
     if not dst_deps_file.exists():
         log.info(f"Copy deps.txt to : {dst_deps_file}")
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
+
+    if "manylinux" in args.dockerfile and args.multiple_repos:
+        manylinux_build_scripts_folder = Path(args.manylinux_src) / "docker" / "build_scripts"
+        dest = Path(args.context) / "build_scripts"
+        if dest.exists():
+            log.info("Deleting: {}".format(str(dest)))
+            shutil.rmtree(str(dest))
+        shutil.copytree(str(manylinux_build_scripts_folder), str(dest))
+        src_entrypoint_file = str(Path(args.manylinux_src) / "docker" / "manylinux-entrypoint")
+        dst_entrypoint_file = str(Path(args.context) / "manylinux-entrypoint")
+        shutil.copyfile(src_entrypoint_file, dst_entrypoint_file)
+        shutil.copymode(src_entrypoint_file, dst_entrypoint_file)
+        run(
+            "patch",
+            "-p1",
+            "-i",
+            str((Path(SCRIPT_DIR) / "github" / "linux" / "docker" / "manylinux.patch").resolve()),
+            cwd=str(dest),
+        )
 
     if use_container_registry:
         run(
