@@ -104,7 +104,7 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
 
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
 
  private:
   ROCMExecutionProviderInfo info_;

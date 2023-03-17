@@ -1353,7 +1353,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 #ifdef ORT_ENABLE_STREAM
   auto& eps = GetExecutionProviders();
   for (auto& ep : eps) {
-    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance());
+    ep->RegisterStreamHandlers(GetStreamHandleRegistryInstance(), allocators_);
   }
 #endif
 

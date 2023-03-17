@@ -2175,8 +2175,8 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
   return Status::OK();
 }
 
-void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterCudaStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, external_stream_, external_cudnn_handle_, external_cublas_handle_);
 }
 

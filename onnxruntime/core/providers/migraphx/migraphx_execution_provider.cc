@@ -1204,8 +1204,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
   return Status::OK();
 }
 
-void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterRocmStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false/*TODO:external_stream_*/, external_miopen_handle_, external_rocblas_handle_);
 }
 

@@ -50,6 +50,16 @@ OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
   return default_device_;
 }
 
+std::vector<AllocatorPtr>& IExecutionProvider::GetCachedAllocators() {
+  if (allocator_list_.size() == 0) {
+    std::vector<AllocatorPtr> preferred_allocators = CreatePreferredAllocators();
+    for (int i = 0; i < preferred_allocators.size(); i++) {
+      allocator_list_.push_back(preferred_allocators[i]);
+    }
+  }
+  return allocator_list_;
+}
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& /*fused_nodes_and_graphs*/,
                                            std::vector<NodeComputeInfo>& /*node_compute_funcs*/) {

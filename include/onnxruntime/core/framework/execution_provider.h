@@ -281,7 +281,7 @@ class IExecutionProvider {
     return DataLayout::NCHW;
   }
 
-  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/) const {}
+  virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, std::map<OrtDevice, AllocatorPtr>&) const {}
 
   /** Does the EP support concurrent calls to InferenceSession::Run to execute the model.
    */
@@ -296,13 +296,7 @@ class IExecutionProvider {
 
   virtual OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const;
 
-  inline std::vector<AllocatorPtr>& GetCachedAllocators() {
-    std::vector<AllocatorPtr> preferred_allocators = CreatePreferredAllocators();
-    for (int i = 0; i < preferred_allocators.size(); i++) {
-      allocator_list_.push_back(preferred_allocators[i]);
-    }
-    return allocator_list_;
-  }
+  std::vector<AllocatorPtr>& GetCachedAllocators();
 
  private:
   const std::string type_;

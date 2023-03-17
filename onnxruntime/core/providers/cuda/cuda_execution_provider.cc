@@ -2424,10 +2424,10 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   return result;
 }
 
-void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void CUDAExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterCudaStreamHandles(stream_handle_registry,
                             OrtDevice::GPU,
                             allocator,

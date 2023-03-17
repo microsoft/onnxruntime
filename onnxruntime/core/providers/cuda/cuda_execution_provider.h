@@ -122,7 +122,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptured() const override;
   Status ReplayGraph() override;
 #endif
-  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const override;
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const override;
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 

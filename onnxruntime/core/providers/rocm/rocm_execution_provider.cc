@@ -2312,10 +2312,10 @@ void ROCMExecutionProvider::RegisterAllocator(AllocatorManager& allocator_manage
   }
 }
 
-void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry) const {
+void ROCMExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, std::map<OrtDevice, AllocatorPtr>& allocators) const {
   // This allocator must be the same to the allocator
   // used in AllocateBufferOnCPUPinned.
-  auto allocator = GetAllocator(OrtMemTypeCPU);
+  auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
   RegisterRocmStreamHandles(stream_handle_registry,
                             OrtDevice::GPU,
                             allocator,
