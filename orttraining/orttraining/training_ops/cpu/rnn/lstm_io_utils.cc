@@ -215,38 +215,44 @@ LSTMInputs<T>::LSTMInputs(OpKernelContext* context, const int directions, const 
 template <typename T>
 LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, const int sequence_length,
                             const int batch_size, const int hidden_size) {
-  const TensorShape HAll_shape{sequence_length, directions, batch_size, hidden_size};      // [seq_length, directions, batch_size, hidden_size]
-  Tensor* HAll = context->Output(0, HAll_shape);                                           // all hidden states
-  const TensorShape Ht_shape{directions, batch_size, hidden_size};                         // [directions, batch_size, hidden_size]
-  Tensor* Ht = context->Output(1, Ht_shape);                                               // final hidden state
-  const TensorShape Ct_shape{directions, batch_size, hidden_size};                         // [directions, batch_size, hidden_size]
-  Tensor* Ct = context->Output(2, Ct_shape);                                               // final cell state
-  const TensorShape CAll_shape{sequence_length, directions, batch_size, hidden_size};      // [seq_length, directions, batch_size, hidden_size]
-  Tensor* CAll = context->Output(3, CAll_shape);                                           // all cell states
-  const TensorShape iofc_shape{sequence_length, directions, batch_size, 4 * hidden_size};  // [seq_length, directions, batch_size, 4 * hidden_size]
-  Tensor* IOFC = context->Output(4, iofc_shape);                                           // iofc gate computations
+  const TensorShape HAll_shape{sequence_length, directions, batch_size, hidden_size};  // [seq_length, directions, batch_size, hidden_size]
+  Tensor* HAll = context->Output(0, HAll_shape);                                       // all hidden states
+  const TensorShape Ht_shape{directions, batch_size, hidden_size};                     // [directions, batch_size, hidden_size]
+  Tensor* Ht = context->Output(1, Ht_shape);                                           // final hidden state
+  const TensorShape Ct_shape{directions, batch_size, hidden_size};                     // [directions, batch_size, hidden_size]
+  Tensor* Ct = context->Output(2, Ct_shape);                                           // final cell state
+  const TensorShape CAll_shape{sequence_length, directions, batch_size, hidden_size};  // [seq_length, directions, batch_size, hidden_size]
+  Tensor* CAll = context->Output(3, CAll_shape);                                       // all cell states
+  const int64_t hidden_size_x4 = static_cast<int64_t>(4) * static_cast<int64_t>(hidden_size);
+  const TensorShape iofc_shape{sequence_length, directions, batch_size, hidden_size_x4};  // [seq_length, directions, batch_size, 4 * hidden_size]
+  Tensor* IOFC = context->Output(4, iofc_shape);                                          // iofc gate computations
 
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
 
   ORT_ENFORCE(HAll, "All hidden states output is required for LSTMTraining to compute gradients.");
   all_hidden_states = HAll->MutableDataAsSpan<T>();
+  const size_t final_state_size = static_cast<size_t>(directions) * static_cast<size_t>(batch_size) *
+                                  static_cast<size_t>(hidden_size);
   final_hidden_state = Ht ? Ht->MutableDataAsSpan<T>()
-                          : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
+                          : rnn::detail::Allocate(alloc, final_state_size,
                                                   h_final_ptr_, true, static_cast<T>(0));
   final_cell_state = Ct ? Ct->MutableDataAsSpan<T>()
-                        : rnn::detail::Allocate(alloc, directions * batch_size * hidden_size,
+                        : rnn::detail::Allocate(alloc, final_state_size,
                                                 c_final_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(CAll, "All cell states output is required for LSTMTraining to compute gradients.");
+  const size_t all_states_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(directions) *
+                                 static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size);
   all_cell_states = CAll ? CAll->MutableDataAsSpan<T>()
-                         : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * hidden_size,
+                         : rnn::detail::Allocate(alloc, all_states_size,
                                                  call_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(IOFC, "i, o, f, c gate computation output is required for LSTMTraining to compute gradients.");
+  const size_t iofc_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(directions) *
+                           static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size) * 4U;
   iofc = IOFC ? IOFC->MutableDataAsSpan<T>()
-              : rnn::detail::Allocate(alloc, sequence_length * directions * batch_size * 4 * hidden_size,
-                                      iofc_ptr_, true, static_cast<T>(0));
+              : rnn::detail::Allocate(alloc, iofc_size, iofc_ptr_, true, static_cast<T>(0));
 }
 
 template <typename T>
@@ -283,11 +289,12 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
   weights = W->DataAsSpan<T>();
   recurrence_weights = R->DataAsSpan<T>();
   sequence_lengths = SL ? SL->DataAsSpan<int>() : gsl::span<const int>();
+  const size_t initial_state_size = static_cast<size_t>(shape.batch_size) * static_cast<size_t>(hidden_size);
   initial_hidden_state = H0 ? H0->DataAsSpan<T>()
-                            : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size,
+                            : rnn::detail::Allocate(alloc, initial_state_size,
                                                     initial_hidden_state_ptr_, true, static_cast<T>(0));
   initial_cell_state = C0 ? C0->DataAsSpan<T>()
-                          : rnn::detail::Allocate(alloc, shape.batch_size * hidden_size,
+                          : rnn::detail::Allocate(alloc, initial_state_size,
                                                   initial_cell_state_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(HAll, "All hidden states input to LSTMGrad must exist to compute the gradients.");
@@ -308,20 +315,23 @@ template <typename T>
 LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directions, const int sequence_length,
                                     const int batch_size, const int hidden_size, const int input_size) {
   // Outputs of the gradient kernel
-  const TensorShape dX_shape{sequence_length, batch_size, input_size};   // [seq_length, batch_size, input_size]
-  Tensor* dX = context->Output(0, dX_shape);                             // gradient w.r.t to the input X
-  const TensorShape dW_shape{directions, 4 * hidden_size, input_size};   // [directions, 4 * hidden_size, input_size]
-  Tensor* dW = context->Output(1, dW_shape);                             // gradient w.r.t to the input weights W
-  const TensorShape dR_shape{directions, 4 * hidden_size, hidden_size};  // [directions, 4 * hidden_size, hidden_size]
-  Tensor* dR = context->Output(2, dR_shape);                             // gradient w.r.t to the recurrence weights R
-  const TensorShape dB_shape{directions, 8 * hidden_size};               // [directions, 8 * hidden_size]
-  Tensor* dB = context->Output(3, dB_shape);                             // gradient w.r.t to the bias
-  const TensorShape dH0_shape{directions, batch_size, hidden_size};      // [directions, batch_size, hidden_size]
-  Tensor* dH0 = context->Output(4, dH0_shape);                           // gradient w.r.t to the initial hidden state
-  const TensorShape dC0_shape{directions, batch_size, hidden_size};      // [directions, batch_size, hidden_size]
-  Tensor* dC0 = context->Output(5, dC0_shape);                           // gradient w.r.t to the initial cell state
-  const TensorShape dP_shape{directions, 3 * hidden_size};               // [directions, 3 * hidden_size]
-  Tensor* dP = context->Output(6, dP_shape);                             // gradient w.r.t to the peephole weights
+  const TensorShape dX_shape{sequence_length, batch_size, input_size};  // [seq_length, batch_size, input_size]
+  Tensor* dX = context->Output(0, dX_shape);                            // gradient w.r.t to the input X
+  const int64_t hidden_sizex4 = static_cast<int64_t>(4) * static_cast<int64_t>(hidden_size);
+  const TensorShape dW_shape{directions, hidden_sizex4, input_size};   // [directions, 4 * hidden_size, input_size]
+  Tensor* dW = context->Output(1, dW_shape);                           // gradient w.r.t to the input weights W
+  const TensorShape dR_shape{directions, hidden_sizex4, hidden_size};  // [directions, 4 * hidden_size, hidden_size]
+  Tensor* dR = context->Output(2, dR_shape);                           // gradient w.r.t to the recurrence weights R
+  const int64_t hidden_sizex8 = static_cast<int64_t>(8) * static_cast<int64_t>(hidden_size);
+  const TensorShape dB_shape{directions, hidden_sizex8};             // [directions, 8 * hidden_size]
+  Tensor* dB = context->Output(3, dB_shape);                         // gradient w.r.t to the bias
+  const TensorShape dH0_shape{directions, batch_size, hidden_size};  // [directions, batch_size, hidden_size]
+  Tensor* dH0 = context->Output(4, dH0_shape);                       // gradient w.r.t to the initial hidden state
+  const TensorShape dC0_shape{directions, batch_size, hidden_size};  // [directions, batch_size, hidden_size]
+  Tensor* dC0 = context->Output(5, dC0_shape);                       // gradient w.r.t to the initial cell state
+  const int64_t hidden_sizex3 = static_cast<int64_t>(3) * static_cast<int64_t>(hidden_size);
+  const TensorShape dP_shape{directions, hidden_sizex3};  // [directions, 3 * hidden_size]
+  Tensor* dP = context->Output(6, dP_shape);              // gradient w.r.t to the peephole weights
 
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -330,11 +340,12 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   grad_weights = dW->MutableDataAsSpan<T>();
   grad_recurrence_weights = dR->MutableDataAsSpan<T>();
   grad_bias = dB ? dB->MutableDataAsSpan<T>() : gsl::span<T>();
+  const size_t initial_state_size = static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size);
   grad_initial_cell_state = dC0 ? dC0->MutableDataAsSpan<T>()
-                                : rnn::detail::Allocate(alloc, batch_size * hidden_size,
+                                : rnn::detail::Allocate(alloc, initial_state_size,
                                                         grad_initial_cell_state_ptr_, true, static_cast<T>(0));
   grad_initial_hidden_state = dH0 ? dH0->MutableDataAsSpan<T>()
-                                  : rnn::detail::Allocate(alloc, batch_size * hidden_size,
+                                  : rnn::detail::Allocate(alloc, initial_state_size,
                                                           grad_initial_hidden_state_ptr_, true, static_cast<T>(0));
   grad_peephole_weights = dP ? dP->MutableDataAsSpan<T>() : gsl::span<T>();
 }

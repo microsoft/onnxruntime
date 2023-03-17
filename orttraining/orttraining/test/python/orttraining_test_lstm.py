@@ -1,12 +1,12 @@
-import numpy as np
-import tempfile
 import os
+import tempfile
 
+import numpy as np
 import onnx
+import pytest
 from onnx import TensorProto, helper
 
 import onnxruntime as ort
-import pytest
 
 
 def sigmoid(z):
@@ -872,16 +872,20 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
         bias=True, sequence_lengths=False, initial_hidden_state=True, initial_cell_state=True, peephole_weights=False
     )
 
-    X = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
-    W = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
-    R = np.random.rand(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
-    B = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
-    H0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    C0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    P = None
+    inputs = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
+    weights = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
+    recurrence_weights = np.random.rand(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
+    bias = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
+    initial_hidden_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    initial_cell_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    peephole_weights = None
 
-    outs_ort = lstm.forward_ort(X, W, R, B, H0, C0, P)
-    outs_np = lstm.forward_np(X, W, R, B, H0, C0, P)
+    outs_ort = lstm.forward_ort(
+        inputs, weights, recurrence_weights, bias, initial_hidden_state, initial_cell_state, peephole_weights
+    )
+    outs_np = lstm.forward_np(
+        inputs, weights, recurrence_weights, bias, initial_hidden_state, initial_cell_state, peephole_weights
+    )
 
     for ort_out, np_out in zip(outs_ort, outs_np):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
@@ -905,23 +909,51 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
         final_cell_state=True,
     )
 
-    X = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
-    W = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
-    R = np.random.rand(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
-    B = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
-    H0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    C0 = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    P = None
+    inputs = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
+    weights = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
+    recurrence_weights = np.random.rand(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
+    bias = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
+    initial_hidden_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    initial_cell_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    peephole_weights = None
 
-    HAll = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
-    CAll = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
-    IOFC = np.random.rand(sequence_length, num_directions, batch_size, 4 * hidden_size).astype(np.float32)
-    dHAll = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
-    dHt = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    dCt = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    all_hidden_states = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
+    all_cell_states = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
+    iofc = np.random.rand(sequence_length, num_directions, batch_size, 4 * hidden_size).astype(np.float32)
+    grad_all_hidden_states = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
+    grad_final_hidden_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
+    grad_final_cell_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
 
-    outs_ort = lstm.backward_ort(X, W, R, B, H0, C0, P, HAll, CAll, IOFC, dHAll, dHt, dCt)
-    outs_np = lstm.backward_np(X, W, R, B, H0, C0, P, HAll, CAll, IOFC, dHAll, dHt, dCt)
+    outs_ort = lstm.backward_ort(
+        inputs,
+        weights,
+        recurrence_weights,
+        bias,
+        initial_hidden_state,
+        initial_cell_state,
+        peephole_weights,
+        all_hidden_states,
+        all_cell_states,
+        iofc,
+        grad_all_hidden_states,
+        grad_final_hidden_state,
+        grad_final_cell_state,
+    )
+    outs_np = lstm.backward_np(
+        inputs,
+        weights,
+        recurrence_weights,
+        bias,
+        initial_hidden_state,
+        initial_cell_state,
+        peephole_weights,
+        all_hidden_states,
+        all_cell_states,
+        iofc,
+        grad_all_hidden_states,
+        grad_final_hidden_state,
+        grad_final_cell_state,
+    )
 
     for ort_out, np_out in zip(outs_ort, outs_np):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
