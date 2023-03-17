@@ -77,7 +77,7 @@ jobs:
          python3 -m pip install -r $(Build.BinariesDirectory)/requirements_torch_cpu/requirements.txt
          ln -sf /data/models $(Build.BinariesDirectory)
          cd $(Build.SourcesDirectory)/java
-         /usr/local/gradle/bin/gradle "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
+         $(Build.SourcesDirectory)/java/gradlew "cmakeCheck" "-DcmakeBuildDir=$(Build.BinariesDirectory)/Release"
 
   - task: CmdLine@2
     displayName: 'Install Release python package'
