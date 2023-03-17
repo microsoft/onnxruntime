@@ -1263,21 +1263,41 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   lib_name = ORT_TSTR("./libcustom_op_openvino_wrapper_library.so");
 #endif
 
-  Ort::SessionOptions session_opts;
-  Ort::CustomOpConfigs custom_op_configs;
+  // Run with custom op session configurations.
+  {
+    Ort::SessionOptions session_opts;
+    Ort::CustomOpConfigs custom_op_configs;
 
-  custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
-  session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
+    custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+    session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
 
-  Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  RunSession(default_allocator.get(), session,
-             inputs,
-             "Plus214_Output_0",
-             expected_output_dims,
-             expected_vals,
-             nullptr);
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
+
+  // Run without specifying any custom op session configurations.
+  // Expect custom op to use "CPU" as OpenVINO's default backend.
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.RegisterCustomOpsLibrary(lib_name);
+
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
 }
 #endif  // defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 
