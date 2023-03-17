@@ -45,6 +45,7 @@ DEFAULT_OPSET = 15
 
 # PyTorch model definitions for tests
 
+
 class NeuralNetSinglePositionalArgument(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super(NeuralNetSinglePositionalArgument, self).__init__()
