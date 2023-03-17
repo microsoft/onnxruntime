@@ -6,7 +6,6 @@
 import operator
 import unittest
 
-import numpy as np
 import onnxruntime_pybind11_state as torch_ort
 import torch
 from parameterized import param, parameterized
