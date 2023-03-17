@@ -535,41 +535,42 @@ def test_forward_call_positional_and_keyword_arguments():
     prediction.backward()
 
 
+_ONE = torch.FloatTensor([1])
+
+
 @pytest.mark.parametrize(
-    "forward_statement",
+    "forward_function",
     [
-        "model(one)",
-        "model(x=one)",
-        "model(one, None, None)",
-        "model(one, None, z=None)",
-        "model(one, None)",
-        "model(x=one, y=one)",
-        "model(y=one, x=one)",
-        "model(y=one, z=None, x=one)",
-        "model(one, None, z=one)",
-        "model(x=one, z=one)",
-        "model(one, z=one)",
-        "model(one, z=one, y=one)",
-        "model(one, one, one)",
-        "model(one, None, one)",
-        "model(z=one, x=one, y=one)",
-        "model(z=one, x=one, y=None)",
+        lambda model: model(_ONE),
+        lambda model: model(x=_ONE),
+        lambda model: model(_ONE, None, None),
+        lambda model: model(_ONE, None, z=None),
+        lambda model: model(_ONE, None),
+        lambda model: model(x=_ONE, y=_ONE),
+        lambda model: model(y=_ONE, x=_ONE),
+        lambda model: model(y=_ONE, z=None, x=_ONE),
+        lambda model: model(_ONE, None, z=_ONE),
+        lambda model: model(x=_ONE, z=_ONE),
+        lambda model: model(_ONE, z=_ONE),
+        lambda model: model(_ONE, z=_ONE, y=_ONE),
+        lambda model: model(_ONE, _ONE, _ONE),
+        lambda model: model(_ONE, None, _ONE),
+        lambda model: model(z=_ONE, x=_ONE, y=_ONE),
+        lambda model: model(z=_ONE, x=_ONE, y=None),
     ],
 )
-def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_statement):
-    one = torch.FloatTensor([1])
-
+def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_function):
     model = NeuralNetSimplePositionalAndKeywordArguments()
-    pytorch_result = eval(forward_statement + ".item()")
+    pytorch_result = forward_function(model).item()
 
     model = NeuralNetSimplePositionalAndKeywordArguments()
     model = ORTModule(model)
-    ortmodule_result = eval(forward_statement + ".item()")
-    ortmodule_result_again = eval(forward_statement + ".item()")
+    ortmodule_result = forward_function(model).item()
+    ortmodule_result_again = forward_function(model).item()
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
 
-    prediction = eval(forward_statement).sum()
+    prediction = forward_function(model).item()
     prediction.backward()
 
 
