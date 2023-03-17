@@ -398,7 +398,8 @@ def run_deep_speed(
     start_memory,
 ):
     import mii
-
+    import torch
+   
     mii_configs = {  # "tensor_parallel": 1,
         "dtype": "fp16",
         "hf_auth_token": os.environ["HF_AUTH_TOKEN"],
@@ -437,6 +438,8 @@ def run_deep_speed(
             for k, image in enumerate(images):
                 image.save(f"{image_filename_prefix}_{i}_{j}_{k}.jpg")
 
+    mii.terminate("sd_deploy")
+    
     return {
         "engine": "deepspeed",
         "version": mii.__version__,
