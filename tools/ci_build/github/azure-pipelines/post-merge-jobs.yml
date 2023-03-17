@@ -166,7 +166,7 @@ stages:
     timeoutInMinutes: 150
     variables:
       skipComponentGovernanceDetection: true
-    ort_build_pool_name: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
+    pool: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
     steps:
     - template: templates/set-version-number-variables-step.yml
 
@@ -212,7 +212,7 @@ stages:
   - job: AndroidCustomBuildScript
     workspace:
       clean: all
-    ort_build_pool_name: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
+    pool: ${{variables.LINUX_CPU_BUILD_MACHINE_POOL_NAME}}
     variables:
       dockerImageTag: onnxruntime-android-custom-build
     steps:
