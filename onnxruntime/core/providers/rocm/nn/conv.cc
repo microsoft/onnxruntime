@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+
 #include "core/providers/rocm/nn/conv.h"
 #include "core/common/span_utils.h"
 #include "core/providers/rocm/nn/conv_impl.h"
@@ -180,7 +181,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShapeVector y_dims_with_adjusted_pads(y_dims);
     ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes));
+                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes,
+                                                                     channels_last));
 
     if (channels_last) {
       y_dims.push_back(M);
@@ -346,19 +348,11 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
                                                   s_.y_data,
                                                   workspace.get(),
                                                   s_.workspace_bytes));
-  if (nullptr != s_.b_data) {
-    constexpr bool channels_last = NHWC;
-    if (channels_last) {
-      const Tensor* B = context->Input<Tensor>(2);
-      const auto& b_shape = B->Shape();
 
-      ConvBiasImpl(Stream(context), reinterpret_cast<HipT*>(s_.Y->MutableData<T>()),
-                   reinterpret_cast<const HipT*>(B->Data<T>()),
-                   reinterpret_cast<HipT*>(s_.Y->MutableData<T>()), b_shape[0], s_.Y->Shape().Size());
-    } else {
-      MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
-                                                          &beta, s_.y_tensor, s_.y_data));
-    }
+  constexpr bool channels_last = NHWC;
+  if (nullptr != s_.b_data && !channels_last) {
+    MIOPEN_RETURN_IF_ERROR(miopenConvolutionForwardBias(miopen_handle, &alpha, s_.b_tensor, s_.b_data,
+                                                        &beta, s_.y_tensor, s_.y_data));
   }
   // To deal with asymmetric padding, we may have over-padded on one or both sides of the spatial dimensions
   // This may have lead to extra results that are unnecessary and hence we slice that off here
@@ -366,6 +360,14 @@ Status Conv<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_ERROR(SliceOutUnwantedOutputSection(Stream(context), s_.y_data, s_.y_dims_with_adjusted_pads,
                                                       s_.Y->MutableDataRaw(), s_.y_dims.GetDims(), s_.slice_starts,
                                                       s_.slice_ends, s_.slice_axes, s_.element_size));
+  }
+  if (nullptr != s_.b_data && channels_last) {
+    const Tensor* B = context->Input<Tensor>(2);
+    const auto& b_shape = B->Shape();
+
+    ConvBiasImpl(Stream(context), reinterpret_cast<const HipT*>(s_.Y->MutableDataRaw()),
+                 reinterpret_cast<const HipT*>(B->Data<T>()),
+                 reinterpret_cast<HipT*>(s_.Y->MutableDataRaw()), b_shape[0], s_.Y->Shape().Size());
   }
   return Status::OK();
 }
