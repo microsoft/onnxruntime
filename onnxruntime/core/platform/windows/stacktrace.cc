@@ -31,13 +31,9 @@ class CaptureStackTrace {
 
 // Get the stack trace. Currently only enabled for a DEBUG build as we require the DbgHelp library.
 std::vector<std::string> GetStackTrace() {
-#ifndef NDEBUG
 // TVM need to run with shared CRT, so won't work with debug helper now
 #if !(defined _OPSCHEMA_LIB_) && !(defined _GAMING_XBOX)
   return detail::CaptureStackTrace().Trace();
-#else
-  return {};
-#endif
 #else
   return {};
 #endif
