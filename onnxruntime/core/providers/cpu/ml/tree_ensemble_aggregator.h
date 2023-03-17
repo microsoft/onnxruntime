@@ -490,7 +490,7 @@ class TreeAggregatorClassifier : public TreeAggregatorSum<InputType, ThresholdTy
     if (this->n_targets_or_classes_ > 2) {
       // add base values
       ThresholdType maxweight = 0;
-      size_t maxclass;
+      size_t maxclass = 0;
       size_t k;
       bool first = true;
 
