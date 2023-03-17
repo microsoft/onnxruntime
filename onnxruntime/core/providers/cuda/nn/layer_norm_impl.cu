@@ -385,6 +385,17 @@ __global__ void cuApplyLayerNorm(
   }
 }
 
+int32_t round_up_power_of_2(int32_t v) {
+  v--;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  v++;
+  return v;
+}
+
 template <typename T, typename U, typename V, bool simplified>
 void HostApplyLayerNorm(
     const cudaDeviceProp& prop,
@@ -405,8 +416,11 @@ void HostApplyLayerNorm(
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
-  int32_t threads_y = std::min(std::min(prop.maxThreadsPerBlock, n2 + warp_size - 1) / warp_size,
-                               prop.maxThreadsDim[1]);
+  // Be careful for the logic on treads_y calc:
+  //     * 4 is current implementation related, yet it does not using vectorized load
+  //     * Do not using maxTreads as it will cause resource issue.
+  int threads_y = std::min(round_up_power_of_2((n2 + 4 * warp_size - 1) / (4 * warp_size)),
+                           prop.maxThreadsPerBlock / (warp_size * 2));
   dim3 threads(warp_size, threads_y, 1);
 #ifdef __HIP_PLATFORM_HCC__
   // Optimization for ROCm MI100
