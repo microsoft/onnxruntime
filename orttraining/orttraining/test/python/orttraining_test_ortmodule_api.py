@@ -2189,7 +2189,6 @@ def test_ortmodule_inputs_with_dynamic_shape():
 
 
 def test_bert_inputs_with_dynamic_shape():
-
     # create pytorch model with dropout disabled
     pt_model = _get_bert_for_sequence_classification_model(
         "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
@@ -2776,7 +2775,6 @@ def test_model_with_multiple_devices_to_cuda():
 
 @pytest.mark.parametrize("device", ["cuda", "cuda:0", "cuda:1", "cuda:2"])
 def test_model_with_different_cuda_devices(device):
-
     # Trick to run this test in single GPU machines
     device_id = _utils.get_device_index(device)
     if device_id >= torch.cuda.device_count():
@@ -2933,7 +2931,6 @@ def test_nested_return_value_module(device):
 
 @pytest.mark.parametrize("data_device, model_device", (["cuda", "cpu"], ["cpu", "cuda"]))
 def test_forward_data_and_model_on_different_devices(data_device, model_device):
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -2945,7 +2942,10 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    from onnxruntime.training.ortmodule._fallback import ORTModuleDeviceException, _FallbackPolicy
+    from onnxruntime.training.ortmodule._fallback import (
+        ORTModuleDeviceException,
+        _FallbackPolicy,
+    )
 
     if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
@@ -3067,7 +3067,6 @@ def test_model_wrapped_inside_torch_no_grad():
 
 
 def test_model_initializer_requires_grad_changes_from_one_forward_to_next():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     device = "cuda"
@@ -3460,7 +3459,6 @@ def test_train_eval_with_various_outputs():
 
 
 def test_forward_dynamic_args():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     device = "cuda"
@@ -3474,7 +3472,6 @@ def test_forward_dynamic_args():
 
     # Make sure model runs without any exception
     for i in range(2):
-
         # Test both train and inference mode
         if i % 2 == 0:
             model.train()
@@ -3506,7 +3503,6 @@ def test_forward_dynamic_args():
 
 
 def test_forward_dynamic_kwargs():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     one = torch.FloatTensor([1])
@@ -3515,7 +3511,6 @@ def test_forward_dynamic_kwargs():
 
     # Make sure model runs without any exception
     for i in range(2):
-
         # Test both train and inference mode
         if i % 2 == 0:
             model.train()
@@ -3564,44 +3559,46 @@ def test_forward_dynamic_kwargs():
 @pytest.mark.parametrize(
     "forward_statement",
     [  # Only pos_X, pos_X as positionals
-        "model(pos_0, pos_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1),
         # Only pos_X, pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1),
         # pos_X + *args, pos_X as positionals
-        "model(pos_0, pos_1, *args)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args),
         # pos_X + kw_X, pos_X as positionals
-        "model(pos_0, pos_1, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_0=kw_0, kw_1=kw_1),
         # pos_X + kw_X,  pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0, kw_1=kw_1),
         # pos_X + kw_X, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_0=kw_0),
         # pos_X + kw_X, pos_X as keywords (missing kw_1)
-        "model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0),
         # pos_X + kw_X, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_1=kw_1),
         # pos_X + kw_X, pos_X as keywords (missing kw_0)
-        "model(pos_0=pos_0, pos_1=pos_1, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_1=kw_1),
         # pos_X + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, **kwargs),
         # pos_X + kwargs, pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, **kwargs),
         # pos_X + *args + kw_X, pos_X as positionals
-        "model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1),
         # pos_X + *args + kw_X, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, *args, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_1=kw_1),
         # pos_X + *args + kw_X, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, *args, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0),
         # pos_X + *args + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, *args, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, **kwargs),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(
+            pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1, **kwargs
+        ),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, *args, kw_1=kw_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_1=kw_1, **kwargs),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs),
     ],
 )
-def test_forward_call_kwargs_input(forward_statement):
+def test_forward_call_kwargs_input(forward_function):
     class KwargsNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
             super(KwargsNet, self).__init__()
@@ -3644,7 +3641,7 @@ def test_forward_call_kwargs_input(forward_statement):
     kwargs = {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}
 
     # Training step
-    prediction = eval(forward_statement)
+    prediction = forward_function(model, pos_0, pos_1, kw_0, kw_1, args, kwargs)
     assert prediction is not None
     prediction = prediction.sum()
     prediction.backward()
@@ -3669,7 +3666,6 @@ def test_repro_iscontiguous():
 
 
 def test_forward_call_default_input():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     class UnusedNet(torch.nn.Module):
@@ -3795,7 +3791,6 @@ def test_forward_call_kwargs_input_unexpected_order():
 
 
 def test_forward_call_lots_None():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     class NoneNet(torch.nn.Module):
@@ -3943,7 +3938,6 @@ def test_primitive_inputs(bool_argument, int_argument, float_argument):
 
 @pytest.mark.parametrize("bool_arguments", [(True, False), (False, True)])
 def test_changing_bool_input_re_exports_model(bool_arguments):
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     class PrimitiveTypesInputNet(torch.nn.Module):
@@ -4116,7 +4110,6 @@ def test_output_order():
 
 @pytest.mark.parametrize("device", ["cuda", "cpu", None])
 def test_stateless_model_specified_device(device):
-
     N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = StatelessModel().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -4131,7 +4124,6 @@ def test_stateless_model_specified_device(device):
 
 
 def test_stateless_model_unspecified_device():
-
     N, D_in, H, D_out = 32, 784, 500, 10
     pt_model = StatelessModel()
     ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -4238,7 +4230,6 @@ def test_hf_save_pretrained():
 
 
 def test_ortmodule_string_inputs_are_ignored():
-
     pt_model = MyStrNet()
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(1, 2)
@@ -4346,7 +4337,6 @@ def test_ortmodule_nested_list_input():
 
 @pytest.mark.parametrize("mode", ["training", "inference"])
 def test_debug_options_save_onnx_models_os_environment(mode):
-
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
     # Create a temporary directory for the onnx_models
@@ -4370,7 +4360,6 @@ def test_debug_options_save_onnx_models_os_environment(mode):
 
 @pytest.mark.parametrize("mode", ["training", "inference"])
 def test_debug_options_save_onnx_models_cwd(mode):
-
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
@@ -4395,7 +4384,6 @@ def test_debug_options_save_onnx_models_cwd(mode):
 
 
 def test_debug_options_save_onnx_models_validate_fail_on_non_writable_dir():
-
     os.environ["ORTMODULE_SAVE_ONNX_PATH"] = "/non/existent/directory"
     with pytest.raises(Exception) as ex_info:
         _ = DebugOptions(save_onnx=True, onnx_prefix="my_model")
@@ -4793,7 +4781,6 @@ def test_ortmodule_setattr_ortmodule_attribute():
 
 
 def test_ortmodule_setattr_signals_model_changed():
-
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
     class UserNet(torch.nn.Module):
@@ -4928,7 +4915,6 @@ def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
 
 @pytest.mark.parametrize("is_training,deterministic", list(itertools.product([True, False], repeat=2)))
 def test_ortmodule_determinism_flag(is_training, deterministic):
-
     torch.use_deterministic_algorithms(deterministic)
 
     N, D_in, H, D_out = 64, 784, 500, 10
@@ -5053,7 +5039,6 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
 
 
 def test_ortmodule_fused_adam_optimizer_correctness():
-
     torch.manual_seed(8888)
 
     device = "cuda"
@@ -5102,7 +5087,6 @@ def test_ortmodule_fused_adam_optimizer_correctness():
 
 
 def test_ortmodule_fused_adam_optimizer_correctness_torch():
-
     torch.manual_seed(8888)
 
     device = "cuda"
@@ -5324,7 +5308,6 @@ def test_opset_version_change(opset_version):
 
 
 def test_serialize_ortmodule():
-
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10
     pt_model = SerializationNet(D_in, H, D_out).to(device)
