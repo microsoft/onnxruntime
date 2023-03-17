@@ -1,8 +1,11 @@
 ---
 title: Graph optimizations
-parent: Performance
-nav_order: 2
-redirect_from: /docs/how-to/graph-optimizations
+parent: Model optimizations
+grand_parent: Performance
+nav_order: 3
+redirect_from: 
+- /docs/how-to/graph-optimizations
+- /docs/performance/graph-optimizations
 ---
 
 # Graph Optimizations in ONNX Runtime

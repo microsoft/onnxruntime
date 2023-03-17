@@ -1,5 +1,5 @@
 ---
-title: Contrib Operators
+title: Contrib operators
 parent: Operators
 grand_parent: Reference
 nav_order: 3

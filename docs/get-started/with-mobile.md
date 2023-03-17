@@ -18,5 +18,5 @@ ORT Mobile allows you to run model inferencing on mobile devices (iOS and Androi
 * Build from source: [Android](./../build/android.md) / [iOS](./../build/ios.md)
 * [ORT Mobile Operators](./../reference/operators/MobileOps.md)
 * [Model Export Helpers](./../tutorials/mobile/helpers/index.md)
-* [ORT Format Model Runtime Optimization](./../performance/ort-format-model-runtime-optimization.md)
+* [ORT Format Model Runtime Optimization](./../performance/model-optimizations/ort-format-model-runtime-optimization.md)
 

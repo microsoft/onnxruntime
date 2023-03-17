@@ -6,6 +6,8 @@ nav_order: 11
 ---
 
 # Azure Execution Provider (Preview)
+{: .no_toc }
+
 
 The Azure Execution Provider enables ONNX Runtime to invoke a remote Azure endpoint for inference. The endpoint must be deployed beforehand.
 To consume the endpoint, a model with same inputs and outputs must be first loaded locally.
@@ -15,11 +17,14 @@ while a bigger model can be deployed on Azure for higher precision. Using the Az
 
 Azure Execution Provider is in preview stage, and all API(s) and usage are subject to change.
 
-## Current Limitations
+## Contents
+{: .no_toc }
 
-* Only supports [Triton Inference Server](https://github.com/triton-inference-server) on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
-* Only builds and run on Windows and Linux.
-* Available only as Python package, but can be built from source and used via C/C++ API(s).
+* TOC placeholder
+{:toc}
+
+## Install
+Pre-built Python binaries of ONNX Runtime with Azure EP are published on Pypi: [onnxruntime-azure](https://pypi.org/project/onnxruntime-azure/)
 
 ## Requirements
 
@@ -32,11 +37,6 @@ dir /s zlib1.dll re2.dll
 ```
 
 For Linux, please make sure openssl is installed.
-
-## Known Issue
-
-For certain ubuntu versions, https call made by AzureEP might report error - "error setting certificate verify location ...".
-To silence it, please create file "/etc/pki/tls/certs/ca-bundles.crt" that link to "/etc/ssl/certs/ca-certificates.crt".
 
 ## Build
 
@@ -69,3 +69,11 @@ y = np.array([4,3,2,1]).astype(np.float32)
 
 z = sess.run(None, {'X':x, 'Y':y}, run_opt)[0]
 ```
+
+### Current Limitations
+
+* Only supports [Triton Inference Server](https://github.com/triton-inference-server) on [AML](https://learn.microsoft.com/en-us/azure/machine-learning/how-to-deploy-with-triton?tabs=python%2Cendpoint).
+* Only builds and run on Windows and Linux.
+* Available only as Python package, but can be built from source and used via C/C++ API(s).
+* **Known Issue:** For certain ubuntu versions, https call made by AzureEP might report error - "error setting certificate verify location ...".
+To silence it, please create file "/etc/pki/tls/certs/ca-bundles.crt" that link to "/etc/ssl/certs/ca-certificates.crt".
