@@ -1418,7 +1418,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 
   Status status;
   InferenceSession subgraph_session_object{so, GetEnvironment()};
-  subgraph_session_object.RegisterExecutionProvider(std::move(ep));
+  status = subgraph_session_object.RegisterExecutionProvider(std::move(ep));
   ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
 
