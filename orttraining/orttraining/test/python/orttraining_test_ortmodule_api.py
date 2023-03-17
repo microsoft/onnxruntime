@@ -3558,7 +3558,7 @@ def test_forward_dynamic_kwargs():
 
 
 @pytest.mark.parametrize(
-    "forward_statement",
+    "forward_function",
     [  # Only pos_X, pos_X as positionals
         lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1),
         # Only pos_X, pos_X as keywords
