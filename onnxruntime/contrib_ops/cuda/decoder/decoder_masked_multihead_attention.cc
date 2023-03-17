@@ -16,20 +16,23 @@ namespace contrib {
 namespace cuda {
 
 static constexpr int kPastSequenceLengthInputIndex = 6;
+static constexpr int kBeamWidthInputIndex = 7;
+static constexpr int kCacheIndirectionInputIndex = 8;
 static constexpr int kPastInputIndex = 4;
 static constexpr int kPresentOutputIndex = 1;
 
-#define REGISTER_KERNEL_TYPED(T1, T2)                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                               \
-      DecoderMaskedMultiheadAttention,                                         \
-      kMSDomain,                                                               \
-      1,                                                                       \
-      T1,                                                                      \
-      kCudaExecutionProvider,                                                  \
-      (*KernelDefBuilder::Create())                                            \
-          .MayInplace(kPastInputIndex, kPresentOutputIndex)                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())              \
-          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex), \
+#define REGISTER_KERNEL_TYPED(T1, T2)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                              \
+      DecoderMaskedMultiheadAttention,                                        \
+      kMSDomain,                                                              \
+      1,                                                                      \
+      T1,                                                                     \
+      kCudaExecutionProvider,                                                 \
+      (*KernelDefBuilder::Create())                                           \
+          .MayInplace(kPastInputIndex, kPresentOutputIndex)                   \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T1>())             \
+          .InputMemoryType(OrtMemTypeCPUInput, kPastSequenceLengthInputIndex) \
+          .InputMemoryType(OrtMemTypeCPUInput, kBeamWidthInputIndex),         \
       DecoderMaskedMultiheadAttention<T1, T2>);
 
 REGISTER_KERNEL_TYPED(float, float)
@@ -44,6 +47,8 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
   const Tensor* relative_position_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
+  const Tensor* beam_width = context->Input<Tensor>(kBeamWidthInputIndex);
+  const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
 
   auto& device_prop = GetDeviceProp();
   DecoderMaskedMultiheadAttentionParams parameters;
@@ -105,7 +110,7 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   auto* present_data = present->MutableData<T1>();
   auto* past_data = past->Data<T1>();
 
-  // No production use-case will incure this copy cost as the implementation of
+  // No production use-case will incur this copy cost as the implementation of
   // GreedySearch/BeamSearch is written in such a way that the past and present buffers
   // will be shared.
   // This is just to circumvent the OpTester's limitation of not being able to bind a specific
@@ -142,13 +147,13 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   // Update the q, k, and v buffers
   parameters.q = gemm_buffer.get();
   parameters.k = reinterpret_cast<CudaT*>(gemm_buffer.get()) + parameters.hidden_size;
-  parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * parameters.hidden_size;
+  parameters.v = reinterpret_cast<CudaT*>(gemm_buffer.get()) + 2 * static_cast<int64_t>(parameters.hidden_size);
 
   // Update the q, k, and v bias
   const T1* bias_data = bias->Data<T1>();
   parameters.q_bias = const_cast<T1*>(bias_data);
   parameters.k_bias = const_cast<T1*>(bias_data + parameters.hidden_size);
-  parameters.v_bias = const_cast<T1*>(bias_data + 2 * parameters.hidden_size);
+  parameters.v_bias = const_cast<T1*>(bias_data + 2 * static_cast<int64_t>(parameters.hidden_size));
 
   // Half of the past/present buffer correspond to K - the other half is V.
   auto k_size = present->Shape().Size() / 2;
@@ -167,6 +172,22 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.mask = mask_index->Data<int32_t>();
   }
 
+  // Beam width (in case we are using this op inside BeamSearch)
+  if (beam_width != nullptr) {
+    parameters.beam_width = static_cast<int>(*beam_width->Data<int32_t>());
+  }
+
+  // Cache indirection (in case we are using this op inside BeamSearch)
+  if (parameters.beam_width > 1) {
+    // If beam width > 1, then cache indirection buffer MUST be present
+    if (cache_indir == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "If beam width is greater than 1, then cache indirection buffer MUST be present");
+    }
+
+    parameters.cache_indir = cache_indir->Data<int32_t>();
+  }
+
   switch (parameters.head_size) {
     case 64:
       mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
@@ -182,7 +203,6 @@ Status DecoderMaskedMultiheadAttention<T1, T2>::ComputeInternal(OpKernelContext*
                              "Got head size: ",
                              parameters.head_size);
   }
-
   return Status::OK();
 }
 

@@ -153,28 +153,13 @@ function(AddTest)
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (onnxruntime_BUILD_WEBASSEMBLY)
-      # the following code are copied from onnxruntime_nodejs.cmake
-      if (CMAKE_HOST_WIN32)
-          set(NPM_CLI npm.cmd)
-      else()
-          set(NPM_CLI npm)
-      endif()
-
-      # verify Node.js and NPM
-      execute_process(COMMAND node --version
-          OUTPUT_VARIABLE node_version
-          RESULT_VARIABLE had_error
-          OUTPUT_STRIP_TRAILING_WHITESPACE)
-      if(had_error)
-          message(FATAL_ERROR "Failed to find Node.js: " ${had_error})
-      endif()
-      execute_process(COMMAND ${NPM_CLI} --version
-          OUTPUT_VARIABLE npm_version
-          RESULT_VARIABLE had_error
-          OUTPUT_STRIP_TRAILING_WHITESPACE)
-      if(had_error)
-          message(FATAL_ERROR "Failed to find NPM: " ${had_error})
-      endif()
+      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
+      # Then the program is found the result is stored in the variable and the search will not be repeated.
+      find_program(NPM_CLI
+         NAMES "npm.cmd" "npm"
+         DOC "NPM command line client"
+         REQUIRED
+      )
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
@@ -1130,7 +1115,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
-		  flatbuffers::flatbuffers
+          flatbuffers::flatbuffers
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)
