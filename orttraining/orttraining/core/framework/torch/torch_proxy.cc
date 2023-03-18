@@ -158,7 +158,7 @@ void InvokeRunner(
       // and backward() functions.
       ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
       if (refcnt > 2) {
-        LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2";
+        LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2, refcnt: " << refcnt;
       }
     } else {
       ORT_ENFORCE(py_obj == Py_None, "Under inference mode, autograd context should be Py_None.");

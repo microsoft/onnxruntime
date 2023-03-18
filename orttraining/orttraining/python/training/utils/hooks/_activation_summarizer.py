@@ -38,11 +38,11 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
                     "Set override_output_dir=True for StatisticsSubscriber if this is the intention."
                 )
 
-    def forward(self, activation_sequence_id, activation, depth, name, step):
+    def forward(self, activation, depth, name, step):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
         return StatisticsSubscriber._summarize_activations(activation, depth, name + " forward run", output_file_path)
 
-    def backward(self, activation_sequence_id, activation, depth, name, step):
+    def backward(self, activation, depth, name, step):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
         return StatisticsSubscriber._summarize_activations(activation, depth, name + " backward run", output_file_path)
 

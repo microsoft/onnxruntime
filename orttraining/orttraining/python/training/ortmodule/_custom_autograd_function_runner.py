@@ -115,25 +115,33 @@ def call_python_forward_function(
             #          dx = torch.zeros_like(dy)
             #          return dx
 
-            if training_mode_flag and ctx:
-                #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
-                # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
-                #             ↓                                                                 ↑
-                # autograd.Function apply()                        ------------>    autograd.Function backward()
-                #             ↓                                    |                            ↑
-                #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
-                #             ↓                                                       previous gradient function
+            if training_mode_flag:
+                if ctx:
+                    #         FORWARD                                                    BACKWARD FUNCTION CONNECTIONS
+                    # input_1 (leaf, constructed by from_dlpack)   <----reference----  AccumulateGrad gradient function
+                    #             ↓                                                                 ↑
+                    # autograd.Function apply()                        ------------>    autograd.Function backward()
+                    #             ↓                                    |                            ↑
+                    #    output_1, output_2   --- shared_ptr<PyNode> ---                            ↑
+                    #             ↓                                                       previous gradient function
 
-                # We remove the edges starting between current autograd.Function's gradient function and
-                # it's input's gradient function (e.g. AccumulateGrad gradient function), then
-                # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
-                # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
-                # The next edges are stored in Node, with which we can get next gradient function.
-                # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
-                # filter out the None in the saved_tensors.
-                saved_tensors = [t for t in ctx.saved_tensors if t is not None]
-                torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, saved_tensors)
-                torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
+                    # We remove the edges starting between current autograd.Function's gradient function and
+                    # it's input's gradient function (e.g. AccumulateGrad gradient function), then
+                    # AccumulateGrad gradient function will be destroyed, releasing the reference to input_1
+                    # (https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/functions/accumulate_grad.cpp#L21).
+                    # The next edges are stored in Node, with which we can get next gradient function.
+                    # https://github.com/pytorch/pytorch/blob/15532595209d2daf34d35e10f8d3d3b64966aea2/torch/csrc/autograd/function.h#L527
+                    # filter out the None in the saved_tensors.
+                    saved_tensors = [t for t in ctx.saved_tensors if t is not None]
+                    torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, saved_tensors)
+                    torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
+                else:
+                    import warnings
+                    warnings.warn(
+                        "call_python_forward_function run in training mode, but got None ctx.",
+                        UserWarning,
+                    )
+
             return ctx
 
         if isinstance(result, torch.Tensor):
