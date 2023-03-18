@@ -571,7 +571,7 @@ def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_f
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
 
-    prediction = forward_function(model).item()
+    prediction = forward_function(model).sum()
     prediction.backward()
 
 
@@ -5260,8 +5260,8 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule.ONNX_OPSET_VERSION == 13
-    ortmodule.ONNX_OPSET_VERSION = old_opst_cst
+    assert ortmodule_module.ONNX_OPSET_VERSION == 13
+    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
