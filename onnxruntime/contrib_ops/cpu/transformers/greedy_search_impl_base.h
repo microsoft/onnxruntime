@@ -81,7 +81,7 @@ struct GreedySearchState : public IGreedySearchState<T> {
             int max_length,
             int num_heads,
             int head_size,
-            bool allocate_staging_buffer_for_past_state_reorder,
+            bool has_decoder_masked_multihead_attention,
             bool is_cuda) {
     // below buffers are on cpu
     this->sequences_space = AllocateBuffer<int32_t>(cpu_allocator,
@@ -111,8 +111,9 @@ struct GreedySearchState : public IGreedySearchState<T> {
           this->topk_scores_buffer,
           this->topk_tokens_buffer);
 
-      // If at all we need to, we only need to re-order past state for CUDA
-      if (allocate_staging_buffer_for_past_state_reorder) {
+      // If at all we need to, we only need to re-order past state for CUDA as
+      //`DecoderMaskedMultiheadAttention` is only supported on CUDA
+      if (has_decoder_masked_multihead_attention) {
         TensorShape staging_for_past_state_reorder_buffer_shape = {batch_size, num_heads, max_length, head_size};
 
         Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);

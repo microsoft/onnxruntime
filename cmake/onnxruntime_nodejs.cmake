@@ -4,11 +4,12 @@
 set(JS_ROOT ${REPO_ROOT}/js)
 set(JS_COMMON_ROOT ${JS_ROOT}/common)
 set(JS_NODE_ROOT ${JS_ROOT}/node)
-if (WIN32)
-    set(NPM_CLI cmd /c npm)
-else()
-    set(NPM_CLI npm)
-endif()
+
+find_program(NPM_CLI
+  NAMES "npm.cmd" "npm"
+  DOC "NPM command line client"
+  REQUIRED
+)
 
 # verify Node.js and NPM
 execute_process(COMMAND node --version

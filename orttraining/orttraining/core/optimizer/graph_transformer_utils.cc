@@ -10,7 +10,7 @@
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
-#include "core/optimizer/compute_optimizer/compute_optimizer.h"
+#include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/concat_slice_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/conv_activation_fusion.h"
