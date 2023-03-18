@@ -3,6 +3,197 @@
 
 #include "precomp.h"
 
+// TODO (pavignol): Remove once we update to the latest DML version
+struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
+{
+    const DML_TENSOR_DESC* InputQueryTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputValueTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputBiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputMaskTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputRelativePositionBiasTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputPastKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputPastValueTensor;
+    const DML_TENSOR_DESC* OutputTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputPresentKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* OutputPresentValueTensor;
+    FLOAT MaskFilterValue;
+    UINT NumHeads;
+    FLOAT Scale;
+};
+
+// TODO (pavignol): Remove once we update to the latest DML version
+enum DML_INTERNAL_OPERATOR_TYPE
+{
+    DML_INTERNAL_OPERATOR_INVALID,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_IDENTITY,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ABS,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ACOS,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ADD,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ASIN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ATAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CEIL,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CLIP,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_COS,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_DIVIDE,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_EXP,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_FLOOR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOG,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_AND,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_EQUALS,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_NOT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_OR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_XOR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MAX,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MEAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MIN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MULTIPLY,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_POW,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CONSTANT_POW,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_RECIP,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_SIN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_SQRT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_SUBTRACT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_TAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_THRESHOLD,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_QUANTIZE_LINEAR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_DEQUANTIZE_LINEAR,
+    DML_INTERNAL_OPERATOR_ACTIVATION_ELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_HARDMAX,
+    DML_INTERNAL_OPERATOR_ACTIVATION_HARD_SIGMOID,
+    DML_INTERNAL_OPERATOR_ACTIVATION_IDENTITY,
+    DML_INTERNAL_OPERATOR_ACTIVATION_LEAKY_RELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_LINEAR,
+    DML_INTERNAL_OPERATOR_ACTIVATION_LOG_SOFTMAX,
+    DML_INTERNAL_OPERATOR_ACTIVATION_PARAMETERIZED_RELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_PARAMETRIC_SOFTPLUS,
+    DML_INTERNAL_OPERATOR_ACTIVATION_RELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SCALED_ELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SCALED_TANH,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SIGMOID,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SOFTMAX,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SOFTPLUS,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SOFTSIGN,
+    DML_INTERNAL_OPERATOR_ACTIVATION_TANH,
+    DML_INTERNAL_OPERATOR_ACTIVATION_THRESHOLDED_RELU,
+    DML_INTERNAL_OPERATOR_CONVOLUTION,
+    DML_INTERNAL_OPERATOR_GEMM,
+    DML_INTERNAL_OPERATOR_REDUCE,
+    DML_INTERNAL_OPERATOR_AVERAGE_POOLING,
+    DML_INTERNAL_OPERATOR_LP_POOLING,
+    DML_INTERNAL_OPERATOR_MAX_POOLING,
+    DML_INTERNAL_OPERATOR_ROI_POOLING,
+    DML_INTERNAL_OPERATOR_SLICE,
+    DML_INTERNAL_OPERATOR_CAST,
+    DML_INTERNAL_OPERATOR_SPLIT,
+    DML_INTERNAL_OPERATOR_JOIN,
+    DML_INTERNAL_OPERATOR_PADDING,
+    DML_INTERNAL_OPERATOR_VALUE_SCALE_2D,
+    DML_INTERNAL_OPERATOR_UPSAMPLE_2D,
+    DML_INTERNAL_OPERATOR_GATHER,
+    DML_INTERNAL_OPERATOR_SPACE_TO_DEPTH,
+    DML_INTERNAL_OPERATOR_DEPTH_TO_SPACE,
+    DML_INTERNAL_OPERATOR_TILE,
+    DML_INTERNAL_OPERATOR_TOP_K,
+    DML_INTERNAL_OPERATOR_BATCH_NORMALIZATION,
+    DML_INTERNAL_OPERATOR_MEAN_VARIANCE_NORMALIZATION,
+    DML_INTERNAL_OPERATOR_LOCAL_RESPONSE_NORMALIZATION,
+    DML_INTERNAL_OPERATOR_LP_NORMALIZATION,
+    DML_INTERNAL_OPERATOR_RNN,
+    DML_INTERNAL_OPERATOR_LSTM,
+    DML_INTERNAL_OPERATOR_GRU,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_SIGN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_IS_NAN,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ERF,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_SINH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_COSH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_TANH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ASINH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ACOSH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ATANH,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_IF,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ADD1,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SHRINK,
+    DML_INTERNAL_OPERATOR_MAX_POOLING1,
+    DML_INTERNAL_OPERATOR_MAX_UNPOOLING,
+    DML_INTERNAL_OPERATOR_DIAGONAL_MATRIX,
+    DML_INTERNAL_OPERATOR_SCATTER_ELEMENTS,
+    DML_INTERNAL_OPERATOR_SCATTER = DML_OPERATOR_SCATTER_ELEMENTS, // Alias name for backwards compatibility.
+    DML_INTERNAL_OPERATOR_ONE_HOT,
+    DML_INTERNAL_OPERATOR_RESAMPLE,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_SHIFT_LEFT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_SHIFT_RIGHT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ROUND,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_IS_INFINITY,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MODULUS_TRUNCATE,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_MODULUS_FLOOR,
+    DML_INTERNAL_OPERATOR_FILL_VALUE_CONSTANT,
+    DML_INTERNAL_OPERATOR_FILL_VALUE_SEQUENCE,
+    DML_INTERNAL_OPERATOR_CUMULATIVE_SUMMATION,
+    DML_INTERNAL_OPERATOR_REVERSE_SUBSEQUENCES,
+    DML_INTERNAL_OPERATOR_GATHER_ELEMENTS,
+    DML_INTERNAL_OPERATOR_GATHER_ND,
+    DML_INTERNAL_OPERATOR_SCATTER_ND,
+    DML_INTERNAL_OPERATOR_MAX_POOLING2,
+    DML_INTERNAL_OPERATOR_SLICE1,
+    DML_INTERNAL_OPERATOR_TOP_K1,
+    DML_INTERNAL_OPERATOR_DEPTH_TO_SPACE1,
+    DML_INTERNAL_OPERATOR_SPACE_TO_DEPTH1,
+    DML_INTERNAL_OPERATOR_MEAN_VARIANCE_NORMALIZATION1,
+    DML_INTERNAL_OPERATOR_RESAMPLE1,
+    DML_INTERNAL_OPERATOR_MATRIX_MULTIPLY_INTEGER,
+    DML_INTERNAL_OPERATOR_QUANTIZED_LINEAR_MATRIX_MULTIPLY,
+    DML_INTERNAL_OPERATOR_CONVOLUTION_INTEGER,
+    DML_INTERNAL_OPERATOR_QUANTIZED_LINEAR_CONVOLUTION,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_AND,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_OR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_XOR,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_NOT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_BIT_COUNT,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_GREATER_THAN_OR_EQUAL,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_LOGICAL_LESS_THAN_OR_EQUAL,
+    DML_INTERNAL_OPERATOR_ACTIVATION_CELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_RELU_GRAD,
+    DML_INTERNAL_OPERATOR_AVERAGE_POOLING_GRAD,
+    DML_INTERNAL_OPERATOR_MAX_POOLING_GRAD,
+    DML_INTERNAL_OPERATOR_RANDOM_GENERATOR,
+    DML_INTERNAL_OPERATOR_NONZERO_COORDINATES,
+    DML_INTERNAL_OPERATOR_RESAMPLE_GRAD,
+    DML_INTERNAL_OPERATOR_SLICE_GRAD,
+    DML_INTERNAL_OPERATOR_ADAM_OPTIMIZER,
+    DML_INTERNAL_OPERATOR_ARGMIN,
+    DML_INTERNAL_OPERATOR_ARGMAX,
+    DML_INTERNAL_OPERATOR_ROI_ALIGN,
+    DML_INTERNAL_OPERATOR_GATHER_ND1,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_ATAN_YX,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CLIP_GRAD,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_DIFFERENCE_SQUARE,
+    DML_INTERNAL_OPERATOR_LOCAL_RESPONSE_NORMALIZATION_GRAD,
+    DML_INTERNAL_OPERATOR_CUMULATIVE_PRODUCT,
+    DML_INTERNAL_OPERATOR_BATCH_NORMALIZATION_GRAD,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_QUANTIZED_LINEAR_ADD,
+    DML_INTERNAL_OPERATOR_DYNAMIC_QUANTIZE_LINEAR,
+    DML_INTERNAL_OPERATOR_ROI_ALIGN1,
+    DML_INTERNAL_OPERATOR_ROI_ALIGN_GRAD,
+    DML_INTERNAL_OPERATOR_BATCH_NORMALIZATION_TRAINING,
+    DML_INTERNAL_OPERATOR_BATCH_NORMALIZATION_TRAINING_GRAD,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CLIP1,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_CLIP_GRAD1,
+    DML_INTERNAL_OPERATOR_PADDING1,
+    DML_INTERNAL_OPERATOR_ELEMENT_WISE_NEGATE,
+    DML_INTERNAL_OPERATOR_ACTIVATION_GELU,
+    DML_INTERNAL_OPERATOR_ACTIVATION_SOFTMAX1,
+    DML_INTERNAL_OPERATOR_ACTIVATION_LOG_SOFTMAX1,
+    DML_INTERNAL_OPERATOR_ACTIVATION_HARDMAX1,
+    DML_INTERNAL_OPERATOR_RESAMPLE2,
+    DML_INTERNAL_OPERATOR_RESAMPLE_GRAD1,
+    DML_INTERNAL_OPERATOR_DIAGONAL_MATRIX1,
+    DML_INTERNAL_OPERATOR_MULTI_HEAD_ATTENTION,
+};
+
 /*
 Abbreviations: B is batch_size, S is sequence_length, W is hidden_size
                N is number of attention heads, H is head size, and W=N*H
@@ -49,51 +240,127 @@ public:
     DmlOperatorAttention(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 3);
+        enum InputIndex : uint32_t
+        {
+            inputIndex,
+            weightsIndex,
+            biasIndex,
+            maskIndex,
+            pastIndex,
+            relativePositionBiasIndex,
+            pastSequenceLengthIndex,
+            inputCount,
+        };
+
+        enum OutputIndex : uint32_t
+        {
+            outputIndex,
+            outputCount,
+        };
+
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= inputCount);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == outputCount);
+
+        bool maskIsUnpaddedSequenceLengths =
+            kernelCreationContext.IsInputValid(maskIndex) &&
+            kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
+
+        uint32_t dmlInputIndex = inputIndex;
+        uint32_t dmlWeightsIndex = weightsIndex;
+        uint32_t dmlBiasIndex = biasIndex;
+        uint32_t dmlKeyPaddingMaskIndex = maskIndex;
+        uint32_t dmlUnpaddedKeySequenceLengthsIndex = maskIndex;
+        uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
+
+        const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
+        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedSequenceLengths;
+        const bool hasUnpaddedSequenceLengths = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedSequenceLengths;
+        const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
+
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
 
-        std::vector<uint32_t> inputTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(0);
-        std::vector<uint32_t> weightTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(1);
-        std::vector<uint32_t> biasTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(2);
-        std::vector<uint32_t> maskIndexTensorShape = kernelCreationContext.GetTensorShapeDescription().GetInputTensorShape(3);
-        ML_CHECK_VALID_ARGUMENT(inputTensorShape.size() == 3);
-        ML_CHECK_VALID_ARGUMENT(weightTensorShape.size() == 2);
-        ML_CHECK_VALID_ARGUMENT(biasTensorShape.size() == 1);
-        ML_CHECK_VALID_ARGUMENT(weightTensorShape[1] == biasTensorShape[0]);
-        ML_CHECK_VALID_ARGUMENT(biasTensorShape[0] % 3 == 0);
-        ML_CHECK_VALID_ARGUMENT(inputTensorShape[2] == weightTensorShape[0]);
-        // TODO: fix Attention kernel when maskIndexTensorShape is 1
-        // https://microsoft.visualstudio.com/OS/_workitems/edit/41893987
-        ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
-        const uint32_t batchSize = inputTensorShape[0];
-        const uint32_t sequenceLength = inputTensorShape[1];
-        const uint32_t hiddenSize = biasTensorShape[0] / 3;
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
         ML_CHECK_VALID_ARGUMENT(numHeads > 0); // to avoid process crash because of division by zero.
-        ML_CHECK_VALID_ARGUMENT(hiddenSize % numHeads == 0);
+
+        auto inputTensorShape = m_inputTensorDescs[dmlInputIndex].GetSizes();
+        ML_CHECK_VALID_ARGUMENT(inputTensorShape.size() == 3);
+
+        auto weightTensorShape = m_inputTensorDescs[dmlWeightsIndex].GetSizes();
+        ML_CHECK_VALID_ARGUMENT(weightTensorShape.size() == 2);
+        ML_CHECK_VALID_ARGUMENT(weightTensorShape[0] == inputTensorShape[2]);
+
+        if (hasBias)
+        {
+            auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(biasTensorShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(biasTensorShape[0] % 3 == 0);
+            ML_CHECK_VALID_ARGUMENT(weightTensorShape[1] == biasTensorShape[0]);
+        }
+
+        const auto qkvHiddenSizes = kernelCreationContext.GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
+        if (!qkvHiddenSizes.empty())
+        {
+            ML_CHECK_VALID_ARGUMENT(qkvHiddenSizes.size() == 3);
+            ML_CHECK_VALID_ARGUMENT(qkvHiddenSizes[0] == qkvHiddenSizes[1]);
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(weightTensorShape[1] % 3 == 0);
+        }
+
+        const uint32_t hiddenSize = qkvHiddenSizes.empty() ? weightTensorShape[1] / 3 : qkvHiddenSizes[0];
+        const uint32_t vHiddenSize = qkvHiddenSizes.empty() ? weightTensorShape[1] / 3 : qkvHiddenSizes[2];
         const uint32_t headSize = hiddenSize / numHeads;
+        const uint32_t vHeadSize = vHiddenSize / numHeads;
+        const uint32_t batchSize = inputTensorShape[0];
+        const uint32_t sequenceLength = inputTensorShape[1];
 
-        uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], 3 * hiddenSize};
-        uint32_t desiredBiasTensorShape[3] = {batchSize, sequenceLength, 3 * hiddenSize};
-        MLOperatorTensorDataType dataType = kernelCreationContext.GetInputEdgeDescription(0).tensorDataType;
+        uint32_t desiredWeightTensorShape[3] = {batchSize, weightTensorShape[0], hiddenSize + hiddenSize + vHiddenSize};
+        MLOperatorTensorDataType dataType = kernelCreationContext.GetInputEdgeDescription(inputIndex).tensorDataType;
 
-        // overwrite weightTensorDesc
-        m_inputTensorDescs[1] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredWeightTensorShape, weightTensorShape);
+        m_inputTensorDescs[dmlWeightsIndex] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredWeightTensorShape, weightTensorShape);
 
-        // overwrite biasTensorDesc
-        m_inputTensorDescs[2] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredBiasTensorShape, biasTensorShape);
+        uint32_t desiredBiasTensorShape[3] = {batchSize, sequenceLength, hiddenSize + hiddenSize + vHiddenSize};
+        if (hasBias)
+        {
+            auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
+            m_inputTensorDescs[dmlBiasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredBiasTensorShape, biasTensorShape);
+        }
 
-        // overwrite maskIndexTensorDesc
-        uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
-        maskIndexTensorShape.insert(maskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
-        uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
-        MLOperatorTensorDataType maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(3).tensorDataType;
-        m_inputTensorDescs[3] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, maskIndexTensorShape);
+        if (hasMask)
+        {
+            auto maskIndexTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
 
-        // overwrite output tensor desc
-        uint32_t outputTensorShape[4] = {batchSize, sequenceLength, numHeads, headSize};
-        uint32_t outputTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, headSize * sequenceLength, 1};
-        m_outputTensorDescs[0] = TensorDesc(GetDmlDataTypeFromMlDataType(dataType), outputTensorShape, outputTensorStrides, 0);
+            ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
+
+            std::vector<uint32_t> reshapedMaskIndexTensorShape(maskIndexTensorShape.begin(), maskIndexTensorShape.end());
+            uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
+            reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
+            uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
+            MLOperatorTensorDataType maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
+            m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+        }
+
+        if (hasUnpaddedSequenceLengths)
+        {
+            auto unpaddedKeySequenceLengthsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape[0] % batchSize == 0);
+
+            uint32_t desiredShape[2] = {unpaddedKeySequenceLengthsShape[0] / batchSize, batchSize};
+            m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex] = TensorDesc(
+                m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType(),
+                desiredShape);
+        }
+
+        if (hasRelativePositionBias)
+        {
+            auto relativePositionBiasTensorShape = m_inputTensorDescs[dmlRelativePositionBiasIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape.size() == 4);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[0] == inputTensorShape[0]);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[2] == inputTensorShape[1]);
+        }
 
         TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
         DML_TENSOR_DESC namedFirstGemmOutputTensorDesc = firstGemmOutputTensorDesc.GetDmlDesc();
@@ -101,22 +368,30 @@ public:
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
-        DML_GEMM_OPERATOR_DESC xWeightOperatorDesc = {};
-        xWeightOperatorDesc.ATensor = &inputDescs[0];
-        xWeightOperatorDesc.BTensor = &inputDescs[1];
-        xWeightOperatorDesc.CTensor = &inputDescs[2];
-        xWeightOperatorDesc.OutputTensor = &namedFirstGemmOutputTensorDesc;
-        xWeightOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
-        xWeightOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
-        xWeightOperatorDesc.Alpha = 1.0f;
-        xWeightOperatorDesc.Beta = 1.0f;
-        xWeightOperatorDesc.FusedActivation = nullptr;
-        const DML_OPERATOR_DESC xWeightDesc {DML_OPERATOR_GEMM, &xWeightOperatorDesc};
+        DML_GEMM_OPERATOR_DESC gemmOperatorDesc = {};
+        gemmOperatorDesc.ATensor = &inputDescs[0];
+        gemmOperatorDesc.BTensor = &inputDescs[1];
 
+        if (hasBias)
+        {
+            gemmOperatorDesc.CTensor = &inputDescs[2];
+        }
 
-        std::array<uint32_t, 3> querySlicedTensorShape {batchSize, sequenceLength, hiddenSize};
-        TensorDesc querySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, querySlicedTensorShape);
-        DML_TENSOR_DESC namedQuerySlicedInputTensorDesc = querySlicedInputTensorDesc.GetDmlDesc();
+        gemmOperatorDesc.OutputTensor = &namedFirstGemmOutputTensorDesc;
+        gemmOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
+        gemmOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
+        gemmOperatorDesc.Alpha = 1.0f;
+        gemmOperatorDesc.Beta = 1.0f;
+        gemmOperatorDesc.FusedActivation = nullptr;
+        const DML_OPERATOR_DESC gemmDesc {DML_OPERATOR_GEMM, &gemmOperatorDesc};
+
+        std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize};
+        TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
+        DML_TENSOR_DESC namedQueryKeySlicedInputTensorDesc = queryKeySlicedInputTensorDesc.GetDmlDesc();
+
+        std::array<uint32_t, 3> valueSlicedTensorShape {batchSize, sequenceLength, vHiddenSize};
+        TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, valueSlicedTensorShape);
+        DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
         std::array<uint32_t, 3> querySliceOffset = {0, 0, 0};
         std::array<uint32_t, 3> keySliceOffset = {0, 0, hiddenSize};
@@ -125,8 +400,8 @@ public:
         std::array<int32_t, 3> strides = {1, 1, 1};
         DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
         querySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        querySlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
-        querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
+        querySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
+        querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
         querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
         querySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         querySlicedOperatorDesc.InputWindowStrides = strides.data();
@@ -134,8 +409,8 @@ public:
 
         DML_SLICE1_OPERATOR_DESC keySlicedOperatorDesc = {};
         keySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        keySlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
-        keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
+        keySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
+        keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
         keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
         keySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         keySlicedOperatorDesc.InputWindowStrides = strides.data();
@@ -143,303 +418,154 @@ public:
 
         DML_SLICE1_OPERATOR_DESC valueSlicedOperatorDesc = {};
         valueSlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        valueSlicedOperatorDesc.OutputTensor = &namedQuerySlicedInputTensorDesc;
-        valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(querySlicedTensorShape.size());
+        valueSlicedOperatorDesc.OutputTensor = &namedValueSlicedInputTensorDesc;
+        valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(valueSlicedTensorShape.size());
         valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
         valueSlicedOperatorDesc.InputWindowSizes = sliceSize.data();
         valueSlicedOperatorDesc.InputWindowStrides = strides.data();
         const DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
 
-        TensorDesc castedMaskIndexTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredMaskIndexShape);
-        DML_TENSOR_DESC namedCastedMaskIndexTensorDesc = castedMaskIndexTensorDesc.GetDmlDesc();
+        DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
+        mhaOperatorDesc.InputQueryTensor = &namedQueryKeySlicedInputTensorDesc;
+        mhaOperatorDesc.InputKeyTensor = &namedQueryKeySlicedInputTensorDesc;
+        mhaOperatorDesc.InputValueTensor = &namedValueSlicedInputTensorDesc;
+        mhaOperatorDesc.InputMaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+        mhaOperatorDesc.InputUnpaddedKeySequenceLengthsTensor = hasUnpaddedSequenceLengths ? &inputDescs[dmlUnpaddedKeySequenceLengthsIndex] : nullptr;
+        mhaOperatorDesc.InputRelativePositionBiasTensor = inputDescs[dmlRelativePositionBiasIndex].Desc ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
+        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
+        mhaOperatorDesc.NumHeads = numHeads;
+        mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
+        const DML_OPERATOR_DESC mhaDesc = { static_cast<DML_OPERATOR_TYPE>(DML_INTERNAL_OPERATOR_MULTI_HEAD_ATTENTION), &mhaOperatorDesc };
 
-        DML_CAST_OPERATOR_DESC castMaskIndexOperatorDesc = {};
-        castMaskIndexOperatorDesc.InputTensor = &inputDescs[3];
-        castMaskIndexOperatorDesc.OutputTensor = &namedCastedMaskIndexTensorDesc;
-        const DML_OPERATOR_DESC castMaskIndexDesc = {DML_OPERATOR_CAST, &castMaskIndexOperatorDesc};
-
-        // The attention fusion in ORT expects this to be number to -10000.
-        // https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/optimizer/attention_fusion_helper.h#L604
-        // The decomposed Attention performs: (M - 1.0) * -10000.0, where M is the 4th input of the Attention node.
-        // Above equation can be written as (M * -1000) + 10000.0
-        DML_SCALE_BIAS scaleBias = {};
-        scaleBias.Scale = -10000.0f;
-        scaleBias.Bias = 10000.0f;
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC maskOperatorDesc = {};
-        maskOperatorDesc.InputTensor = &namedCastedMaskIndexTensorDesc;
-        maskOperatorDesc.OutputTensor = &namedCastedMaskIndexTensorDesc;
-        maskOperatorDesc.ScaleBias = &scaleBias;
-        const DML_OPERATOR_DESC maskDesc = {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &maskOperatorDesc};
-
-        // original reshaped shape: [batchSize, seqenceLength, numHeads, headSize]
-        // transposed shape to [0, 2, 1, 3] -> [batchSize, numHeads, sequenceLength, headSize]
-        uint32_t reshapedTransposedQueryTensorShape[4] = {batchSize, numHeads, sequenceLength, headSize};
-        uint32_t reshapedTransposedQueryTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, numHeads * headSize, 1};
-        TensorDesc reshapedTransposedQueryTensorDesc = TensorDesc(
-            GetDmlDataTypeFromMlDataType(dataType),
-            reshapedTransposedQueryTensorShape,
-            reshapedTransposedQueryTensorStrides);
-        DML_TENSOR_DESC namedReshapedTransposedQueryTensorDesc = reshapedTransposedQueryTensorDesc.GetDmlDesc();
-
-        TensorDesc reshapedTransposedQueryOutputTensorDesc = TensorDesc(
-            GetDmlDataTypeFromMlDataType(dataType),
-            reshapedTransposedQueryTensorShape);
-        DML_TENSOR_DESC namedReshapedTransposedQueryOutputTensorDesc = reshapedTransposedQueryOutputTensorDesc.GetDmlDesc();
-
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposedQueryOperatorDesc{};
-        transposedQueryOperatorDesc.InputTensor = &namedReshapedTransposedQueryTensorDesc;
-        transposedQueryOperatorDesc.OutputTensor = &namedReshapedTransposedQueryOutputTensorDesc;
-        const DML_OPERATOR_DESC transposedQueryDesc {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposedQueryOperatorDesc};
-
-        uint32_t reshapedTransposedKeyTensorShape[4] = {batchSize, numHeads, headSize, sequenceLength};
-        uint32_t reshapedTransposedKeyTensorStrides[4] = {sequenceLength * numHeads * headSize, headSize, 1, numHeads * headSize};
-        TensorDesc reshapedTransposedKeyTensorDesc = TensorDesc(
-            GetDmlDataTypeFromMlDataType(dataType),
-            reshapedTransposedKeyTensorShape,
-            reshapedTransposedKeyTensorStrides);
-        DML_TENSOR_DESC namedReshapedTransposedKeyTensorDesc = reshapedTransposedKeyTensorDesc.GetDmlDesc();
-
-        TensorDesc reshapedTransposedKeyOutputTensorDesc = TensorDesc(
-            GetDmlDataTypeFromMlDataType(dataType),
-            reshapedTransposedKeyTensorShape);
-        DML_TENSOR_DESC namedReshapedTransposedKeyOutputTensorDesc = reshapedTransposedKeyOutputTensorDesc.GetDmlDesc();
-
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposedKeyOperatorDesc{};
-        transposedKeyOperatorDesc.InputTensor = &namedReshapedTransposedKeyTensorDesc;
-        transposedKeyOperatorDesc.OutputTensor = &namedReshapedTransposedKeyOutputTensorDesc;
-        const DML_OPERATOR_DESC transposedKeyDesc {DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposedKeyOperatorDesc};
-
-        uint32_t queryKeyTensorShape[4] = {batchSize, numHeads, sequenceLength, sequenceLength};
-        TensorDesc queryKeyTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeyTensorShape);
-        DML_TENSOR_DESC namedQueryKeyTensorDesc = queryKeyTensorDesc.GetDmlDesc();
-
-        float alpha = static_cast<float>(1 / sqrt(headSize));
-        DML_GEMM_OPERATOR_DESC attentionScoreOperatorDesc = {};
-        attentionScoreOperatorDesc.ATensor = &namedReshapedTransposedQueryOutputTensorDesc;
-        attentionScoreOperatorDesc.BTensor = &namedReshapedTransposedKeyOutputTensorDesc;
-        attentionScoreOperatorDesc.CTensor = &namedCastedMaskIndexTensorDesc;
-        attentionScoreOperatorDesc.OutputTensor = &namedQueryKeyTensorDesc;
-        attentionScoreOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
-        attentionScoreOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
-        attentionScoreOperatorDesc.Alpha = alpha;
-        attentionScoreOperatorDesc.Beta = 0.0f;
-        attentionScoreOperatorDesc.FusedActivation = nullptr;
-        const DML_OPERATOR_DESC attentionScoreDesc {DML_OPERATOR_GEMM, &attentionScoreOperatorDesc};
-
-        std::array<uint32_t, 1> axes = {3};
-        DML_ACTIVATION_SOFTMAX1_OPERATOR_DESC softmaxOperatorDesc = {};
-        softmaxOperatorDesc.InputTensor = &namedQueryKeyTensorDesc;
-        softmaxOperatorDesc.OutputTensor = &namedQueryKeyTensorDesc;
-        softmaxOperatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
-        softmaxOperatorDesc.Axes = axes.data();
-        const DML_OPERATOR_DESC softmaxDesc = {DML_OPERATOR_ACTIVATION_SOFTMAX1, &softmaxOperatorDesc};
-
-        uint32_t reshapedTransposedOutputTensorShape[4] {batchSize, numHeads, sequenceLength, headSize};
-        uint32_t reshapedTransposedOutputTensorStrides[4] {sequenceLength * numHeads * headSize, headSize * sequenceLength, headSize, 1};
-        TensorDesc reshapedTransposedOutputTensorDesc = TensorDesc(
-                                                            GetDmlDataTypeFromMlDataType(dataType),
-                                                            reshapedTransposedOutputTensorShape,
-                                                            reshapedTransposedOutputTensorStrides,
-                                                            0 // guaranteedBaseOffsetAlignment
-                                                        );
-        DML_TENSOR_DESC namedReshapedTransposedOutputTensorDesc = reshapedTransposedOutputTensorDesc.GetDmlDesc();
-
-        DML_GEMM_OPERATOR_DESC attentionWeightOperatorDesc = {};
-        attentionWeightOperatorDesc.ATensor = &namedQueryKeyTensorDesc;
-        attentionWeightOperatorDesc.BTensor = &namedReshapedTransposedQueryOutputTensorDesc;
-        attentionWeightOperatorDesc.CTensor = nullptr;
-        attentionWeightOperatorDesc.OutputTensor = &namedReshapedTransposedOutputTensorDesc;
-        attentionWeightOperatorDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
-        attentionWeightOperatorDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
-        attentionWeightOperatorDesc.Alpha = 1.0f;
-        attentionWeightOperatorDesc.Beta = 0.0f;
-        attentionWeightOperatorDesc.FusedActivation = nullptr;
-        const DML_OPERATOR_DESC attentionWeightDesc {DML_OPERATOR_GEMM, &attentionWeightOperatorDesc};
-
-        TensorDesc transposedOutputTensorDesc = TensorDesc(
-                                                    m_outputTensorDescs[0].GetDmlDataType(),
-                                                    m_outputTensorDescs[0].GetSizes(),
-                                                    std::nullopt,
-                                                    0 // guaranteedBaseOffsetAlignment
-                                                );
-        DML_TENSOR_DESC namedTransposedOutputTensorDesc = transposedOutputTensorDesc.GetDmlDesc();
-
-        DML_ACTIVATION_LINEAR_OPERATOR_DESC outputOperatorDesc = {};
-        outputOperatorDesc.Alpha = 1.0f;
-        outputOperatorDesc.Beta = 0.0f;
-        outputOperatorDesc.InputTensor = &outputDescs[0];
-        outputOperatorDesc.OutputTensor = &namedTransposedOutputTensorDesc;
-        const DML_OPERATOR_DESC outputDesc {DML_OPERATOR_ACTIVATION_LINEAR, &outputOperatorDesc};
+        // Construct the graph
+        std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+        std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
 
         enum NodeIndex : uint32_t
         {
-            xWeight,
+            gemm,
             querySlice,
             keySlice,
             valueSlice,
-            queryTranspose,
-            keyTranspose,
-            attentionScore,
-            softmax,
-            valueTranspose,
-            attentionWeight,
-            castMaskIndex,
-            mask,
-            output,
+            mha,
             count,
         };
 
-        MLOperatorGraphDesc operatorGraphDesc = {};
         std::array<const DML_OPERATOR_DESC*, NodeIndex::count> opDescs = {
-            &xWeightDesc,
+            &gemmDesc,
             &querySlicedDesc,
             &keySlicedDesc,
             &valueSlicedDesc,
-            &transposedQueryDesc,
-            &transposedKeyDesc,
-            &attentionScoreDesc,
-            &softmaxDesc,
-            &transposedQueryDesc,
-            &attentionWeightDesc,
-            &castMaskIndexDesc,
-            &maskDesc,
-            &outputDesc
+            &mhaDesc,
         };
-        operatorGraphDesc.nodeCount = NodeIndex::count;
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
-        // set input edges
-        std::pair<uint32_t, uint32_t> nodeToNodeInputIndex[4] {
-            {NodeIndex::xWeight, 0},
-            {NodeIndex::xWeight, 1},
-            {NodeIndex::xWeight, 2},
-            {NodeIndex::castMaskIndex, 0}
-        };
-        std::array<DML_INPUT_GRAPH_EDGE_DESC, 4> inputEdges;
-        for (uint32_t inputIndex = 0; inputIndex < inputEdges.size(); inputIndex++)
+        DML_INPUT_GRAPH_EDGE_DESC inputToGemmEdge = {};
+        inputToGemmEdge.GraphInputIndex = dmlInputIndex;
+        inputToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+        inputToGemmEdge.ToNodeInputIndex = 0;
+        inputEdges.push_back(inputToGemmEdge);
+
+        DML_INPUT_GRAPH_EDGE_DESC weightToGemmEdge = {};
+        weightToGemmEdge.GraphInputIndex = dmlWeightsIndex;
+        weightToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+        weightToGemmEdge.ToNodeInputIndex = 1;
+        inputEdges.push_back(weightToGemmEdge);
+
+        if (hasBias)
         {
-            DML_INPUT_GRAPH_EDGE_DESC inputEdge = {};
-            inputEdge.GraphInputIndex = inputIndex;
-            inputEdge.ToNodeIndex = nodeToNodeInputIndex[inputIndex].first;
-            inputEdge.ToNodeInputIndex = nodeToNodeInputIndex[inputIndex].second;
-            inputEdges[inputIndex] = inputEdge;
+            DML_INPUT_GRAPH_EDGE_DESC biasToGemmEdge = {};
+            biasToGemmEdge.GraphInputIndex = dmlBiasIndex;
+            biasToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+            biasToGemmEdge.ToNodeInputIndex = 2;
+            inputEdges.push_back(biasToGemmEdge);
         }
-        operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
-        operatorGraphDesc.inputEdges = inputEdges.data();
 
-        // set intermediate edges
-        std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+        if (hasMask)
+        {
+            DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
+            maskToMhaEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
+            maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
+            maskToMhaEdge.ToNodeInputIndex = 4;
+            inputEdges.push_back(maskToMhaEdge);
+        }
+
+        if (hasUnpaddedSequenceLengths)
+        {
+            DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
+            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeySequenceLengthsIndex;
+            maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
+            maskToMhaEdge.ToNodeInputIndex = 5;
+            inputEdges.push_back(maskToMhaEdge);
+        }
+
+        if (hasRelativePositionBias)
+        {
+            DML_INPUT_GRAPH_EDGE_DESC relativePositionBiasToMhaEdge = {};
+            relativePositionBiasToMhaEdge.GraphInputIndex = dmlRelativePositionBiasIndex;
+            relativePositionBiasToMhaEdge.ToNodeIndex = NodeIndex::mha;
+            relativePositionBiasToMhaEdge.ToNodeInputIndex = 6;
+            inputEdges.push_back(relativePositionBiasToMhaEdge);
+        }
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToQuerySliceEdge = {};
-        gemmToQuerySliceEdge.FromNodeIndex = NodeIndex::xWeight;
+        gemmToQuerySliceEdge.FromNodeIndex = NodeIndex::gemm;
         gemmToQuerySliceEdge.FromNodeOutputIndex = 0;
         gemmToQuerySliceEdge.ToNodeIndex = NodeIndex::querySlice;
         gemmToQuerySliceEdge.ToNodeInputIndex = 0;
         intermediateEdges.push_back(gemmToQuerySliceEdge);
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToKeySliceEdge = {};
-        gemmToKeySliceEdge.FromNodeIndex = NodeIndex::xWeight;
+        gemmToKeySliceEdge.FromNodeIndex = NodeIndex::gemm;
         gemmToKeySliceEdge.FromNodeOutputIndex = 0;
         gemmToKeySliceEdge.ToNodeIndex = NodeIndex::keySlice;
         gemmToKeySliceEdge.ToNodeInputIndex = 0;
         intermediateEdges.push_back(gemmToKeySliceEdge);
 
         DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToValueSliceEdge = {};
-        gemmToValueSliceEdge.FromNodeIndex = NodeIndex::xWeight;
+        gemmToValueSliceEdge.FromNodeIndex = NodeIndex::gemm;
         gemmToValueSliceEdge.FromNodeOutputIndex = 0;
         gemmToValueSliceEdge.ToNodeIndex = NodeIndex::valueSlice;
         gemmToValueSliceEdge.ToNodeInputIndex = 0;
         intermediateEdges.push_back(gemmToValueSliceEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC querySliceToQueryTranspose = {};
-        querySliceToQueryTranspose.FromNodeIndex = NodeIndex::querySlice;
-        querySliceToQueryTranspose.FromNodeOutputIndex = 0;
-        querySliceToQueryTranspose.ToNodeIndex = NodeIndex::queryTranspose;
-        querySliceToQueryTranspose.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(querySliceToQueryTranspose);
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC querySliceEdgeToMhaEdge = {};
+        querySliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::querySlice;
+        querySliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
+        querySliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
+        querySliceEdgeToMhaEdge.ToNodeInputIndex = 0;
+        intermediateEdges.push_back(querySliceEdgeToMhaEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC keySliceToKeyTranspose = {};
-        keySliceToKeyTranspose.FromNodeIndex = NodeIndex::keySlice;
-        keySliceToKeyTranspose.FromNodeOutputIndex = 0;
-        keySliceToKeyTranspose.ToNodeIndex = NodeIndex::keyTranspose;
-        keySliceToKeyTranspose.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(keySliceToKeyTranspose);
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC keySliceEdgeToMhaEdge = {};
+        keySliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::keySlice;
+        keySliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
+        keySliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
+        keySliceEdgeToMhaEdge.ToNodeInputIndex = 1;
+        intermediateEdges.push_back(keySliceEdgeToMhaEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC queryTransposeToGemm = {};
-        queryTransposeToGemm.FromNodeIndex = NodeIndex::queryTranspose;
-        queryTransposeToGemm.FromNodeOutputIndex = 0;
-        queryTransposeToGemm.ToNodeIndex = NodeIndex::attentionScore;
-        queryTransposeToGemm.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(queryTransposeToGemm);
+        DML_INTERMEDIATE_GRAPH_EDGE_DESC valueSliceEdgeToMhaEdge = {};
+        valueSliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::valueSlice;
+        valueSliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
+        valueSliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
+        valueSliceEdgeToMhaEdge.ToNodeInputIndex = 2;
+        intermediateEdges.push_back(valueSliceEdgeToMhaEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC keyTransposeToGemm = {};
-        keyTransposeToGemm.FromNodeIndex = NodeIndex::keyTranspose;
-        keyTransposeToGemm.FromNodeOutputIndex = 0;
-        keyTransposeToGemm.ToNodeIndex = NodeIndex::attentionScore;
-        keyTransposeToGemm.ToNodeInputIndex = 1;
-        intermediateEdges.push_back(keyTransposeToGemm);
+        DML_OUTPUT_GRAPH_EDGE_DESC mhaToOutputEdge = {};
+        mhaToOutputEdge.FromNodeIndex = NodeIndex::mha;
+        mhaToOutputEdge.FromNodeOutputIndex = 0;
+        mhaToOutputEdge.GraphOutputIndex = 0;
+        outputEdges.push_back(mhaToOutputEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC castedMaskIndexToIdentity = {};
-        castedMaskIndexToIdentity.FromNodeIndex = NodeIndex::castMaskIndex;
-        castedMaskIndexToIdentity.FromNodeOutputIndex = 0;
-        castedMaskIndexToIdentity.ToNodeIndex = NodeIndex::mask;
-        castedMaskIndexToIdentity.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(castedMaskIndexToIdentity);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC maskToGemm = {};
-        maskToGemm.FromNodeIndex = NodeIndex::mask;
-        maskToGemm.FromNodeOutputIndex = 0;
-        maskToGemm.ToNodeIndex = NodeIndex::attentionScore;
-        maskToGemm.ToNodeInputIndex = 2;
-        intermediateEdges.push_back(maskToGemm);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC attentionScoreToSoftmax = {};
-        attentionScoreToSoftmax.FromNodeIndex = NodeIndex::attentionScore;
-        attentionScoreToSoftmax.FromNodeOutputIndex = 0;
-        attentionScoreToSoftmax.ToNodeIndex = NodeIndex::softmax;
-        attentionScoreToSoftmax.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(attentionScoreToSoftmax);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC softmaxToGemm = {};
-        softmaxToGemm.FromNodeIndex = NodeIndex::softmax;
-        softmaxToGemm.FromNodeOutputIndex = 0;
-        softmaxToGemm.ToNodeIndex = NodeIndex::attentionWeight;
-        softmaxToGemm.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(softmaxToGemm);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC valueSliceToValueTranspose = {};
-        valueSliceToValueTranspose.FromNodeIndex = NodeIndex::valueSlice;
-        valueSliceToValueTranspose.FromNodeOutputIndex = 0;
-        valueSliceToValueTranspose.ToNodeIndex = NodeIndex::valueTranspose;
-        valueSliceToValueTranspose.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(valueSliceToValueTranspose);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC valueTransposeToGemm = {};
-        valueTransposeToGemm.FromNodeIndex = NodeIndex::valueTranspose;
-        valueTransposeToGemm.FromNodeOutputIndex = 0;
-        valueTransposeToGemm.ToNodeIndex = NodeIndex::attentionWeight;
-        valueTransposeToGemm.ToNodeInputIndex = 1;
-        intermediateEdges.push_back(valueTransposeToGemm);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToIdentity = {};
-        gemmToIdentity.FromNodeIndex = NodeIndex::attentionWeight;
-        gemmToIdentity.FromNodeOutputIndex = 0;
-        gemmToIdentity.ToNodeIndex = NodeIndex::output;
-        gemmToIdentity.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(gemmToIdentity);
-
+        MLOperatorGraphDesc operatorGraphDesc = {};
+        operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+        operatorGraphDesc.inputEdges = inputEdges.data();
         operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
         operatorGraphDesc.intermediateEdges = intermediateEdges.data();
-
-        // set the output edges
-        std::array<DML_OUTPUT_GRAPH_EDGE_DESC, 1> outputEdges;
-        DML_OUTPUT_GRAPH_EDGE_DESC outputEdge = {};
-        outputEdge.FromNodeIndex = NodeIndex::output;
-        outputEdge.FromNodeOutputIndex = 0;
-        outputEdge.GraphOutputIndex = 0;
-        outputEdges[0] = outputEdge;
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
+        operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
+        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
@@ -448,27 +574,19 @@ public:
 void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
     *isSupported = false;
-    // Fall back to CPU if input 'past' and 'relative_position_bias' is present because there is no current use case for this.
-    //  and it will make the implementation more complex.
-    // Also fall back to CPU if output 'present' is present for same reason as above.
-    if (context->GetInputCount() > 4 || context->GetOutputCount() > 1)
-    {
-        return;
-    }
     // Checking input count alone is not sufficient to fallback to CPU if input 'past' and 'relative_position_bias' is present
     // because input 'mask_index', 'past', and 'relative_position_bias' all are optional.
-    if (context->IsInputValid(4) || context->IsInputValid(5))
-    {
-        return;
-    }
-    // Fall back to CPU if attibute 'qkv_hidden_sizes' is present or
-    // if value of attribute 'unidirectional' is 1, because of same reason as above.
-    MLOperatorAttributes attributes(context);
-    if (attributes.HasAttribute(AttrName::QkvHiddenSizes, MLOperatorAttributeType::IntArray))
+    if (context->IsInputValid(4) || context->IsInputValid(6))
     {
         return;
     }
 
+    if (context->IsOutputValid(1))
+    {
+        return;
+    }
+
+    MLOperatorAttributes attributes(context);
     if (attributes.GetOptionalAttribute<int32_t>(AttrName::Unidirectional, 0) != 0)
     {
         return;

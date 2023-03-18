@@ -112,6 +112,7 @@ namespace AttrName
     static constexpr const char* FusedGamma = "fused_gamma";
     static constexpr const char* FusedRatio = "fused_ratio";
     static constexpr const char* MaskFilterValue = "mask_filter_value";
+    static constexpr const char* DoRotary = "do_rotary";
 
 } // namespace AttrName
 

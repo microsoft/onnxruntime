@@ -264,6 +264,7 @@ public:
         auto queryTensorShape = m_inputTensorDescs[dmlQueryIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3 || queryTensorShape.size() == 5);
 
+        const uint32_t batchSize = queryTensorShape[0];
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
         const uint32_t headSize = queryTensorShape.size() == 5 ? queryTensorShape[4] : queryTensorShape[2] / numHeads;
 
@@ -300,7 +301,6 @@ public:
             auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
 
-            const uint32_t batchSize = keyPaddingMaskTensorShape[0];
             const uint32_t kvSequenceLength = keyPaddingMaskTensorShape[1];
             const uint32_t sequenceLength = queryTensorShape[1];
 
@@ -315,7 +315,14 @@ public:
 
         if (m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
         {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDimensionCount() == 1);
+            auto unpaddedKeySequenceLengthsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape[0] % batchSize == 0);
+
+            uint32_t desiredShape[2] = {unpaddedKeySequenceLengthsShape[0] / batchSize, batchSize};
+            m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex] = TensorDesc(
+                m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType(),
+                desiredShape);
         }
 
         if (m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
