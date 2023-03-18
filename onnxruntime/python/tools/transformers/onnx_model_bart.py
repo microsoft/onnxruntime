@@ -40,38 +40,31 @@ class FusionBartAttention(FusionAttention):
     ):
         concat_qkv_2_path = self.model.match_parent_path(reshape_qkv_2, ["Concat"], [1])
         if concat_qkv_2_path is None:
-            print("fail 1")
             return False
         concat_qkv_2 = concat_qkv_2_path[0]
 
         reshape_qkv_2_path_1 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [0, 0, 0])
         reshape_qkv_2_path_2 = self.model.match_parent_path(concat_qkv_2, ["Unsqueeze", "Gather", "Shape"], [1, 0, 0])
         if reshape_qkv_2_path_1 is None or reshape_qkv_2_path_2 is None:
-            print("fail 2")
             return False
 
         _, gather_1, shape_1 = reshape_qkv_2_path_1
         _, gather_2, shape_2 = reshape_qkv_2_path_2
 
         if shape_1.input[0] != root_input or shape_2.input[0] != root_input:
-            print(shape_1.name, shape_2.name, root_input)
-            print("fail 3")
             return False
 
         reshape_qkv_1_path_1 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 0, 0])
         reshape_qkv_1_path_2 = self.model.match_parent_path(reshape_qkv_1, ["Concat", "Unsqueeze", "Gather"], [1, 2, 0])
         if reshape_qkv_1_path_1 is None or reshape_qkv_1_path_2 is None:
-            print("fail 4")
             return False
         if reshape_qkv_1_path_1[-1].name != gather_1.name or reshape_qkv_1_path_2[-1].name != gather_2.name:
-            print("fail 5")
             return False
 
         reshape_q_2_path = self.model.match_parent_path(reshape_q_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         reshape_k_2_path = self.model.match_parent_path(reshape_k_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         reshape_v_2_path = self.model.match_parent_path(reshape_v_2, ["Concat", "Unsqueeze", "Mul"], [1, 0, 0])
         if reshape_q_2_path is None or reshape_k_2_path is None or reshape_v_2_path is None:
-            print("fail 6")
             return False
 
         mul_q = reshape_q_2_path[-1]
@@ -80,7 +73,6 @@ class FusionBartAttention(FusionAttention):
 
         gather_1_out = gather_1.output[0]
         if mul_q.input[0] != gather_1_out or mul_k.input[0] != gather_1_out or mul_v.input[0] != gather_1_out:
-            print("fail 7")
             return False
 
         return True
@@ -318,6 +310,9 @@ class FusionBartAttention(FusionAttention):
                     present_v=present_v,
                 ) if self.use_multi_head_attention else None
             else:
+                # Temporarily set multihead attention flag to false
+                use_multi_head_attention_ground_truth = self.use_multi_head_attention
+                self.use_multi_head_attention = False
                 new_node = self.create_attention_node(
                     None,
                     matmul_q,
@@ -336,6 +331,7 @@ class FusionBartAttention(FusionAttention):
                     present_k=present_k,
                     present_v=present_v,
                 )
+                self.use_multi_head_attention = use_multi_head_attention_ground_truth
             if new_node is None:
                 return
 
@@ -470,6 +466,10 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_mask = AttentionMask(self)
         self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
+
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        self.attention_fusion.use_multi_head_attention = False if options is None else options.use_multi_head_attention
+        super().optimize(options, add_dynamic_axes)
 
     def fuse_attention(self):
         self.attention_fusion.apply()
