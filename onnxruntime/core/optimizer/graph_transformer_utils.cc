@@ -10,18 +10,13 @@
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
-#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/optimizer/conv_add_act_fusion.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 #include "core/mlas/inc/mlas.h"
 #include "core/optimizer/attention_fusion.h"
-#ifdef MLAS_TARGET_AMD64_IX86
-#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
-#endif
 #include "core/optimizer/bias_dropout_fusion.h"
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
@@ -29,6 +24,7 @@
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
+#include "core/optimizer/conv_add_act_fusion.h"
 #include "core/optimizer/conv_add_fusion.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/conv_mul_fusion.h"
@@ -56,21 +52,26 @@
 #include "core/optimizer/nchwc_transformer.h"
 #include "core/optimizer/noop_elimination.h"
 #include "core/optimizer/not_where_fusion.h"
+#ifdef MLAS_TARGET_AMD64_IX86
+#include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
+#endif
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
+#include "core/optimizer/rocm_blas_alt_impl.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/transpose_optimizer/ort_transpose_optimizer.h"
 #include "core/optimizer/unsqueeze_elimination.h"
 #ifdef ENABLE_TRAINING_CORE
-#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/bias_softmax_dropout_fusion.h"
+#include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
 #include "orttraining/core/optimizer/sce_loss_grad_bias_fusion.h"
 #endif
 #ifdef ENABLE_TRAINING
@@ -211,6 +212,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
 
       if (!disable_quant_qdq) {
+        transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
 

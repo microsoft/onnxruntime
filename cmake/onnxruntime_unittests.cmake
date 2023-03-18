@@ -41,7 +41,13 @@ function(AddTest)
   if (MSVC)
     target_compile_options(${_UT_TARGET} PRIVATE "/wd6330")
   endif()
+
   set_target_properties(${_UT_TARGET} PROPERTIES FOLDER "ONNXRuntimeTest")
+
+  if (MSVC)
+    # set VS debugger working directory to the test program's directory
+    set_target_properties(${_UT_TARGET} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>)
+  endif()
 
   if (_UT_DEPENDS)
     add_dependencies(${_UT_TARGET} ${_UT_DEPENDS})

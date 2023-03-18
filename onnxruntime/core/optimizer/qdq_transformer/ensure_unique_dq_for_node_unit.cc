@@ -93,7 +93,7 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
         assert(consumer_node_ptr != nullptr);
         const Node& consumer_node = *consumer_node_ptr;
         const auto consumer_explicit_input_defs_count = consumer_node.InputDefs().size();
-        return dq_output_edge.dst_arg_index < consumer_explicit_input_defs_count;
+        return dq_output_edge.dst_arg_index >= consumer_explicit_input_defs_count;
       });
 
   const bool has_output_edge_to_implicit_input = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
