@@ -35,6 +35,7 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
+namespace {
 template <typename T>
 T maybe2half(float x);
 
@@ -47,6 +48,35 @@ template <>
 half maybe2half(float x) {
   return __float2half_rn(x);
 }
+
+// Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
+// in BERT. Ideally we can step by wrap_size * num_unroll, but listing too many steps will cause long compile time.
+constexpr int kSizes[] = {32, 64, 128, 384, 768, 1024, 2048};
+constexpr int kMinBlockSize = 32;
+constexpr int kMaxBlockSize = 256;
+
+int NextSize(int x) {
+  size_t len = sizeof(kSizes) / sizeof(kSizes[0]);
+  for (size_t i = 0; i < len; ++i) {
+    if (x <= kSizes[i]) {
+      return kSizes[i];
+    }
+  }
+  return kSizes[len - 1];
+}
+
+template <typename T, int NumUnroll>
+bool CanVectorized(T* output, T* skip_input_bias_add_output, const T* input, const T* skip, const T* gamma,
+                   const T* beta, const T* bias, const int ld, const int next_size) {
+  constexpr int alignment = std::alignment_of<aligned_vector<T, NumUnroll>>::value;
+  return ld % NumUnroll == 0 && reinterpret_cast<uint64_t>(output) % alignment == 0 &&
+         reinterpret_cast<uint64_t>(skip_input_bias_add_output) % alignment == 0 &&
+         reinterpret_cast<uint64_t>(input) % alignment == 0 && reinterpret_cast<uint64_t>(skip) % alignment == 0 &&
+         reinterpret_cast<uint64_t>(gamma) % alignment == 0 && reinterpret_cast<uint64_t>(beta) % alignment == 0 &&
+         reinterpret_cast<uint64_t>(bias) % alignment == 0 && next_size / NumUnroll >= kMinBlockSize &&
+         next_size / NumUnroll <= kMaxBlockSize;
+}
+}  // namespace
 
 template <typename T, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
@@ -146,83 +176,50 @@ Status LaunchSkipLayerNormKernel(
   bool hasBias = (bias == nullptr) ? false : true;
   bool hasSkipInputBiasAdditionOutput = (skip_input_bias_add_output == nullptr) ? false : true;
 
-  if (0 == (ld % 4)) {
-    const int grid_size = element_count / ld;
-    if (ld <= 32) {
-      constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 64) {
-      constexpr int block_size = 64 / 2;
-      SkipLayerNormKernelSmall<T, block_size, 2, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 128) {
-      constexpr int block_size = 128 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 384) {
-      constexpr int block_size = 384 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 768) {
-      constexpr int block_size = 768 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 1024) {
-      constexpr int block_size = 1024 / 4;
-      SkipLayerNormKernelSmall<T, block_size, 4, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output, skip_input_bias_add_output);
-    }
-  } else {
-    const int grid_size = element_count / ld;
-    if (ld <= 32) {
-      constexpr int block_size = 32;
-      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 64) {
-      constexpr int block_size = 64;
-      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld <= 128) {
-      constexpr int block_size = 128;
-      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else if (ld == 384) {
-      constexpr int block_size = 384;
-      SkipLayerNormKernelSmall<T, block_size, 1, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output,
-                                                 skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput);
-    } else {
-      constexpr int block_size = 256;
-      SkipLayerNormKernel<T, block_size, Simplified>
-          <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias,
-                                                 maybe2half<T>(epsilon), output, skip_input_bias_add_output);
-    }
+  const int next_size = NextSize(ld);
+  const int grid_size = element_count / ld;
+  bool flag_vec2 =
+      CanVectorized<T, 2>(output, skip_input_bias_add_output, input, skip, gamma, beta, bias, ld, next_size);
+  bool flag_vec4 =
+      CanVectorized<T, 4>(output, skip_input_bias_add_output, input, skip, gamma, beta, bias, ld, next_size);
+
+  switch (next_size) {
+#define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                          \
+  SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified>                                                \
+      <<<grid_size, block_size, 0, stream>>>(ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, \
+                                             skip_input_bias_add_output, hasBias, hasSkipInputBiasAdditionOutput)
+#define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                       \
+  SkipLayerNormKernel<T, kMaxBlockSize, Simplified><<<grid_size, kMaxBlockSize, 0, stream>>>( \
+      ld, input, skip, beta, gamma, bias, maybe2half<T>(epsilon), output, skip_input_bias_add_output)
+#define CASE_NEXT_SIZE(next_size_value)               \
+  case next_size_value: {                             \
+    if (flag_vec4) {                                  \
+      constexpr int block_size = next_size_value / 4; \
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(4);         \
+    } else if (flag_vec2) {                           \
+      constexpr int block_size = next_size_value / 2; \
+      LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(2);         \
+    } else {                                          \
+      if (next_size_value <= kMaxBlockSize) {         \
+        constexpr int block_size = next_size_value;   \
+        LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(1);       \
+      } else {                                        \
+        LAUNCH_SKIP_LAYER_NORM_KERNEL();              \
+      }                                               \
+    }                                                 \
+  } break
+    CASE_NEXT_SIZE(kSizes[0]);
+    CASE_NEXT_SIZE(kSizes[1]);
+    CASE_NEXT_SIZE(kSizes[2]);
+    CASE_NEXT_SIZE(kSizes[3]);
+    CASE_NEXT_SIZE(kSizes[4]);
+    CASE_NEXT_SIZE(kSizes[5]);
+    CASE_NEXT_SIZE(kSizes[6]);
+#undef CASE_NEXT_SIZE
+#undef LAUNCH_SKIP_LAYER_NORM_KERNEL
+#undef LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL
   }
+
   return CUDA_CALL(cudaGetLastError());
 }
 
