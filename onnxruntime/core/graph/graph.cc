@@ -567,7 +567,14 @@ const Path& Node::ModelPath() const noexcept {
 #if !defined(ORT_MINIMAL_BUILD)
 
 bool Node::CanBeInlined() const {
-  return func_body_ || func_template_ || op_ && (op_->HasFunction() || op_->HasContextDependentFunction());
+  if (func_body_ || func_template_)
+    return true;
+  if (! op_) return false;
+  ONNX_NAMESPACE::FunctionProto function_proto;
+  return TryGetFunctionProto(function_proto);
+  // Note: We end up doing some redundant work, which can be eliminated if we cache
+  // the constructed FunctionProto. Keeping the changes localized for now. A better
+  // implementation would require some more invasive refactoring.
 }
 
 bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_proto) const {
@@ -591,8 +598,29 @@ bool Node::TryGetFunctionProto(ONNX_NAMESPACE::FunctionProto& onnx_function_prot
       ONNX_NAMESPACE::FunctionBodyBuildContextImpl function_body_ctx(node_proto, input_types);
       return op_->BuildContextDependentFunction(function_body_ctx, onnx_function_proto);
     } else if (op_->HasFunction()) {
-      onnx_function_proto = *(op_->GetFunction());
-      return true;
+      const FunctionProto* function_ptr = nullptr;
+      // We need to get a function-body suitable for the ONNX opset used by the model.
+      // The first-parameter to GetFunction needs to be the ONNX opset used by the model.
+      // Unfortunately, ONNX's function-registration code uses the function's since-version
+      // as the default-version, which is incorrect in the case of functions belonging to
+      // non-onnx domains, like MSDOMAIN.
+
+      // We use the following as a temporary hack.
+      function_ptr = op_->GetFunction(SinceVersion(), false);
+
+      // TODO: Switch to following, once ONNX issue is fixed.
+      // auto& map = graph_->DomainToVersionMap();
+      // const auto iter = map.find(kOnnxDomain);
+      // if (iter != map.end()) {
+      //   function_ptr = op_->GetFunction(iter->second, true);
+      // } else {
+      //   function_ptr = op_->GetFunction();
+      // }
+
+      if (function_ptr != nullptr) {
+        onnx_function_proto = *function_ptr;
+        return true;
+      }
     }
   }
   return false;
