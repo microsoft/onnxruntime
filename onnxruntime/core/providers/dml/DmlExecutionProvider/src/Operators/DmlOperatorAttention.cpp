@@ -11,7 +11,7 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* InputValueTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputMaskTensor;
-    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceBoundsTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputRelativePositionBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastKeyTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastValueTensor;
@@ -21,6 +21,8 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     FLOAT MaskFilterValue;
     UINT NumHeads;
     FLOAT Scale;
+    BOOL IsUnidirectional;
+    BOOL DoRotary;
 };
 
 // TODO (pavignol): Remove once we update to the latest DML version
@@ -258,10 +260,10 @@ public:
             outputCount,
         };
 
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= inputCount);
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == outputCount);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        bool maskIsUnpaddedSequenceLengths =
+        bool maskIsUnpaddedSequenceBounds =
             kernelCreationContext.IsInputValid(maskIndex) &&
             kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
 
@@ -269,12 +271,12 @@ public:
         uint32_t dmlWeightsIndex = weightsIndex;
         uint32_t dmlBiasIndex = biasIndex;
         uint32_t dmlKeyPaddingMaskIndex = maskIndex;
-        uint32_t dmlUnpaddedKeySequenceLengthsIndex = maskIndex;
+        uint32_t dmlUnpaddedKeySequenceBoundsIndex = maskIndex;
         uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
-        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedSequenceLengths;
-        const bool hasUnpaddedSequenceLengths = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedSequenceLengths;
+        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedSequenceBounds;
+        const bool hasUnpaddedSequenceBounds = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedSequenceBounds;
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
 
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
@@ -289,15 +291,19 @@ public:
         ML_CHECK_VALID_ARGUMENT(weightTensorShape.size() == 2);
         ML_CHECK_VALID_ARGUMENT(weightTensorShape[0] == inputTensorShape[2]);
 
+        const auto qkvHiddenSizes = kernelCreationContext.GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
         if (hasBias)
         {
             auto biasTensorShape = m_inputTensorDescs[dmlBiasIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(biasTensorShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(biasTensorShape[0] % 3 == 0);
             ML_CHECK_VALID_ARGUMENT(weightTensorShape[1] == biasTensorShape[0]);
+
+            if (qkvHiddenSizes.empty())
+            {
+                ML_CHECK_VALID_ARGUMENT(biasTensorShape[0] % 3 == 0);
+            }
         }
 
-        const auto qkvHiddenSizes = kernelCreationContext.GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
         if (!qkvHiddenSizes.empty())
         {
             ML_CHECK_VALID_ARGUMENT(qkvHiddenSizes.size() == 3);
@@ -327,29 +333,43 @@ public:
             m_inputTensorDescs[dmlBiasIndex] = TensorDesc::ConstructBroadcastedTensorDesc(dataType, desiredBiasTensorShape, biasTensorShape);
         }
 
+        MLOperatorTensorDataType maskTensorDataType = MLOperatorTensorDataType::Undefined;
+        bool hasMaxSequenceMask = false;
         if (hasMask)
         {
             auto maskIndexTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
-
             ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape.size() > 1 && maskIndexTensorShape.size() <= 4);
 
             std::vector<uint32_t> reshapedMaskIndexTensorShape(maskIndexTensorShape.begin(), maskIndexTensorShape.end());
-            uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
-            reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
-            uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
-            MLOperatorTensorDataType maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
-            m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+            if (maskIndexTensorShape.size() == 4 && maskIndexTensorShape[2] != sequenceLength)
+            {
+                hasMaxSequenceMask = true;
+                ML_CHECK_VALID_ARGUMENT(maskIndexTensorShape[2] == maskIndexTensorShape[3]);
+                const uint32_t maxSequenceLength = maskIndexTensorShape[2];
+                uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, maxSequenceLength, maxSequenceLength};
+                maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
+                m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+            }
+            else
+            {
+                uint32_t maskIndexDimensionCount = gsl::narrow_cast<uint32_t>(maskIndexTensorShape.size());
+                reshapedMaskIndexTensorShape.insert(reshapedMaskIndexTensorShape.begin() + 1, 4 - maskIndexDimensionCount, 1);
+                uint32_t desiredMaskIndexShape[4] {batchSize, numHeads, sequenceLength, sequenceLength};
+                maskTensorDataType = kernelCreationContext.GetInputEdgeDescription(maskIndex).tensorDataType;
+                m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(maskTensorDataType, desiredMaskIndexShape, reshapedMaskIndexTensorShape);
+            }
+
         }
 
-        if (hasUnpaddedSequenceLengths)
+        if (hasUnpaddedSequenceBounds)
         {
-            auto unpaddedKeySequenceLengthsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape[0] % batchSize == 0);
+            auto unpaddedKeySequenceBoundsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape[0] % batchSize == 0);
 
-            uint32_t desiredShape[2] = {unpaddedKeySequenceLengthsShape[0] / batchSize, batchSize};
-            m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex] = TensorDesc(
-                m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType(),
+            uint32_t desiredShape[2] = {unpaddedKeySequenceBoundsShape[0] / batchSize, batchSize};
+            m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex] = TensorDesc(
+                m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetDmlDataType(),
                 desiredShape);
         }
 
@@ -396,14 +416,15 @@ public:
         std::array<uint32_t, 3> querySliceOffset = {0, 0, 0};
         std::array<uint32_t, 3> keySliceOffset = {0, 0, hiddenSize};
         std::array<uint32_t, 3> valueSliceOffset = {0, 0, 2 * hiddenSize};
-        std::array<uint32_t, 3> sliceSize = {batchSize, sequenceLength, hiddenSize};
+        std::array<uint32_t, 3> queryKeySliceSize = {batchSize, sequenceLength, hiddenSize};
+        std::array<uint32_t, 3> valueSliceSize = {batchSize, sequenceLength, vHiddenSize};
         std::array<int32_t, 3> strides = {1, 1, 1};
         DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
         querySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
         querySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
         querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
         querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
-        querySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
+        querySlicedOperatorDesc.InputWindowSizes = queryKeySliceSize.data();
         querySlicedOperatorDesc.InputWindowStrides = strides.data();
         const DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
 
@@ -412,7 +433,7 @@ public:
         keySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
         keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
         keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
-        keySlicedOperatorDesc.InputWindowSizes = sliceSize.data();
+        keySlicedOperatorDesc.InputWindowSizes = queryKeySliceSize.data();
         keySlicedOperatorDesc.InputWindowStrides = strides.data();
         const DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
 
@@ -421,17 +442,46 @@ public:
         valueSlicedOperatorDesc.OutputTensor = &namedValueSlicedInputTensorDesc;
         valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(valueSlicedTensorShape.size());
         valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
-        valueSlicedOperatorDesc.InputWindowSizes = sliceSize.data();
+        valueSlicedOperatorDesc.InputWindowSizes = valueSliceSize.data();
         valueSlicedOperatorDesc.InputWindowStrides = strides.data();
         const DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
+
+        std::array<uint32_t, 4> maskSliceOutputShape {batchSize, numHeads, sequenceLength, sequenceLength};
+        std::array<int32_t, 4> maskSliceStrides = {1, 1, 1, 1};
+        std::array<uint32_t, 4> maskSliceOffsets = {0, 0, 0, 0};
+        TensorDesc maskSliceOutputTensorDesc;
+        DML_TENSOR_DESC namedMaskSliceOutputTensorDesc;
+
+        DML_SLICE1_OPERATOR_DESC maskSlicedOperatorDesc = {};
+        if (hasMaxSequenceMask)
+        {
+            maskSliceOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(maskTensorDataType, maskSliceOutputShape);
+            namedMaskSliceOutputTensorDesc = maskSliceOutputTensorDesc.GetDmlDesc();
+            maskSlicedOperatorDesc.InputTensor = &inputDescs[dmlKeyPaddingMaskIndex];
+            maskSlicedOperatorDesc.OutputTensor = &namedMaskSliceOutputTensorDesc;
+            maskSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(maskSliceOutputShape.size());
+            maskSlicedOperatorDesc.InputWindowOffsets = maskSliceOffsets.data();
+            maskSlicedOperatorDesc.InputWindowSizes = maskSliceOutputShape.data();
+            maskSlicedOperatorDesc.InputWindowStrides = maskSliceStrides.data();
+        }
+        const DML_OPERATOR_DESC maskSlicedDesc = { DML_OPERATOR_SLICE1, &maskSlicedOperatorDesc};
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
         mhaOperatorDesc.InputQueryTensor = &namedQueryKeySlicedInputTensorDesc;
         mhaOperatorDesc.InputKeyTensor = &namedQueryKeySlicedInputTensorDesc;
         mhaOperatorDesc.InputValueTensor = &namedValueSlicedInputTensorDesc;
-        mhaOperatorDesc.InputMaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
-        mhaOperatorDesc.InputUnpaddedKeySequenceLengthsTensor = hasUnpaddedSequenceLengths ? &inputDescs[dmlUnpaddedKeySequenceLengthsIndex] : nullptr;
-        mhaOperatorDesc.InputRelativePositionBiasTensor = inputDescs[dmlRelativePositionBiasIndex].Desc ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+
+        if (hasMaxSequenceMask)
+        {
+            mhaOperatorDesc.InputMaskTensor = &namedMaskSliceOutputTensorDesc;
+        }
+        else
+        {
+            mhaOperatorDesc.InputMaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+        }
+
+        mhaOperatorDesc.InputUnpaddedKeySequenceBoundsTensor = hasUnpaddedSequenceBounds ? &inputDescs[dmlUnpaddedKeySequenceBoundsIndex] : nullptr;
+        mhaOperatorDesc.InputRelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.NumHeads = numHeads;
@@ -450,16 +500,22 @@ public:
             keySlice,
             valueSlice,
             mha,
+            maskSlice,
             count,
         };
 
-        std::array<const DML_OPERATOR_DESC*, NodeIndex::count> opDescs = {
+        std::vector<const DML_OPERATOR_DESC*> opDescs = {
             &gemmDesc,
             &querySlicedDesc,
             &keySlicedDesc,
             &valueSlicedDesc,
             &mhaDesc,
         };
+
+        if (hasMaxSequenceMask)
+        {
+            opDescs.push_back(&maskSlicedDesc);
+        }
 
         DML_INPUT_GRAPH_EDGE_DESC inputToGemmEdge = {};
         inputToGemmEdge.GraphInputIndex = dmlInputIndex;
@@ -484,17 +540,35 @@ public:
 
         if (hasMask)
         {
-            DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-            maskToMhaEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
-            maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
-            maskToMhaEdge.ToNodeInputIndex = 4;
-            inputEdges.push_back(maskToMhaEdge);
+            if (hasMaxSequenceMask)
+            {
+                DML_INPUT_GRAPH_EDGE_DESC maskToMaskSliceEdge = {};
+                maskToMaskSliceEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
+                maskToMaskSliceEdge.ToNodeIndex = NodeIndex::maskSlice;
+                maskToMaskSliceEdge.ToNodeInputIndex = 0;
+                inputEdges.push_back(maskToMaskSliceEdge);
+
+                DML_INTERMEDIATE_GRAPH_EDGE_DESC maskSliceToMhaEdge = {};
+                maskSliceToMhaEdge.FromNodeIndex = NodeIndex::maskSlice;
+                maskSliceToMhaEdge.FromNodeOutputIndex = 0;
+                maskSliceToMhaEdge.ToNodeIndex = NodeIndex::mha;
+                maskSliceToMhaEdge.ToNodeInputIndex = 4;
+                intermediateEdges.push_back(maskSliceToMhaEdge);
+            }
+            else
+            {
+                DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
+                maskToMhaEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
+                maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
+                maskToMhaEdge.ToNodeInputIndex = 4;
+                inputEdges.push_back(maskToMhaEdge);
+            }
         }
 
-        if (hasUnpaddedSequenceLengths)
+        if (hasUnpaddedSequenceBounds)
         {
             DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeySequenceLengthsIndex;
+            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeySequenceBoundsIndex;
             maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
             maskToMhaEdge.ToNodeInputIndex = 5;
             inputEdges.push_back(maskToMhaEdge);
@@ -574,20 +648,33 @@ public:
 void CALLBACK QueryAttention(IMLOperatorSupportQueryContextPrivate* context, /*out*/ bool* isSupported)
 {
     *isSupported = false;
-    // Checking input count alone is not sufficient to fallback to CPU if input 'past' and 'relative_position_bias' is present
-    // because input 'mask_index', 'past', and 'relative_position_bias' all are optional.
-    if (context->IsInputValid(4) || context->IsInputValid(6))
+    // `past` input tensor is not supported yet
+    if (context->IsInputValid(4))
     {
         return;
     }
 
+    // `past_sequence_length` input tensor is not supported yet
+    if (context->IsInputValid(6))
+    {
+        return;
+    }
+
+    // `present` output tensor is not supported yet
     if (context->IsOutputValid(1))
     {
         return;
     }
 
+    // `unidirectional == 1` is not supported yet
     MLOperatorAttributes attributes(context);
     if (attributes.GetOptionalAttribute<int32_t>(AttrName::Unidirectional, 0) != 0)
+    {
+        return;
+    }
+
+    // `do_rotary == 1` is not supported yet
+    if (attributes.GetOptionalAttribute<int32_t>(AttrName::DoRotary, 0) != 0)
     {
         return;
     }

@@ -2601,4 +2601,35 @@ namespace OperatorHelper
         m_numHeads = gsl::narrow_cast<uint32_t>(kernelInformation.GetAttributes().GetAttribute<int64_t>(AttrName::NumHeads));
     }
 
+    std::vector<EdgeShapes> AttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 2);
+
+        auto queryShape = shapeInfo.GetInputTensorShape(0);
+        ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3);
+
+        auto weightShape = shapeInfo.GetInputTensorShape(1);
+        ML_CHECK_VALID_ARGUMENT(weightShape.size() == 2);
+
+        if (m_qkvHiddenSizes.empty())
+        {
+            ML_CHECK_VALID_ARGUMENT(weightShape[1] % 3 == 0);
+        }
+        else
+        {
+            ML_CHECK_VALID_ARGUMENT(m_qkvHiddenSizes.size() == 3);
+        }
+
+        const uint32_t batchSize = queryShape[0];
+        const uint32_t sequenceLength = queryShape[1];
+        const uint32_t vHiddenSize = m_qkvHiddenSizes.empty() ? weightShape[1] / 3 : m_qkvHiddenSizes[2];
+
+        return { EdgeShapes({batchSize, sequenceLength, vHiddenSize}) };
+    }
+
+    void AttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
+    {
+        m_qkvHiddenSizes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
+    }
+
 } // namespace OperatorHelper

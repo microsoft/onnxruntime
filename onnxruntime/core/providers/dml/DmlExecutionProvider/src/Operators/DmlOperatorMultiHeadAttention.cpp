@@ -11,7 +11,7 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* InputValueTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputMaskTensor;
-    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceLengthsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceBoundsTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputRelativePositionBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastKeyTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastValueTensor;
@@ -21,6 +21,8 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     FLOAT MaskFilterValue;
     UINT NumHeads;
     FLOAT Scale;
+    BOOL IsUnidirectional;
+    BOOL DoRotary;
 };
 
 // TODO (pavignol): Remove once we update to the latest DML version
@@ -222,7 +224,7 @@ public:
             dmlValueIndex,
             dmlBiasIndex,
             dmlKeyPaddingMaskIndex,
-            dmlUnpaddedKeySequenceLengthsIndex,
+            dmlUnpaddedKeySequenceBoundsIndex,
             dmlRelativePositionBiasIndex,
             dmlPastKeyIndex,
             dmlPastValueIndex,
@@ -240,7 +242,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == inputCount);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == outputCount);
 
-        bool maskIsUnpaddedSequenceLengths =
+        bool maskIsUnpaddedSequenceBounds =
             kernelCreationContext.IsInputValid(keyPaddingMaskIndex) &&
             kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
 
@@ -253,8 +255,8 @@ public:
             keyValueIsPast ? std::nullopt : std::optional<uint32_t>(keyIndex),
             keyValueIsPast ? std::nullopt : std::optional<uint32_t>(valueIndex),
             biasIndex,
-            maskIsUnpaddedSequenceLengths ? std::nullopt : std::optional<uint32_t>(keyPaddingMaskIndex),
-            maskIsUnpaddedSequenceLengths ? std::optional<uint32_t>(keyPaddingMaskIndex) : std::nullopt,
+            maskIsUnpaddedSequenceBounds ? std::nullopt : std::optional<uint32_t>(keyPaddingMaskIndex),
+            maskIsUnpaddedSequenceBounds ? std::optional<uint32_t>(keyPaddingMaskIndex) : std::nullopt,
             relativePositionBiasIndex,
             keyValueIsPast ? keyIndex : pastKeyIndex,
             keyValueIsPast ? valueIndex : pastValueIndex,
@@ -313,15 +315,15 @@ public:
                 actualShape);
         }
 
-        if (m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
         {
-            auto unpaddedKeySequenceLengthsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceLengthsShape[0] % batchSize == 0);
+            auto unpaddedKeySequenceBoundsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape[0] % batchSize == 0);
 
-            uint32_t desiredShape[2] = {unpaddedKeySequenceLengthsShape[0] / batchSize, batchSize};
-            m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex] = TensorDesc(
-                m_inputTensorDescs[dmlUnpaddedKeySequenceLengthsIndex].GetDmlDataType(),
+            uint32_t desiredShape[2] = {unpaddedKeySequenceBoundsShape[0] / batchSize, batchSize};
+            m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex] = TensorDesc(
+                m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetDmlDataType(),
                 desiredShape);
         }
 
@@ -349,7 +351,7 @@ public:
         mhaDesc.InputValueTensor = inputDescs[dmlValueIndex].Desc ? &inputDescs[dmlValueIndex] : nullptr;
         mhaDesc.InputBiasTensor = inputDescs[dmlBiasIndex].Desc ? &inputDescs[dmlBiasIndex] : nullptr;
         mhaDesc.InputMaskTensor = inputDescs[dmlKeyPaddingMaskIndex].Desc ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
-        mhaDesc.InputUnpaddedKeySequenceLengthsTensor = inputDescs[dmlUnpaddedKeySequenceLengthsIndex].Desc ? &inputDescs[dmlUnpaddedKeySequenceLengthsIndex] : nullptr;
+        mhaDesc.InputUnpaddedKeySequenceBoundsTensor = inputDescs[dmlUnpaddedKeySequenceBoundsIndex].Desc ? &inputDescs[dmlUnpaddedKeySequenceBoundsIndex] : nullptr;
         mhaDesc.InputRelativePositionBiasTensor = inputDescs[dmlRelativePositionBiasIndex].Desc ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaDesc.InputPastKeyTensor = inputDescs[dmlPastKeyIndex].Desc ? &inputDescs[dmlPastKeyIndex] : nullptr;
         mhaDesc.InputPastValueTensor = inputDescs[dmlPastValueIndex].Desc ? &inputDescs[dmlPastValueIndex] : nullptr;

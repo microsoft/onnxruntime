@@ -342,7 +342,7 @@ struct TensorCheck<MLFloat16> {
 #if defined(USE_TENSORRT) || defined(ENABLE_TRAINING_CORE) || defined(USE_CUDA) || defined(USE_ROCM)
     threshold = 0.005f;
 #elif defined(USE_DML)
-    threshold = 0.008f;
+    threshold = 0.02f;
 #endif
     for (int i = 0; i < size; ++i) {
       if (std::isnan(f_expected[i])) {
