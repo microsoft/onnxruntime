@@ -109,6 +109,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // 3. Wait on a notificaiton
   class ExecutionStep {
    public:
+    ExecutionStep(NodeIndex node_index) : node_index_(node_index) {}
     virtual ~ExecutionStep() {}
     virtual Status Execute(StreamExecutionContext& ctx,
                            size_t stream_idx,
@@ -116,19 +117,15 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
                            const bool& terminate_flag,
                            bool& continue_flag) = 0;
     virtual std::string ToString() const = 0;
-#ifdef ENABLE_TRAINING
-    // the partial execution mode for training needs special handling for barrier
-    virtual bool IsBarrier() const { return false; }
-#endif
+    inline NodeIndex GetNodeIndex() { return node_index_; }
+  protected:
+    NodeIndex node_index_;
   };
   // LogicStream is a sequence of execution steps that can be executed independetly.
   // The steps within a sequence are executed in order, and happened on the same device.
   struct LogicStream {
     std::vector<std::unique_ptr<ExecutionStep>> steps_;
     const OrtDevice& device_;
-#ifdef ENABLE_TRAINING
-    std::vector<NodeIndex> step_pc;
-#endif
    public:
     LogicStream(const OrtDevice& device) : device_(device) {}
   };
@@ -168,6 +165,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
 
 #ifdef ENABLE_TRAINING
   InlinedVector<NodeIndex> node_execution_order_in_training;
+  InlinedHashMap<NodeIndex, size_t> node_index_2_toposort_index;
 #endif
 
   const std::vector<AllocPlanPerValue>& GetAllocationPlan() const {

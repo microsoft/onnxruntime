@@ -24,6 +24,17 @@
 #pragma warning(disable : 26426)
 #endif
 namespace ONNX_NAMESPACE {
+
+inline int64_t HandleNegativeAxis(int64_t axis, int64_t rank) {
+  if (rank < 0 || axis >= rank || axis < -rank) {
+    fail_shape_inference("axis ", axis,
+                         " is not in valid range [-", rank, ",", rank - 1, "]");
+  }
+
+  // Handle negative axis
+  return axis < 0 ? axis + rank : axis;
+}
+
 void convPoolShapeInference(
     ONNX_NAMESPACE::InferenceContext& ctx,
     bool use_dilation, bool require_kernel_shape,
@@ -2236,9 +2247,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_mean_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();
@@ -2380,9 +2389,7 @@ void RegisterContribSchemas() {
         if (axis_proto) {
           axis = axis_proto->i();
         }
-        if (axis < 0) {
-          axis += input_ndim;
-        }
+        axis = HandleNegativeAxis(axis, input_ndim);
 
         if (ctx.getNumOutputs() > 1) {
           auto saved_inv_std_var_shape = ctx.getOutputType(1)->mutable_tensor_type()->mutable_shape();

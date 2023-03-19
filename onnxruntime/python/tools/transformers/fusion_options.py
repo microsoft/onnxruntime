@@ -51,9 +51,13 @@ class FusionOptions:
         )
 
         # options for stable diffusion
-        self.enable_group_norm = model_type == "unet"
-        self.enable_bias_splitgelu = model_type == "unet"
-        self.enable_packed_kv = model_type == "unet"
+        if model_type in ["unet", "vae", "clip"]:
+            self.enable_nhwc_conv = True
+            self.enable_group_norm = True
+            self.enable_bias_splitgelu = True
+            self.enable_packed_qkv = True
+            self.enable_packed_kv = True
+            self.enable_bias_add = True
 
     def use_raw_attention_mask(self, use_raw_mask=True):
         if use_raw_mask:
@@ -95,10 +99,21 @@ class FusionOptions:
             options.use_raw_attention_mask(True)
         if args.no_attention_mask:
             options.disable_attention_mask()
-        if args.disable_group_norm:
-            options.enable_group_norm = False
-        if args.disable_packed_kv:
-            options.enable_packed_kv = False
+
+        if args.model_type in ["unet", "vae", "clip"]:
+            if args.disable_nhwc_conv:
+                options.enable_nhwc_conv = False
+            if args.disable_group_norm:
+                options.enable_group_norm = False
+            if args.disable_bias_splitgelu:
+                options.enable_bias_splitgelu = False
+            if args.disable_packed_qkv:
+                options.enable_packed_qkv = False
+            if args.disable_packed_kv:
+                options.enable_packed_kv = False
+            if args.disable_bias_add:
+                options.enable_bias_add = False
+
         return options
 
     @staticmethod
@@ -221,7 +236,7 @@ class FusionOptions:
             "--disable_group_norm",
             required=False,
             action="store_true",
-            help="not fuse GroupNorm. Only works for model_type=unet",
+            help="not fuse GroupNorm. Only works for model_type=unet or vae",
         )
         parser.set_defaults(disable_group_norm=False)
 
@@ -229,6 +244,38 @@ class FusionOptions:
             "--disable_packed_kv",
             required=False,
             action="store_true",
-            help="not use packed kv in cross attention. Only works for model_type=unet",
+            help="not use packed kv for cross attention in MultiHeadAttention. Only works for model_type=unet",
         )
         parser.set_defaults(disable_packed_kv=False)
+
+        parser.add_argument(
+            "--disable_packed_qkv",
+            required=False,
+            action="store_true",
+            help="not use packed qkv for self attention in MultiHeadAttention. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_packed_qkv=False)
+
+        parser.add_argument(
+            "--disable_bias_add",
+            required=False,
+            action="store_true",
+            help="not fuse BiasAdd. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_bias_add=False)
+
+        parser.add_argument(
+            "--disable_bias_splitgelu",
+            required=False,
+            action="store_true",
+            help="not fuse BiasSplitGelu. Only works for model_type=unet",
+        )
+        parser.set_defaults(disable_bias_splitgelu=False)
+
+        parser.add_argument(
+            "--disable_nhwc_conv",
+            required=False,
+            action="store_true",
+            help="Do not use NhwcConv. Only works for model_type=unet or vae",
+        )
+        parser.set_defaults(disable_nhwc_conv=False)

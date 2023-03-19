@@ -615,7 +615,7 @@ class OnnxModel:
         if use_symbolic_shape_infer:
             # Use symbolic shape inference since custom operators (like Gelu, SkipLayerNormalization etc)
             # are not recognized by onnx shape inference.
-            shape_infer_helper = SymbolicShapeInferenceHelper(model)
+            shape_infer_helper = SymbolicShapeInferenceHelper(model, verbose=0)
             model = shape_infer_helper.infer_shapes(model, auto_merge=True, guess_output_rank=False)
 
         parameters = {"disable_shape_infer": use_symbolic_shape_infer}
@@ -802,11 +802,14 @@ class OnnxModel:
             self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
-            logger.info(
-                "Graph pruned: {} inputs, {} outputs and {} nodes are removed".format(
-                    len(input_to_remove), len(output_to_remove), len(nodes_to_remove)
-                )
-            )
+            removed = []
+            if input_to_remove:
+                removed.append(f"{len(input_to_remove)} inputs")
+            if output_to_remove:
+                removed.append(f"{len(output_to_remove)} outputs")
+            if nodes_to_remove:
+                removed.append(f"{len(nodes_to_remove)} nodes")
+            logger.info("Removed %s", ", ".join(removed))
 
         self.update_graph()
 
@@ -873,66 +876,64 @@ class OnnxModel:
         return True
 
     @staticmethod
-    def graph_topological_sort(graph):
-        deps_count = [0] * len(graph.node)  # dependency count of each node
-        deps_to_nodes = {}  # input to node indice
+    def graph_topological_sort(graph, is_deterministic=False):
+        deps_set = set()  # dependency set of all node
+        sorted_node_set = set()  # sorted node set
         sorted_nodes = []  # initialize sorted_nodes
-        for node_idx, node in enumerate(graph.node):
-            # CANNOT use len(node.input) directly because input can be optional
-            deps_count[node_idx] = sum(1 for _ in node.input if _)
-            if deps_count[node_idx] == 0:  # Constant doesn't depend on any inputs
-                sorted_nodes.append(graph.node[node_idx])
-                continue
 
-            for input_name in node.input:
-                if input_name not in deps_to_nodes:
-                    deps_to_nodes[input_name] = [node_idx]
-                else:
-                    deps_to_nodes[input_name].append(node_idx)
-
-        # Note: this logic only applies to top level graph since a sub graph could use intializer from parent graph
         initializer_names = [init.name for init in graph.initializer]
         graph_input_names = [input.name for input in graph.input]
         input_names = initializer_names + graph_input_names
-        input_names.sort()
-        prev_input_name = None
+
+        if is_deterministic:
+            input_names.sort()
+
         for input_name in input_names:
-            if prev_input_name == input_name:
-                continue
+            deps_set.add(input_name)
 
-            prev_input_name = input_name
-            if input_name in deps_to_nodes:
-                for node_idx in deps_to_nodes[input_name]:
-                    deps_count[node_idx] = deps_count[node_idx] - 1
-                    if deps_count[node_idx] == 0:
-                        sorted_nodes.append(graph.node[node_idx])
+        sorted_node_set_len = -1
+        graph_nodes = graph.node if not is_deterministic else sorted(graph.node, key=lambda x: x.name)
+        last_node_name = None
+        while len(sorted_node_set) != len(graph_nodes):
+            if len(sorted_node_set) == sorted_node_set_len:
+                break
+            sorted_node_set_len = len(sorted_node_set)
+            for node_idx, node in enumerate(graph_nodes):
+                if node_idx in sorted_node_set:
+                    continue
+                input_count = sum(1 for _ in node.input if _)
+                if input_count == 0:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                    continue
+                failed = False
+                for input_name in node.input:
+                    if input_name != "" and input_name not in deps_set:
+                        failed = True
+                        last_node_name = node.name
+                if not failed:
+                    sorted_nodes.append(node)
+                    sorted_node_set.add(node_idx)
+                    for output in node.output:
+                        deps_set.add(output)
+                else:
+                    continue
 
-        start = 0
-        end = len(sorted_nodes)
-
-        while start < end:
-            for output in sorted_nodes[start].output:
-                if output in deps_to_nodes:
-                    for node_idx in deps_to_nodes[output]:
-                        deps_count[node_idx] = deps_count[node_idx] - 1
-                        if deps_count[node_idx] == 0:
-                            sorted_nodes.append(graph.node[node_idx])
-                            end = end + 1
-            start = start + 1
-
-        if end != len(graph.node):
+        if len(sorted_node_set) != len(graph.node):
             raise RuntimeError(
-                f"Graph is not a DAG: end={end}, len(graph.node)={len(graph.node)}, graph.node[end]={graph.node[end]}"
+                f"Graph is not a DAG: len(sorted_node_set)={len(sorted_node_set)}, len(graph.node)={len(graph.node)}, failed at node {last_node_name}"
             )
 
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self):
+    def topological_sort(self, is_deterministic=False):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph)
+        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
 
     @staticmethod
     def save(
@@ -1022,6 +1023,18 @@ class OnnxModel:
                 return opset.version
         raise RuntimeError("ONNX model has no opset for default domain")
 
+    def get_operator_statistics(self, include_domain=False):
+        """
+        Returns node count of operators.
+        """
+        op_count = {}
+        for node in self.nodes():
+            op = (node.domain + ":" if include_domain and node.domain else "") + node.op_type
+            op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
+
+        logger.info(f"Operators:{op_count}")
+        return op_count
+
     @staticmethod
     def has_same_value(tensor1: TensorProto, tensor2: TensorProto) -> bool:
         """Returns True when two tensors have same value.
@@ -1038,7 +1051,7 @@ class OnnxModel:
             return False
         if tensor1.HasField("raw_data") and tensor2.HasField("raw_data"):
             return tensor1.raw_data == tensor2.raw_data
-        return numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)
+        return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
 
     def remove_duplicated_initializer(self):
         """Remove initializers with duplicated values, and only keep the first one.

@@ -610,6 +610,8 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
   KernelTypeStrResolver kernel_type_str_resolver{};
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+  ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
+
   for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
@@ -1517,6 +1519,14 @@ common::Status InferenceSession::Initialize() {
         ORT_RETURN_IF_ERROR_SESSIONID_(Model::Save(*model_, session_options_.optimized_model_filepath));
       }
     }
+
+    std::vector<TuningResults> tuning_results;
+    bool found_tuning_results = false;
+    ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
+        model_metadata_, tuning_results, found_tuning_results));
+    if (found_tuning_results) {
+      ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results));
+    }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
     // Resolve memory pattern flags of the main graph and subgraph session states
@@ -1529,12 +1539,16 @@ common::Status InferenceSession::Initialize() {
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
     }
 
+    // once the model is saved, we may remove unnecessary attributes for inference
+    session_state_->PruneRemovableAttributes();
+
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
   ORT_CATCH(const NotImplementedException& ex) {
@@ -2198,6 +2212,50 @@ std::string InferenceSession::EndProfiling() {
 const profiling::Profiler& InferenceSession::GetProfiling() const {
   return session_profiler_;
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+std::vector<TuningResults> InferenceSession::GetTuningResults() const {
+  std::vector<TuningResults> ret;
+  for (const auto& provider : execution_providers_) {
+    const auto* tuning_ctx = provider->GetTuningContext();
+    if (tuning_ctx != nullptr) {
+      ret.emplace_back(tuning_ctx->GetTuningResults());
+    }
+  }
+  return ret;
+}
+
+Status InferenceSession::SetTuningResults(const std::vector<TuningResults>& trs, bool error_on_invalid) {
+  std::string msg;
+
+  for (size_t i = 0; i < trs.size(); i++) {
+    const auto& tr = trs[i];
+    auto* provider = execution_providers_.Get(tr.ep);
+    if (provider == nullptr) {
+      msg = MakeString("Cannot find execution provider ", tr.ep);
+      ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
+      continue;
+    }
+
+    auto* tuning_ctx = provider->GetTuningContext();
+    if (tuning_ctx == nullptr) {
+      msg = MakeString("Invalid TuningResults (index=", i, "). ", tr.ep, " does not support TunableOp.");
+      ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
+      continue;
+    }
+
+    auto status = tuning_ctx->LoadTuningResults(tr);
+    if (!status.IsOK()) {
+      msg = MakeString("Failed to load TuningResults (index=", i, "). Reason: ", status.ErrorMessage());
+      ORT_RETURN_IF(error_on_invalid, msg);
+      LOGS(*session_logger_, WARNING) << msg;
+    }
+  }
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 AllocatorPtr InferenceSession::GetAllocator(const OrtMemoryInfo& mem_info) const {
   return session_state_->GetAllocator(mem_info);

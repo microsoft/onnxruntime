@@ -82,12 +82,15 @@ struct Tensorrt_Provider : Provider {
     info.force_sequential_engine_build = options.trt_force_sequential_engine_build != 0;
     info.context_memory_sharing_enable = options.trt_context_memory_sharing_enable != 0;
     info.layer_norm_fp32_fallback = options.trt_layer_norm_fp32_fallback != 0;
+    info.timing_cache_enable = options.trt_timing_cache_enable != 0;
+    info.detailed_build_log = options.trt_detailed_build_log != 0;
     info.extra_plugin_lib_paths = options.trt_extra_plugin_lib_paths == nullptr ? "" : options.trt_extra_plugin_lib_paths;
 
     common::Status status = CreateTensorRTCustomOpDomainList(info);
     if (!status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to get TRT plugins from TRT plugin registration.";
     }
+    
     return std::make_shared<TensorrtProviderFactory>(info);
   }
 
@@ -155,6 +158,8 @@ struct Tensorrt_Provider : Provider {
     trt_options.trt_force_sequential_engine_build = internal_options.force_sequential_engine_build;
     trt_options.trt_context_memory_sharing_enable = internal_options.context_memory_sharing_enable;
     trt_options.trt_layer_norm_fp32_fallback = internal_options.layer_norm_fp32_fallback;
+    trt_options.trt_timing_cache_enable = internal_options.timing_cache_enable;
+    trt_options.trt_force_timing_cache = internal_options.force_timing_cache;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

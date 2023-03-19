@@ -52,6 +52,8 @@ std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_ar
 std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op = false);
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultSnpeExecutionProvider();
+std::unique_ptr<IExecutionProvider> DefaultQnnExecutionProvider();
+std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const ProviderOptions& options);
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();

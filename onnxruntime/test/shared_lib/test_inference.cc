@@ -21,6 +21,8 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/util/thread_utils.h"
+
+#include "onnxruntime_config.h"
 #include "providers.h"
 #include "test_allocator.h"
 #include "test_fixture.h"
@@ -92,8 +94,11 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           OrtCustomOpDomain* custom_op_domain_ptr,
                           const ORTCHAR_T* custom_op_library_filename,
                           bool test_session_creation_only = false,
-                          void* cuda_compute_stream = nullptr) {
-  Ort::SessionOptions session_options;
+                          void* cuda_compute_stream = nullptr,
+                          Ort::SessionOptions* predefined_session_options = nullptr) {
+  Ort::SessionOptions default_session_options;
+  Ort::SessionOptions& session_options = predefined_session_options ? *predefined_session_options
+                                                                    : default_session_options;
 
   if (provider_type == 1) {
 #ifdef USE_CUDA
@@ -444,9 +449,8 @@ TEST(CApiTest, custom_op_set_input_memory_type) {
 }
 #endif
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(REDUCED_OPS_BUILD)
-// disable test in reduced-op-build since TOPK and GRU are excluded there
-TEST(CApiTest, standalone_op_handler) {
+#if !defined(ORT_MINIMAL_BUILD)
+TEST(CApiTest, StandaloneOpHandler) {
   std::vector<Input> inputs(1);
   Input& input = inputs[0];
   input.name = "X";
@@ -466,9 +470,18 @@ TEST(CApiTest, standalone_op_handler) {
   custom_op_domain.Add(&standalone_op);
 
 #ifdef USE_CUDA
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1, custom_op_domain, nullptr);
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 1,
+                       custom_op_domain, nullptr);
 #else
-  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0, custom_op_domain, nullptr);
+  Ort::SessionOptions session_options;
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.test_output.ort");
+  session_options.SetOptimizedModelFilePath(ort_file.c_str());
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr, false, nullptr, &session_options);
+
+  TestInference<float>(*ort_env, ort_file, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
 #endif
 }
 #endif
@@ -1250,21 +1263,41 @@ TEST(CApiTest, test_custom_op_openvino_wrapper_library) {
   lib_name = ORT_TSTR("./libcustom_op_openvino_wrapper_library.so");
 #endif
 
-  Ort::SessionOptions session_opts;
-  Ort::CustomOpConfigs custom_op_configs;
+  // Run with custom op session configurations.
+  {
+    Ort::SessionOptions session_opts;
+    Ort::CustomOpConfigs custom_op_configs;
 
-  custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
-  session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
+    custom_op_configs.AddConfig("OpenVINO_Wrapper", "device_type", "CPU");
+    session_opts.RegisterCustomOpsLibrary(lib_name, custom_op_configs);
 
-  Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
-  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
 
-  RunSession(default_allocator.get(), session,
-             inputs,
-             "Plus214_Output_0",
-             expected_output_dims,
-             expected_vals,
-             nullptr);
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
+
+  // Run without specifying any custom op session configurations.
+  // Expect custom op to use "CPU" as OpenVINO's default backend.
+  {
+    Ort::SessionOptions session_opts;
+    session_opts.RegisterCustomOpsLibrary(lib_name);
+
+    Ort::Session session(*ort_env, CUSTOM_OP_OPENVINO_WRAPPER_LIB_TEST_MODEL_URI, session_opts);
+    auto default_allocator = std::make_unique<MockedOrtAllocator>();
+
+    RunSession(default_allocator.get(), session,
+               inputs,
+               "Plus214_Output_0",
+               expected_output_dims,
+               expected_vals,
+               nullptr);
+  }
 }
 #endif  // defined(USE_OPENVINO) && (!defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 
@@ -2111,6 +2144,13 @@ TEST(CApiTest, get_available_providers_cpp) {
   ASSERT_TRUE(std::find(providers.begin(), providers.end(), "CUDAExecutionProvider") != providers.end());
 #endif
 }
+
+TEST(CApiTest, get_version_string_cpp) {
+  std::string version_string = Ort::GetVersionString();
+  ASSERT_FALSE(version_string.empty());
+  ASSERT_EQ(version_string, ORT_VERSION);
+}
+
 TEST(CApiTest, TestSharedAllocators) {
   OrtEnv* env_ptr = (OrtEnv*)(*ort_env);
 
@@ -2566,7 +2606,7 @@ TEST(CApiTest, TestPerSessionCustomThreadPoolHooks) {
   ASSERT_TRUE(custom_join_hook_called == (thread_count - 1) << 1);
 }
 
-// Preventing resize tranformer issue:
+// Preventing resize transformer issue:
 // https://github.com/microsoft/onnxruntime/issues/9857
 #ifndef REDUCED_OPS_BUILD
 TEST(CApiTest, crop_and_resize) {

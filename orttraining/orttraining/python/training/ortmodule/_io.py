@@ -161,7 +161,9 @@ class _InputInfo(object):
         return args, kwargs
 
 
-def _combine_input_buffers_initializers(params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device):
+def _combine_input_buffers_initializers(
+    params, onnx_input_names, input_info, buffer_names, inputs, kwargs, device, input_density_ob
+):
     """Creates forward `*inputs` list from user input and PyTorch initializers
 
     ONNX Runtime forward requires an ordered list of:
@@ -231,6 +233,8 @@ def _combine_input_buffers_initializers(params, onnx_input_names, input_info, bu
         if inp is not None:
             if _PrimitiveType.is_primitive_type(inp):
                 inp = _PrimitiveType.get_tensor(inp, device)
+
+            input_density_ob.inspect_from_input_data(name, inp)
             result.append(inp)
         else:
             raise wrap_exception(

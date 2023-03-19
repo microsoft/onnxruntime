@@ -134,9 +134,11 @@ def _build_aar(args):
     aar_publish_dir = os.path.join(build_dir, "aar_out", build_config)
     os.makedirs(aar_publish_dir, exist_ok=True)
 
+    gradle_path = os.path.join(JAVA_ROOT, "gradlew" if not is_windows() else "gradlew.bat")
+
     # get the common gradle command args
     gradle_command = [
-        "gradle",
+        gradle_path,
         "--no-daemon",
         "-b=build-android.gradle",
         "-c=settings-android.gradle",
@@ -149,13 +151,10 @@ def _build_aar(args):
         "-DbuildVariant=" + str(build_settings["build_variant"]),
     ]
 
-    # If not using shell on Window, will not be able to find gradle in path
-    use_shell = True if is_windows() else False
-
     # clean, build, and publish to a local directory
-    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["build"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
-    subprocess.run(gradle_command + ["publish"], env=temp_env, shell=use_shell, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ["clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ["build"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
+    subprocess.run(gradle_command + ["publish"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
 
 
 def parse_args():
