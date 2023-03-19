@@ -158,6 +158,7 @@ class GemmSoftmaxGemmPermuteGeneric : public IGemmSoftmaxGemmPermuteKernelExplor
   }
 };
 
+#ifdef USE_COMPOSABLE_KERNEL
 template <typename T, bool USE_BIAS, bool USE_MASK>
 class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T> {
  public:
@@ -215,6 +216,7 @@ class GemmSoftmaxGemmPermuteCK : public IGemmSoftmaxGemmPermuteKernelExplorer<T>
   std::vector<std::string> type_strings_;
   size_t selected_op_{};
 };
+#endif  // USE_COMPOSABLE_KERNEL
 
 // The pipeline composed from rocblas api calls and kernel launches.
 template <typename T>
@@ -287,10 +289,12 @@ class GemmSoftmaxGemmPermuteTunable : public IGemmSoftmaxGemmPermuteKernelExplor
 void InitGemmSoftmaxGemmPermute(py::module m) {
   REGISTER_GENERIC(half);
 
+#ifdef USE_COMPOSABLE_KERNEL
   REGISTER_CK(half, false, false, "");
   REGISTER_CK(half, true, false, "Biased");
   REGISTER_CK(half, false, true, "Masked");
   REGISTER_CK(half, true, true, "BiasedMasked");
+#endif
 
   REGISTER_TUNABLE(half);
 }
