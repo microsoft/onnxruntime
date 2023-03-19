@@ -375,6 +375,9 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
       0,
       0,
       0,
+      0,
+      0,
+      0,
       nullptr};
 
     std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
