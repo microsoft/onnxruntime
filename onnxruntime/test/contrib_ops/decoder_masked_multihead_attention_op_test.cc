@@ -635,7 +635,7 @@ std::vector<MLFloat16> Softmax_QK_Transpose_V(MLFloat16* softmax_qk_transpose_ma
   return output;
 }
 TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
-  // The kernel is only supported for CC 5.3 or higher
+  // The kernel is only supported on CC 5.3 or higher GPUs
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
@@ -747,7 +747,7 @@ TEST(DecoderMaskedMultiheadAttentionTest, Test_fp32) {
 }
 
 TEST(DecoderMaskedMultiheadAttentionTest, Test_fp16) {
-  // The kernel is only supported for CC 5.3 or higher
+  // The kernel is only supported on CC 5.3 or higher GPUs
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
