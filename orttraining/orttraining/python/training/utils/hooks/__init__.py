@@ -6,4 +6,4 @@
 
 from ._subscriber_manager import SubscriberManager
 
-from ._activation_summarizer import StatisticsSubscriber
+from ._statistics_subscriber import StatisticsSubscriber

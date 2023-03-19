@@ -44,15 +44,41 @@ class _ModuleHookSubscriberBase:
         raise NotImplementedError()
 
 
-# Used to track current execution step, e.g. how many forward/backward path is called.
-_EXECUTION_GLOBAL_STEP = 0
-# Used to store the activation tensor names, if already handled, then skipped.
-# Need to clear after each step.
-_OBSERVED_ACTIVATION_NAMES = {}
-# Used to store the depth of each module, which indicate the indentation level of the module.
-_MODULE_INDEX_TO_DEPTH = {}
-# Used to store the unique id of each sequential activation.
-_MODULE_TO_MODULE_INDEX = {}
+
+
+
+class _RuntimeStates:
+    """
+    A data struct holding states for runtime context. Tho kinds of states are inlcuded:
+    > Global states that is one-time collected during model hook registration. A global execution step is
+      also initialized to refect how many steps have been executed.
+    > Intra execution step states, initialized and cleaned up intended only for current execution step.
+      Usually it carriers intermediate informations during the model execution.
+    """
+    class _GlobalStates:
+        def __init__(self):
+            # Used to track current execution step, e.g. how many forward/backward path is called.
+            self.execution_step = 0
+            # Used to store the depth of each module, which indicate the indentation level of the module.
+            self.module_index_to_depth = {}
+            # Used to store the unique id of each sequential activation.
+            self.module_to_module_index = {}
+
+            self.subscribers = set()
+
+
+    class _ExecutionStepStates:
+        def __init__(self):
+            # Used to store the activation tensor names, if already handled, then skipped.
+            # Need to clear after each step.
+            self._observed_activation_names = {}
+
+    def __init__(self):
+        self.global_states = _RuntimeStates._GlobalStates()
+        self.reset_step_states()
+
+    def reset_step_states(self):
+        self.execution_step_states = _RuntimeStates._ExecutionStepStates()
 
 
 class _InspectActivation(torch.autograd.Function):
@@ -62,39 +88,42 @@ class _InspectActivation(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, name, id, depth, input, subscriber):
-        global _EXECUTION_GLOBAL_STEP
+    def forward(ctx, name, module_idx, run_ctx, input):
+        depth = run_ctx.global_states.module_index_to_depth[module_idx]
+
         val = None
         if input is None or not isinstance(input, torch.Tensor):
             val = input
         else:
             val = input.detach().clone()
-        ctx.current_step = _EXECUTION_GLOBAL_STEP
-        if subscriber._start_step is not None and subscriber._end_step is not None:
-            if ctx.current_step >= subscriber._start_step and ctx.current_step < subscriber._end_step:
-                subscriber.forward(val, depth, name, ctx.current_step)
+        ctx.current_step = run_ctx.global_states.execution_step
+
+        for subscriber in run_ctx.global_states.subscribers:
+            if subscriber._start_step is not None and subscriber._end_step is not None:
+                if ctx.current_step >= subscriber._start_step and ctx.current_step < subscriber._end_step:
+                    subscriber.forward(val, depth, name, ctx.current_step)
 
         ctx.name = name
-        ctx.id = id
+        ctx.id = module_idx
         ctx.depth = depth
-        ctx.subscriber = subscriber
+        ctx.subscribers = run_ctx.global_states.subscribers
 
         return input.detach() if input is not None else None
 
     @staticmethod
     def backward(ctx, grad_output):
-        global _OBSERVED_ACTIVATION_NAMES
         val = None
         if grad_output is None or not isinstance(grad_output, torch.Tensor):
             val = grad_output
         else:
             val = grad_output.detach().clone()
 
-        if ctx.subscriber._start_step is not None and ctx.subscriber._end_step is not None:
-            if ctx.current_step >= ctx.subscriber._start_step and ctx.current_step < ctx.subscriber._end_step:
-                ctx.subscriber.backward(val, ctx.depth, ctx.name, ctx.current_step)
+        for subscriber in ctx.subscribers:
+            if subscriber._start_step is not None and subscriber._end_step is not None:
+                if ctx.current_step >= subscriber._start_step and ctx.current_step < subscriber._end_step:
+                    subscriber.backward(val, ctx.depth, ctx.name, ctx.current_step)
 
-        return None, None, None, grad_output.detach() if grad_output is not None else None, None
+        return None, None, None, grad_output.detach() if grad_output is not None else None
 
 
 class _IncrementStep(torch.autograd.Function):
@@ -108,9 +137,10 @@ class _IncrementStep(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, input):
-        global _EXECUTION_GLOBAL_STEP
-        ctx.current_step = _EXECUTION_GLOBAL_STEP
+    def forward(ctx, run_ctx, input):
+        # global _EXECUTION_GLOBAL_STEP
+        ctx.current_step = run_ctx.global_states.execution_step
+        ctx.run_ctx = run_ctx
 
         # We cannot do the step incremental here. Imagine the outside-most module has multiple outputs,
         # we need increase the step only at the very last output handling.
@@ -135,16 +165,12 @@ class _IncrementStep(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES
+        if ctx.current_step >= 0:
+            print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
+        ctx.run_ctx.global_states.execution_step += 1
+        ctx.run_ctx.reset_step_states()
 
-        if ctx.current_step == _EXECUTION_GLOBAL_STEP:
-            if ctx.current_step >= 0:
-                print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
-            _EXECUTION_GLOBAL_STEP += 1
-            _OBSERVED_ACTIVATION_NAMES = {}
-
-
-        return grad_output.detach() if isinstance(grad_output, torch.Tensor) else grad_output
+        return None, grad_output.detach() if isinstance(grad_output, torch.Tensor) else grad_output
 
 
 class SubscriberManager(object):
@@ -161,13 +187,10 @@ class SubscriberManager(object):
     increase the step by 1 once the very first time its backward is called (check _IncrementStep for details).
     """
 
-    registered_subscribers = set()
-
     def __init__(self):
-        pass
+        self._run_ctx: _RuntimeStates = _RuntimeStates()
 
-    @staticmethod
-    def subscribe(module: Union[torch.nn.Module, ORTModule], subscribers):
+    def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers):
         """
         The API called externally to register hooks that is implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
@@ -175,7 +198,7 @@ class SubscriberManager(object):
         if not isinstance(module, torch.nn.Module):
             raise ValueError("module must be a torch.nn.Module instance")
 
-        SubscriberManager._reset_all_states()
+        self._reset_all_states()
 
         if isinstance(module, ORTModule):
             module = module.module
@@ -183,21 +206,16 @@ class SubscriberManager(object):
         for subscriber in subscribers:
             if not isinstance(subscriber, _ModuleHookSubscriberBase):
                 raise ValueError("subscriber must be a _ModuleHookSubscriberBase instance")
-            SubscriberManager.registered_subscribers.add(subscriber)
+            # SubscriberManager.registered_subscribers.add(subscriber)
+            self._run_ctx.global_states.subscribers.add(subscriber)
 
-        SubscriberManager._initialize(module)
+        self._initialize(module)
 
-    @staticmethod
-    def _reset_all_states():
-        global _EXECUTION_GLOBAL_STEP, _OBSERVED_ACTIVATION_NAMES, _MODULE_INDEX_TO_DEPTH, _MODULE_TO_MODULE_INDEX
-        _EXECUTION_GLOBAL_STEP = 0
-        _OBSERVED_ACTIVATION_NAMES = {}
-        _MODULE_INDEX_TO_DEPTH = {}
-        _MODULE_TO_MODULE_INDEX = {}
+    def _reset_all_states(self):
+        self._run_ctx = _RuntimeStates()
 
-    @staticmethod
-    def _initialize(module):
-        if len(SubscriberManager.registered_subscribers) == 0:
+    def _initialize(self, module):
+        if len(self._run_ctx.global_states.subscribers) == 0:
             warnings.warn("No subscribers are registered, skip insert hooks.")
             return
 
@@ -205,7 +223,7 @@ class SubscriberManager(object):
         # Register post forward hook for every module, inside the hook, we loop every tensor output of the module,
         # and wrap it with a autograd Function called _InspectActivation (which take in a tensor and return the same
         # tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation equality.
-        SubscriberManager._register_hooks_recursively(module, 1, count)
+        self._register_hooks_recursively(module, 1, count)
 
         # Register post forward hook for outmost module, then we increase the dump step.
         # Be noted, if backward is not triggered, the global dump step remain the original number,
@@ -214,48 +232,39 @@ class SubscriberManager(object):
         # triggered, override the previous dump files.
         def _post_forward_outmost_module_hook(module, inputs, outputs2):
             def _apply_to_tensors_func(index, outputs):
-                return _IncrementStep.apply(outputs)
+                return _IncrementStep.apply(self._run_ctx, outputs)
 
-            return SubscriberManager._apply_function_to_tensors(module, outputs2, _apply_to_tensors_func, handle_first_tensor_only=False)
+            return SubscriberManager._apply_function_to_tensors(
+                module, outputs2, _apply_to_tensors_func, handle_first_tensor_only=True
+            )
 
         module.register_forward_hook(_post_forward_outmost_module_hook)
 
-    @staticmethod
-    def _register_hooks_recursively(module, depth, count):
-        global _MODULE_TO_MODULE_INDEX, _MODULE_INDEX_TO_DEPTH
+    def _register_hooks_recursively(self, module, depth, count):
         id = count[0]
-        _MODULE_INDEX_TO_DEPTH[id] = depth
-        _MODULE_TO_MODULE_INDEX[module] = id
+        self._run_ctx.global_states.module_index_to_depth[id] = depth
+        self._run_ctx.global_states.module_to_module_index[module] = id
 
         for child in module.children():
-            if isinstance(child, torch.nn.Module) and child not in _MODULE_TO_MODULE_INDEX:
+            if isinstance(child, torch.nn.Module) and child not in self._run_ctx.global_states.module_to_module_index:
                 count[0] += 1
-                SubscriberManager._register_hooks_recursively(child, depth + 1, count)
+                self._register_hooks_recursively(child, depth + 1, count)
 
-        module.register_forward_hook(SubscriberManager._post_forward_module_hook)
+        def _post_forward_module_hook(module, input, output):
+            if module in self._run_ctx.global_states.module_to_module_index and isinstance(module, torch.nn.Module):
+                id = self._run_ctx.global_states.module_to_module_index[module]
 
-    @staticmethod
-    def _post_forward_module_hook(module, input, output):
-        global _MODULE_TO_MODULE_INDEX
-        global _MODULE_INDEX_TO_DEPTH
-        global _OBSERVED_ACTIVATION_NAMES
+                def _apply_to_tensors_func(index, activation_tensor):
+                    name = f"{module.__class__.__name__}_{id}_{index}th_output"
+                    if name not in self._run_ctx.execution_step_states._observed_activation_names:
+                        self._run_ctx.execution_step_states._observed_activation_names[name] = True
+                        return _InspectActivation.apply(name, id, self._run_ctx, activation_tensor)
+                    else:
+                        return activation_tensor
 
-        if module in _MODULE_TO_MODULE_INDEX and isinstance(module, torch.nn.Module):
-            id = _MODULE_TO_MODULE_INDEX[module]
+                return SubscriberManager._apply_function_to_tensors(module, output, _apply_to_tensors_func)
 
-            def _apply_to_tensors_func(index, activation_tensor):
-                global _OBSERVED_ACTIVATION_NAMES
-                name = f"{module.__class__.__name__}_{id}_{index}th_output"
-                if name not in _OBSERVED_ACTIVATION_NAMES:
-                    _OBSERVED_ACTIVATION_NAMES[name] = True
-                    output = activation_tensor
-                    for subscriber in SubscriberManager.registered_subscribers:
-                        output = _InspectActivation.apply(name, id, _MODULE_INDEX_TO_DEPTH[id], output, subscriber)
-                    return output
-                else:
-                    return activation_tensor
-
-            return SubscriberManager._apply_function_to_tensors(module, output, _apply_to_tensors_func)
+        module.register_forward_hook(_post_forward_module_hook)
 
     @staticmethod
     def _is_builtin_type(obj):
@@ -272,7 +281,9 @@ class SubscriberManager(object):
         """
         tensor_output_idx = [0]
 
-        def _apply_to_tensors_by_flatten(module, index_for_tensor_output, outputs, func, handle_first_tensor_only=False):
+        def _apply_to_tensors_by_flatten(
+            module, index_for_tensor_output, outputs, func, handle_first_tensor_only=False
+        ):
             if isinstance(outputs, abc.Sequence):
                 touched_outputs = []
                 for output in outputs:
@@ -292,7 +303,6 @@ class SubscriberManager(object):
             elif type(outputs) is torch.Tensor:
                 cur_id = index_for_tensor_output[0]
                 index_for_tensor_output[0] += 1
-                print(f"cur_id: {cur_id}, handle_first_tensor_only: {handle_first_tensor_only}")
                 if handle_first_tensor_only is True and cur_id > 0:
                     return outputs
                 else:
@@ -302,6 +312,5 @@ class SubscriberManager(object):
                 if not SubscriberManager._is_builtin_type(outputs):
                     raise RuntimeError(f"Unknown type {type(outputs)}")
                 return outputs
-
 
         return _apply_to_tensors_by_flatten(module, tensor_output_idx, data, func, handle_first_tensor_only)

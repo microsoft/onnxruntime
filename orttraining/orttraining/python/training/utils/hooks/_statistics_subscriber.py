@@ -40,16 +40,18 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
 
     def forward(self, activation, depth, name, step):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return StatisticsSubscriber._summarize_activations(activation, depth, name + " forward run", output_file_path)
+        return self._summarize_activations(activation, depth, name, output_file_path, True)
 
     def backward(self, activation, depth, name, step):
         output_file_path = os.path.join(f"{self._output_dir}", f"step_{step}")
-        return StatisticsSubscriber._summarize_activations(activation, depth, name + " backward run", output_file_path)
+        return self._summarize_activations(activation, depth, name, output_file_path, False)
 
-    @staticmethod
-    def _summarize_activations(tensor, depth, name, step_folder):
+    def _summarize_activations(self, tensor, depth, name, step_folder, is_forward):
+        display_name = name + " forward run" if is_forward is True else name + " backward run"
+        output_file_name = name + "_forward" if is_forward is True else name + "_backward"
+
         if tensor is None or not isinstance(tensor, torch.Tensor):
-            print(f"{name} not a torch tensor, value: {tensor}")
+            print(f"{display_name} not a torch tensor, value: {tensor}")
             return None
 
         d = f"{step_folder}"
@@ -58,7 +60,7 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
             # Create a new directory because it does not exist
             os.makedirs(d)
 
-        path = os.path.join(d, f"{name}")
+        path = os.path.join(d, f"{output_file_name}")
 
         torch.set_printoptions(precision=6, linewidth=128)
         flatten_array = tensor.flatten()
@@ -67,11 +69,11 @@ class StatisticsSubscriber(_ModuleHookSubscriberBase):
         num_inf = torch.isinf(flatten_array).sum()
 
         with open(os.path.join(d, "order.txt"), "a") as of:
-            of.write(f"{name}\n")
+            of.write(f"{output_file_name}\n")
 
         with open(path, "w") as f:
             f.write(
-                f"{'>'*depth + name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
+                f"{'>'*depth + display_name} shape: {tensor.shape} dtype: {tensor.dtype} size: {flatten_array.size()} \n"
                 f"min: {flatten_array.min()} max: {flatten_array.max()}, mean: {flatten_array.mean()}, "
                 f"std: {flatten_array.std()} \n"
                 f"nan: {num_nan}, inf: {num_inf}\n"

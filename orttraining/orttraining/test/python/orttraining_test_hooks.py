@@ -53,12 +53,13 @@ def test_statistic_subscriber_single_output(device, backend):
 
     with tempfile.TemporaryDirectory() as temporary_dir:
         output_dir_path = os.path.join(temporary_dir, f"{backend}_out")
+        sub_manager = SubscriberManager()
+        sub_manager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
+
         if backend == "ortmodule":
             from onnxruntime.training.ortmodule import ORTModule
 
             model = ORTModule(model)
-
-        SubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
 
         batch_size = 4
         input1_tensor = torch.randn(batch_size, input_size, device=device)
@@ -71,14 +72,14 @@ def test_statistic_subscriber_single_output(device, backend):
 
         expected_files = [
             "order.txt",
-            "Linear_1_0th_output forward run",
-            "Linear_1_0th_output backward run",
-            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output forward run",
-            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output backward run",
-            "ReLU_2_0th_output forward run",
-            "ReLU_2_0th_output backward run",
-            "Linear_3_0th_output forward run",
-            "Linear_3_0th_output backward run",
+            "Linear_1_0th_output_forward",
+            "Linear_1_0th_output_backward",
+            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output_forward",
+            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output_backward",
+            "ReLU_2_0th_output_forward",
+            "ReLU_2_0th_output_backward",
+            "Linear_3_0th_output_forward",
+            "Linear_3_0th_output_backward",
         ]
 
         for i in range(5):
@@ -87,8 +88,8 @@ def test_statistic_subscriber_single_output(device, backend):
                 assert os.path.exists(os.path.join(step_dir, file))
 
 
-@pytest.mark.parametrize("device", ["cpu"])
-@pytest.mark.parametrize("backend", ["ortmodule"])
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("backend", ["torch", "ortmodule"])
 def test_statistic_subscriber_multiple_outputs(device, backend):
     input_size = 8
     hidden_size = 16
@@ -99,12 +100,14 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
 
     with tempfile.TemporaryDirectory() as temporary_dir:
         output_dir_path = os.path.join(temporary_dir, f"{backend}_out")
+
+        sub_manager = SubscriberManager()
+        sub_manager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
+
         if backend == "ortmodule":
-            from onnxruntime.training.ortmodule import ORTModule, DebugOptions, LogLevel
+            from onnxruntime.training.ortmodule import ORTModule
 
-            model = ORTModule(model, DebugOptions(save_onnx=True, log_level=LogLevel.WARNING, onnx_prefix="testtest"))
-
-        SubscriberManager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
+            model = ORTModule(model)
 
         batch_size = 4
         input1_tensor = torch.randn(batch_size, input_size, device=device).requires_grad_(True)
@@ -118,18 +121,17 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
 
         expected_files = [
             "order.txt",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output forward run",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output backward run",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output forward run",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output backward run",
-            "Linear_1_0th_output forward run",
-            "Linear_1_0th_output backward run",
-            "ReLU_2_0th_output forward run",
-            "ReLU_2_0th_output backward run",
-            "Linear_3_0th_output forward run",
-            "Linear_3_0th_output backward run",
+            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output_forward",
+            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output_backward",
+            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output_forward",
+            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output_backward",
+            "Linear_1_0th_output_forward",
+            "Linear_1_0th_output_backward",
+            "ReLU_2_0th_output_forward",
+            "ReLU_2_0th_output_backward",
+            "Linear_3_0th_output_forward",
+            "Linear_3_0th_output_backward",
         ]
-
 
         for i in range(5):
             step_dir = os.path.join(output_dir_path, f"step_{i}")
