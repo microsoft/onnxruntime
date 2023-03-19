@@ -2526,7 +2526,7 @@ namespace OperatorHelper
 
     std::vector<EdgeShapes> MultiHeadAttentionHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
     {
-        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() == 8);
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 1);
 
         auto queryShape = shapeInfo.GetInputTensorShape(0);
         ML_CHECK_VALID_ARGUMENT(queryShape.size() == 3 || queryShape.size() == 5);
@@ -2630,6 +2630,23 @@ namespace OperatorHelper
     void AttentionHelper::Initialize(const IKernelInformationAdapter& kernelInformation)
     {
         m_qkvHiddenSizes = kernelInformation.GetAttributes().GetOptionalAttributeVectorInt32(AttrName::QkvHiddenSizes);
+    }
+
+    std::vector<EdgeShapes> SkipLayerNormHelper::GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const
+    {
+        ML_CHECK_VALID_ARGUMENT(shapeInfo.GetInputCount() >= 3);
+
+        auto inputShape = shapeInfo.GetInputTensorShape(0);
+
+        std::vector<EdgeShapes> outputShapes(4);
+        outputShapes[0] = EdgeShapes(inputShape);
+
+        if (shapeInfo.IsOutputValid(3))
+        {
+            outputShapes[3] = EdgeShapes(inputShape);
+        }
+
+        return outputShapes;
     }
 
 } // namespace OperatorHelper

@@ -437,7 +437,6 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias) {
 }
 
 // Don't enable this test for DML builds as these EP doesn't produce the new optional output yet
-#if !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
   int batch_size = 2;
   int sequence_length = 2;
@@ -494,8 +493,8 @@ TEST(SkipLayerNormTest, SkipLayerNormBatch2_Bias_ProducingOptionalOutput) {
           hidden_size);
 }
 
-// SkipSimplifiedLayerNorm has not been enabled for ROCm yet
-#if !defined(USE_ROCM)
+// SkipSimplifiedLayerNorm has not been enabled for ROCm and DML yet
+#if !defined(USE_ROCM) && !defined(USE_DML)
 TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
   int batch_size = 1;
   int sequence_length = 2;
@@ -531,7 +530,6 @@ TEST(SkipLayerNormTest, SkipSimplifiedLayerNormBatch1_Float16) {
           true,
           true);
 }
-#endif
 #endif
 
 }  // namespace test

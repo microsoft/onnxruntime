@@ -239,16 +239,20 @@ public:
             outputCount,
         };
 
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == inputCount);
-        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == outputCount);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 1);
+        ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        bool maskIsUnpaddedSequenceBounds =
-            kernelCreationContext.IsInputValid(keyPaddingMaskIndex) &&
-            kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
-
-        bool keyValueIsPast =
-            kernelCreationContext.IsInputValid(keyIndex) &&
-            kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 4;
+        const bool hasKey = kernelCreationContext.IsInputValid(keyIndex);
+        const bool hasValue = kernelCreationContext.IsInputValid(valueIndex);
+        const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
+        const bool hasKeyPaddingMask = kernelCreationContext.IsInputValid(keyPaddingMaskIndex);
+        const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
+        const bool hasPastKey = kernelCreationContext.IsInputValid(pastKeyIndex);
+        const bool hasPastValue = kernelCreationContext.IsInputValid(pastValueIndex);
+        const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
+        const bool hasPresentValueOutput = kernelCreationContext.IsOutputValid(outputPresentValueIndex);
+        const bool maskIsUnpaddedSequenceBounds = hasKeyPaddingMask && kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
+        const bool keyValueIsPast = hasKey && kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 4;
 
         std::vector<std::optional<uint32_t>> inputIndices = {
             queryIndex,
@@ -261,7 +265,13 @@ public:
             keyValueIsPast ? keyIndex : pastKeyIndex,
             keyValueIsPast ? valueIndex : pastValueIndex,
         };
-        DmlOperator::Initialize(kernelCreationContext, inputIndices, std::nullopt, std::nullopt, std::nullopt, 1);
+
+        std::vector<std::optional<uint32_t>> outputIndices = {
+            outputIndex,
+            outputPresentKeyIndex,
+            outputPresentValueIndex,
+        };
+        DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, 1);
 
         auto queryTensorShape = m_inputTensorDescs[dmlQueryIndex].GetSizes();
         ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3 || queryTensorShape.size() == 5);
@@ -270,11 +280,11 @@ public:
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
         const uint32_t headSize = queryTensorShape.size() == 5 ? queryTensorShape[4] : queryTensorShape[2] / numHeads;
 
-        if (m_inputTensorDescs[dmlKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasKey)
         {
             ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3);
 
-            if (m_inputTensorDescs[dmlValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+            if (hasValue)
             {
                 ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3 || m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 4);
                 ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == m_inputTensorDescs[dmlKeyIndex].GetDimensionCount());
@@ -284,7 +294,7 @@ public:
                 ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 5);
             }
         }
-        else if (m_inputTensorDescs[dmlPastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        else if (hasPastKey)
         {
             ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3);
         }
@@ -293,12 +303,12 @@ public:
             ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 5);
         }
 
-        if (m_inputTensorDescs[dmlBiasIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasBias)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlBiasIndex].GetDimensionCount() == 1);
         }
 
-        if (m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasKeyPaddingMask && !maskIsUnpaddedSequenceBounds)
         {
             auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
@@ -315,7 +325,7 @@ public:
                 actualShape);
         }
 
-        if (m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasKeyPaddingMask && maskIsUnpaddedSequenceBounds)
         {
             auto unpaddedKeySequenceBoundsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape.size() == 1);
@@ -327,17 +337,17 @@ public:
                 desiredShape);
         }
 
-        if (m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasRelativePositionBias)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDimensionCount() == 4);
         }
 
-        if (m_inputTensorDescs[dmlPastKeyIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasPastKey)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastKeyIndex].GetDimensionCount() == 4);
         }
 
-        if (m_inputTensorDescs[dmlPastValueIndex].GetDmlDataType() != DML_TENSOR_TYPE_INVALID)
+        if (hasPastValue)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastValueIndex].GetDimensionCount() == 4);
         }
@@ -347,17 +357,17 @@ public:
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaDesc = {};
         mhaDesc.InputQueryTensor = &inputDescs[dmlQueryIndex];
-        mhaDesc.InputKeyTensor = inputDescs[dmlKeyIndex].Desc ? &inputDescs[dmlKeyIndex] : nullptr;
-        mhaDesc.InputValueTensor = inputDescs[dmlValueIndex].Desc ? &inputDescs[dmlValueIndex] : nullptr;
-        mhaDesc.InputBiasTensor = inputDescs[dmlBiasIndex].Desc ? &inputDescs[dmlBiasIndex] : nullptr;
-        mhaDesc.InputMaskTensor = inputDescs[dmlKeyPaddingMaskIndex].Desc ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
-        mhaDesc.InputUnpaddedKeySequenceBoundsTensor = inputDescs[dmlUnpaddedKeySequenceBoundsIndex].Desc ? &inputDescs[dmlUnpaddedKeySequenceBoundsIndex] : nullptr;
-        mhaDesc.InputRelativePositionBiasTensor = inputDescs[dmlRelativePositionBiasIndex].Desc ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
-        mhaDesc.InputPastKeyTensor = inputDescs[dmlPastKeyIndex].Desc ? &inputDescs[dmlPastKeyIndex] : nullptr;
-        mhaDesc.InputPastValueTensor = inputDescs[dmlPastValueIndex].Desc ? &inputDescs[dmlPastValueIndex] : nullptr;
+        mhaDesc.InputKeyTensor = hasKey ? &inputDescs[dmlKeyIndex] : nullptr;
+        mhaDesc.InputValueTensor = hasValue ? &inputDescs[dmlValueIndex] : nullptr;
+        mhaDesc.InputBiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
+        mhaDesc.InputMaskTensor = (hasKeyPaddingMask && !maskIsUnpaddedSequenceBounds) ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+        mhaDesc.InputUnpaddedKeySequenceBoundsTensor = (hasKeyPaddingMask && maskIsUnpaddedSequenceBounds) ? &inputDescs[dmlUnpaddedKeySequenceBoundsIndex] : nullptr;
+        mhaDesc.InputRelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaDesc.InputPastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
+        mhaDesc.InputPastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
         mhaDesc.OutputTensor = &outputDescs[outputIndex];
-        mhaDesc.OutputPresentKeyTensor = outputDescs[outputPresentKeyIndex].Desc ? &outputDescs[outputPresentKeyIndex] : nullptr;
-        mhaDesc.OutputPresentValueTensor = outputDescs[outputPresentValueIndex].Desc ? &outputDescs[outputPresentValueIndex] : nullptr;
+        mhaDesc.OutputPresentKeyTensor = hasPresentKeyOutput ? &outputDescs[outputPresentKeyIndex] : nullptr;
+        mhaDesc.OutputPresentValueTensor = hasPresentValueOutput ? &outputDescs[outputPresentValueIndex] : nullptr;
         mhaDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaDesc.NumHeads = numHeads;
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
