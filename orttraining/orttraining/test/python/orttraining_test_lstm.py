@@ -871,16 +871,16 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
 @pytest.mark.parametrize("batch_size", [2, 4, 32])
 @pytest.mark.parametrize("input_size", [2, 4, 32])
 @pytest.mark.parametrize("hidden_size", [2, 4, 32])
-def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size, bias, peephole_weights):
+def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
     num_directions = 1
 
     lstm = LSTM(sequence_length, batch_size, input_size, hidden_size)
     _ = lstm.backward_graph(
-        bias=bias,
+        bias=True,
         sequence_lengths=False,
         initial_hidden_state=True,
         initial_cell_state=True,
-        peephole_weights=peephole_weights,
+        peephole_weights=False,
         final_hidden_state=True,
         final_cell_state=True,
     )
