@@ -4451,17 +4451,15 @@ Return true if all elements are true and false otherwise.
       .Input(0, "X", "Original input to the LSTM cell.", "T")
       .Input(1, "W", "Input weight parameters to the LSTM cell.", "T")
       .Input(2, "R", "Input recurrent weight parameters to the LSTM cell.", "T")
-      .Input(3, "B", "Input bias parameters to the LSTM cell.", "T", OpSchema::Optional)
-      .Input(4, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
-      .Input(5, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
-      .Input(6, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
-      .Input(7, "P", "Input peephole weight parameters to the LSTM cell.", "T", OpSchema::Optional)
-      .Input(8, "HAll", "Hidden states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
-      .Input(9, "CAll", "Cell states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
-      .Input(10, "iofc", "Intermediate gate computations for all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
-      .Input(11, "dHAll", "Gradient of loss with respect to the output Y of the LSTM cell", "T", OpSchema::Optional)
-      .Input(12, "dHFinal", "Gradient of loss with respect to the output Y_h of the LSTM cell", "T", OpSchema::Optional)
-      .Input(13, "dCFinal", "Gradient of loss with respect to the output Y_c of the LSTM cell", "T", OpSchema::Optional)
+      .Input(3, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(4, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(5, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(6, "HAll", "Hidden states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(7, "CAll", "Cell states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(8, "iofc", "Intermediate gate computations for all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(9, "dHAll", "Gradient of loss with respect to the output Y of the LSTM cell", "T", OpSchema::Optional)
+      .Input(10, "dHFinal", "Gradient of loss with respect to the output Y_h of the LSTM cell", "T", OpSchema::Optional)
+      .Input(11, "dCFinal", "Gradient of loss with respect to the output Y_c of the LSTM cell", "T", OpSchema::Optional)
       .Output(0, "dX", "Gradient of loss with respect to the input (to the LSTM cell).", "T", OpSchema::Optional)
       .Output(1, "dW", "Gradient of loss with respect to the weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
       .Output(2, "dR", "Gradient of loss with respect to the recurrence weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
@@ -4504,16 +4502,10 @@ Return true if all elements are true and false otherwise.
           updateOutputShape(ctx, 2, {num_directions, hidden_size_x4, hidden_size});
 
         if (num_outputs > 3) {
-          TensorShapeProto::Dimension hidden_size_x8;
-          if (hasInputShape(ctx, 3)) {
-            auto& bias_shape = getInputShape(ctx, 3);
-            if (bias_shape.dim_size() != 2) {
-              fail_shape_inference("Bias tensor must have rank 2");
-            }
-            hidden_size_x8 = bias_shape.dim(1);
-          }
+          TensorShapeProto::Dimension eight;
+          eight.set_dim_value(8);
           // Gradient with respect to the bias tensor
-          updateOutputShape(ctx, 3, {num_directions, hidden_size_x8});
+          updateOutputShape(ctx, 3, {num_directions, eight * hidden_size});
         }
 
         if (num_outputs > 4) {
@@ -4531,16 +4523,10 @@ Return true if all elements are true and false otherwise.
         }
 
         if (num_outputs > 6) {
-          TensorShapeProto::Dimension hidden_size_x3;
-          if (hasInputShape(ctx, 7)) {
-            auto& peephole_shape = getInputShape(ctx, 7);
-            if (peephole_shape.dim_size() != 2) {
-              fail_shape_inference("Peephole weight tensor must have rank 2");
-            }
-            hidden_size_x3 = peephole_shape.dim(1);
-          }
+          TensorShapeProto::Dimension three;
+          three.set_dim_value(3);
           // Gradient with respect to the peephole weight tensor
-          updateOutputShape(ctx, 6, {num_directions, hidden_size_x3});
+          updateOutputShape(ctx, 6, {num_directions, three * hidden_size});
         }
       });
 }

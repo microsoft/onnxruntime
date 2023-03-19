@@ -406,10 +406,10 @@ class LSTM:
             inputs (np.ndarray): input tensor of shape (sequence_length, batch_size, input_size)
             weights (np.ndarray): weight tensor of shape (num_directions, 4 * hidden_size, input_size)
             recurrence_weights (np.ndarray): recurrence weight tensor of shape (num_directions, 4 * hidden_size, hidden_size)
-            bias (np.ndarray): bias tensor of shape (num_directions, 8 * hidden_size)
+            bias (bool): whether to compute the bias gradient or not
             initial_hidden_state (np.ndarray): initial hidden state tensor of shape (num_directions, batch_size, hidden_size)
             initial_cell_state (np.ndarray): initial cell state tensor of shape (num_directions, batch_size, hidden_size)
-            peephole_weights (np.ndarray): peephole weight tensor of shape (num_directions, 3 * hidden_size)
+            peephole_weights (bool): whether to compute the peephole weights gradient or not
             all_hidden_states (np.ndarray): output tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
             all_cell_states (np.ndarray): cell state tensor of shape (sequence_length, num_directions, batch_size, hidden_size)
             iofc (np.ndarray): input, output, forget, and cell gate tensor of shape (sequence_length, num_directions, batch_size, 4 * hidden_size)
@@ -423,7 +423,7 @@ class LSTM:
         grad_inputs = np.zeros((self._sequence_length, self._batch_size, self.input_size), np.float32)
         grad_weights = np.zeros((self._num_directions, 4 * self._hidden_size, self.input_size), np.float32)
         grad_recurrence_weights = np.zeros((self._num_directions, 4 * self._hidden_size, self._hidden_size), np.float32)
-        grad_bias = np.zeros((self._num_directions, 8 * self._hidden_size), np.float32) if bias is not None else None
+        grad_bias = np.zeros((self._num_directions, 8 * self._hidden_size), np.float32) if bias is True else None
         grad_initial_hidden_state = (
             np.zeros((self._num_directions, self._batch_size, self._hidden_size), np.float32)
             if initial_hidden_state is not None
@@ -435,9 +435,7 @@ class LSTM:
             else None
         )
         grad_peephole_weights = (
-            np.zeros((self._num_directions, 3 * self._hidden_size), np.float32)
-            if peephole_weights is not None
-            else None
+            np.zeros((self._num_directions, 3 * self._hidden_size), np.float32) if peephole_weights is True else None
         )
 
         for idx in range(self._batch_size):
@@ -607,11 +605,6 @@ class LSTM:
         recurrence_weights = helper.make_tensor_value_info(
             "recurrence_weights", TensorProto.FLOAT, [self._num_directions, 4 * self._hidden_size, self._hidden_size]
         )
-        bias = (
-            helper.make_tensor_value_info("bias", TensorProto.FLOAT, [self._num_directions, 8 * self._hidden_size])
-            if bias
-            else None
-        )
         sequence_lengths = (
             helper.make_tensor_value_info("sequence_lengths", TensorProto.INT64, [self._batch_size])
             if sequence_lengths
@@ -629,13 +622,6 @@ class LSTM:
                 "initial_cell_state", TensorProto.FLOAT, [self._num_directions, self._batch_size, self._hidden_size]
             )
             if initial_cell_state
-            else None
-        )
-        peephole_weights = (
-            helper.make_tensor_value_info(
-                "peephole_weights", TensorProto.FLOAT, [self._num_directions, 3 * self._hidden_size]
-            )
-            if peephole_weights
             else None
         )
 
@@ -738,11 +724,9 @@ class LSTM:
                 "inputs",
                 "weights",
                 "recurrence_weights",
-                "bias" if bias is not None else "",
                 "sequence_lengths" if sequence_lengths is not None else "",
                 "initial_hidden_state" if initial_hidden_state is not None else "",
                 "initial_cell_state" if initial_cell_state is not None else "",
-                "peephole_weights" if peephole_weights is not None else "",
                 "all_hidden_states" if all_hidden_states is not None else "",
                 "all_cell_states" if all_cell_states is not None else "",
                 "iofc" if iofc is not None else "",
@@ -772,11 +756,9 @@ class LSTM:
                     inputs,
                     weights,
                     recurrence_weights,
-                    bias,
                     sequence_lengths,
                     initial_hidden_state,
                     initial_cell_state,
-                    peephole_weights,
                     all_hidden_states,
                     all_cell_states,
                     iofc,
@@ -814,10 +796,8 @@ class LSTM:
         inputs,
         weights,
         recurrence_weights,
-        bias=None,
         initial_hidden_state=None,
         initial_cell_state=None,
-        peephole_weights=None,
         all_hidden_states=None,
         all_cell_states=None,
         iofc=None,
@@ -838,14 +818,10 @@ class LSTM:
             "iofc": iofc,
             "grad_all_hidden_states": grad_all_hidden_states,
         }
-        if bias is not None:
-            ort_inputs["bias"] = bias
         if initial_hidden_state is not None:
             ort_inputs["initial_hidden_state"] = initial_hidden_state
         if initial_cell_state is not None:
             ort_inputs["initial_cell_state"] = initial_cell_state
-        if peephole_weights is not None:
-            ort_inputs["peephole_weights"] = peephole_weights
         if grad_final_hidden_state is not None:
             ort_inputs["grad_final_hidden_state"] = grad_final_hidden_state
         if grad_final_cell_state is not None:
@@ -895,16 +871,16 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
 @pytest.mark.parametrize("batch_size", [2, 4, 32])
 @pytest.mark.parametrize("input_size", [2, 4, 32])
 @pytest.mark.parametrize("hidden_size", [2, 4, 32])
-def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
+def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size, bias, peephole_weights):
     num_directions = 1
 
     lstm = LSTM(sequence_length, batch_size, input_size, hidden_size)
     _ = lstm.backward_graph(
-        bias=True,
+        bias=bias,
         sequence_lengths=False,
         initial_hidden_state=True,
         initial_cell_state=True,
-        peephole_weights=False,
+        peephole_weights=peephole_weights,
         final_hidden_state=True,
         final_cell_state=True,
     )
@@ -912,10 +888,10 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
     inputs = np.random.rand(sequence_length, batch_size, input_size).astype(np.float32)
     weights = np.random.rand(num_directions, 4 * hidden_size, input_size).astype(np.float32)
     recurrence_weights = np.random.rand(num_directions, 4 * hidden_size, hidden_size).astype(np.float32)
-    bias = np.random.rand(num_directions, 8 * hidden_size).astype(np.float32)
+    bias = True
     initial_hidden_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
     initial_cell_state = np.random.rand(num_directions, batch_size, hidden_size).astype(np.float32)
-    peephole_weights = None
+    peephole_weights = False
 
     all_hidden_states = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
     all_cell_states = np.random.rand(sequence_length, num_directions, batch_size, hidden_size).astype(np.float32)
@@ -928,10 +904,8 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
         inputs,
         weights,
         recurrence_weights,
-        bias,
         initial_hidden_state,
         initial_cell_state,
-        peephole_weights,
         all_hidden_states,
         all_cell_states,
         iofc,

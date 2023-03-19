@@ -1896,19 +1896,26 @@ IMPLEMENT_GRADIENT_BUILDER(GetFakeQuantGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetLSTMGradient) {
-  std ::vector<ArgDef> input_args;
+  std::vector<ArgDef> input_args;
+  constexpr int bias_input_index = 3;
+  constexpr int peephole_weights_input_index = 7;
 
   // Add inputs of the LSTMTraining node as inputs of the LSTMGrad node
-  // Add inputs from the source node for X, W, R, B, SL, H0, C0, P
+  // Add inputs from the source node for X, W, R, SL, H0, C0
   // Add empty argdef for non existing inputs
-  const int input_size = GetSrcNodeInputSize();
-  for (int i = 0; i < 8; i++) {
-    if (i < input_size && I(i).Exists()) {
+  for (int i = 0; i < GetSrcNodeInputSize(); i++) {
+    if (i == bias_input_index || i == peephole_weights_input_index)
+      continue;
+    if (I(i).Exists()) {
       input_args.push_back(I(i));
     } else {
       input_args.push_back(ArgDef());
     }
   }
+
+  ORT_ENFORCE(GetSrcNodeOutputSize() >= 5,
+              "LSTMTraining node must generate the outputs all hidden states (index 0), "
+              "all cell states (index 3) and iofc gate copmutations (index 4) so that gradients can be computed.");
 
   if (O(0).Exists()) {
     input_args.push_back(O(0));  // all hidden states output of the LSTMTraining node

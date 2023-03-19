@@ -49,7 +49,10 @@ void ValidateLSTMInputs(const Tensor* X, const Tensor* W, const Tensor* R, const
                 "Input B must have shape {", directions, ", ", 8 * hidden_size, "}. Actual:", B_shape);
   }
 
-  ORT_ENFORCE(!SL, "Varying sequence lengths is not supported yet for LSTMTraining and LSTMGrad.");
+  ORT_ENFORCE(!SL,
+              "Sequence lengths input tensor (implying varying length input sequence length) "
+              "is not supported for LSTMTraining and LSTMGrad. Fixed sequence length can be inferred from the "
+              "input tensor shape.");
 
   if (H0 != nullptr) {
     const auto& H0_shape = H0->Shape();
@@ -122,7 +125,8 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(grad_HAll_shape[1]) == directions &&
                     narrow<int>(grad_HAll_shape[2]) == batch_size &&
                     narrow<int>(grad_HAll_shape[3]) == hidden_size,
-                "Input grad_HAll_shape must have shape {", sequence_length, ", ", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_HAll_shape);
+                "Input grad_HAll must have shape {", sequence_length, ", ", directions, ", ", batch_size,
+                ", ", hidden_size, "}. Actual:", grad_HAll_shape);
   }
 
   if (grad_Ht != nullptr) {
@@ -131,7 +135,7 @@ void ValidateLSTMGradInputs(const Tensor* X, const Tensor* HAll, const Tensor* C
                     narrow<int>(grad_Ht_shape[0]) == directions &&
                     narrow<int>(grad_Ht_shape[1]) == batch_size &&
                     narrow<int>(grad_Ht_shape[2]) == hidden_size,
-                "Input grad_Ht_shape must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ht_shape);
+                "Input grad_Ht must have shape {", directions, ", ", batch_size, ", ", hidden_size, "}. Actual:", grad_Ht_shape);
   }
 
   if (grad_Ct != nullptr) {
@@ -161,12 +165,16 @@ LSTMAttributes::LSTMAttributes(const OpKernelInfo& info) {
     activation_func_names.emplace_back("tanh");
     activation_func_names.emplace_back("tanh");
   }
+
+  ORT_ENFORCE(activation_func_names.size() == static_cast<size_t>(num_directions) * 3U,
+              "Unexpected number of activation function names provided. Expected: ", num_directions * 3, " Actual: ", activation_func_names.size());
+
   ORT_ENFORCE(activation_func_names[0] == "sigmoid",
-              "LSTM and LSTMGrad only supports the sigmoid function for the f activation parameter.");
+              "LSTM and LSTMGrad only support the sigmoid function for the f activation parameter.");
   ORT_ENFORCE(activation_func_names[1] == "tanh",
-              "LSTM and LSTMGrad only supports the tanh function for the g activation parameter.");
+              "LSTM and LSTMGrad only support the tanh function for the g activation parameter.");
   ORT_ENFORCE(activation_func_names[2] == "tanh",
-              "LSTM and LSTMGrad only supports the tanh function for the h activation parameter.");
+              "LSTM and LSTMGrad only support the tanh function for the h activation parameter.");
   activation_funcs = rnn::detail::ActivationFuncs(activation_func_names,
                                                   activation_func_alphas,
                                                   activation_func_betas);
@@ -184,7 +192,6 @@ LSTMAttributes::LSTMAttributes(const OpKernelInfo& info) {
 
 template <typename T>
 LSTMInputs<T>::LSTMInputs(OpKernelContext* context, const int directions, const int hidden_size) {
-  // Inputs to forward that are also inputs to the gradient kernel
   const Tensor* X = context->Input<Tensor>(0);   // input sequence [seq_length, batch_size, input_size]
   const Tensor* W = context->Input<Tensor>(1);   // weights [directions, 4 * hidden_size, input_size]
   const Tensor* R = context->Input<Tensor>(2);   // recurrence weights [directions, 4 * hidden_size, hidden_size]
@@ -224,8 +231,8 @@ LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, cons
   const TensorShape CAll_shape{sequence_length, directions, batch_size, hidden_size};  // [seq_length, directions, batch_size, hidden_size]
   Tensor* CAll = context->Output(3, CAll_shape);                                       // all cell states
   const int64_t hidden_size_x4 = static_cast<int64_t>(4) * static_cast<int64_t>(hidden_size);
-  const TensorShape iofc_shape{sequence_length, directions, batch_size, hidden_size_x4};  // [seq_length, directions, batch_size, 4 * hidden_size]
-  Tensor* IOFC = context->Output(4, iofc_shape);                                          // iofc gate computations
+  const TensorShape IOFC_shape{sequence_length, directions, batch_size, hidden_size_x4};  // [seq_length, directions, batch_size, 4 * hidden_size]
+  Tensor* IOFC = context->Output(4, IOFC_shape);                                          // iofc gate computations
 
   AllocatorPtr alloc;
   ORT_THROW_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
@@ -242,38 +249,28 @@ LSTMOutputs<T>::LSTMOutputs(OpKernelContext* context, const int directions, cons
                                                 c_final_ptr_, true, static_cast<T>(0));
 
   ORT_ENFORCE(CAll, "All cell states output is required for LSTMTraining to compute gradients.");
-  const size_t all_states_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(directions) *
-                                 static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size);
-  all_cell_states = CAll ? CAll->MutableDataAsSpan<T>()
-                         : rnn::detail::Allocate(alloc, all_states_size,
-                                                 call_ptr_, true, static_cast<T>(0));
+  all_cell_states = CAll->MutableDataAsSpan<T>();
 
   ORT_ENFORCE(IOFC, "i, o, f, c gate computation output is required for LSTMTraining to compute gradients.");
-  const size_t iofc_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(directions) *
-                           static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size) * 4U;
-  iofc = IOFC ? IOFC->MutableDataAsSpan<T>()
-              : rnn::detail::Allocate(alloc, iofc_size, iofc_ptr_, true, static_cast<T>(0));
+  iofc = IOFC->MutableDataAsSpan<T>();
 }
 
 template <typename T>
 LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions, const int hidden_size) {
-  // Gradient inputs to the gradient kernel
-  const Tensor* X = context->Input<Tensor>(0);           // input sequence [seq_length, batch_size, input_size]
-  const Tensor* W = context->Input<Tensor>(1);           // weights [directions, 4 * hidden_size, input_size]
-  const Tensor* R = context->Input<Tensor>(2);           // recurrence weights [directions, 4 * hidden_size, hidden_size]
-  const Tensor* B = context->Input<Tensor>(3);           // bias [directions, 8 * hidden_size]
-  const Tensor* SL = context->Input<Tensor>(4);          // sequence lengths [batch_size]
-  const Tensor* H0 = context->Input<Tensor>(5);          // initial hidden state [directions, batch_size, hidden_size]
-  const Tensor* C0 = context->Input<Tensor>(6);          // initial cell state [directions, batch_size, hidden_size]
-  const Tensor* P = context->Input<Tensor>(7);           // peephole weights [directions, 3 * hidden_size]
-  const Tensor* HAll = context->Input<Tensor>(8);        // all hidden states [seq_length, directions, batch_size, hidden_size]
-  const Tensor* CAll = context->Input<Tensor>(9);        // all cell states [seq_length, directions, batch_size, hidden_size]
-  const Tensor* IOFC = context->Input<Tensor>(10);       // iofc gate computations [seq_length, directions, batch_size, 4 * hidden_size]
-  const Tensor* grad_HAll = context->Input<Tensor>(11);  // grad w.r.t all hidden states [seq_length, directions, batch_size, hidden_size]
-  const Tensor* grad_Ht = context->Input<Tensor>(12);    // grad w.r.t final hidden state [directions, batch_size, hidden_size]
-  const Tensor* grad_Ct = context->Input<Tensor>(13);    // grad w.r.t final cell state [directions, batch_size, hidden_size]
+  const Tensor* X = context->Input<Tensor>(0);          // input sequence [seq_length, batch_size, input_size]
+  const Tensor* W = context->Input<Tensor>(1);          // weights [directions, 4 * hidden_size, input_size]
+  const Tensor* R = context->Input<Tensor>(2);          // recurrence weights [directions, 4 * hidden_size, hidden_size]
+  const Tensor* SL = context->Input<Tensor>(3);         // sequence lengths [batch_size]
+  const Tensor* H0 = context->Input<Tensor>(4);         // initial hidden state [directions, batch_size, hidden_size]
+  const Tensor* C0 = context->Input<Tensor>(5);         // initial cell state [directions, batch_size, hidden_size]
+  const Tensor* HAll = context->Input<Tensor>(6);       // all hidden states [seq_length, directions, batch_size, hidden_size]
+  const Tensor* CAll = context->Input<Tensor>(7);       // all cell states [seq_length, directions, batch_size, hidden_size]
+  const Tensor* IOFC = context->Input<Tensor>(8);       // iofc gate computations [seq_length, directions, batch_size, 4 * hidden_size]
+  const Tensor* grad_HAll = context->Input<Tensor>(9);  // grad w.r.t all hidden states [seq_length, directions, batch_size, hidden_size]
+  const Tensor* grad_Ht = context->Input<Tensor>(10);   // grad w.r.t final hidden state [directions, batch_size, hidden_size]
+  const Tensor* grad_Ct = context->Input<Tensor>(11);   // grad w.r.t final cell state [directions, batch_size, hidden_size]
 
-  ValidateLSTMInputs(X, W, R, B, SL, H0, C0, P, directions, hidden_size);
+  ValidateLSTMInputs(X, W, R, nullptr, SL, H0, C0, nullptr, directions, hidden_size);
   ValidateLSTMGradInputs(X, HAll, CAll, IOFC, grad_HAll, grad_Ht, grad_Ct, directions, hidden_size);
 
   AllocatorPtr alloc;
@@ -289,7 +286,8 @@ LSTMGradInputs<T>::LSTMGradInputs(OpKernelContext* context, const int directions
   weights = W->DataAsSpan<T>();
   recurrence_weights = R->DataAsSpan<T>();
   sequence_lengths = SL ? SL->DataAsSpan<int>() : gsl::span<const int>();
-  const size_t initial_state_size = static_cast<size_t>(shape.batch_size) * static_cast<size_t>(hidden_size);
+  const size_t initial_state_size = static_cast<size_t>(directions) * static_cast<size_t>(shape.batch_size) *
+                                    static_cast<size_t>(hidden_size);
   initial_hidden_state = H0 ? H0->DataAsSpan<T>()
                             : rnn::detail::Allocate(alloc, initial_state_size,
                                                     initial_hidden_state_ptr_, true, static_cast<T>(0));
@@ -340,7 +338,8 @@ LSTMGradOutputs<T>::LSTMGradOutputs(OpKernelContext* context, const int directio
   grad_weights = dW->MutableDataAsSpan<T>();
   grad_recurrence_weights = dR->MutableDataAsSpan<T>();
   grad_bias = dB ? dB->MutableDataAsSpan<T>() : gsl::span<T>();
-  const size_t initial_state_size = static_cast<size_t>(batch_size) * static_cast<size_t>(hidden_size);
+  const size_t initial_state_size = static_cast<size_t>(directions) * static_cast<size_t>(batch_size) *
+                                    static_cast<size_t>(hidden_size);
   grad_initial_cell_state = dC0 ? dC0->MutableDataAsSpan<T>()
                                 : rnn::detail::Allocate(alloc, initial_state_size,
                                                         grad_initial_cell_state_ptr_, true, static_cast<T>(0));

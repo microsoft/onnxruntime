@@ -262,6 +262,8 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
 
       // Ct = ft (.) Ct-1 + it (.) ct
       // dL/dCt-1 = dL/dCt (.) ft ---------- (8)
+      // Note that peephole weights do not impact the backward propagation to Ct-1 and Ct
+      // as noted in the paper.
       elementwise_product(grad_Ct, ft, grad_Ct, hidden_size_);
 
       // ct = tanh(ac)

@@ -388,7 +388,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
 
             if (training_mode_) {
               auto all_cell_states_lrow = all_cell_states.begin() + step * output_step_length + lrow * hidden_size_;
-              std::fill_n(all_cell_states_lrow, hidden_size_, static_cast<T>(0));
+              std::fill_n(all_cell_states_lrow, hidden_size_, (T)0);
             }
           }
         }
@@ -431,7 +431,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
       if (training_mode_) {
         const auto cell_span_to_zero_cell = all_cell_states.subspan(max_sequence_length * output_step_length,
                                                                     (seq_length_ - max_sequence_length) * output_step_length);
-        std::fill_n(cell_span_to_zero_cell.begin(), cell_span_to_zero_cell.size(), static_cast<T>(0));
+        std::fill_n(cell_span_to_zero_cell.begin(), cell_span_to_zero_cell.size(), T{});
       }
     } else {
       for (int i = max_sequence_length; i < seq_length_; ++i) {  // non-contiguous
@@ -440,7 +440,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
 
         if (training_mode_) {
           const auto cell_span_to_zero_cell = all_cell_states.subspan(i * output_step_length, batch_size_ * hidden_size_);
-          std::fill_n(cell_span_to_zero_cell.begin(), cell_span_to_zero_cell.size(), static_cast<T>(0));
+          std::fill_n(cell_span_to_zero_cell.begin(), cell_span_to_zero_cell.size(), T{});
         }
       }
     }
@@ -473,7 +473,7 @@ void UniDirectionalLstm<T>::GateComputations(
 
         if (training_mode_) {
           auto fill_cell_states = batched_cell_states + (row + b) * hidden_size_;
-          std::fill(fill_cell_states, fill_cell_states + hidden_size_, static_cast<T>(0));
+          std::fill(fill_cell_states, fill_cell_states + hidden_size_, T{});
         }
       }
 

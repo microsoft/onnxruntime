@@ -93,6 +93,9 @@ class UniDirectionalLstm {
 
   int num_threads_ = -1;
 
+  // output_iofc_ptr_ and output_iofc_ are not used when training_mode_ is true.
+  // It is expected that the caller of Compute provide the iofc span to be populated post computation
+  // in training mode.
   IAllocatorUniquePtr<T> output_iofc_ptr_;
   IAllocatorUniquePtr<T> hidden0_ptr_, batched_hidden0_ptr_;
   gsl::span<T> output_iofc_;

@@ -3,7 +3,6 @@
 
 #include "orttraining/core/optimizer/lstm_replacement.h"
 
-#include "core/optimizer/utils.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_utils.h"
 

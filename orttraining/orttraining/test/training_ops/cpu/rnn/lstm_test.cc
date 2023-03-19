@@ -127,12 +127,7 @@ TEST(LSTMTest, BackwardCompute) {
                         0.7f, 1.0f, 3.0f,
                         5.0f, 7.0f, 8.0f,
                         9.0f, 10.0f, 11.0f});
-  test.AddInput<float>("bias", {directions, 8 * hidden_size},
-                       {3.0f, 4.0f, 10.0f, 11.0f, 12.0f, 13.0f, 0.6f, 0.7f,
-                        0.8f, 0.9f, 6.0f, 7.0f, 0.1f, 0.2f, 0.3f, 0.4f,
-                        1.0f, 2.0f, 8.0f, 9.0f, 16.0f, 17.0f, 18.0f, 19.0f});
 
-  test.AddOptionalInputEdge<float>();
   test.AddOptionalInputEdge<float>();
   test.AddOptionalInputEdge<float>();
   test.AddOptionalInputEdge<float>();
