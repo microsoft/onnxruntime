@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -41,9 +41,9 @@ public final class OrtUtil {
     int[] newShape = new int[shape.length];
     for (int i = 0; i < shape.length; i++) {
       long curDim = shape[i];
-      if (curDim < 1 || curDim > Integer.MAX_VALUE) {
+      if (curDim < 0 || curDim > Integer.MAX_VALUE) {
         throw new IllegalArgumentException(
-            "Invalid shape for a Java array, expected positive entries smaller than Integer.MAX_VALUE. Found "
+            "Invalid shape for a Java array, expected non-negative entries smaller than Integer.MAX_VALUE. Found "
                 + Arrays.toString(shape));
       } else {
         newShape[i] = (int) curDim;

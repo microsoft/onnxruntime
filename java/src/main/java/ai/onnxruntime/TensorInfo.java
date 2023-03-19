@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -107,6 +107,9 @@ public class TensorInfo implements ValueInfo {
   /** The native type of this tensor. */
   public final OnnxTensorType onnxType;
 
+  /** The number of elements in this tensor. */
+  final long numElements;
+
   /**
    * Constructs a TensorInfo with the specified shape, Java type and native type.
    *
@@ -118,6 +121,7 @@ public class TensorInfo implements ValueInfo {
     this.shape = shape;
     this.type = type;
     this.onnxType = onnxType;
+    this.numElements = computeElements(shape);
   }
 
   /**
@@ -132,6 +136,7 @@ public class TensorInfo implements ValueInfo {
     this.shape = shape;
     this.onnxType = OnnxTensorType.mapFromInt(typeInt);
     this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
+    this.numElements = computeElements(shape);
   }
 
   /**
@@ -174,6 +179,32 @@ public class TensorInfo implements ValueInfo {
   }
 
   /**
+   * Computes the number of elements in this tensor.
+   *
+   * @param shape The tensor shape.
+   * @return The number of elements.
+   */
+  private static long computeElements(long[] shape) {
+    // Java side tensors must be less than Integer.MAX_VALUE,
+    // tensors created in native code can be larger, but are not usable in Java.
+    // Tensors should not be able to be created which will overflow a 64-bit long.
+    long output = 1;
+    for (int i = 0; i < shape.length; i++) {
+      output *= shape[i];
+    }
+    return output;
+  }
+
+  /**
+   * Returns the number of elements in this tensor.
+   *
+   * @return The number of elements.
+   */
+  public long getNumElements() {
+    return numElements;
+  }
+
+  /**
    * Constructs an array the right shape and type to hold this tensor.
    *
    * <p>Note for String tensors, this carrier is a single dimensional array with enough space for
@@ -181,11 +212,12 @@ public class TensorInfo implements ValueInfo {
    * correct shape using {@link OrtUtil#reshape(String[],long[])}.
    *
    * @return A multidimensional array of the appropriate primitive type (or String).
-   * @throws OrtException If the shape isn't representable in Java (i.e. if one of it's indices is
+   * @throws OrtException If the shape isn't representable in Java (i.e. if one of its indices is
    *     greater than an int).
    */
   public Object makeCarrier() throws OrtException {
-    if (!validateShape()) {
+    // Zero length tensors are allowed to be returned.
+    if (!validateShape() && numElements != 0) {
       throw new OrtException(
           "This tensor is not representable in Java, it's too big - shape = "
               + Arrays.toString(shape));
