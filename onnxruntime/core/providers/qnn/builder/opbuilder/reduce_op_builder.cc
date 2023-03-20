@@ -107,8 +107,8 @@ const std::array<std::vector<const char*>, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder
     std::vector<const char*>{"uint8", "int8"},  // ReduceMax
     std::vector<const char*>{"uint8", "int8"},  // ReduceMax
     std::vector<const char*>{"uint8", "int8"},  // ReduceMean
-    std::vector<const char*>{"uint8", "int8"},  // ReduceProd
-    std::vector<const char*>{"uint8", "int8", "int32"},  // ReduceSum
+    std::vector<const char*>{},                 // ReduceProd (not supported by HTP)
+    std::vector<const char*>{"uint8", "int8"},  // ReduceSum
 };
 
 Status ReduceOpBuilder::IsTypeAllowed(ONNX_NAMESPACE::DataType type, const std::vector<const char*>& allowed_types,
@@ -223,6 +223,10 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
+  }
+
+  if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_PROD && is_quantized_model) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: ReduceProd operator not supported by HTP backend.");
   }
 
   NodeAttrHelper node_attr_helper(node_unit);
