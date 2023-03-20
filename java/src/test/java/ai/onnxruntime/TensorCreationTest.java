@@ -134,6 +134,8 @@ public class TensorCreationTest {
       float[][] output = (float[][]) t.getValue();
       Assertions.assertEquals(4, output.length);
       Assertions.assertEquals(0, output[0].length);
+      FloatBuffer fb = t.getFloatBuffer();
+      Assertions.assertEquals(0, fb.remaining());
     }
     shape = new long[] {0, 4};
     try (OnnxTensor t = OnnxTensor.createTensor(env, buf, shape)) {
