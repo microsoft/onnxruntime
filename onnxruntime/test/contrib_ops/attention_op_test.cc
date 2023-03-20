@@ -252,9 +252,9 @@ static void RunAttentionTest(
     }
 
     if (enable_cuda) {
-      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-      execution_providers.push_back(DefaultCudaExecutionProvider());
       for (size_t env_idx = 0; env_idx < s_count_env_variants; env_idx++) {
+        std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+        execution_providers.push_back(DefaultCudaExecutionProvider());
         ScopedEnvironmentVariables scoped_env_vars(s_env_variants[env_idx]);
         tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
       }
