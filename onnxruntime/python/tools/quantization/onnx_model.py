@@ -226,7 +226,8 @@ class ONNXModel:
                 node_list.append(node)
         return node_list
 
-    def find_nodes_by_initializer(self, graph, initializer):
+    @staticmethod
+    def find_nodes_by_initializer(graph, initializer):
         """
         Find all nodes with given initializer as an input.
         """

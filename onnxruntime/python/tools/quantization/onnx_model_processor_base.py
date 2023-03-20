@@ -3,7 +3,7 @@ import argparse
 import onnx
 from onnx import ModelProto
 
-from python.tools.quantization.onnx_model import ONNXModel
+from onnxruntime.quantization.onnx_model import ONNXModel
 
 
 class ONNXModelProcessorBase(object):

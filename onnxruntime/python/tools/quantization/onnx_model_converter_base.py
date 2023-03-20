@@ -2,12 +2,21 @@ import numpy as np
 from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
 from typing import List
 
-from python.tools.quantization.onnx_model import ONNXModel
-from python.tools.quantization.onnx_model_processor_base import ONNXModelProcessorBase
+from onnxruntime.quantization.onnx_model import ONNXModel
+from onnxruntime.quantization.onnx_model_processor_base import ONNXModelProcessorBase
 
 
 class ConverterBase(ONNXModelProcessorBase):
-    default_allow_list = ["Conv", "MatMul"]
+    default_allow_list = [
+        "Conv",
+        "MatMul",
+        "Relu",
+        "MaxPool",
+        "GlobalAveragePool",
+        "Gemm",
+        "Add",
+        "Reshape",
+    ]
 
     def __init__(self, model=None, allow_list=None):
         if model is not None:
@@ -104,16 +113,14 @@ class ConverterBase(ONNXModelProcessorBase):
         parser.add_argument(
             "--allow_list",
             required=False,
-            default=[],
+            default=None,
             nargs="+",
             help="allow list which contains all supported ops that can be converted into fp16.",
         )
         parser.add_argument(
             "--keep_io_types",
-            type=bool,
-            required=False,
             help="keep input and output types as float32",
-            default=False,
+            default=True,
         )
         parser.description = (
             "Graph fp16 conversion tool for ONNX Runtime.It convert ONNX graph from fp32 to fp16 using " "--allow_list."

@@ -6,7 +6,6 @@ import onnx
 import requests
 from onnx import TensorProto, helper, numpy_helper
 from onnxruntime.quantization.fp16_converter import FP16Converter
-from onnxruntime.quantization.fp16_converter_simple import FP16ConverterSimple
 
 from op_test_utils import check_model_correctness, check_op_type_count
 
@@ -54,7 +53,7 @@ class TestONNXModel(unittest.TestCase):
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     @staticmethod
-    def construc_matmul_model_with_init():
+    def construct_matmul_model_with_init():
         #    (input)                 (input)
         #       |                       |
         #   Transpose               Transpose
@@ -83,7 +82,7 @@ class TestONNXModel(unittest.TestCase):
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     @staticmethod
-    def construc_matmul_model_without_init():
+    def construct_matmul_model_without_init():
         #         (input)                 (input)
         #        /       \               /       \
         #   Transpose     |           Transpose   |
@@ -111,7 +110,7 @@ class TestONNXModel(unittest.TestCase):
         return helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
 
     def construct_test(self, op: str, with_init: bool = True):
-        fp16_nodes = None
+        cast_nodes = None
         model = None
         test_input = None
         np.random.seed(1)
@@ -122,9 +121,9 @@ class TestONNXModel(unittest.TestCase):
             model = self.construct_conv_model()
         elif op == "MatMul":
             if with_init:
-                model = self.construc_matmul_model_with_init()
+                model = self.construct_matmul_model_with_init()
             else:
-                model = self.construc_matmul_model_without_init()
+                model = self.construct_matmul_model_without_init()
 
         converter = FP16Converter()
         converter.set_model(model)
@@ -132,22 +131,22 @@ class TestONNXModel(unittest.TestCase):
         op_count = get_op_count_from_model(op, model)
         fp32_nodes = {"Cast": 0, op: op_count}
         check_op_type_count(self, model_fp32_path, **fp32_nodes)
-        converter.convert()
+        converter.process(True)
         converter.export_model_to_path(model_fp16_path)
 
         fp16_model = converter.get_model()
         fp16_op_count = get_op_count_from_model(op, fp16_model)
         if op == "Conv":
-            fp16_nodes = {"Cast": 7, op: fp16_op_count}
+            cast_nodes = {"Cast": 3, op: fp16_op_count}
             test_input = {"input": np.random.rand(4, 2, 8, 8).astype(np.float32)}
         elif op == "MatMul":
             if with_init:
-                fp16_nodes = {"Cast": 4, op: fp16_op_count}
+                cast_nodes = {"Cast": 2, op: fp16_op_count}
             else:
-                fp16_nodes = {"Cast": 4, op: fp16_op_count}
+                cast_nodes = {"Cast": 3, op: fp16_op_count}
             test_input = {"input": np.random.rand(4, 2).astype(np.float32)}
 
-        check_op_type_count(self, model_fp16_path, **fp16_nodes)
+        check_op_type_count(self, model_fp16_path, **cast_nodes)
         check_model_correctness(
             self,
             model_fp32_path,
@@ -172,46 +171,34 @@ class TestONNXModel(unittest.TestCase):
         else:
             model = onnx.load_model(filename)
             print(f"Loaded model from {filename}.")
+        model_fp32_path = filename
+        model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io.onnx"
         converter = FP16Converter()
         converter.set_model(model)
-        converter.convert()
-        converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-keep-io.onnx")
-
-        # converter.set_model(model)
-        # converter.process(False)
-        # converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-no-keep-io.onnx")
-
-    def test_model_converter_on_resnet50_v2_allow_list_simple(self):
-        filename = "resnet50-v2-7.onnx"
-        if not os.path.exists(filename):
-            url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
-            model = download_model_from_url(url)
-            onnx.save_model(model, filename)
-            print(f"Saved model to {filename}.")
-        else:
-            model = onnx.load_model(filename)
-            print(f"Loaded model from {filename}.")
-        converter = FP16ConverterSimple()
-        converter.set_model(model)
-        # converter.process()
-        converter.export_model_to_path("resnet50-fp16-v2-7-allow-list-simple.onnx")
-
-    # def test_model_converter_on_resnet50_v2_block_list(self):
-    #     filename = "resnet50-v2-7.onnx"
-    #     if not os.path.exists(filename):
-    #         url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
-    #         model = download_model_from_url(url)
-    #         onnx.save_model(model, filename)
-    #         print(f"Saved model to {filename}.")
-    #     else:
-    #         model = onnx.load_model(filename)
-    #         print(f"Loaded model from {filename}.")
-    #     model = convert_float_to_float16(model)
-    #     onnx.save_model(model, "resnet50-fp16--v2-7-block_list.onnx")
+        converter.process(True)
+        converter.export_model_to_path(model_fp16_path)
+        new_model = converter.get_model()
+        batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
+        cast_nodes = {"Cast": batch_normalization_count * 2}
+        test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float32)}
+        check_op_type_count(self, model_fp16_path, **cast_nodes)
+        check_model_correctness(
+            self,
+            model_fp32_path,
+            model_fp16_path,
+            test_input,
+        )
 
 
 def get_op_count_from_model(op, model):
     return len([node for node in list(model.graph.node) if node.op_type == op])
+
+
+def get_ops_counts(model):
+    unique_nodes = set()
+    for node in list(model.graph.node):
+        unique_nodes.add(node.op_type)
+    return len(unique_nodes)
 
 
 def download_model_from_url(url: str) -> onnx.ModelProto:
