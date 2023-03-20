@@ -30,8 +30,10 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: gh-pages
+
       - name: Setup Pages
         uses: actions/configure-pages@v3
+
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
@@ -44,6 +46,13 @@ jobs:
           name: onnxruntime-apidocs
           workflow: publish-apidocs.yml
           path: _site
+
+      - name: Clean out old API docs
+        run: |
+          rm -rf _site/docs/api/c
+          rm -rf _site/docs/api/csharp
+          rm -rf _site/docs/api/java
+          rm -rf _site/docs/api/python
 
       - name: Unpack site
         run: |
