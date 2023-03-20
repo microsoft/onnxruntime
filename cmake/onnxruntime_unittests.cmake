@@ -594,10 +594,10 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
 endif()
 
 if(onnxruntime_USE_QNN)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/*)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/conv/*)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/instance_normalization/*)
-  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/reduce_ops/*)
+  file(GLOB_RECURSE onnxruntime_test_qnn_src
+    "${TEST_SRC_DIR}/providers/qnn/*"
+  )
+  list(APPEND onnxruntime_test_framework_src_patterns ${onnxruntime_test_qnn_src})
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
