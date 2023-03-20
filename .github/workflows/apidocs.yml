@@ -77,11 +77,6 @@ jobs:
           gradle-executable: java/gradlew
           arguments: javadoc
 
-      - name: Java API docs - Move docs into site
-        run: |
-          rm -rf _site/docs/api/java
-          mv java/build/docs/javadoc _site/docs/api/java
-
       - name: Python API docs - install tools
         run: |
           sudo apt-get update
