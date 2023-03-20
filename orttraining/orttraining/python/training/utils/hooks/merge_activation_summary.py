@@ -47,9 +47,9 @@ def generate_summaries_per_step(args):
     merge_pt_path = output_path / "merge_pt"
 
     def generate_summary_per_step(topo_order_file_path: Path, dump_src_path: Path, merge_dest_path: Path):
-        print(
-            f"Start generating summary per step for {dump_src_path.as_posix()} "
-            f"following typological order in {topo_order_file_path.as_posix()}"
+        logger.warning(
+            "Start generating summary per step for [%s] following typological order in [%s]",
+            dump_src_path.as_posix(), topo_order_file_path.as_posix()
         )
         with topo_order_file_path.open(mode="r", encoding="utf-8") as order_file:
             tensor_name_in_order = order_file.readlines()
@@ -58,20 +58,19 @@ def generate_summaries_per_step(args):
             shutil.rmtree(merge_dest_path.as_posix())
         merge_dest_path.mkdir(parents=True, exist_ok=False)
 
-        for step_name in dump_src_path.iterdir():
-            dump_step_path = dump_src_path / step_name
+        for dump_step_path in dump_src_path.iterdir():
             if dump_step_path.is_dir():
+                step_name = dump_step_path.name
                 merge_filename_for_sub_dir = merge_dest_path / f"{step_name}_.txt"
                 # Open merge_filename_for_sub_dir in write mode
                 with merge_filename_for_sub_dir.open(mode="w", encoding="utf-8") as outfile:
                     for filename in tensor_name_in_order:
                         filename = filename.rstrip("\n")
                         full_filename = dump_step_path / filename
-
                         if not full_filename.exists():
                             # Be noted that, some tensor handled in pytorch might be missing in ORT graph
                             # (if the activation is not used by others, which is pruned during export)
-                            logger.info("tensor %s not exist", full_filename)
+                            logger.warning("tensor %s not exist", full_filename)
                             continue
 
                         with full_filename.open(mode="r", encoding="utf-8") as infile:
@@ -79,8 +78,8 @@ def generate_summaries_per_step(args):
 
                         outfile.write("\n")
 
-        logger.info(
-            "Finish generating summary per step for %s following typological order in  %s, merged files are in  %s ",
+        logger.warning(
+            "Finish generating summary per step for [%s] following typological order in [%s], merged files are in [%s]",
             dump_src_path.as_posix(),
             topo_order_file_path.as_posix(),
             merge_dest_path.as_posix(),
@@ -141,7 +140,7 @@ def main():
 
     if os.path.exists(args.output_dir):
         if args.overwrite:
-            logger.info("Output directory %s already exists, overwriting it.", args.output_dir)
+            logger.warning("Output directory %s already exists, overwriting it.", args.output_dir)
             shutil.rmtree(args.output_dir)
         else:
             raise FileExistsError(

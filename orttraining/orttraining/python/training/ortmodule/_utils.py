@@ -244,7 +244,7 @@ def check_for_name_collisions_and_bind_methods_to_ortmodule(ortmodule: torch.nn.
                 if attribute_name == "forward":
                     continue
 
-                # This is a user defined/overriden method. Check for collisions.
+                # This is a user defined/overridden method. Check for collisions.
                 if attribute_name in ortmodule_attributes:
                     # This is a user defined method, issue a warning.
                     warnings.warn(
