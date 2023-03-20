@@ -37,8 +37,23 @@ jobs:
         with:
           source: ./
           destination: ./_site
-      - name: Upload artifact
+
+      - name: Download apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-apidocs
+          workflow: publish-apidocs.yml
+          path: _site
+
+      - name: Unpack site
+        run: |
+          cd _site
+          tar xvf artifact.tar
+
+      - name: Upload site
         uses: actions/upload-pages-artifact@v1
+        with:
+          retention-days: 21
 
   # Deployment job
   deploy:

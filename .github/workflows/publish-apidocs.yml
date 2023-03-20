@@ -119,7 +119,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v2
         with:
           name: github-pages
-          workflow: jekyll-gh-pages.yml
+          workflow: publish-gh-pages.yml
           path: _site
 
       - name: Unpack site
