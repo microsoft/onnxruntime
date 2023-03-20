@@ -4399,8 +4399,9 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
 // Test a Transpose node followed by a Reshape that is logically equivalent to an Transpose can be merged.
 // The test graph was extracted from a model we were trying to use with the QNN EP.
 TEST(TransposeOptimizerTests, QnnTransposeReshape) {
-  // test uses internal testing EP with static kernels which requires a full build
-#if !defined(ORT_MINIMAL_BUILD)
+  // test uses internal testing EP with static kernels which requires a full build,
+  // and the NHWC Conv with requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.onnx");
 
