@@ -11,7 +11,14 @@ namespace onnxruntime {
 
 class ExecutionProviders;
 class KernelRegistryManager;
-using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep)>;
+
+// infrastructure to allow debugging the graph modifications made during layout transformation that is controlled
+// by GraphPartitioner. If provided, the DebugGraphFn will be called at various points of the process.
+// See kDebugLayoutTransformation in /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h for
+// more details.
+using DebugGraphFn = std::function<void(const Graph&)>;
+using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep,
+                                                     std::optional<DebugGraphFn> debug_graph_fn)>;
 
 class GraphPartitioner {
  public:
@@ -30,7 +37,8 @@ class GraphPartitioner {
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    TransformLayoutFunction transform_layout_function,
-                   Mode mode = Mode::kNormal) const;
+                   Mode mode = Mode::kNormal,
+                   std::optional<DebugGraphFn> debug_graph_fn = std::nullopt) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
