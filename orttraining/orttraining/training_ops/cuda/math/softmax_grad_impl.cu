@@ -78,8 +78,8 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
         output_reg[i][it] = output[i * element_count + it * WARP_SIZE];
         // grad_output_reg[i][it] = grad_reg[i][it] * output_reg[i][it];
       } else {
-        grad_reg[i][it] = acc_t(0);
-        output_reg[i][it] = acc_t(0);
+        grad_reg[i][it] = input_t(0);
+        output_reg[i][it] = input_t(0);
         // grad_output_reg[i][it] = acc_t(0);
       }
     }
@@ -89,10 +89,10 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
   if (!is_log_softmax) {
     #pragma unroll
     for (int i = 0; i < WARP_BATCH; ++i) {
-      sum[i] = (acc_t)(grad_reg[i][0] * output_reg[i][0]);
+      sum[i] = (acc_t)(grad_reg[i][0]) * (acc_t)(output_reg[i][0]);
       #pragma unroll
       for (int it = 1; it < WARP_ITERATIONS; ++it) {
-        sum[i] += (acc_t)(grad_reg[i][it] * output_reg[i][it]);
+        sum[i] += (acc_t)(grad_reg[i][it]) * (acc_t)(output_reg[i][it]);
       }
     }
     warp_reduce<acc_t, WARP_BATCH, WARP_SIZE, Add>(sum);
@@ -120,9 +120,9 @@ __global__ void softmax_warp_backward(output_t* gradInput, const input_t* grad, 
       if (element_index < element_count) {
         // compute gradients
         if (is_log_softmax) {
-          gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - (input_t)(std::exp((acc_t)output_reg[i][it]) * sum[i]));
+          gradInput[i * element_count + it * WARP_SIZE] = ((acc_t)(grad_reg[i][it]) - std::exp((acc_t)output_reg[i][it]) * sum[i]);
         } else {
-          gradInput[i * element_count + it * WARP_SIZE] = (grad_reg[i][it] - (input_t)sum[i] ) * output_reg[i][it];
+          gradInput[i * element_count + it * WARP_SIZE] = ((acc_t)grad_reg[i][it] - sum[i] ) * (acc_t)output_reg[i][it];
         }
       }
     }
