@@ -49,13 +49,13 @@ jobs:
 
       - name: Move apidocs folder into place
         run: |
-          rm -rf _site/docs/api/c
+          sudo rm -rf _site/docs/api/c
           sudo mv apidocs/docs/api/c _site/docs/api
-          rm -rf _site/docs/api/csharp
+          sudo rm -rf _site/docs/api/csharp
           sudo mv apidocs/docs/api/csharp _site/docs/api
-          rm -rf _site/docs/api/java
+          sudo rm -rf _site/docs/api/java
           sudo mv apidocs/docs/api/java _site/docs/api
-          rm -rf _site/docs/api/python
+          sudo rm -rf _site/docs/api/python
           sudo mv apidocs/docs/api/python _site/docs/api
 
       - name: Upload site
