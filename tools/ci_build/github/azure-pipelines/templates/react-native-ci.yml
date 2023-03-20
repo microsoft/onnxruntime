@@ -59,6 +59,15 @@ jobs:
   - script:
       brew install coreutils ninja npm yarn
     displayName: Install coreutils, ninja, npm, and yarn
+  
+  - script:
+      yarn global add detox-cli
+    displayName: Install detox cli tools
+  
+  - script:
+      brew tap wix/brew
+      brew install applesimutils
+    displayName: Install applesimutils tools required by detox ios
 
   - script: |
       python3 -m pip install -q flatbuffers
@@ -206,15 +215,25 @@ jobs:
     displayName: Bootstrap Android and iOS e2e tests
 
   - script: |
+      yarn add "jest@^29" --dev
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: yarn add jest for detox integration in js/react_native/e2e
+  
+  - script: |
+      yarn add detox --dev
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: install detox js/react_native/e2e
+
+  - script: |
       pod install
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Pod install for onnxruntime react native ios e2e tests
 
-  - script: |
+  {% comment %} - script: |
      keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
        -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-    displayName: Generate a debug keystore
+    displayName: Generate a debug keystore {% endcomment %}
 
   - task: CopyFiles@2
     inputs:
@@ -226,7 +245,7 @@ jobs:
      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
-  - template: android-dump-logs-from-steps.yml
+  {% comment %} - template: android-dump-logs-from-steps.yml
     parameters:
      steps:
      - task: Gradle@3
@@ -242,9 +261,29 @@ jobs:
          jdkDirectory: '$(JAVA_HOME_11_X64)'
          sonarQubeRunAnalysis: false
          spotBugsAnalysis: false
-       displayName: Run React Native Android e2e Tests
+       displayName: Run React Native Android e2e Tests {% endcomment %}
+  
+  - script: |
+      detox build --configuration android.emu.debug
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: Build React Native Detox Android e2e Tests
+  
+  - script: |
+      detox test --record-logs all  --configuration android.emu.debug
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: Run React Native Detox Android e2e Tests
 
   - script: |
+      detox build --configuration ios.sim.debug
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: Build React Native Detox iOS e2e Tests
+  
+  - script: |
+      detox test --record-logs all --configuration ios.sim.debug
+    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+    displayName: Run React Native Detox iOS e2e Tests
+
+  {% comment %} - script: |
       export FORCE_BUNDLING=1
       export RCT_NO_LAUNCH_PACKAGER=1
       export ENTRY_FILE=index.tsx
@@ -253,15 +292,15 @@ jobs:
         -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color \
         --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Run React Native iOS e2e tests
+    displayName: Run React Native iOS e2e tests {% endcomment %}
 
-  - task: PublishTestResults@2
+  {% comment %} - task: PublishTestResults@2
     inputs:
       testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml'
       failTaskOnFailedTests: true
       testRunTitle: 'React Native iOS e2e Test results'
     condition: succeededOrFailed()
-    displayName: Publish React Native iOS e2e Test Results
+    displayName: Publish React Native iOS e2e Test Results {% endcomment %}
 
   - script: |
       python3 tools/python/run_android_emulator.py \
