@@ -1,0 +1,112 @@
+name: Generate API docs
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - include/onnxruntime/core/session
+      - csharp
+      - java
+      - onnxruntime/python
+  workflow_dispatch:
+
+concurrency:
+  group: "apidocs"
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      DOCFXVERSION: 2.62.2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: C API docs - install doxygen and dependencies
+        run: |
+          sudo apt update
+          sudo apt-get install libclang-dev
+          sudo apt-get install libclang-cpp14
+          wget https://www.doxygen.nl/files/doxygen-1.9.6.linux.bin.tar.gz
+          tar xvzf doxygen-1.9.6.linux.bin.tar.gz
+
+      - name: C API docs - run doxygen
+        run: |
+          mkdir -p build/doxygen
+          cd docs/c_cxx
+          ../../doxygen-1.9.6/bin/doxygen
+
+      - name: C# API docs - setup .NET
+        uses: actions/setup-dotnet@v2
+        with:
+          dotnet-version: 5.0.x
+
+      - name: C# API docs - restore dependencies
+        run: dotnet restore csharp/ApiDocs/ApiDocs.csproj
+
+      - name: C# API docs - download tools
+        run: |
+          mkdir -p build/docfx
+          wget https://github.com/dotnet/docfx/releases/download/v${DOCFXVERSION}/docfx-linux-x64-v${DOCFXVERSION}.zip -O build/docfx/docfx.zip
+          unzip build/docfx/docfx.zip -d build/docfx
+
+      - name: C# API docs - install NuGet
+        uses: nuget/setup-nuget@v1
+
+      - name: C# API docs - build
+        run: |
+          build/docfx/docfx metadata csharp/ApiDocs/docfx.json
+          dotnet build csharp/ApiDocs/ApiDocs.csproj --no-restore
+          build/docfx/docfx build csharp/ApiDocs/docfx.json
+
+      - name: Java API docs - set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'adopt'
+
+      - name: Java API docs - build
+        uses: gradle/gradle-build-action@v2
+        with:
+          build-root-directory: java
+          gradle-executable: java/gradlew
+          arguments: javadoc
+
+      - name: Java API docs - Move docs into site
+        run: |
+          rm -rf _site/docs/api/java
+          mv java/build/docs/javadoc _site/docs/api/java
+
+      - name: Python API docs - install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install python3-pip
+          sudo apt-get install graphviz
+      - name: Python API docs - install dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          cd docs/python
+          python3 -m pip install -r requirements.txt
+          python3 -m pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ ort-nightly
+          python3 -m pip list
+      - name: Python API docs - build
+        run: |
+          cd tools/doc
+          ./builddoc.sh /usr/bin ../.. ../../build
+
+      - name: Move generated docs into site
+        run: |
+          rm -rf _site/docs/api
+          mkdir -p _site/docs/api/c
+          mkdir -p _site/docs/api/charp
+          mkdir -p _site/docs/api/java
+          mkdir -p _site/docs/api/python
+          mv build/doxygen/html _site/docs/api/c
+          mv csharp/ApiDocs/csharp _site/docs/api/csharp
+          mv java/build/docs/javadoc _site/docs/api/java
+          mv build/docs/inference/html _site/docs/api/python
