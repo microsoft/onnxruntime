@@ -167,13 +167,17 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                 else:
                     if name == "_InspectActivation" and isinstance(arg, str):
                         # _InspectActivation is a special case where the first argument is a string
-                        # that is used to determine the type of the observer.
+                        # that is used to determine the activation name to be inspected.
                         debug_comment += arg
 
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
+                    # Add a refence count just in case after export and before PythonOp kernel creation,
+                    # python detect the object is NOT used any more and do GC.
+                    # After PythonOp kernel creation in the runtime, it will increase ref count also; kernel destructor
+                    # will decrease later.
                     NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(
