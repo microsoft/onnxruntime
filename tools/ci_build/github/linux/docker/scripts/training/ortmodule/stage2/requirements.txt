@@ -2,6 +2,7 @@ pandas
 scikit-learn
 numpy==1.21.6
 transformers==v4.4.2
+rsa==4.9
 tensorboard>=2.2.0,<2.5.0
 h5py
 wget

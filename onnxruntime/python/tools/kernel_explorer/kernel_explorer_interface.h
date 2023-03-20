@@ -58,18 +58,22 @@ class IKernelExplorer {
   virtual ~IKernelExplorer() = default;
 
  protected:
-  TuningContextT* TuningContext() {
-    if (ep_ == nullptr) {
+  ExecutionProvider* GetEp() {
+    std::call_once(ep_create_once_, [this]() {
       ExecutionProviderInfo info{};
-      ep_ = std::make_unique<ExecutionProvider>(info);
-    }
+      this->ep_ = std::make_unique<ExecutionProvider>(info);
+    });
+    return ep_.get();
+  }
 
-    return static_cast<TuningContextT*>(ep_->GetTuningContext());
+  TuningContextT* TuningContext() {
+    return static_cast<TuningContextT*>(GetEp()->GetTuningContext());
   }
 
   StreamT Stream() { return stream_; }
 
  private:
+  std::once_flag ep_create_once_;
   std::unique_ptr<ExecutionProvider> ep_{};
   StreamT stream_{0};
   int repeats_{100};

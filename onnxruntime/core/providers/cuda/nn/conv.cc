@@ -180,7 +180,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context) const {
     TensorShapeVector y_dims_with_adjusted_pads(y_dims);
     ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes));
+                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes,
+                                                                     channels_last));
     if (channels_last) {
       y_dims.push_back(M);
       y_dims_with_adjusted_pads.push_back(M);

@@ -44,6 +44,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 // The nodes from 1st call of GetCapability do not get layout transformer applied, it's still NCHW
 // The nodes from 2nd call of GetCapability get layout transformer applied, it's NHWC
 // Need to do op validation in 1st call of GetCapability
+// TODO: Check if node domain == kMSInternalNHWCDomain to determine if the layout has been transformed.
 Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const logging::Logger& logger,
