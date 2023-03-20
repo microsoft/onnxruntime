@@ -79,7 +79,7 @@ dotnet add package Microsoft.AI.MachineLearning
 
 ## Install on web and mobile
 
-Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be referred to as "mobile packages". If you use mobile packages, your model must only use the supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.9.md).
+Unless stated otherwise, the installation instructions in this section refer to pre-built packages that include support for selected operators and ONNX opset versions based on the requirements of popular models. These packages may be referred to as "mobile packages". If you use mobile packages, your model must only use the supported [opsets and operators](../reference/operators/mobile_package_op_type_support_1.14.md).
 
 Another type of pre-built package has full support for all ONNX opsets and operators, at the cost of larger binary size. These packages are referred to as "full packages".
 
