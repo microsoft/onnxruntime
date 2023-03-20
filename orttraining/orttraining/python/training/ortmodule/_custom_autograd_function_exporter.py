@@ -58,8 +58,14 @@ def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
-# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
-# reference (in case it is released after module exported).
+# For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+# we firstly append it into a global store to hold a reference (in case it is released after module exported).
+# Add a ref count between export and PythonOp kernel creation. In the middle, if no other reference
+# it will be GC-ed.
+# Can be safely cleaned once session is initialized, where op kernel creation finished and add
+# refcnt for the object.
+# Should be fine to used by inference_manager and training_manager, because they are exporpted
+# sequentially.
 NONTENSOR_OBJECT_POINTER_STORE = {}
 
 

@@ -173,6 +173,8 @@ void PythonOpBase::AddPointerScalarArgs() {
   for (size_t i = 0; i < input_pointer_scalars_.size(); ++i) {
     const_arg_positions_.emplace_back(input_pointer_scalar_positions_.at(i));
     PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
+    // Own the Python object.
+    Py_INCREF(ptr);
     const_args_.emplace_back(ptr);
   }
 }
