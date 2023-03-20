@@ -1,4 +1,4 @@
-name: Generate API docs
+name: Publish API docs
 on:
   push:
     branches:
@@ -126,10 +126,6 @@ jobs:
         run: |
           cd _site
           tar xvf artifact.tar
-
-      - name: Debug
-        run: |
-          find _site
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1
