@@ -13,6 +13,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 //
 // ReduceSum
@@ -489,6 +490,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMeanS8Opset18) {
                verification_params, domain_to_version);
 }
 
+#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
 
