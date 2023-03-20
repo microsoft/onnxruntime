@@ -105,3 +105,20 @@ jobs:
           mv csharp/ApiDocs/csharp _site/docs/api/csharp
           mv java/build/docs/javadoc _site/docs/api/java
           mv build/docs/inference/html _site/docs/api/python
+
+      - name: Upload apidocs artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: onnxruntime-apidocs
+          path: _site
+
+      - name: Download deployed site
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: github-pages
+          workflow: jekyll-gh-pages.yml
+          path: _site
+
+      - name: Debug
+        run: |
+          find _site
