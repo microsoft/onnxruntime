@@ -40,7 +40,8 @@ class ConverterBase(ONNXModelProcessorBase):
         """
         return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_array]
 
-    def _convert_tensor_float_to_float16(self, tensor: TensorProto) -> TensorProto:
+    @staticmethod
+    def _convert_tensor_float_to_float16(tensor: TensorProto, new_name: str) -> TensorProto:
         """Convert tensor float to float16.
 
         Args:
@@ -56,12 +57,12 @@ class ConverterBase(ONNXModelProcessorBase):
             raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
         if tensor.data_type == TensorProto.FLOAT16:
             return tensor
-
+        tensor.name = new_name
         tensor.data_type = TensorProto.FLOAT16
         # convert float_data (float type) to float16 and write to int32_data
         if tensor.float_data:
-            float16_data = self._convert_np_float_to_float16(np.array(tensor.float_data))
-            int_list = self._convert_np_float16_to_int(float16_data)
+            float16_data = ConverterBase._convert_np_float_to_float16(np.array(tensor.float_data))
+            int_list = ConverterBase._convert_np_float16_to_int(float16_data)
             tensor.int32_data[:] = int_list
             tensor.float_data[:] = []
         # convert raw_data (bytes type)
@@ -69,7 +70,7 @@ class ConverterBase(ONNXModelProcessorBase):
             # convert n.raw_data to float
             float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
             # convert float to float16
-            float16_list = self._convert_np_float_to_float16(float32_list)
+            float16_list = ConverterBase._convert_np_float_to_float16(float32_list)
             # convert float16 to bytes and write back to raw_data
             tensor.raw_data = float16_list.tobytes()
         return tensor

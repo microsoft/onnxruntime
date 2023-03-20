@@ -61,7 +61,8 @@ class FP16Converter(ConverterBase):
                     initializer = graph_helper.get_initializer(graph, in_tensor_name)
                     if initializer is not None and initializer.data_type == TensorProto.FLOAT:
                         new_in_tensor = initializer.name + "_fp16"
-                        new_initializer = FP16Converter.__cast_initializer_to_fp16(initializer, new_in_tensor)
+                        new_initializer = FP16Converter._convert_tensor_float_to_float16(initializer, new_in_tensor)
+                        # new_initializer = FP16Converter._convert_tensor_float_to_float16(initializer, new_in_tensor)
                         # remove the old initializer if it is not used by any other node
                         # In case when initializer is used by multiple nodes, and other node does not support fp16,
                         # we will not remove it
