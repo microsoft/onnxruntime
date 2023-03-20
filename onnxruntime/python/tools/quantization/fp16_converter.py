@@ -18,15 +18,6 @@ class FP16Converter(ConverterBase):
         self.onnx_model = ONNXModel(self.model)
 
     @staticmethod
-    def __cast_initializer_to_fp16(initializer, new_name=None):
-        if new_name is None:
-            new_name = initializer.name
-        if int(initializer.data_type) == TensorProto.FLOAT:
-            new_tensor = np.asarray(numpy_helper.to_array(initializer), dtype=np.float16)
-            return numpy_helper.from_array(new_tensor, new_name)
-        return initializer
-
-    @staticmethod
     def __cast_graph_io(graph: GraphProto, keep_io_types: bool):
         if not keep_io_types:
             for value_info in itertools.chain(graph.input, graph.output, graph.value_info):
@@ -60,9 +51,11 @@ class FP16Converter(ConverterBase):
                 if in_tensor_name in initializer_name_set:
                     initializer = graph_helper.get_initializer(graph, in_tensor_name)
                     if initializer is not None and initializer.data_type == TensorProto.FLOAT:
-                        new_in_tensor = initializer.name + "_fp16"
-                        new_initializer = FP16Converter._convert_tensor_float_to_float16(initializer, new_in_tensor)
-                        # new_initializer = FP16Converter._convert_tensor_float_to_float16(initializer, new_in_tensor)
+                        new_initializer_name = initializer.name + "_fp16"
+                        new_initializer = initializer
+                        if int(initializer.data_type) == TensorProto.FLOAT:
+                            new_tensor = np.asarray(numpy_helper.to_array(initializer), dtype=np.float16)
+                            new_initializer = numpy_helper.from_array(new_tensor, new_initializer_name)
                         # remove the old initializer if it is not used by any other node
                         # In case when initializer is used by multiple nodes, and other node does not support fp16,
                         # we will not remove it
@@ -73,8 +66,8 @@ class FP16Converter(ConverterBase):
                         # In case when initializer is used by multiple nodes, we will add it only once
                         if len(ONNXModel.find_nodes_by_initializer(graph, new_initializer)) == 0:
                             graph_helper.add_initializer(graph, new_initializer)
-                            initializer_name_set.add(new_in_tensor)
-                        ONNXModel.replace_node_input(node, in_tensor_name, new_in_tensor)
+                            initializer_name_set.add(new_initializer_name)
+                        ONNXModel.replace_node_input(node, in_tensor_name, new_initializer_name)
 
     @staticmethod
     def __process_nodes_input(

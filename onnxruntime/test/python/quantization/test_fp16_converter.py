@@ -172,22 +172,39 @@ class TestONNXModel(unittest.TestCase):
             model = onnx.load_model(filename)
             print(f"Loaded model from {filename}.")
         model_fp32_path = filename
-        model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io.onnx"
+        model_fp16_path_true = "resnet50-fp16-v2-7-allow-list-keep-io.onnx"
+        model_fp16_path_false = "resnet50-fp16-v2-7-allow-list-keep-io-false.onnx"
         converter = FP16Converter()
         converter.set_model(model)
         converter.process(True)
-        converter.export_model_to_path(model_fp16_path)
+        converter.export_model_to_path(model_fp16_path_true)
         new_model = converter.get_model()
         batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
         cast_nodes = {"Cast": batch_normalization_count * 2}
         test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float32)}
-        check_op_type_count(self, model_fp16_path, **cast_nodes)
+        check_op_type_count(self, model_fp16_path_true, **cast_nodes)
         check_model_correctness(
             self,
             model_fp32_path,
-            model_fp16_path,
+            model_fp16_path_true,
             test_input,
         )
+
+        model = onnx.load_model(filename)
+        converter.set_model(model)
+        converter.process(False)
+        converter.export_model_to_path(model_fp16_path_false)
+        new_model = converter.get_model()
+        batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
+        cast_nodes = {"Cast": batch_normalization_count * 2}
+        test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float32)}
+        check_op_type_count(self, model_fp16_path_false, **cast_nodes)
+        # check_model_correctness(
+        #     self,
+        #     model_fp32_path,
+        #     model_fp16_path_false,
+        #     test_input,
+        # )
 
 
 def get_op_count_from_model(op, model):
