@@ -40,16 +40,6 @@ FlashAttention<T>::FlashAttention(const OpKernelInfo& info) : RocmKernel(info) {
 }
 
 template <typename T>
-Status FlashAttention<T>::CheckMask(const Tensor *att_mask
-                                    AttentionMaskType &mask_type,
-                                    int64_t batch,
-                                    int64_t kv_seqlen) {
-  auto &mask_shape = att_mask->Shape();
-  auto m_dims = mask_shape.GetDims();
-  if (m_dims.size() == 
-}
-
-template <typename T>
 Status FlashAttention<T>::CheckInputs(const TensorShape &query_shape,
                                  const TensorShape &key_shape,
                                  const TensorShape &value_shape,

@@ -371,7 +371,7 @@ class GemmSoftmaxGemmPermuteTunableOp : public tunable::TunableOp<GemmSoftmaxGem
   }
 
   static Status LaunchConvertToFilledMaskValue(const GemmSoftmaxGemmPermuteParams<T>* params) {
-    if (params.mask_index_buffer == nullptr) {
+    if (params->mask_index_buffer == nullptr) {
       return Status::OK();
     }
     constexpr const int kThreadPerBlock = 256;
@@ -454,7 +454,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       std::vector<ck::index_t> out_buffer_lengths = {G0, G1, M, O};
       std::vector<ck::index_t> out_buffer_strides = {M * G1 * O, O, G1 * O, 1};  // permute 0213
 
-      std::array<void*, kNumBiasBuffer> bias_buffers{};
+      std::array<const void*, kNumBiasBuffer> bias_buffers{};
       std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_lengths{};
       std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_strides{};
       if constexpr (USE_BIAS) {
