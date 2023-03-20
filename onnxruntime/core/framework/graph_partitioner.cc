@@ -597,6 +597,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       GraphPartitioner::Mode::kOrtFormatLoad,
       partition_params.transform_layout_function,
+      std::nullopt
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   };
   // clang-format on
