@@ -40,19 +40,19 @@ jobs:
           source: ./
           destination: ./_site
 
-      - name: Download apidocs artifact
-        uses: dawidd6/action-download-artifact@v2
-        with:
-          name: onnxruntime-apidocs
-          workflow: publish-apidocs.yml
-          path: _site
-
       - name: Clean out old API docs
         run: |
           rm -rf _site/docs/api/c
           rm -rf _site/docs/api/csharp
           rm -rf _site/docs/api/java
           rm -rf _site/docs/api/python
+
+      - name: Download apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-apidocs
+          workflow: publish-apidocs.yml
+          path: _site
 
       - name: Unpack site
         run: |
