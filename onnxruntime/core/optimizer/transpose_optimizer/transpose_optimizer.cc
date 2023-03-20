@@ -1640,7 +1640,6 @@ static bool HandleReshape(HandlerArgs& args) {
   std::vector<int64_t> perms(reshape_output_shape.size(), -1);
 
   auto reshape_out_cur = reshape_output_shape.begin();
-  auto reshape_out_end = reshape_output_shape.end();
   auto input_begin = input_dims.begin();
   auto input_end = input_dims.end();
 
