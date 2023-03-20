@@ -88,7 +88,7 @@ def main():
     # Train loop
     kwargs = {}
     if device == "cuda":
-        kwargs.update({"gpus": 1})
+        kwargs.update({"devices": 1, "accelerator": "gpu"})
     if args.train_steps > 0:
         kwargs.update({"max_steps": args.train_steps})
     if args.epochs > 0:

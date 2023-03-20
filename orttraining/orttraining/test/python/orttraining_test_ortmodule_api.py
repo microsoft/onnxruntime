@@ -3,19 +3,20 @@
 # orttraining_test_ortmodule_api.py
 
 import copy
+import inspect
 import itertools
 import math
 import os
 import pickle
 import random
 import tempfile
+import time
+import unittest.mock
 import warnings
 from collections import OrderedDict, namedtuple
-from inspect import signature
-from time import sleep
-from unittest.mock import patch
 
 import _test_helpers
+import numpy as np
 import onnx
 import pytest
 import torch
@@ -380,12 +381,12 @@ def run_before_test_session(request):
     request.addfinalizer(remove_disable_fallback_from_env)
 
 
-# TODO: This is a workaround for the problem that pytest is still cleaning up the previous test
+# FIXME: This is a workaround for the problem that pytest is still cleaning up the previous test
 # while the next task already start.
 @pytest.fixture(autouse=True)
 def run_before_tests():
     # wait for 50ms before starting the next test
-    sleep(0.05)
+    time.sleep(0.05)
 
 
 def _get_bert_for_sequence_classification_model(
@@ -454,7 +455,7 @@ def test_forward_call_single_positional_argument():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
     # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -470,7 +471,7 @@ def test_forward_call_multiple_positional_arguments():
     model = NeuralNetMultiplePositionalArguments(input_size=D_in, hidden_size=H, num_classes=D_out).to(device)
     ort_model = ORTModule(model)
     # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     y = torch.randn(N, D_in, device=device)
 
@@ -535,41 +536,42 @@ def test_forward_call_positional_and_keyword_arguments():
     prediction.backward()
 
 
+_ONE = torch.FloatTensor([1])
+
+
 @pytest.mark.parametrize(
-    "forward_statement",
+    "forward_function",
     [
-        "model(one)",
-        "model(x=one)",
-        "model(one, None, None)",
-        "model(one, None, z=None)",
-        "model(one, None)",
-        "model(x=one, y=one)",
-        "model(y=one, x=one)",
-        "model(y=one, z=None, x=one)",
-        "model(one, None, z=one)",
-        "model(x=one, z=one)",
-        "model(one, z=one)",
-        "model(one, z=one, y=one)",
-        "model(one, one, one)",
-        "model(one, None, one)",
-        "model(z=one, x=one, y=one)",
-        "model(z=one, x=one, y=None)",
+        lambda model: model(_ONE),
+        lambda model: model(x=_ONE),
+        lambda model: model(_ONE, None, None),
+        lambda model: model(_ONE, None, z=None),
+        lambda model: model(_ONE, None),
+        lambda model: model(x=_ONE, y=_ONE),
+        lambda model: model(y=_ONE, x=_ONE),
+        lambda model: model(y=_ONE, z=None, x=_ONE),
+        lambda model: model(_ONE, None, z=_ONE),
+        lambda model: model(x=_ONE, z=_ONE),
+        lambda model: model(_ONE, z=_ONE),
+        lambda model: model(_ONE, z=_ONE, y=_ONE),
+        lambda model: model(_ONE, _ONE, _ONE),
+        lambda model: model(_ONE, None, _ONE),
+        lambda model: model(z=_ONE, x=_ONE, y=_ONE),
+        lambda model: model(z=_ONE, x=_ONE, y=None),
     ],
 )
-def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_statement):
-    torch.FloatTensor([1])
-
+def test_compare_pytorch_forward_call_positional_and_keyword_arguments(forward_function):
     model = NeuralNetSimplePositionalAndKeywordArguments()
-    pytorch_result = eval(forward_statement + ".item()")
+    pytorch_result = forward_function(model).item()
 
     model = NeuralNetSimplePositionalAndKeywordArguments()
     model = ORTModule(model)
-    ortmodule_result = eval(forward_statement + ".item()")
-    ortmodule_result_again = eval(forward_statement + ".item()")
+    ortmodule_result = forward_function(model).item()
+    ortmodule_result_again = forward_function(model).item()
     assert ortmodule_result == ortmodule_result_again
     assert pytorch_result == ortmodule_result
 
-    prediction = eval(forward_statement).sum()
+    prediction = forward_function(model).sum()
     prediction.backward()
 
 
@@ -1661,8 +1663,6 @@ def test_aten_multinomial(input_shape, num_samples, replacement):
 
 @pytest.mark.parametrize("input_shape", ([4, 2],))
 def test_aten_argmax(input_shape):
-    import torch.nn.functional as F  # noqa: F401
-
     class TopKGate(torch.nn.Module):
         def forward(self, input: torch.Tensor):
             indices = torch.argmax(input, dim=1)
@@ -2439,7 +2439,7 @@ def test_gpu_reserved_memory_with_torch_no_grad():
     model_without_no_grad = ORTModule(model_without_no_grad)
     mem_reserved_after_export_without_torch_no_grad = 0
 
-    with patch("torch.no_grad"):
+    with unittest.mock.patch("torch.no_grad"):
         model_without_no_grad(x, attention_mask=y, labels=z)
         mem_reserved_after_export_without_torch_no_grad = torch.cuda.memory_reserved(device)
 
@@ -2607,9 +2607,7 @@ def test_exception_raised_for_custom_class_return_value_module(device):
     y = torch.randn(N, D_in, device=device)
     z = torch.randn(N, D_in, device=device)
 
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
-
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DATA):
         # Fallback
         pt_out = pt_model(x, y, z)
         ort_out = ort_model(x, y, z)
@@ -2663,9 +2661,7 @@ def test_model_with_multiple_devices_cpu_cuda():
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
 
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
-
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
@@ -2694,9 +2690,8 @@ def test_model_with_multiple_devices_to_to():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
 
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model = ORTModule(copy.deepcopy(pt_model))
@@ -2725,9 +2720,8 @@ def test_model_with_multiple_devices_to_cpu():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
 
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
@@ -2756,9 +2750,8 @@ def test_model_with_multiple_devices_to_cuda():
 
     pt_model = MultipleDeviceModel()
     x = torch.randn(20, 10)
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
 
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         ort_model = ORTModule(copy.deepcopy(pt_model))
         with pytest.raises(RuntimeError) as runtime_error:
@@ -2942,9 +2935,8 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
-    from onnxruntime.training.ortmodule._fallback import ORTModuleDeviceException, _FallbackPolicy
 
-    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
+    if _test_helpers.is_all_or_nothing_fallback_enabled(None, _fallback._FallbackPolicy.FALLBACK_UNSUPPORTED_DEVICE):
         # Fallback
         with pytest.raises(RuntimeError) as runtime_error:
             ort_model(x)
@@ -2953,7 +2945,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
         )
     else:
         # ORT backend
-        with pytest.raises(ORTModuleDeviceException) as runtime_error:
+        with pytest.raises(_fallback.ORTModuleDeviceException) as runtime_error:
             ort_model(x)
         assert (
             f"Input argument to forward found on device {torch.device(x.device)}, but expected it to be on module device {ort_model._torch_module._execution_manager(ort_model._is_training())._device}."
@@ -3125,7 +3117,7 @@ def test_model_with_registered_buffers():
     model = NeuralNetWithRegisteredBuffer(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
     # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     # Make sure model runs without any exception
     output = ort_model(x)
@@ -3157,7 +3149,7 @@ def test_model_with_unused_registered_buffers():
     model = UnusedBufferNet(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
     # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     # Make sure model runs without any exception
     output = ort_model(x)
@@ -3190,7 +3182,7 @@ def test_model_with_constant_and_registered_parameters():
     model = NeuralNetWithRegisteredParamsWithConstant(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
     # Check that the original forward signature is preserved.
-    assert signature(model.forward) == signature(ort_model.forward)
+    assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
     # Make sure model runs without any exception
     output = ort_model(x)
@@ -3554,46 +3546,48 @@ def test_forward_dynamic_kwargs():
 
 
 @pytest.mark.parametrize(
-    "forward_statement",
+    "forward_function",
     [  # Only pos_X, pos_X as positionals
-        "model(pos_0, pos_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1),
         # Only pos_X, pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1),
         # pos_X + *args, pos_X as positionals
-        "model(pos_0, pos_1, *args)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args),
         # pos_X + kw_X, pos_X as positionals
-        "model(pos_0, pos_1, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_0=kw_0, kw_1=kw_1),
         # pos_X + kw_X,  pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0, kw_1=kw_1),
         # pos_X + kw_X, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_0=kw_0),
         # pos_X + kw_X, pos_X as keywords (missing kw_1)
-        "model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_0=kw_0),
         # pos_X + kw_X, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, kw_1=kw_1),
         # pos_X + kw_X, pos_X as keywords (missing kw_0)
-        "model(pos_0=pos_0, pos_1=pos_1, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, kw_1=kw_1),
         # pos_X + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, **kwargs),
         # pos_X + kwargs, pos_X as keywords
-        "model(pos_0=pos_0, pos_1=pos_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0=pos_0, pos_1=pos_1, **kwargs),
         # pos_X + *args + kw_X, pos_X as positionals
-        "model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1),
         # pos_X + *args + kw_X, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, *args, kw_1=kw_1)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_1=kw_1),
         # pos_X + *args + kw_X, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, *args, kw_0=kw_0)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0),
         # pos_X + *args + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, *args, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, **kwargs),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals
-        "model(pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(
+            pos_0, pos_1, *args, kw_0=kw_0, kw_1=kw_1, **kwargs
+        ),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_0)
-        "model(pos_0, pos_1, *args, kw_1=kw_1, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_1=kw_1, **kwargs),
         # pos_X + *args + kw_X + kwargs, pos_X as positionals (missing kw_1)
-        "model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs)",
+        lambda model, pos_0, pos_1, kw_0, kw_1, args, kwargs: model(pos_0, pos_1, *args, kw_0=kw_0, **kwargs),
     ],
 )
-def test_forward_call_kwargs_input(forward_statement):
+def test_forward_call_kwargs_input(forward_function):
     class KwargsNet(torch.nn.Module):
         def __init__(self, input_size, hidden_size, num_classes):
             super().__init__()
@@ -3636,7 +3630,7 @@ def test_forward_call_kwargs_input(forward_statement):
     {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}  # noqa: B018
 
     # Training step
-    prediction = eval(forward_statement)
+    prediction = forward_function(model, pos_0, pos_1, kw_0, kw_1, args, kwargs)
     assert prediction is not None
     prediction = prediction.sum()
     prediction.backward()
@@ -4105,7 +4099,7 @@ def test_output_order():
 
 @pytest.mark.parametrize("device", ["cuda", "cpu", None])
 def test_stateless_model_specified_device(device):
-    N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806, F841
+    N, D_in = 32, 784
     pt_model = StatelessModel().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4119,7 +4113,7 @@ def test_stateless_model_specified_device(device):
 
 
 def test_stateless_model_unspecified_device():
-    N, D_in, H, D_out = 32, 784, 500, 10  # noqa: N806, F841
+    N, D_in = 32, 784
     pt_model = StatelessModel()
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4921,9 +4915,7 @@ def test_ortmodule_determinism_flag(is_training, deterministic):
         x = torch.randn(N, D_in)
         _ = model(x)
 
-        from onnxruntime.training.ortmodule import _are_deterministic_algorithms_enabled
-
-        assert _are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()
+        assert ortmodule_module._are_deterministic_algorithms_enabled() is torch.are_deterministic_algorithms_enabled()
 
 
 def test_ortmodule_gradient_builder():
@@ -5204,13 +5196,11 @@ def test_tanh_grad():
 
 
 def test__defined_from_envvar():
-    from onnxruntime.training import ortmodule
-
     os.environ["DUMMY_ORTMODULE"] = "15"
-    assert ortmodule._defined_from_envvar("DUMMY_ORTMODULE", 14) == 15
+    assert ortmodule_module._defined_from_envvar("DUMMY_ORTMODULE", 14) == 15
     os.environ["DUMMY_ORTMODULE"] = "15j"
     with warnings.catch_warnings(record=True) as w:
-        assert ortmodule._defined_from_envvar("DUMMY_ORTMODULE", 14) == 14
+        assert ortmodule_module._defined_from_envvar("DUMMY_ORTMODULE", 14) == 14
         assert len(w) == 1
         assert issubclass(w[-1].category, UserWarning)
         assert "Unable to overwrite constant" in str(w[-1].message)
@@ -5241,12 +5231,10 @@ def test_sigmoid_grad_opset13():
     N, D_in, H, D_out = 120, 15360, 500, 15360  # noqa: N806
     pt_model = NeuralNetSigmoid(D_in, H, D_out).to(device)
 
-    from onnxruntime.training import ortmodule
-
-    old_opst_cst = ortmodule.ONNX_OPSET_VERSION
+    old_opst_cst = ortmodule_module.ONNX_OPSET_VERSION
     old_opset = os.getenv("ORTMODULE_ONNX_OPSET_VERSION", None)
     os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = "13"
-    assert ortmodule.ONNX_OPSET_VERSION == 15
+    assert ortmodule_module.ONNX_OPSET_VERSION == 15
 
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -5272,8 +5260,8 @@ def test_sigmoid_grad_opset13():
         del os.environ["ORTMODULE_ONNX_OPSET_VERSION"]
     else:
         os.environ["ORTMODULE_ONNX_OPSET_VERSION"] = old_opset
-    assert ortmodule.ONNX_OPSET_VERSION == 13
-    ortmodule.ONNX_OPSET_VERSION = old_opst_cst
+    assert ortmodule_module.ONNX_OPSET_VERSION == 13
+    ortmodule_module.ONNX_OPSET_VERSION = old_opst_cst
 
 
 @pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
@@ -5286,10 +5274,7 @@ def test_opset_version_change(opset_version):
 
     ort_model = ORTModule(model)
 
-    # Must import a namespace containing ONNX_OPSET_VERSION, not ONNX_OPSET_VERSION directly
-    from onnxruntime.training import ortmodule
-
-    ortmodule.ONNX_OPSET_VERSION = opset_version
+    ortmodule_module.ONNX_OPSET_VERSION = opset_version
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -5433,8 +5418,6 @@ def test_check_opset_is_default_opset_after_training():
 
 
 def test_random_states_unchanged_for_ortmodule():
-    import numpy
-
     os.environ["ORTMODULE_FALLBACK_RETRY"] = "False"
 
     class NeuralNetSlice(torch.nn.Module):
@@ -5451,8 +5434,8 @@ def test_random_states_unchanged_for_ortmodule():
         if isinstance(a, tuple):
             assert len(a) == len(b)
             return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])
-        if isinstance(a, numpy.ndarray):
-            return numpy.array_equal(a, b)
+        if isinstance(a, np.ndarray):
+            return np.array_equal(a, b)
         if isinstance(a, torch.Tensor):
             return torch.equal(a, b)
         return a == b

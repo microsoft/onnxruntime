@@ -184,6 +184,7 @@ def test_gemm_softmax_gemm_permute_generic(dtype, batch, seqlen, total_seqlen, n
     _test_gemm_softmax_gemm_permute(f, dtype, batch, seqlen, total_seqlen, nhead, head_size, biased, mask_dim, scale)
 
 
+@pytest.mark.skipif(not ke.is_composable_kernel_available(), reason="ck is not enabled")
 @pytest.mark.parametrize("mask_dim", mask_dims, ids=get_mask_dim_id)
 @pytest.mark.parametrize("biased", biaseds, ids=get_biased_id)
 @pytest.mark.parametrize("head_size", head_sizes)
@@ -329,7 +330,10 @@ def profile_with_args(dtype, batch, seqlen, total_seqlen, num_heads, head_size, 
         profile_gemm_softmax_gemm_permute_func(
             getattr(ke, "GemmSoftmaxGemmPermuteGeneric_" + dtype_to_suffix(dtype)), *args
         )
-        profile_gemm_softmax_gemm_permute_func(getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0)), *args)
+        if ke.is_composable_kernel_available():
+            profile_gemm_softmax_gemm_permute_func(
+                getattr(ke, get_ck_binding_name(dtype, biased, mask_dim != 0)), *args
+            )
         profile_gemm_softmax_gemm_permute_func(
             getattr(ke, "GemmSoftmaxGemmPermuteTunable_" + dtype_to_suffix(dtype)), *args
         )

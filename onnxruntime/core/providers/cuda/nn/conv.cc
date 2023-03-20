@@ -88,7 +88,7 @@ Status SliceOutUnwantedOutputSection(cudaStream_t stream,
 
 template <typename T, bool NHWC>
 Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) const {
-  //set X
+  // set X
   const Tensor* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   const auto x_dims = x_shape.AsShapeVector();
@@ -180,7 +180,8 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
     TensorShapeVector y_dims_with_adjusted_pads(y_dims);
     ORT_RETURN_IF_ERROR(conv_attrs_.InferOutputShapeWithAdjustedPads(spatial_shape, kernel_shape,
                                                                      strides, dilations, pads, y_dims, y_dims_with_adjusted_pads,
-                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes));
+                                                                     post_slicing_required, slice_starts, slice_ends, slice_axes,
+                                                                     channels_last));
     if (channels_last) {
       y_dims.push_back(M);
       y_dims_with_adjusted_pads.push_back(M);
@@ -287,7 +288,7 @@ Status Conv<T, NHWC>::UpdateState(OpKernelContext* context, bool bias_expected) 
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = b_shape[0];
       ORT_RETURN_IF_ERROR(s_.b_tensor.Set(b_dims, CudnnTensor::GetDataType<CudaT>()));
-      //s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
+      // s_.b_data = reinterpret_cast<const CudaT*>(B->Data<T>());
     } else if (bias_expected) {
       TensorShapeVector b_dims(2 + kernel_shape.size(), 1);
       b_dims[1] = w_dims[0];
