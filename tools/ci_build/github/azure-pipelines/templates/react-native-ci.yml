@@ -262,7 +262,10 @@ jobs:
          sonarQubeRunAnalysis: false
          spotBugsAnalysis: false
        displayName: Run React Native Android e2e Tests {% endcomment %}
-  
+
+  # TODO: Dump the recorded logs from artifacts/ folder:
+  # including detox.log/detox.trace.json and test results
+
   - script: |
       detox build --configuration android.emu.debug
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
