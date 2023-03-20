@@ -23,8 +23,7 @@ Status CheckInputs(const T* query,
                    void* parameters,
                    int num_heads,
                    float mask_filter_value,
-                   float scale,
-                   int max_threads_per_block) {
+                   float scale) {
   //     key_padding_mask (K/V)     : (B) or (B, L) or None
   //     relative_position_bias     : (B, 1, S, L)
   //     past_key                   : (B, N, S*, H)
@@ -289,11 +288,30 @@ Status CheckInputs(const T* query,
     output_parameters->pass_past_in_kv = pass_past_in_kv;
   }
 
+  return Status::OK();
+}
+
+template <typename T>
+Status CheckInputs(const T* query,
+                   const T* key,
+                   const T* value,
+                   const T* bias,
+                   const T* key_padding_mask,
+                   const T* relative_position_bias,
+                   const T* past_key,
+                   const T* past_value,
+                   void* parameters,
+                   int num_heads,
+                   float mask_filter_value,
+                   float scale,
+                   int max_threads_per_block) {
+
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return Status::OK();
+  return CheckInputs(query, key, value, bias, key_padding_mask, relative_position_bias, 
+                     past_key, past_value, parameters, num_heads, mask_filter_value, scale);
 }
 
 }  // namespace multihead_attention_helper

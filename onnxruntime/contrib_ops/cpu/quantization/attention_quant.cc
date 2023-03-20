@@ -288,9 +288,9 @@ Status QAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   // Compute the attention score and apply the score to V
-  return ApplyAttention(Q, K, V, mask_index, past_tensor, output,
-                        batch_size, sequence_length,
-                        head_size, head_size, hidden_size, nullptr, context);
+  return ApplyAttention(Q, K, V, mask_index, past_tensor, output, nullptr, nullptr,
+                        batch_size, sequence_length, sequence_length,
+                        head_size, head_size, hidden_size, nullptr, false, context);
 }
 
 }  // namespace contrib

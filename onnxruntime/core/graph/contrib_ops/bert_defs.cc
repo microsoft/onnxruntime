@@ -419,7 +419,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* MultiHeadAttention_ver1_doc = R"DOC(
-Multi-Head Self/Cross Attention. Bias from input projection is included.
+Multi-Head Self/Cross Attention. Bias from input projection is optional.
 
 The key padding mask is optional. When its shape is (batch_size, kv_sequence_length), value 0
 means padding or 1 otherwise. When key has right-side padding, its shape could be (batch_size): it is actual length of

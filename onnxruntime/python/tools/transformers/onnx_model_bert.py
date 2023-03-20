@@ -387,10 +387,6 @@ class BertOnnxModel(OnnxModel):
 
         if options is not None:
             self.attention_mask.set_mask_format(options.attention_mask_format)
-            if options.use_multi_head_attention:
-                self.attention_fusion = FusionAttention(
-                    self, self.hidden_size, self.num_heads, self.attention_mask, options.use_multi_head_attention
-                )
 
         if (options is None) or options.enable_attention:
             self.fuse_attention()

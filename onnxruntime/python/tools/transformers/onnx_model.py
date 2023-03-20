@@ -754,7 +754,7 @@ class OnnxModel:
     def prune_graph(self, outputs=None):
         """
         Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
-        Nodes are not linked (directly or indirectly) to any required output will be removed.
+        Nodes that are not linked (directly or indirectly) to any required output will be removed.
 
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
@@ -1116,3 +1116,4 @@ class OnnxModel:
         for value_info in self.model.graph.value_info:
             if value_info.name not in excluded:
                 value_info.name = prefix + value_info.name
+
