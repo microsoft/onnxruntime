@@ -2771,8 +2771,7 @@ def test_model_with_different_cuda_devices(device):
     # Trick to run this test in single GPU machines
     device_id = _utils.get_device_index(device)
     if device_id >= torch.cuda.device_count():
-        warnings.warn(f"Skipping test_model_with_different_cuda_devices(cuda:{device_id})")  # noqa: B028
-        return
+        pytest.skip(f"Skipping test_model_with_different_cuda_devices(cuda:{device_id})")
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)

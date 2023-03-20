@@ -610,15 +610,18 @@ class OrtOpTests(unittest.TestCase):
 
     # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op(self, test_name):
-        tensor_test = torch.rand(6)
+    def test_op(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
         cpu_result = getattr(torch, test_name)(tensor_test)
         ort_result = getattr(torch, test_name)(tensor_test.to(self.get_device()))
 
         assert torch.allclose(cpu_result, ort_result.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_inplace(self, test_name, tensor_test=torch.rand(6)):
+    def test_op_inplace(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
         device = self.get_device()
 
         cpu_tensor = tensor_test
@@ -630,8 +633,9 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_out(self, test_name):
-        tensor_test = torch.rand(6)
+    def test_op_out(self, test_name, tensor_test=None):
+        if tensor_test is None:
+            tensor_test = torch.rand(6)
         # relu doesn't have output
         if test_name == "relu":
             self.skipTest(f"no {test_name}_output")
