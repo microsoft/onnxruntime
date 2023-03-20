@@ -1,6 +1,7 @@
 ---
 title: Stable Diffusion with C#
-description: In this tutorial we will learn how to do inferencing for the popular Stable Diffusion deep learning model in C#.
+description: Generate images from text in C# with stable diffusion and ONNX Runtime.
+image: /images/sample-output-stablediff.png
 parent: Inference with C#
 grand_parent: Tutorials
 has_children: false
