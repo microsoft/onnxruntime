@@ -27,11 +27,14 @@ constexpr const char* kCachePath = "trt_engine_cache_path";
 constexpr const char* kDecryptionEnable = "trt_engine_decryption_enable";
 constexpr const char* kDecryptionLibPath = "trt_engine_decryption_lib_path";
 constexpr const char* kForceSequentialEngineBuild = "trt_force_sequential_engine_build";
-// add new provider option name here. 
+// add new provider option name here.
 constexpr const char* kContextMemorySharingEnable = "trt_context_memory_sharing_enable";
 constexpr const char* kLayerNormFP32Fallback = "trt_layer_norm_fp32_fallback";
+constexpr const char* kTimingCacheEnable = "trt_timing_cache_enable";
+constexpr const char* kForceTimingCacheMatch = "trt_force_timing_cache_match";
+constexpr const char* kDetailedBuildLog = "trt_detailed_build_log";
 }  // namespace provider_option_names
-}  // namespace tensorrt 
+}  // namespace tensorrt
 
 TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
   TensorrtExecutionProviderInfo info{};
@@ -57,15 +60,17 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8CalibTable, info.int8_calibration_table_name)
           .AddAssignmentToReference(tensorrt::provider_option_names::kInt8UseNativeCalibTable, info.int8_use_native_calibration_table)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDLAEnable, info.dla_enable)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDLACore, info.dla_core)		  
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDLACore, info.dla_core)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineCacheEnable, info.engine_cache_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kCachePath, info.engine_cache_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionEnable, info.engine_decryption_enable)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path) 
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDecryptionLibPath, info.engine_decryption_lib_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kForceSequentialEngineBuild, info.force_sequential_engine_build)
           .AddAssignmentToReference(tensorrt::provider_option_names::kContextMemorySharingEnable, info.context_memory_sharing_enable)
           .AddAssignmentToReference(tensorrt::provider_option_names::kLayerNormFP32Fallback, info.layer_norm_fp32_fallback)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTimingCacheEnable, info.timing_cache_enable)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kForceTimingCacheMatch, info.force_timing_cache)
           .Parse(options)); // add new provider option here.
 
   return info;
@@ -93,6 +98,7 @@ ProviderOptions TensorrtExecutionProviderInfo::ToProviderOptions(const TensorrtE
       // add new provider option here.
       {tensorrt::provider_option_names::kContextMemorySharingEnable, MakeStringWithClassicLocale(info.context_memory_sharing_enable)},
       {tensorrt::provider_option_names::kLayerNormFP32Fallback, MakeStringWithClassicLocale(info.layer_norm_fp32_fallback)},
+      {tensorrt::provider_option_names::kTimingCacheEnable, MakeStringWithClassicLocale(info.timing_cache_enable)},
   };
   return options;
 }

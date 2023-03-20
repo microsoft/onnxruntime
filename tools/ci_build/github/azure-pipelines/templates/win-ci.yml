@@ -52,7 +52,7 @@ parameters:
   type: string
   default: 'onnxruntime'
 
-- name: UseIncreasedTimeoutForTests 
+- name: UseIncreasedTimeoutForTests
   displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
   type: boolean
   default: false
@@ -63,9 +63,9 @@ jobs:
     clean: all
   pool: ${{ parameters.ort_build_pool_name }}
   ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-    timeoutInMinutes: 1200 
+    timeoutInMinutes: 1200
   ${{ else }}:
-    timeoutInMinutes: 300 
+    timeoutInMinutes: 300
 
   steps:
     - checkout: self
@@ -73,11 +73,11 @@ jobs:
       submodules: none
 
     - template: telemetry-steps.yml
-    
+
     - task: UsePythonVersion@0
-      inputs: 
-        versionSpec: '3.7' 
-        addToPath: true 
+      inputs:
+        versionSpec: '3.7'
+        addToPath: true
         architecture: ${{ parameters.buildArch }}
 
     - task: NodeTool@0
@@ -119,7 +119,7 @@ jobs:
         ${{ else }}:
           arguments: '--config RelWithDebInfo --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 16 2019" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
         workingDirectory: '$(Build.BinariesDirectory)'
- 
+
     - task: VSBuild@1
       displayName: 'Build'
       inputs:
@@ -144,7 +144,7 @@ jobs:
        dir *.dll
        mkdir $(Build.ArtifactStagingDirectory)\testdata
       workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
-      displayName: 'List built DLLs' 
+      displayName: 'List built DLLs'
 
     - template: c-api-artifacts-package-and-publish-steps-windows.yml
       parameters:
@@ -166,7 +166,7 @@ jobs:
       condition: and(succeeded(), eq('${{ parameters.packageName}}', 'x64'))
       inputs:
         targetPath: '$(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe'
-        artifactName: 'drop-extra' 
+        artifactName: 'drop-extra'
 
 
     - task: CopyFiles@2
@@ -187,11 +187,12 @@ jobs:
 
     - task: CmdLine@2
       condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
+      displayName: 'Add symbols and notices to Java'
       inputs:
         script: |
           @echo on
           cd $(Build.SourcesDirectory)\java
-          gradle cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+          call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
           if %errorlevel% neq 0 exit /b %errorlevel%
           cd $(Build.BinariesDirectory)\RelWithDebInfo
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
@@ -225,14 +226,12 @@ jobs:
           popd
           rd /s /q $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage
           dir /s /b $(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}
-        workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo'
-        displayName: 'Add symbols and notices to Java'    
-      
+
     - task: PublishBuildArtifacts@1
       condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
       displayName: 'Publish Java temp binaries'
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}' 
+        pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
         artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}'
 
     - ${{ if eq(parameters['DoCompliance'], 'true') }}:
@@ -241,8 +240,8 @@ jobs:
         inputs:
           sourceCodeDirectory: '$(Build.SourcesDirectory)\java'
           language: 'java'
-          cleanupBuildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false clean'
-          buildCommands: 'C:\ProgramData\chocolatey\bin\gradle.exe -Dorg.gradle.daemon=false jar'
+          cleanupBuildCommands: '$(Build.SourcesDirectory)\java\gradlew.bat -Dorg.gradle.daemon=false clean'
+          buildCommands: '$(Build.SourcesDirectory)\java\gradlew.bat -Dorg.gradle.daemon=false jar'
           querySuite: 'Recommended'
           timeout: '7200'
           ram: '16384'
@@ -268,7 +267,7 @@ jobs:
            **/*.obj
            **/*.pdb
            **/*.dll
-          
+
       #Manually set msBuildCommandline so that we can also set CAExcludePath
       - task: SDLNativeRules@3
         displayName: 'Run the PREfast SDL Native Rules for MSBuild'

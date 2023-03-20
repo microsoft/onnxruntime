@@ -114,6 +114,9 @@ endif()
 if(onnxruntime_USE_NNAPI_BUILTIN)
   set(PROVIDERS_NNAPI onnxruntime_providers_nnapi)
 endif()
+if(onnxruntime_USE_QNN)
+  set(PROVIDERS_QNN onnxruntime_providers_qnn)
+endif()
 if(onnxruntime_USE_RKNPU)
   set(PROVIDERS_RKNPU onnxruntime_providers_rknpu)
 endif()
@@ -1056,6 +1059,51 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
   endif()
 endif()
 
+if (onnxruntime_USE_QNN)
+  add_compile_definitions(USE_QNN=1)
+
+  # These are shared utils,
+  # TODO, move this to a separated lib when used by EPs other than QNN, NNAPI and CoreML
+  file(GLOB_RECURSE onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/shared/node_unit/node_unit.cc"
+  )
+
+  file(GLOB_RECURSE
+    onnxruntime_providers_qnn_ep_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
+  )
+
+  file(GLOB_RECURSE
+    onnxruntime_providers_qnn_builder_cc_srcs CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/*.h"
+    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/*.cc"
+  )
+
+  set(onnxruntime_providers_qnn_cc_srcs
+    ${onnxruntime_providers_shared_utils_cc_srcs}
+    ${onnxruntime_providers_qnn_ep_cc_srcs}
+    ${onnxruntime_providers_qnn_builder_cc_srcs}
+  )
+
+  source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_cc_srcs})
+  onnxruntime_add_static_library(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_cc_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx onnx_proto protobuf::libprotobuf-lite flatbuffers Boost::mp11)
+  target_link_libraries(onnxruntime_providers_qnn)
+  add_dependencies(onnxruntime_providers_qnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  set_target_properties(onnxruntime_providers_qnn PROPERTIES CXX_STANDARD_REQUIRED ON)
+  set_target_properties(onnxruntime_providers_qnn PROPERTIES FOLDER "ONNXRuntime")
+  target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT} ${onnxruntime_QNN_HOME}/include)
+  set_target_properties(onnxruntime_providers_qnn PROPERTIES LINKER_LANGUAGE CXX)
+  # ignore the warning unknown-pragmas on "pragma region"
+  if(NOT MSVC)
+    target_compile_options(onnxruntime_providers_qnn PRIVATE "-Wno-unknown-pragmas")
+  endif()
+endif()
+
 if (onnxruntime_USE_RKNPU)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-variable -Wno-unused-parameter")
   add_definitions(-DUSE_RKNPU=1)
@@ -1330,6 +1378,33 @@ if (onnxruntime_USE_ROCM)
   find_package(hiprand REQUIRED)
   find_package(rocblas REQUIRED)
   find_package(MIOpen REQUIRED)
+
+  # MIOpen version
+  if(NOT DEFINED ENV{MIOPEN_PATH})
+    set(MIOPEN_PATH ${onnxruntime_ROCM_HOME}/miopen)
+  else()
+    set(MIOPEN_PATH $ENV{MIOPEN_PATH})
+  endif()
+
+  file(READ ${MIOPEN_PATH}/include/miopen/version.h MIOPEN_HEADER_CONTENTS)
+        string(REGEX MATCH "define MIOPEN_VERSION_MAJOR * +([0-9]+)"
+                                 MIOPEN_VERSION_MAJOR "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_MAJOR * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_MAJOR "${MIOPEN_VERSION_MAJOR}")
+        string(REGEX MATCH "define MIOPEN_VERSION_MINOR * +([0-9]+)"
+                                 MIOPEN_VERSION_MINOR "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_MINOR * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_MINOR "${MIOPEN_VERSION_MINOR}")
+        string(REGEX MATCH "define MIOPEN_VERSION_PATCH * +([0-9]+)"
+                                 MIOPEN_VERSION_PATCH "${MIOPEN_HEADER_CONTENTS}")
+        string(REGEX REPLACE "define MIOPEN_VERSION_PATCH * +([0-9]+)" "\\1"
+                                 MIOPEN_VERSION_PATCH "${MIOPEN_VERSION_PATCH}")
+  set(MIOPEN_VERSION_DEV "${MIOPEN_VERSION_MAJOR}.${MIOPEN_VERSION_MINOR}.${MIOPEN_VERSION_PATCH}")
+  math(EXPR MIOPEN_VERSION_DEV_INT "(${MIOPEN_VERSION_MAJOR}*10000) + (${MIOPEN_VERSION_MINOR}*100) + ${MIOPEN_VERSION_PATCH}")
+  message("MIOPEN_VERSION_DEV: ${MIOPEN_VERSION_DEV}")
+  message("MIOPEN_VERSION_DEV_INT:   ${MIOPEN_VERSION_DEV_INT}")
+  add_definitions(-DMIOPEN_VERSION=${MIOPEN_VERSION_DEV_INT})
+
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
   set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen ${RCCL_LIB} ${ROCTRACER_LIB})
@@ -1449,13 +1524,20 @@ if (onnxruntime_USE_ROCM)
     #endif()
   endif()
 
+  if (onnxruntime_USE_ROCBLAS_EXTENSION_API)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_ROCBLAS_EXTENSION_API)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_NO_DEPRECATED_WARNINGS)
+    target_compile_definitions(onnxruntime_providers_rocm PRIVATE ROCBLAS_BETA_FEATURES_API)
+  endif()
+
   if (onnxruntime_USE_COMPOSABLE_KERNEL)
     include(composable_kernel)
     target_link_libraries(onnxruntime_providers_rocm PRIVATE
       onnxruntime_composable_kernel_includes
       # Currently we shall not use composablekernels::device_operations, the target includes all conv dependencies, which
-      # are extremely slow to compile. Instead, we only link all gemm related objects. See the following link on updating.
-      # https://github.com/ROCmSoftwarePlatform/composable_kernel/blob/85978e0201/library/src/tensor_operation_instance/gpu/CMakeLists.txt#L33-L54
+      # are extremely slow to compile. Instead, we only link all gemm related objects. See the following directory on
+      # updating.
+      # https://github.com/ROCmSoftwarePlatform/composable_kernel/tree/develop/library/src/tensor_operation_instance/gpu
       device_gemm_instance
       device_gemm_add_fastgelu_instance
       device_gemm_fastgelu_instance

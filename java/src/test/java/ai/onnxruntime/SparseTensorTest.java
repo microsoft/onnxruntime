@@ -4,7 +4,6 @@
  */
 package ai.onnxruntime;
 
-import static ai.onnxruntime.InferenceTest.getResourcePath;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,7 +24,8 @@ public class SparseTensorTest {
 
   @Test
   public void testCSRC() throws OrtException {
-    String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
@@ -205,7 +205,8 @@ public class SparseTensorTest {
 
   @Test
   public void testCOO() throws OrtException {
-    String modelPath = getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
+    String modelPath =
+        TestHelpers.getResourcePath("/generic_sparse_to_dense_matmul.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {
@@ -391,7 +392,7 @@ public class SparseTensorTest {
 
   @Test
   public void testCOOOutput() throws OrtException {
-    String modelPath = getResourcePath("/sparse_initializer_as_output.onnx").toString();
+    String modelPath = TestHelpers.getResourcePath("/sparse_initializer_as_output.onnx").toString();
     try (OrtEnvironment env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions()) {
       try (OrtSession session = env.createSession(modelPath, options)) {

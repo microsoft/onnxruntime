@@ -5,19 +5,21 @@
 #pragma warning(disable : 4267)
 #endif
 
+#include <type_traits>
+
 #include "core/framework/data_types.h"
-#include "core/framework/op_kernel_info.h"
-#include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/error_code_helper.h"
-#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
+#include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/op_kernel_info.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/api_utils.h"
+#include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"
-#include <type_traits>
-#include "api_utils.h"
 
 ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_float, _In_ const OrtKernelInfo* info, _In_ const char* name, _Out_ float* out) {
   API_IMPL_BEGIN
@@ -276,6 +278,83 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
   }
 
   return OrtTypeInfo::FromTypeProto(type_proto, type_info);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out,
+                    _Inout_ size_t* size) {
+  API_IMPL_BEGIN
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+
+  auto status = CopyStringToOutputArg(op_info->node().Name(),
+                                      "Output buffer is not large enough for ::OrtKernelInfo node name", out, size);
+
+  return onnxruntime::ToOrtStatus(status);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* info, _Outptr_ const OrtLogger** logger) {
+  API_IMPL_BEGIN
+  const auto* ep = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info)->GetExecutionProvider();
+
+  if (ep == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo does not have an execution provider");
+  }
+
+  const auto* ep_logger = ep->GetLogger();
+
+  if (ep_logger == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_GRAPH, "::OrtKernelInfo cannot get a valid logger from "
+                                 "its execution provider");
+  }
+
+  *logger = reinterpret_cast<const OrtLogger*>(ep_logger);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContext* context, _Outptr_ const OrtLogger** logger) {
+  API_IMPL_BEGIN
+  const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
+
+  *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingLevel log_severity_level,
+                    _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
+                    _In_z_ const char* func_name) {
+  API_IMPL_BEGIN
+  const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
+  const auto severity = static_cast<onnxruntime::logging::Severity>(log_severity_level);
+  const auto log_data_type = onnxruntime::logging::DataType::SYSTEM;
+
+  if (actual_logger.OutputIsEnabled(severity, log_data_type)) {
+#ifdef _WIN32
+    const std::string file_path_str = onnxruntime::ToUTF8String(file_path);
+    onnxruntime::CodeLocation location(file_path_str.c_str(), line_number, func_name);
+#else
+    onnxruntime::CodeLocation location(file_path, line_number, func_name);
+#endif
+
+    onnxruntime::logging::Capture(
+        actual_logger,
+        severity,
+        onnxruntime::logging::Category::onnxruntime,
+        log_data_type,
+        location).Stream() << message;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out) {
+  API_IMPL_BEGIN
+  const auto& actual_logger = *reinterpret_cast<const onnxruntime::logging::Logger*>(logger);
+  *out = static_cast<OrtLoggingLevel>(actual_logger.GetSeverity());
+  return nullptr;
   API_IMPL_END
 }
 

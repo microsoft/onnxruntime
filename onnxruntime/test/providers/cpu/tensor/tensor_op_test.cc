@@ -40,8 +40,8 @@ TEST(TensorOpTest, ReshapeWithEmptyInput) {
   test.AddInput<float>("data", {0, 10}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {0, 10, 1}, false);
   test.AddOutput<float>("reshaped", {0, 10, 1}, std::vector<float>());
-  // TensorRT doesn't support empty dimension
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // TensorRT, QNN don't support empty dimension
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
@@ -55,10 +55,10 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 0, -1}, false);
     test.AddOutput<float>("reshaped", {1, 0, 1}, {});
-    // TensorRT doesn't support empty dimension
+    // TensorRT, QNN don't support empty dimension
     test.Run(OpTester::ExpectResult::kExpectFailure,
              "The input tensor cannot be reshaped to the requested shape",
-             {kTensorrtExecutionProvider});
+             {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 
   {
@@ -66,8 +66,8 @@ TEST(TensorOpTest, ReshapeWithEmptyInputAndDynamicShape) {
     test.AddInput<float>("data", {1, 0}, std::vector<float>());
     test.AddInput<int64_t>("shape", {3}, {1, 1, -1}, false);
     test.AddOutput<float>("reshaped", {1, 1, 0}, {});
-    // TensorRT doesn't support empty dimension
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+    // TensorRT, QNN don't support empty dimension
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
   }
 }
 
@@ -120,10 +120,10 @@ TEST(TensorOpTest, Reshape_EmptyInputWithoutAllowZero) {
   test.AddInput<float>("data", {0, 3, 4}, std::vector<float>());
   test.AddInput<int64_t>("shape", {3}, {3, 4, 0});
   test.AddOutput<float>("reshaped", {3, 4, 0}, std::vector<float>());
-  // TensorRT doesn't support dynamic shape tensor for now
+  // TensorRT, QNN don't support dynamic shape tensor for now
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "The input tensor cannot be reshaped to the requested shape",
-           {kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {

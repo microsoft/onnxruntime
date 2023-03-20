@@ -36,7 +36,7 @@ namespace Microsoft.ML.OnnxRuntime
     public enum OrtLanguageProjection
     {
         ORT_PROJECTION_C = 0,
-        ORT_PROJECTION_CPLUSPLUS = 1 ,
+        ORT_PROJECTION_CPLUSPLUS = 1,
         ORT_PROJECTION_CSHARP = 2,
         ORT_PROJECTION_PYTHON = 3,
         ORT_PROJECTION_JAVA = 4,
@@ -149,6 +149,16 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// This function returns the onnxruntime version string
+        /// </summary>
+        /// <returns>version string</returns>
+        public string GetVersionString()
+        {
+            IntPtr versionString = NativeMethods.OrtGetVersionString();
+            return NativeOnnxValueHelper.StringFromNativeUtf8(versionString);
+        }
+
+        /// <summary>
         /// Queries all the execution providers supported in the native onnxruntime shared library
         /// </summary>
         /// <returns>an array of strings that represent execution provider names</returns>
@@ -161,7 +171,7 @@ namespace Microsoft.ML.OnnxRuntime
             try
             {
                 var availableProviders = new string[numProviders];
-                for (int i=0; i<numProviders; ++i)
+                for (int i = 0; i < numProviders; ++i)
                 {
                     availableProviders[i] = NativeOnnxValueHelper.StringFromNativeUtf8(Marshal.ReadIntPtr(availableProvidersHandle, IntPtr.Size * i));
                 }

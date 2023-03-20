@@ -190,7 +190,8 @@ struct ConvAttributes {
                                           bool& post_slicing_needed,
                                           TensorShapeVector& slice_starts,
                                           TensorShapeVector& slice_ends,
-                                          TensorShapeVector& slice_axes) const {
+                                          TensorShapeVector& slice_axes,
+                                          bool channels_last = false) const {
     size_t rank = input_shape.NumDimensions();
     // Make sure all "metadata" containers have the right number of elements
     if (rank > strides_p.size())
@@ -256,7 +257,11 @@ struct ConvAttributes {
           }
 
           post_slicing_needed = true;
-          slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+          if (channels_last) {
+            slice_axes.push_back(static_cast<int64_t>(dim) + 1);
+          } else {
+            slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+          }
           slice_starts.push_back(excess_output_head);
           slice_ends.push_back(excess_output_head + output_dim_size);                      // we may modify this below
           output_shape_with_revised_pads.push_back(excess_output_head + output_dim_size);  // we may modify this below
@@ -286,7 +291,11 @@ struct ConvAttributes {
               // Head has not been over-padded. Only tail pads need to be modified.
               post_slicing_needed = true;
 
-              slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+              if (channels_last) {
+                slice_axes.push_back(static_cast<int64_t>(dim) + 1);
+              } else {
+                slice_axes.push_back(static_cast<int64_t>(dim) + 2);
+              }
               slice_starts.push_back(0);
               slice_ends.push_back(output_dim_size - revised_dim_size);
             }

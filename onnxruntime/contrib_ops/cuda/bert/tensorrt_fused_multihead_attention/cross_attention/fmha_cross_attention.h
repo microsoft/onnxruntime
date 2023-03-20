@@ -190,7 +190,7 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   // Set the pointers.
   params.o_ptr = o_packed_d;
-  params.o_stride_in_bytes = h * d * sizeof(half);
+  params.o_stride_in_bytes = static_cast<int64_t>(h) * d * sizeof(half);
 
   // Set the dimensions.
   params.b = b;
@@ -211,7 +211,7 @@ static Fused_multihead_attention_params_mhca getMHCAParams(
 
   // Set the pointers.
   params.gmem_q_params.ptr = const_cast<void*>(q_packed_d);
-  params.gmem_q_params.stride_in_bytes = h * d * sizeof(half);
+  params.gmem_q_params.stride_in_bytes = static_cast<int64_t>(h) * d * static_cast<int64_t>(sizeof(half));
   params.gmem_q_params.h = h;
   params.gmem_q_params.d = d;
   params.gmem_q_params.cu_seqlens = static_cast<int32_t*>(cu_seqlens_q_d);
