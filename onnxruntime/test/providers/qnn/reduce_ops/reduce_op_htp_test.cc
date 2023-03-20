@@ -140,6 +140,9 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceSumS8Opset13) {
 // ReduceMax
 //
 
+// ReduceMax on Linux's HTP emulator is always off by an amount equal to the final DQ.scale
+// Works fine on windows arm64.
+#if !defined(__linux__)
 // Test creates a Q -> DQ -> ReduceMax -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
@@ -255,11 +258,14 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMaxS8Opset18) {
                verification_params,
                domain_to_version);
 }
+#endif  // !defined(__linux__)
 
 //
 // ReduceMin
 //
-
+// ReduceMin on Linux's HTP emulator is always off by an amount equal to the final DQ.scale
+// Works fine on windows arm64.
+#if !defined(__linux__)
 // Test creates a Q -> DQ -> ReduceMin -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results match the CPU EP results.
 //
@@ -372,6 +378,7 @@ TEST_F(QnnHTPBackendTests, TestQDQReduceMinS8Opset18) {
                provider_options,
                verification_params, domain_to_version);
 }
+#endif  // !defined(__linux__)
 
 //
 // ReduceMean
