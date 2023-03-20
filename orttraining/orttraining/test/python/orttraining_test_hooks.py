@@ -6,10 +6,11 @@ import pytest
 import tempfile
 import torch
 
+from onnxruntime.training.ortmodule import ORTModule
 from onnxruntime.training.utils.hooks import SubscriberManager, StatisticsSubscriber
 
 
-class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
+class NeuralNetSingleOutput(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super().__init__()
 
@@ -17,7 +18,7 @@ class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
-    def forward(self, input1, input2, **kwargs):
+    def forward(self, input1, input2):
         model_input = input1 + input2
         out = self.fc1(model_input)
         out = self.relu(out)
@@ -25,7 +26,7 @@ class NeuralNetMultiplePositionalArgumentsVarKeyword(torch.nn.Module):
         return out
 
 
-class NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs(torch.nn.Module):
+class NeuralNetMultipleOutputs(torch.nn.Module):
     def __init__(self, input_size, hidden_size, num_classes):
         super().__init__()
 
@@ -33,7 +34,7 @@ class NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs(torch.nn.Mod
         self.relu = torch.nn.ReLU()
         self.fc2 = torch.nn.Linear(hidden_size, num_classes)
 
-    def forward(self, input1, input2, **kwargs):
+    def forward(self, input1, input2):
         model_input = input1 + input2
         out = self.fc1(model_input)
         out = self.relu(out)
@@ -47,7 +48,7 @@ def test_statistic_subscriber_single_output(device, backend):
     input_size = 8
     hidden_size = 16
     num_classes = 32
-    model = NeuralNetMultiplePositionalArgumentsVarKeyword(input_size, hidden_size, num_classes)
+    model = NeuralNetSingleOutput(input_size, hidden_size, num_classes)
     model.to(device)
     model.train()
 
@@ -57,8 +58,6 @@ def test_statistic_subscriber_single_output(device, backend):
         sub_manager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
 
         if backend == "ortmodule":
-            from onnxruntime.training.ortmodule import ORTModule
-
             model = ORTModule(model)
 
         batch_size = 4
@@ -74,8 +73,8 @@ def test_statistic_subscriber_single_output(device, backend):
             "order.txt",
             "Linear_1_0th_output_forward",
             "Linear_1_0th_output_backward",
-            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output_forward",
-            "NeuralNetMultiplePositionalArgumentsVarKeyword_0_0th_output_backward",
+            "NeuralNetSingleOutput_0_0th_output_forward",
+            "NeuralNetSingleOutput_0_0th_output_backward",
             "ReLU_2_0th_output_forward",
             "ReLU_2_0th_output_backward",
             "Linear_3_0th_output_forward",
@@ -94,7 +93,7 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
     input_size = 8
     hidden_size = 16
     num_classes = 32
-    model = NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs(input_size, hidden_size, num_classes)
+    model = NeuralNetMultipleOutputs(input_size, hidden_size, num_classes)
     model.to(device)
     model.train()
 
@@ -105,8 +104,6 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
         sub_manager.subscribe(model, [StatisticsSubscriber(output_dir_path, override_output_dir=True)])
 
         if backend == "ortmodule":
-            from onnxruntime.training.ortmodule import ORTModule
-
             model = ORTModule(model)
 
         batch_size = 4
@@ -121,10 +118,10 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
 
         expected_files = [
             "order.txt",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output_forward",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_0th_output_backward",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output_forward",
-            "NeuralNetMultiplePositionalArgumentsVarKeywordMultipleOutputs_0_1th_output_backward",
+            "NeuralNetMultipleOutputs_0_0th_output_forward",
+            "NeuralNetMultipleOutputs_0_0th_output_backward",
+            "NeuralNetMultipleOutputs_0_1th_output_forward",
+            "NeuralNetMultipleOutputs_0_1th_output_backward",
             "Linear_1_0th_output_forward",
             "Linear_1_0th_output_backward",
             "ReLU_2_0th_output_forward",

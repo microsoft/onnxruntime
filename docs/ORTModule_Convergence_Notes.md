@@ -36,7 +36,7 @@ Add few lines of code:
 +	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 ```
 
-> ActivationSummarizer MUST be initialized after wrapping ORTModule.
+> `StatisticsSubscriber` Canbe be initialized before OR after wrapping ORTModule.
 
 Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_out` is created in current working directory.
 
