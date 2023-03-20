@@ -174,10 +174,8 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
-                    # Add a refence count just in case after export and before PythonOp kernel creation,
+                    # Add a refence count just in case after export,
                     # python detect the object is NOT used any more and do GC.
-                    # After PythonOp kernel creation in the runtime, it will increase ref count also; kernel destructor
-                    # will decrease later.
                     NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(

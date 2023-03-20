@@ -5,14 +5,18 @@
 
 
 """
-    This file is used to merge convergence debugging summary files.
-    It is used to compare activation results between pytorch and ORT.
-    Both PyTorch and ORT run result directory are needed, check `StatisticsSubscriber` usage from
-    [ORTModule_Convergence_Notes](docs/ORTModule_Convergence_Notes.md) for how to export the results.
+This merges convergence debugging per activation summary files into per-step summary files.
 
-    Since ORT and PyTorch run the compute in different orders (e.g. different typological orders sort
-    implementations), when we generate per-step summary, we want the summary is comparable between
-    ORT and PyTorch runs. So during the merge, a same typological order is used.
+Both PyTorch and ORT run result directory are needed, check `StatisticsSubscriber` usage from
+[ORTModule_Convergence_Notes](docs/ORTModule_Convergence_Notes.md) for how to export the results.
+
+Since ORT and PyTorch run the compute in different orders (e.g. different typological orders sort
+implementations), when we generate per-step summary, we want the summary is comparable between
+ORT and PyTorch runs. So during the merge, a same typological order is used.
+
+Example:
+    python merge_activation_summary.py --pt_dir pt_out --ort_dir ort_out --output_dir /tmp/output
+
 """
 
 from pathlib import Path
@@ -124,7 +128,7 @@ def parse_arguments():
     parser.add_argument(
         "--overwrite",
         required=False,
-        action="store_false",
+        action="store_true",
         help="Overwrite exists output files.",
     )
 

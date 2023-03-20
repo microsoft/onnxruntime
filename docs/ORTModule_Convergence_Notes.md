@@ -13,10 +13,10 @@ Before looking into further, we should clarify few things (if possible):
 - Still repro once remove randomness?
 	- Set same seeds
 	- Set dropout ratio to 0
-	- Set compute to be deterministic.
+	- Set compute to be deterministic and torch-comparable (TODO(pengwa): need a flag for this).
 
 
-## 2. Collect Activations Summarizer
+## 2. Collect Activation Statistics
 
 Add codes:
 
@@ -36,13 +36,11 @@ Add few lines of code:
 +	SubscriberManager.subscribe(model, [StatisticsSubscriber("ort_out", override_output_dir=True)])
 ```
 
-> `StatisticsSubscriber` Canbe be initialized before OR after wrapping ORTModule.
+> `StatisticsSubscriber` can be initialized before OR after wrapping ORTModule.
 
 Run training script to the steps that triggered the divergence. Similarly, a folder named `ort_out` is created in current working directory.
 
-Run command to generate per step summary at dir orttraining/tools/scripts/
-
-Be noted: here we use the topo order of PyTorch to merge activation summary, to make it easier to compare the result.
+Run command to generate per step summary
 
 ```bash
 python -m onnxruntime.training.utils.hooks.merge_activation_summary --pt_dir pt_out --ort_dir ort_out --output_dir /tmp/output
