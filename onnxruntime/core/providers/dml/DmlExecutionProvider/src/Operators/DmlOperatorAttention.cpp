@@ -11,7 +11,7 @@ struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
     _Maybenull_ const DML_TENSOR_DESC* InputValueTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputMaskTensor;
-    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeySequenceBoundsTensor;
+    _Maybenull_ const DML_TENSOR_DESC* InputUnpaddedKeyBoundsTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputRelativePositionBiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastKeyTensor;
     _Maybenull_ const DML_TENSOR_DESC* InputPastValueTensor;
@@ -263,7 +263,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        bool maskIsUnpaddedSequenceBounds =
+        bool maskIsUnpaddedBounds =
             kernelCreationContext.IsInputValid(maskIndex) &&
             kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
 
@@ -271,12 +271,12 @@ public:
         uint32_t dmlWeightsIndex = weightsIndex;
         uint32_t dmlBiasIndex = biasIndex;
         uint32_t dmlKeyPaddingMaskIndex = maskIndex;
-        uint32_t dmlUnpaddedKeySequenceBoundsIndex = maskIndex;
+        uint32_t dmlUnpaddedKeyBoundsIndex = maskIndex;
         uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
-        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedSequenceBounds;
-        const bool hasUnpaddedSequenceBounds = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedSequenceBounds;
+        const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedBounds;
+        const bool hasUnpaddedBounds = kernelCreationContext.IsInputValid(maskIndex) && maskIsUnpaddedBounds;
         const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
 
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
@@ -361,15 +361,15 @@ public:
 
         }
 
-        if (hasUnpaddedSequenceBounds)
+        if (hasUnpaddedBounds)
         {
-            auto unpaddedKeySequenceBoundsShape = m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeySequenceBoundsShape[0] % batchSize == 0);
+            auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] % batchSize == 0);
 
-            uint32_t desiredShape[2] = {unpaddedKeySequenceBoundsShape[0] / batchSize, batchSize};
-            m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex] = TensorDesc(
-                m_inputTensorDescs[dmlUnpaddedKeySequenceBoundsIndex].GetDmlDataType(),
+            uint32_t desiredShape[2] = {unpaddedKeyBoundsShape[0] / batchSize, batchSize};
+            m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex] = TensorDesc(
+                m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetDmlDataType(),
                 desiredShape);
         }
 
@@ -480,7 +480,7 @@ public:
             mhaOperatorDesc.InputMaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.InputUnpaddedKeySequenceBoundsTensor = hasUnpaddedSequenceBounds ? &inputDescs[dmlUnpaddedKeySequenceBoundsIndex] : nullptr;
+        mhaOperatorDesc.InputUnpaddedKeyBoundsTensor = hasUnpaddedBounds ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
         mhaOperatorDesc.InputRelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
@@ -565,10 +565,10 @@ public:
             }
         }
 
-        if (hasUnpaddedSequenceBounds)
+        if (hasUnpaddedBounds)
         {
             DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
-            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeySequenceBoundsIndex;
+            maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeyBoundsIndex;
             maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
             maskToMhaEdge.ToNodeInputIndex = 5;
             inputEdges.push_back(maskToMhaEdge);
