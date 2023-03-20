@@ -73,7 +73,7 @@ stages:
           PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
           python3 -m pip install --find-links $(Build.BinariesDirectory)/whl $PYTHON_PACKAGE_NAME
           pip show $PYTHON_PACKAGE_NAME
-          python -c "import $PYTHON_PACKAGE_NAME as ort; print(ort.__version__)"
+          python -c "import onnxruntime as ort; print(ort.__version__)"
         displayName: Test Package Installation
 
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
