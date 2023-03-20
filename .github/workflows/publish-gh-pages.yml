@@ -11,7 +11,7 @@ on:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -42,10 +42,10 @@ jobs:
 
       - name: Clean out old API docs
         run: |
-          rm -rf _site/docs/api/c
-          rm -rf _site/docs/api/csharp
-          rm -rf _site/docs/api/java
-          rm -rf _site/docs/api/python
+          sudo rm -rf _site/docs/api/c
+          sudo rm -rf _site/docs/api/csharp
+          sudo rm -rf _site/docs/api/java
+          sudo rm -rf _site/docs/api/python
 
       - name: Download apidocs artifact
         uses: dawidd6/action-download-artifact@v2
