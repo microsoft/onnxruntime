@@ -63,6 +63,36 @@ static void RunAttentionTest(
     int kv_sequence_length = 0,
     bool past_present_share_buffer = false,
     bool use_scale = false) {
+  static const EnvVarMap s_env_variants[] = {
+      {
+          // unfused kernel, no online softmax
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableOnlineSoftmax, "0"},
+      },
+      {
+          // unfused kernel, using online softmax
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableOnlineSoftmax, "1"},
+      },
+      {
+          // fused kernel try trtFlashAttention first then Memory Efficient Attention
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "0"},
+      },
+      {
+          // fused kernel
+          {onnxruntime::contrib::attention::kDisableFusedAttention, "0"},
+          {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+      },
+  };
+  static constexpr size_t s_count_env_variants = sizeof(s_env_variants) / sizeof(s_env_variants[0]);
+
   input_hidden_size = (input_hidden_size == 0 ? hidden_size : input_hidden_size);  // By default, no pruning.
   kv_sequence_length = (kv_sequence_length == 0 ? sequence_length : kv_sequence_length);
   past_present_share_buffer = past_present_share_buffer && use_past_state;
@@ -224,7 +254,10 @@ static void RunAttentionTest(
     if (enable_cuda) {
       std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
       execution_providers.push_back(DefaultCudaExecutionProvider());
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      for (size_t env_idx = 0; env_idx < s_count_env_variants; env_idx++) {
+        ScopedEnvironmentVariables scoped_env_vars(s_env_variants[env_idx]);
+        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+      }
     }
 
     if (enable_rocm) {
@@ -925,38 +958,9 @@ TEST(AttentionTest, Causal_EmptyPastState) {
   int past_sequence_length = 0;
   bool use_float16 = true;
 
-  // Unfused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "1"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel (fall back to regular fmha since head_size <=64 and sequence_length <= 128)
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                    batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
+                    use_past_state, past_sequence_length, &past_data, &present_data);
 }
 #endif
 
