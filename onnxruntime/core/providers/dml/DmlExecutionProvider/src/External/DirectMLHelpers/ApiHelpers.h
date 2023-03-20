@@ -183,13 +183,13 @@ private:
         static T RoundUpToMultiple(T value, T multiple)
         {
             static_assert(std::is_integral_v<T>);
-            
+
             T remainder = value % multiple;
             if (remainder != 0)
             {
             	value += multiple - remainder;
             }
-            
+
             return value;
         }
 
