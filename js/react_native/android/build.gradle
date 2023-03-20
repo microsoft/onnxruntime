@@ -135,5 +135,5 @@ dependencies {
 
   // Mobile build:
   // implementation "com.microsoft.onnxruntime:onnxruntime-mobile:latest.integration@aar"
-  implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+  implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.release"
 }
