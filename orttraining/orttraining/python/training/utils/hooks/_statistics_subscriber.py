@@ -15,12 +15,12 @@ from ._subscriber_manager import ModuleHookSubscriberBase
 
 class StatisticsSubscriber(ModuleHookSubscriberBase):
     """
-    This subscriber is used to dump the activation's statistics to a file.
+    This subscriber is used to dump the activation's statistics to files.
 
     Each activation will be summarized into 1 or 2 files, depending on whether it is used in the backward pass.
     So for each run step, there will be many files.
     > In the forward pass, summarize the tensor's statistics and write to a file.
-    > In the backward pass, summarize the tensor's gradident's statistics and write into another file.
+    > In the backward pass, summarize the tensor's gradient's statistics and write into another file.
 
     Currently the statistics mainly include:
     > Number of inf/nan values.

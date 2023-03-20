@@ -134,7 +134,6 @@ def call_python_forward_function(
                 saved_tensors = [t for t in ctx.saved_tensors if t is not None]
                 torch_interop_utils.clear_grad_fns_for_next_edges(first_tensor_output, saved_tensors)
                 torch_interop_utils.register_grad_fn(id(ctx), first_tensor_output)
-
             return ctx
 
         if isinstance(result, torch.Tensor):

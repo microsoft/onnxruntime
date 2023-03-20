@@ -75,8 +75,9 @@ class ModuleHookSubscriberBase:
 class _RuntimeStates:
     """
     A data struct holding states for runtime context. Tho kinds of states are included:
-    > Global states that is one-time collected during model hook registration. A global execution step is
-      also initialized to reflect how many steps have been executed.
+    > Global states that are one-time collected during model hook registration. A global execution step is
+      also initialized to reflect how many steps have been executed, it will get updated after each step
+      completes its forward path.
     > Intra execution step states, initialized and cleaned up intended only for current execution step.
       Usually it carriers intermediate informations during the model execution.
     """
