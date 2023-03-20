@@ -3967,7 +3967,7 @@ static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // 
                     check_optimized_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ {15});
+                    /*opset_version*/ 15);
 }
 
 // Transpose -> Reshape can be merged if the Reshape could also be expressed as a Transpose due to not changing the
