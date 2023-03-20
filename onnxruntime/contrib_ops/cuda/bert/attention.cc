@@ -152,8 +152,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
 #if USE_FLASH_ATTENTION
-  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.broadcast_res_pos_bias &&
-                         parameters.sequence_length % (4 * sizeof(T)) == 0;
+  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         !disable_memory_efficient_attention_ &&
                                         (nullptr == mask_index || is_mask_1d_key_query_len) &&

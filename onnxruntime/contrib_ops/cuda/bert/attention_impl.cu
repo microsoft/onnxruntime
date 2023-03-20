@@ -779,6 +779,7 @@ Status QkvToContext(
     p.key = key;
     p.value = value;
     p.attn_bias = nullptr == data.relative_position_bias ? nullptr : data.relative_position_bias;
+    p.is_attn_bias_batched = !parameters.broadcast_res_pos_bias;
     p.output = data.output;
     p.workspace = MemoryEfficientAttentionParams::need_workspace(v_head_size, sizeof(T) == sizeof(float)) ? scratch1 : nullptr;
     p.stream = stream;

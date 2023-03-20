@@ -21,6 +21,7 @@ struct MemoryEfficientAttentionParams {
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
+  bool is_attn_bias_batched;
 
   float scale;
 

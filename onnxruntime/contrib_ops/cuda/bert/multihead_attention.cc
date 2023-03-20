@@ -169,8 +169,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                           parameters.sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32 ||
                           parameters.kv_sequence_length >= attention::kMinSequenceLengthForMemoryEfficientAttentionFp32;
 
-  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.broadcast_res_pos_bias &&
-                         parameters.sequence_length % (4 * sizeof(T)) == 0;
+  bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
 
   bool use_memory_efficient_attention = fused_runner == nullptr &&
                                         fused_cross_attention_kernel == nullptr &&
