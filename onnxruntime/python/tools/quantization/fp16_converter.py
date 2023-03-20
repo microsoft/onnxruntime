@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import onnx
 from onnx import GraphProto, NodeProto, TensorProto, numpy_helper
+
 from onnxruntime.quantization import graph_helper
 from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.onnx_model_converter_base import ConverterBase

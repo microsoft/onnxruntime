@@ -1,6 +1,7 @@
+from typing import List
+
 import numpy as np
 from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
-from typing import List
 
 from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.onnx_model_processor_base import ONNXModelProcessorBase

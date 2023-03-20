@@ -5,9 +5,9 @@ import numpy as np
 import onnx
 import requests
 from onnx import TensorProto, helper, numpy_helper
-from onnxruntime.quantization.fp16_converter import FP16Converter
-
 from op_test_utils import check_model_correctness, check_op_type_count
+
+from onnxruntime.quantization.fp16_converter import FP16Converter
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
