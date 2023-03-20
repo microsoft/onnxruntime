@@ -121,7 +121,7 @@ public class TensorInfo implements ValueInfo {
     this.shape = shape;
     this.type = type;
     this.onnxType = onnxType;
-    this.numElements = computeElements(shape);
+    this.numElements = elementCount(shape);
   }
 
   /**
@@ -136,7 +136,7 @@ public class TensorInfo implements ValueInfo {
     this.shape = shape;
     this.onnxType = OnnxTensorType.mapFromInt(typeInt);
     this.type = OnnxJavaType.mapFromOnnxTensorType(this.onnxType);
-    this.numElements = computeElements(shape);
+    this.numElements = elementCount(shape);
   }
 
   /**
@@ -181,10 +181,13 @@ public class TensorInfo implements ValueInfo {
   /**
    * Computes the number of elements in this tensor.
    *
+   * <p>This replicates {@link OrtUtil#elementCount}, but does not throw on negative values which
+   * are used for symbolic dimensions in input and output info objects.
+   *
    * @param shape The tensor shape.
    * @return The number of elements.
    */
-  private static long computeElements(long[] shape) {
+  private static long elementCount(long[] shape) {
     // Java side tensors must be less than Integer.MAX_VALUE,
     // tensors created in native code can be larger, but are not usable in Java.
     // Tensors should not be able to be created which will overflow a 64-bit long.
@@ -197,6 +200,10 @@ public class TensorInfo implements ValueInfo {
 
   /**
    * Returns the number of elements in this tensor.
+   *
+   * <p>If the returned value is negative, then this tensor info refers to an input or output
+   * placeholder which has symbolic dimensions, and the element count cannot be computed without
+   * specifying the symbolic dimensions.
    *
    * @return The number of elements.
    */

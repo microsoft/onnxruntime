@@ -345,20 +345,23 @@ public final class OrtUtil {
   /**
    * Counts the number of elements stored in a Tensor of this shape.
    *
-   * <p>Multiplies all the elements together if they are positive, throws an {@link
+   * <p>Multiplies all the elements together if they are non-negative, throws an {@link
    * IllegalArgumentException} otherwise.
    *
    * @param shape The shape to use.
    * @return The number of elements.
    */
   public static long elementCount(long[] shape) {
+    // Java side tensors must be less than Integer.MAX_VALUE,
+    // tensors created in native code can be larger, but are not usable in Java.
+    // Tensors should not be able to be created which will overflow a 64-bit long.
     long count = 1;
     for (int i = 0; i < shape.length; i++) {
-      if (shape[i] > 0) {
+      if (shape[i] >= 0) {
         count *= shape[i];
       } else {
         throw new IllegalArgumentException(
-            "Received non-positive value in shape " + Arrays.toString(shape) + " .");
+            "Received negative value in shape " + Arrays.toString(shape) + " .");
       }
     }
     return count;
