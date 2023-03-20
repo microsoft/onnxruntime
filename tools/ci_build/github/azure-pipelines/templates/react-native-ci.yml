@@ -229,11 +229,11 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Pod install for onnxruntime react native ios e2e tests
 
-  {% comment %} - script: |
-     keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
-       -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-    displayName: Generate a debug keystore {% endcomment %}
+  # - script: |
+  #    keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+  #      -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+  #   workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #   displayName: Generate a debug keystore
 
   - task: CopyFiles@2
     inputs:
@@ -245,23 +245,23 @@ jobs:
      targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
     displayName: Copy Android package to Android e2e test directory
 
-  {% comment %} - template: android-dump-logs-from-steps.yml
-    parameters:
-     steps:
-     - task: Gradle@3
-       inputs:
-         gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
-         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
-         options: '--stacktrace'
-         tasks: ':app:connectedDebugAndroidTest'
-         publishJUnitResults: true
-         testResultsFiles: '**/TEST-*.xml'
-         testRunTitle: 'React Native Android e2e Test results'
-         javaHomeOption: 'path'
-         jdkDirectory: '$(JAVA_HOME_11_X64)'
-         sonarQubeRunAnalysis: false
-         spotBugsAnalysis: false
-       displayName: Run React Native Android e2e Tests {% endcomment %}
+  #- template: android-dump-logs-from-steps.yml
+  #  parameters:
+  #   steps:
+  #   - task: Gradle@3
+  #     inputs:
+  #       gradleWrapperFile: '$(Build.SourcesDirectory)/js/react_native/e2e/android/gradlew'
+  #       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
+  #       options: '--stacktrace'
+  #       tasks: ':app:connectedDebugAndroidTest'
+  #       publishJUnitResults: true
+  #       testResultsFiles: '**/TEST-*.xml'
+  #       testRunTitle: 'React Native Android e2e Test results'
+  #       javaHomeOption: 'path'
+  #       jdkDirectory: '$(JAVA_HOME_11_X64)'
+  #       sonarQubeRunAnalysis: false
+  #       spotBugsAnalysis: false
+  #     displayName: Run React Native Android e2e Tests
 
   # TODO: Dump the recorded logs from artifacts/ folder:
   # including detox.log/detox.trace.json and test results
@@ -286,24 +286,24 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native Detox iOS e2e Tests
 
-  {% comment %} - script: |
-      export FORCE_BUNDLING=1
-      export RCT_NO_LAUNCH_PACKAGER=1
-      export ENTRY_FILE=index.tsx
-      xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace \
-        -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhoneRNTest' \
-        -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color \
-        --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Run React Native iOS e2e tests {% endcomment %}
+  #- script: |
+  #    export FORCE_BUNDLING=1
+  #    export RCT_NO_LAUNCH_PACKAGER=1
+  #    export ENTRY_FILE=index.tsx
+  #    xcrun xcodebuild test -workspace $(Build.SourcesDirectory)/js/react_native/e2e/ios/OnnxruntimeModuleExample.xcworkspace \
+  #      -scheme OnnxruntimeModuleExample -destination 'platform=iOS Simulator,OS=latest,name=iPhoneRNTest' \
+  #      -derivedDataPath $(Build.BinariesDirectory)/react_native/ios_e2e_test/derived_data | xcpretty -r junit --no-color \
+  #      --output $(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+  #  displayName: Run React Native iOS e2e tests
 
-  {% comment %} - task: PublishTestResults@2
-    inputs:
-      testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml'
-      failTaskOnFailedTests: true
-      testRunTitle: 'React Native iOS e2e Test results'
-    condition: succeededOrFailed()
-    displayName: Publish React Native iOS e2e Test Results {% endcomment %}
+  #- task: PublishTestResults@2
+  #  inputs:
+  #    testResultsFiles: '$(Build.SourcesDirectory)/js/react_native/e2e/ios/build/reports/test-results.xml'
+  #    failTaskOnFailedTests: true
+  #    testRunTitle: 'React Native iOS e2e Test results'
+  #  condition: succeededOrFailed()
+  #  displayName: Publish React Native iOS e2e Test Results
 
   - script: |
       python3 tools/python/run_android_emulator.py \
