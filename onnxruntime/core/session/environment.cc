@@ -26,6 +26,12 @@
 
 #include "core/platform/env.h"
 #include "core/util/thread_utils.h"
+#include "core/providers/cpu/cpu_provider_factory_creator.h"
+#include "core/framework/ort_value.h"
+#ifdef USE_XNNPACK
+#include "core/providers/xnnpack/xnnpack_provider_factory_creator.h"
+#endif
+
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
 #include "core/platform/tracing.h"
@@ -327,6 +333,28 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
+}
+
+Status Environment::CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, int* provider_global_index) {
+  *provider_global_index = -1;
+  std::unique_ptr<IExecutionProvider> ep;
+  if (provider_type == kCpuExecutionProvider) {
+    ep = onnxruntime::CPUProviderFactoryCreator::Create(use_arena)->CreateProvider();
+  } else if (provider_type == kXnnpackExecutionProvider) {
+#ifdef USE_XNNPACK
+    SessionOptions so;
+    OrtValue ov;
+    ORT_THROW_IF_ERROR(so.AddInitializer("k1", &ov));
+    so.enable_cpu_mem_arena = use_arena;
+    onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}, &so)->CreateProvider();
+#endif  // USE_XNNPACK
+  }
+
+  if (ep) {
+    ORT_THROW_IF_ERROR(execution_providers_.Add(provider_type, std::move(ep)));
+    *provider_global_index = static_cast<int>(execution_providers_.NumProviders());
+  }
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

@@ -496,6 +496,19 @@ class InferenceSession {
 
   IExecutionProvider* GetExecutionProviderFromEnv(int index);
 
+  inline void SetProviderGlobalIndex(int* provider_global_index, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+      provider_global_index_.push_back(*(provider_global_index+i));
+    }
+  }
+
+  inline size_t GetGlobalExecutionProviderCount() { return provider_global_index_.size(); }
+
+  inline int GetIthGlobalExecutionProviderIndex(size_t i) {
+    assert(i>=0 && i<provider_global_index_.size());
+    return provider_global_index_[i];
+  } 
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -862,6 +875,8 @@ class InferenceSession {
   };
 
   CachedExecutionProviderForGraphReplay cached_execution_provider_for_graph_replay_;
+
+  std::vector<int> provider_global_index_;
 };
 
 struct SessionIOBinding {

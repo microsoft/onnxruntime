@@ -68,6 +68,8 @@ class Environment {
    */
   Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr);
 
+  Status CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, int* provider_global_index);
+
   /**
    * Returns the list of registered allocators in this env.
    */

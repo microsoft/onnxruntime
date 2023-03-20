@@ -64,12 +64,15 @@ Status GptSubgraph::CreateInitialFeeds(
                                              expanded_position_ids,
                                              expanded_attention_mask));
 
+  AllocatorPtr pinned_allocator = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeCPU));
+  const OrtMemoryInfo& location = session_state_->GetAllocator(provider->GetOrtDeviceByMemType(OrtMemTypeDefault))->Info();
   ORT_RETURN_IF_ERROR(add_to_feeds_func(provider,
                                         ort_stream,
                                         {expanded_input_ids, expanded_position_ids, expanded_attention_mask},
                                         feeds,
                                         buffer,
-                                        session_state_->GetAllocators()));
+                                        pinned_allocator,
+                                        location));
 
   auto past_type = IsOutputFloat16() ? DataTypeImpl::GetType<MLFloat16>() : DataTypeImpl::GetType<float>();
   if (!past_present_share_buffer_) {

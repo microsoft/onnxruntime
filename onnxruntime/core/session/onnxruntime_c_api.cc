@@ -758,6 +758,14 @@ static ORT_STATUS_PTR InitializeSession(_In_ const OrtSessionOptions* options,
     }
   }
 
+  size_t global_ep_count = sess->GetGlobalExecutionProviderCount();
+  if (global_ep_count > 0) {
+    for (size_t i = 0; i < global_ep_count; i++) {
+      int global_index = sess->GetIthGlobalExecutionProviderIndex(i);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(sess->RegisterExecutionProvider(std::shared_ptr<IExecutionProvider>(sess->GetExecutionProviderFromEnv(global_index))));
+    }
+  }
+
   if (prepacked_weights_container != nullptr) {
     ORT_API_RETURN_IF_STATUS_NOT_OK(sess->AddPrePackedWeightsContainer(
         reinterpret_cast<PrepackedWeightsContainer*>(prepacked_weights_container)));
@@ -2364,6 +2372,29 @@ static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetVersionString,
 };
 
+ORT_API_STATUS_IMPL(OrtApis::CreateSessionWithProviderGlobalIndex, _In_ const OrtEnv* env,
+                    _In_ const ORTCHAR_T* model_path, _In_ int* provider_global_index, size_t global_index_length,
+                    _Outptr_ OrtSession** out) {
+  API_IMPL_BEGIN
+  std::unique_ptr<onnxruntime::InferenceSession> sess;
+  OrtStatus* status = nullptr;
+  *out = nullptr;
+
+  ORT_TRY {
+    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(nullptr, env, model_path, nullptr, 0, sess));
+    sess->SetProviderGlobalIndex(provider_global_index, global_index_length);
+    ORT_API_RETURN_IF_ERROR(InitializeSession(nullptr, sess));
+    *out = reinterpret_cast<OrtSession*>(sess.release());
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+  }
+
+  return status;
+  API_IMPL_END
+}
 /* Rules on how to add a new Ort API version
 
 In general, NEVER remove or rearrange the members in this structure unless a new version is being created. The
@@ -2697,6 +2728,8 @@ static constexpr OrtApi ort_api_1_to_15 = {
     &OrtApis::UpdateDnnlProviderOptions,
     &OrtApis::GetDnnlProviderOptionsAsString,
     &OrtApis::ReleaseDnnlProviderOptions,
+    &OrtApis::CreateAndRegisterExecutionProvider,
+    &OrtApis::CreateSessionWithProviderGlobalIndex,
 };
 
 // Asserts to do a some checks to ensure older Versions of the OrtApi never change (will detect an addition or deletion but not if they cancel out each other)

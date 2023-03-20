@@ -83,6 +83,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider, _Inout_ OrtEnv* env, _In_ bool use_arena, _In_ const char* provider_type, _Out_ int* provider_global_index) {
+  using namespace onnxruntime;
+  auto st = env->CreateAndRegisterExecutionProvider(use_arena, provider_type, provider_global_index);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
                     _In_ OrtAllocator* allocator) {
   using namespace onnxruntime;

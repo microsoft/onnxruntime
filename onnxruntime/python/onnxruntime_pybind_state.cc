@@ -797,23 +797,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
  * Register execution provider with options.
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       const ProviderOptionsMap& provider_options_map) {
-  for (const std::string& type : provider_types) {
-    int ep_global_index = -1;
-    ProviderOptionsMap::const_iterator it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      ProviderOptions::const_iterator it2 = it->second.find("UseGlobal");  // TODO: Need to do this for C API as well
-      if (it2 != it->second.end()) {
-        ep_global_index = std::stoi(it2->second);
-      }
-    }
-    if (ep_global_index >= 0) {
-      std::cout<<"Get global EP from Env with index:"<<ep_global_index<<std::endl;
-      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::shared_ptr<onnxruntime::IExecutionProvider>(sess->GetExecutionProviderFromEnv(ep_global_index))));
-    } else {
+                                       const ProviderOptionsMap& provider_options_map, const std::vector<int>& global_providers) {
+  if (global_providers.size() == 0) {
+    for (const std::string& type : provider_types) {
       auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
       if (ep)
         OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
+    }
+  } else {
+    for (auto& ep_global_index : global_providers) {
+      if (ep_global_index < 0) throw std::runtime_error("The index of execution providers in Environment must be >= 0");
+      std::cout<<"Get global EP from Env with index:"<<ep_global_index<<std::endl;
+      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::shared_ptr<onnxruntime::IExecutionProvider>(sess->GetExecutionProviderFromEnv(ep_global_index))));
     }
   }
 }
@@ -863,11 +858,12 @@ void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
                        const ProviderOptionsVector& provider_options,
-                       const std::unordered_set<std::string>& disabled_optimizer_names) {
+                       const std::unordered_set<std::string>& disabled_optimizer_names,
+                       const std::vector<int>& global_providers) {
   ProviderOptionsMap provider_options_map;
   GenerateProviderOptionsMap(provider_types, provider_options, provider_options_map);
 
-  ep_registration_fn(sess, provider_types, provider_options_map);
+  ep_registration_fn(sess, provider_types, provider_options_map, global_providers);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (!disabled_optimizer_names.empty()) {
@@ -951,7 +947,7 @@ void addGlobalMethods(py::module& m, Environment& env) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
-  m.def(  // TODO: Get rid of session_option as parameter?
+  m.def(
       "register_execution_provider", [&env](const bool& enable_cpu_mem_arena, const std::string& type, const ProviderOptions& provider_option) -> int {
         ProviderOptionsMap provider_options_map{{type, provider_option}};
         SessionOptions session_options;
@@ -1533,12 +1529,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           [ep_registration_fn](PyInferenceSession* sess,
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
-                               const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
+                               const std::unordered_set<std::string>& disabled_optimizer_names = {},
+                               const std::vector<int>& global_providers = {}) {
             InitializeSession(sess->GetSessionHandle(),
                               ep_registration_fn,
                               provider_types,
                               provider_options,
-                              disabled_optimizer_names);
+                              disabled_optimizer_names,
+                              global_providers);
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",

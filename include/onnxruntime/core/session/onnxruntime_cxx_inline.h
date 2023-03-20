@@ -464,6 +464,11 @@ inline Env& Env::CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const
   return *this;
 }
 
+inline Env& Env::CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, int* provider_global_index) {
+  ThrowOnError(GetApi().CreateAndRegisterExecutionProvider(p_, use_arena, provider_type, provider_global_index));
+  return *this;
+}
+
 inline CustomOpDomain::CustomOpDomain(const char* domain) {
   ThrowOnError(GetApi().CreateCustomOpDomain(domain, &p_));
 }
@@ -957,6 +962,10 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
                         const SessionOptions& options, OrtPrepackedWeightsContainer* prepacked_weights_container) {
   ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
                                                                             prepacked_weights_container, &this->p_));
+}
+
+inline Session::Session(const Env& env, const ORTCHAR_T* model_path, int* provider_global_index, size_t global_index_length) {
+  ThrowOnError(GetApi().CreateSessionWithProviderGlobalIndex(env, model_path, provider_global_index, global_index_length, &this->p_));
 }
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {

@@ -15,7 +15,7 @@ input_values = numpy.random.rand(1,3,256,256).astype(numpy.float32)
 out1 = session1.run([output_name], {input_name: input_values})
 print('out1:'+str(out1))
 
-session2 = onnxruntime.InferenceSession('c:/share/models/Detection2/model.onnx', providers=['CPUExecutionProvider'], global_providers=[idx])
+session2 = onnxruntime.InferenceSession('c:/share/models/Detection2/model.onnx', global_providers=[idx])
 out2 = session2.run([output_name], {input_name: input_values})
 print('out2:'+str(out2))
 
@@ -25,6 +25,6 @@ session3 = onnxruntime.InferenceSession('c:/share/models/Detection/model.onnx', 
 out3 = session3.run([output_name], {input_name: input_values})
 print('out3:'+str(out3))
 
-session4 = onnxruntime.InferenceSession('c:/share/models/Detection2/model.onnx', providers=['XnnpackExecutionProvider', 'CPUExecutionProvider'], global_providers=[idx2,-1])
+session4 = onnxruntime.InferenceSession('c:/share/models/Detection2/model.onnx', global_providers=[idx2,idx])
 out4 = session4.run([output_name], {input_name: input_values})
 print('out4:'+str(out4))
