@@ -101,11 +101,7 @@ jobs:
 
       - name: Move generated docs into site
         run: |
-          rm -rf _site/docs/api
-          mkdir -p _site/docs/api/c
-          mkdir -p _site/docs/api/charp
-          mkdir -p _site/docs/api/java
-          mkdir -p _site/docs/api/python
+          mkdir -p _site/docs/api
           mv build/doxygen/html _site/docs/api/c
           mv csharp/ApiDocs/csharp _site/docs/api/csharp
           mv java/build/docs/javadoc _site/docs/api/java
