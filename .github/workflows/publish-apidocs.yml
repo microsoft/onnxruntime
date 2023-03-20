@@ -113,12 +113,12 @@ jobs:
           name: onnxruntime-apidocs
           path: _site
 
-#      - name: Download deployed site
-#        uses: dawidd6/action-download-artifact@v2
-#        with:
-#          name: github-pages
-#          workflow: publish-gh-pages.yml
-#          path: _site
+      - name: Download deployed site
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: github-pages
+          workflow: publish-gh-pages.yml
+          path: _site
 
 #      - name: Unpack site
 #        run: |
