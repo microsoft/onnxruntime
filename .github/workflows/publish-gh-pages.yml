@@ -40,25 +40,19 @@ jobs:
           source: ./
           destination: ./_site
 
-      - name: Clean out old API docs
-        run: |
-          sudo rm -rf _site/docs/api/c
-          sudo rm -rf _site/docs/api/csharp
-          sudo rm -rf _site/docs/api/java
-          sudo rm -rf _site/docs/api/python
-          find _site
-
       - name: Download apidocs artifact
         uses: dawidd6/action-download-artifact@v2
         with:
           name: onnxruntime-apidocs
           workflow: publish-apidocs.yml
-          path: _site
+          path: apidocs
 
-      - name: Unpack site
+      - name: Move apidocs folder into place
         run: |
-          cd _site
-          tar xvf artifact.tar
+          mv apidocs/docs/api/c _site/docs/api
+          mv apidocs/docs/api/csharp _site/docs/api
+          mv apidocs/docs/api/java _site/docs/api
+          mv apidocs/docs/api/python _site/docs/api
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1
