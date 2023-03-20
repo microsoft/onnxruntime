@@ -9,7 +9,7 @@ ONNX format contains metadata related to how the
 model was produced. It is useful when the model
 is deployed to production to keep track of which
 instance was used at a specific time.
-Let's see how to do that with a simple 
+Let's see how to do that with a simple
 logistic regression model trained with
 *scikit-learn* and converted with *sklearn-onnx*.
 """

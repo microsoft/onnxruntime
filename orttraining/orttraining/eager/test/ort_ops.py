@@ -41,7 +41,7 @@ class OrtOpTests(unittest.TestCase):
         assert ort_result.dtype == torch.float32
         assert torch.allclose(cpu_result, ort_result.cpu())
 
-        ## verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
+        # verify setting out to type int while inputs are float cause an error as casting float to int is not allowed.
         cpu_out_tensor = torch.tensor([], dtype=torch.int)
         ort_out_tensor = cpu_out_tensor.to(device)
         with self.assertRaises(RuntimeError):
@@ -610,7 +610,8 @@ class OrtOpTests(unittest.TestCase):
 
     # @parameterized.expand generate test methods for ops and using name_func we renaming the test to be test_{ops}
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op(self, test_name, tensor_test=torch.rand(6)):
+    def test_op(self, test_name):
+        tensor_test = torch.rand(6)
         cpu_result = getattr(torch, test_name)(tensor_test)
         ort_result = getattr(torch, test_name)(tensor_test.to(self.get_device()))
 
@@ -629,8 +630,9 @@ class OrtOpTests(unittest.TestCase):
         assert torch.allclose(cpu_tensor, ort_tensor.cpu(), equal_nan=True)
 
     @parameterized.expand(ops, name_func=rename_func)
-    def test_op_out(self, test_name, tensor_test=torch.rand(6)):  # noqa: B008
-        ##relu -don't have output
+    def test_op_out(self, test_name):
+        tensor_test = torch.rand(6)
+        # relu doesn't have output
         if test_name == "relu":
             self.skipTest(f"no {test_name}_output")
         ### troubleshoot later: the following tests are Failing.
@@ -638,7 +640,7 @@ class OrtOpTests(unittest.TestCase):
             self.skipTest(f" {test_name}_output Fails - skipping for now")
         device = self.get_device()
         cpu_tensor = tensor_test
-        cpu_tensor.to(device)
+        ort_tensor = cpu_tensor.to(device)
 
         cpu_out_tensor = torch.tensor([], dtype=tensor_test.dtype)
         ort_out_tensor = cpu_out_tensor.to(device)
@@ -656,9 +658,9 @@ class OrtOpTests(unittest.TestCase):
     def test_op_tensor(self, math_sign_ops):
         device = self.get_device()
         cpu_a = torch.Tensor([1.0, 1.5, 2.0, 3.5])
-        cpu_a.to(device)
+        ort_a = cpu_a.to(device)
         cpu_b = torch.Tensor([1.0, 1.4, 2.1, 2.4])
-        cpu_b.to(device)
+        ort_b = cpu_b.to(device)
 
         for tensor_type in {torch.float, torch.bool}:
             cpu_out_tensor = torch.tensor([], dtype=tensor_type)
@@ -677,11 +679,13 @@ class OrtOpTests(unittest.TestCase):
         cpu_scalar_int_lt = torch.scalar_tensor(2, dtype=torch.int)
         cpu_scalar_int_gt = torch.scalar_tensor(0, dtype=torch.int)
         cpu_tensor_float = torch.tensor([1.1, 1.1], dtype=torch.float32)
+        float_lt = 1.0
+        float_gt = 1.2
 
-        cpu_tensor_int.to(device)
-        cpu_scalar_int_lt.to(device)
-        cpu_scalar_int_gt.to(device)
-        cpu_tensor_float.to(device)
+        ort_tensor_int = cpu_tensor_int.to(device)
+        ort_scalar_int_lt = cpu_scalar_int_lt.to(device)
+        ort_scalar_int_gt = cpu_scalar_int_gt.to(device)
+        ort_tensor_float = cpu_tensor_float.to(device)
 
         # compare int to int, float to float - ort only supports same type at the moment
         cpu_out_tensor = torch.tensor([], dtype=torch.bool)
@@ -714,9 +718,9 @@ class OrtOpTests(unittest.TestCase):
     def test_op_binary_tensor(self, binary_op, op, alpha_supported):
         device = self.get_device()
         cpu_input = torch.rand(3, 1)  # use broadcasting in the second dim.
-        cpu_input.to(device)
+        ort_input = cpu_input.to(device)
         cpu_other = torch.rand(3, 3)
-        cpu_other.to(device)
+        ort_other = cpu_other.to(device)
 
         # verify op works
         cpu_result = op(cpu_input, cpu_other)
@@ -742,7 +746,9 @@ class OrtOpTests(unittest.TestCase):
     def test_op_binary_scalar(self, binary_op, op, alpha_supported):
         device = self.get_device()
         cpu_input = torch.ones(3, 3)
-        cpu_input.to(device)
+        ort_input = cpu_input.to(device)
+        cpu_other = 3.1
+        ort_other = 3.1
 
         # verify op works
         cpu_result = op(cpu_input, cpu_other)

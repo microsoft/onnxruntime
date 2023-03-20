@@ -2154,7 +2154,7 @@ def test_identity_elimination():
             return z
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     model = NeuralNetSimpleIdentity(D_in, D_out).to(device)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
@@ -2771,7 +2771,7 @@ def test_model_with_different_cuda_devices(device):
     # Trick to run this test in single GPU machines
     device_id = _utils.get_device_index(device)
     if device_id >= torch.cuda.device_count():
-        warnings.warn(f"Skipping test_model_with_different_cuda_devices(cuda:{device_id})")
+        warnings.warn(f"Skipping test_model_with_different_cuda_devices(cuda:{device_id})")  # noqa: B028
         return
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
@@ -2931,7 +2931,7 @@ def test_forward_data_and_model_on_different_devices(data_device, model_device):
     ort_model = ORTModule(model)
     # When exporting the model, ensure device is same between input data and model (else pytorch will raise while exporting)
     x = torch.randn(N, D_in, device=model_device)
-    ort_model(x)
+    _ = ort_model(x)
 
     # Now that the model has been exported, feed in data from device other than the model device
     x = torch.randn(N, D_in, device=data_device)
@@ -2969,7 +2969,7 @@ def test_forward_returns_none_type_as_output():
             return {"out": out1, "none_output": None}
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     model = NeuralNetNoneTypeOutput(D_in, D_out).to(device)
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device)
@@ -3254,7 +3254,7 @@ def test_load_state_dict():
 
 def test_named_parameters():
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     named_parameters_pt = [name for name, _ in pt_model.named_parameters()]
@@ -3266,7 +3266,7 @@ def test_named_parameters():
 
 def test_parameters():
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     parameters_pt = [param for param in pt_model.parameters()]
@@ -3622,12 +3622,12 @@ def test_forward_call_kwargs_input(forward_function):
     model = ORTModule(model)
 
     # Dummy inputs used
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    torch.randn(N, D_in, device=device)
-    [torch.randn(N, D_in, device=device)] * 2
-    {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}  # noqa: B018
+    pos_0 = torch.randn(N, D_in, device=device)
+    pos_1 = torch.randn(N, D_in, device=device)
+    kw_0 = torch.randn(N, D_in, device=device)
+    kw_1 = torch.randn(N, D_in, device=device)
+    args = [torch.randn(N, D_in, device=device)] * 2
+    kwargs = {"kwargs_0": torch.randn(N, D_in, device=device), "kwargs_1": torch.randn(D_in, D_in, device=device)}
 
     # Training step
     prediction = forward_function(model, pos_0, pos_1, kw_0, kw_1, args, kwargs)
@@ -4014,7 +4014,7 @@ def test_model_with_registered_buffer_and_dropped_parameters():
 def test_unused_parameters(model, none_pt_params):
     device = "cuda"
 
-    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: N806, F841
+    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: F841, N806
     model = model.to(device)
     ort_model = ORTModule(copy.deepcopy(model))
 
@@ -4099,7 +4099,7 @@ def test_output_order():
 
 @pytest.mark.parametrize("device", ["cuda", "cpu", None])
 def test_stateless_model_specified_device(device):
-    N, D_in = 32, 784
+    N, D_in, H, D_out = 32, 784, 500, 10  # noqa: F841, N806
     pt_model = StatelessModel().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4113,7 +4113,7 @@ def test_stateless_model_specified_device(device):
 
 
 def test_stateless_model_unspecified_device():
-    N, D_in = 32, 784
+    N, D_in, H, D_out = 32, 784, 500, 10  # noqa: F841, N806
     pt_model = StatelessModel()
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
@@ -4137,7 +4137,7 @@ def test_stateless_model_unspecified_device():
 def test_unused_parameters_does_not_unnecessarily_reinitialize(model):
     device = "cuda"
 
-    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: N806, F841
+    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: F841, N806
     model = model.to(device)
     ort_model = ORTModule(copy.deepcopy(model))
     training_manager = ort_model._torch_module._execution_manager(ort_model._is_training())
@@ -4245,7 +4245,7 @@ def test_ortmodule_list_input():
             return self.dummy + a + b
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
@@ -4266,7 +4266,7 @@ def test_ortmodule_list_input_with_unused_values():
             return self.dummy + b
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = [torch.randn(N, D_in, device=device), torch.randn(N, D_in, device=device)]
@@ -4287,7 +4287,7 @@ def test_ortmodule_list_input_with_none_values():
             return self.dummy + a + b
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = [None, torch.randn(N, D_in, device=device)]
@@ -4311,7 +4311,7 @@ def test_ortmodule_nested_list_input():
             return self.dummy + a + b + c + d + e
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = [
@@ -4497,7 +4497,7 @@ def test_ortmodule_dict_input():
             return self.dummy + a + b
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {"one_value": torch.randn(N, D_in, device=device), "two_value": torch.randn(N, D_in, device=device)}
@@ -4518,7 +4518,7 @@ def test_ortmodule_dict_input_with_unused_values():
             return self.dummy + a
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {"a": torch.randn(N, D_in, device=device), "b": torch.randn(N, D_in, device=device)}
@@ -4539,7 +4539,7 @@ def test_ortmodule_dict_input_with_none_values():
             return self.dummy + a + b
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {"a": None, "b": torch.randn(N, D_in, device=device)}
@@ -4563,7 +4563,7 @@ def test_ortmodule_dict_input_with_nested_values():
             return self.dummy + a + b + c + d + e
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {
@@ -4597,7 +4597,7 @@ def test_ortmodule_list_dict_input_with_nested_values():
             return self.dummy + a + b + c + d + e
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListDictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = {
@@ -4633,7 +4633,7 @@ def test_ortmodule_list_dict_input_with_kwargs_and_registered_buffer():
             return out
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = ListDictKwargsNet(N, D_in).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="kwargsanddict"))
     x = {
@@ -4661,7 +4661,7 @@ def test_ortmodule_user_defined_method():
             return user_input
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = UserDefinedMethodsNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)
@@ -4688,7 +4688,7 @@ def test_ortmodule_user_getattr_gets_successfully():
             return user_input
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = UserDefinedMethodsNet().to(device)
     ort_model = ORTModule(pt_model)
 
@@ -4785,7 +4785,7 @@ def test_ortmodule_setattr_signals_model_changed():
                 return a
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = UserNet(True).to(device)
     ort_model = ORTModule(pt_model)
 
@@ -4891,7 +4891,7 @@ def test_ortmodule_ortmodule_method_attribute_copy():
 )
 def test_ortmodule_skip_check_load_from_os_env(policy_str, policy):
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = policy_str
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
@@ -5548,7 +5548,7 @@ def test_kwargs_dict_input():
             return self.dummy + a + b + c + d + e
 
     device = "cuda"
-    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806, F841
+    N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = DictNet().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     x = torch.randn(N, D_in, device=device)

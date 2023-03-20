@@ -8,7 +8,7 @@ Common errors with onnxruntime
 ==============================
 
 This example looks into several common situations
-in which *onnxruntime* does not return the model 
+in which *onnxruntime* does not return the model
 prediction but raises an exception instead.
 It starts by loading the model trained in example
 :ref:`l-logreg-example` which produced a logistic regression
