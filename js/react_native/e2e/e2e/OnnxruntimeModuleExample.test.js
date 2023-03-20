@@ -7,14 +7,14 @@ describe('OnnxruntimeModuleExample', () => {
   });
 
   beforeEach(async () => {
-    await device.launchApp({ newInstance: true});
+    await device.launchApp({ newInstance: true });
   });
 
-  it('TEST should have accessibilityLabel', async () => {
-    await element(by.label('output'));
+  it('OnnxruntimeModuleExampleE2ETest OutputComponentExists', async () => {
+    await element(by.id('output'));
   });
 
-  it('TEST output inference result value', async () => {
-    await expect(element(by.text('Result: 3')));
+  it('OnnxruntimeModuleExampleE2ETest InferenceResultValueIsCorrect', async () => {
+    await expect(element(by.id('output'))).toHaveText('Result: 3');
   });
 });

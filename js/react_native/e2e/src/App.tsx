@@ -107,7 +107,7 @@ export default class App extends React.PureComponent<{}, State> {
           />
         )}
         {output && (
-          <TextInput accessibilityLabel='output'>
+          <TextInput testID='output'>
             Result: {output}
           </TextInput>
         )}
