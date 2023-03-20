@@ -122,9 +122,16 @@ void AttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int p
   // When past and present share buffer, they shape is same: (2, batch_size, num_heads, max_sequence_length, head_size)
 
   // Type inference
-  ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
-  if (ctx.getNumOutputs() > 1) {
-    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+  if (hasInputShape(ctx, 2)) {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 0);
+    if (ctx.getNumOutputs() > 1) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 2, 1);
+    }
+  } else {
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
+    if (ctx.getNumOutputs() > 1) {
+      ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
+    }
   }
 
   // Shape inference
