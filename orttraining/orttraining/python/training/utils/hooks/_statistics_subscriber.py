@@ -40,7 +40,7 @@ class StatisticsSubscriber(ModuleHookSubscriberBase):
         :param output_dir: the directory all activation statistics files will be stored.
         :param start_step: the first step that runs subscriber actions.
         :param end_step: the end step (exclusively) that runs subscriber actions.
-        :param override_output_dir: whether `output_dir` can be overriden if it already exists.
+        :param override_output_dir: whether `output_dir` can be overridden if it already exists.
         """
         super().__init__(start_step=start_step, end_step=end_step)
         self._output_dir = output_dir

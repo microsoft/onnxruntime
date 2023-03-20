@@ -50,7 +50,7 @@ class ModuleHookSubscriberBase:
         :param step: Current execution step.
         """
         if self.start_step is not None and self.end_step is not None:
-            if step >= self.start_step and step < self.end_step:
+            if self.start_step <= step < self.end_step:
                 self.module_post_forward_impl(activation, depth, name, step)
 
     def module_pre_backward(self, activation: torch.Tensor, depth: int, name: str, step: int):
@@ -62,7 +62,7 @@ class ModuleHookSubscriberBase:
         :param step: Current execution step.
         """
         if self.start_step is not None and self.end_step is not None:
-            if step >= self.start_step and step < self.end_step:
+            if self.start_step <= step < self.end_step:
                 self.module_pre_backward_impl(activation, depth, name, step)
 
     def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
@@ -74,9 +74,9 @@ class ModuleHookSubscriberBase:
 
 class _RuntimeStates:
     """
-    A data struct holding states for runtime context. Tho kinds of states are inlcuded:
+    A data struct holding states for runtime context. Tho kinds of states are included:
     > Global states that is one-time collected during model hook registration. A global execution step is
-      also initialized to refect how many steps have been executed.
+      also initialized to reflect how many steps have been executed.
     > Intra execution step states, initialized and cleaned up intended only for current execution step.
       Usually it carriers intermediate informations during the model execution.
     """
@@ -254,7 +254,7 @@ class SubscriberManager:
         # firstly export graph (run the forward only), after gradient graph is built, another forward+backward is
         # triggered, override the previous dump files.
         def _post_forward_outmost_module_hook(module, _, module_outputs):
-            def _apply_to_tensors_func(index, outputs):
+            def _apply_to_tensors_func(_, outputs):
                 return _IncrementStep.apply(self._run_ctx, outputs)
 
             return self._apply_function_to_tensors(
@@ -290,16 +290,17 @@ class SubscriberManager:
                     if name not in self._run_ctx.execution_step_states.observed_activation_names:
                         self._run_ctx.execution_step_states.observed_activation_names[name] = True
                         return _InspectActivation.apply(name, module_index, self._run_ctx, activation_tensor)
-                    else:
-                        return activation_tensor
+
+                    return activation_tensor
 
                 return self._apply_function_to_tensors(module, module_outputs, _apply_to_tensors_func)
+            return module_outputs
 
         module.register_forward_hook(_post_forward_module_hook)
 
     def _is_builtin_type(self, obj):
         # https://stackoverflow.com/a/17795199
-        return obj.__class__.__module__ == "__builtin__" or obj.__class__.__module__ == "builtins"
+        return obj.__class__.__module__ in ["__builtin__", "builtins"]
 
     def _apply_function_to_tensors(
         self, module: torch.nn.Module, data, func: Callable, first_differentiable_tensor_only: bool = False
@@ -335,7 +336,8 @@ class SubscriberManager:
                     )
                     touched_outputs.append(touched_output)
                 return outputs.__class__(touched_outputs)
-            elif isinstance(outputs, abc.Mapping):
+
+            if isinstance(outputs, abc.Mapping):
                 # apply inplace to avoid recreating dict inherited objects
                 for key in outputs:
                     outputs[key] = _apply_to_tensors_by_flatten(
@@ -348,7 +350,7 @@ class SubscriberManager:
                     )
                 return outputs
 
-            elif type(outputs) is torch.Tensor:
+            if isinstance(outputs, torch.Tensor):
                 cur_id = index_for_tensor_output[0]
                 index_for_tensor_output[0] += 1
                 if first_differentiable_tensor_only is True and first_differentiable_tensor_output[0] >= 0:
@@ -357,10 +359,9 @@ class SubscriberManager:
                     first_differentiable_tensor_output[0] = cur_id
                     return func(cur_id, outputs)
 
-            else:
-                if not self._is_builtin_type(outputs):
-                    raise RuntimeError(f"Unknown type {type(outputs)}")
-                return outputs
+            if not self._is_builtin_type(outputs):
+                raise RuntimeError(f"Unknown type {type(outputs)}")
+            return outputs
 
         return _apply_to_tensors_by_flatten(
             module, tensor_output_idx, data, func, first_differentiable_tensor_output, first_differentiable_tensor_only

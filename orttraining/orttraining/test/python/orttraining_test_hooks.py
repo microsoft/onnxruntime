@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 
 import os
-import pytest
 import tempfile
+import pytest
 import torch
 
 from onnxruntime.training.ortmodule import ORTModule
@@ -110,8 +110,8 @@ def test_statistic_subscriber_multiple_outputs(device, backend):
         input1_tensor = torch.randn(batch_size, input_size, device=device).requires_grad_(True)
         input2_tensor = torch.randn(batch_size, input_size, device=device)
         for _ in range(5):
-            y1, y2 = model(input1_tensor, input2_tensor)
-            y = y1.sum() + y2.sum()
+            y_output1, y_output2 = model(input1_tensor, input2_tensor)
+            y = y_output1.sum() + y_output2.sum()
             y.backward()
 
         assert os.path.exists(output_dir_path)
