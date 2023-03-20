@@ -1623,6 +1623,13 @@ inline Value KernelInfoImpl<T>::GetTensorAttribute(const char* name, OrtAllocato
 }
 
 template <typename T>
+inline ConstValue KernelInfoImpl<T>::GetTensorConstantInput(size_t index, int* is_constant) const {
+  const OrtValue* out = nullptr;
+  ThrowOnError(GetApi().KernelInfoGetConstantInput_tensor(this->p_, index, is_constant, &out));
+  return ConstValue{out};
+}
+
+template <typename T>
 inline std::string KernelInfoImpl<T>::GetNodeName() const {
   size_t size = 0;
 
