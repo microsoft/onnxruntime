@@ -38,6 +38,11 @@ struct IBeamSearchState {
                                        //   temp token: (batch_size * num_beams, 2 * num_beams)
                                        // in total, it will be:
                                        // 2 * (batch_size * num_beams * (parts_vocab + 1), 2 * num_beams)
+
+  // The final chosen indices after BeamScorer has finished processing
+  gsl::span<int32_t> chosen_indices;  // shape (batch_size, num_beams)
+
+  Tensor staging_for_past_state_reorder;  // Tensor of shape (batch_size * num_beams, num_heads, max_length, head_size)
 };
 
 struct IBeamSearchCpuState {
@@ -117,6 +122,8 @@ class IBeamScorer {
                         gsl::span<const float>& final_beam_scores,
                         Tensor* output_sequences,
                         Tensor* output_sequence_scores) = 0;
+
+  virtual gsl::span<int32_t>& GetNextIndices() = 0;
 };
 
 struct IGenerationParameters {
