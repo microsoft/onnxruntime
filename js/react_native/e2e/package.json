@@ -9,8 +9,6 @@
     "start": "react-native start"
   },
   "dependencies": {
-    "onnxruntime-common": "file:./onnxruntime-common.tgz",
-    "onnxruntime-react-native": "file:./onnxruntime-react-native.tgz",
     "react": "^18.1.0",
     "react-native": "^0.69.1"
   },
@@ -18,8 +16,6 @@
     "@babel/core": "^7.17.0",
     "@babel/runtime": "^7.17.0",
     "babel-plugin-module-resolver": "^4.0.0",
-    "detox": "^20.5.0",
-    "jest": "^29",
     "metro-react-native-babel-preset": "^0.67.0"
   }
 }
