@@ -120,10 +120,10 @@ jobs:
           workflow: publish-gh-pages.yml
           path: _site
 
-#      - name: Unpack site
-#        run: |
-#          cd _site
-#          tar xvf artifact.tar
+      - name: Unpack site
+        run: |
+          cd _site
+          tar xvf artifact.tar
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v1
