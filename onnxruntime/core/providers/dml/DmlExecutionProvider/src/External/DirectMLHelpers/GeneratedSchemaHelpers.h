@@ -1421,23 +1421,21 @@ inline std::vector<OperatorField> GetFields(const DML_DIAGONAL_MATRIX1_OPERATOR_
 inline std::vector<OperatorField> GetFields(const DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC& desc)
 {
     return {
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputQueryTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputKeyTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputValueTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputBiasTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputMaskTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputUnpaddedKeyBoundsTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputRelativePositionBiasTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputPastKeyTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputPastValueTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.QueryTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.KeyTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.ValueTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.MaskTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.UnpaddedKeyBoundsTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.RelativePositionBiasTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.PastKeyTensor))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.PastValueTensor))),
         OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[9], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
         OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[10], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputPresentKeyTensor))),
         OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[11], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputPresentValueTensor))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[12], ToOperatorFieldType(static_cast<FLOAT>(desc.MaskFilterValue))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[13], ToOperatorFieldType(static_cast<UINT>(desc.NumHeads))),
         OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[14], ToOperatorFieldType(static_cast<FLOAT>(desc.Scale))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[15], ToOperatorFieldType(static_cast<UINT>(desc.IsUnidirectional))),
-        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[16], ToOperatorFieldType(static_cast<UINT>(desc.DoRotary))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[12], ToOperatorFieldType(static_cast<FLOAT>(desc.MaskFilterValue))),
+        OperatorField(&DML_MULTI_HEAD_ATTENTION_OPERATOR_SCHEMA.Fields[13], ToOperatorFieldType(static_cast<UINT>(desc.HeadCount))),
     };
 }
 

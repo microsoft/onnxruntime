@@ -163,21 +163,21 @@ public:
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaDesc = {};
-        mhaDesc.InputQueryTensor = &inputDescs[dmlQueryIndex];
-        mhaDesc.InputKeyTensor = hasKey ? &inputDescs[dmlKeyIndex] : nullptr;
-        mhaDesc.InputValueTensor = hasValue ? &inputDescs[dmlValueIndex] : nullptr;
-        mhaDesc.InputBiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
-        mhaDesc.InputMaskTensor = (hasKeyPaddingMask && !maskIsUnpaddedBounds) ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
-        mhaDesc.InputUnpaddedKeyBoundsTensor = (hasKeyPaddingMask && maskIsUnpaddedBounds) ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
-        mhaDesc.InputRelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
-        mhaDesc.InputPastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
-        mhaDesc.InputPastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
+        mhaDesc.QueryTensor = &inputDescs[dmlQueryIndex];
+        mhaDesc.KeyTensor = hasKey ? &inputDescs[dmlKeyIndex] : nullptr;
+        mhaDesc.ValueTensor = hasValue ? &inputDescs[dmlValueIndex] : nullptr;
+        mhaDesc.BiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
+        mhaDesc.MaskTensor = (hasKeyPaddingMask && !maskIsUnpaddedBounds) ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+        mhaDesc.UnpaddedKeyBoundsTensor = (hasKeyPaddingMask && maskIsUnpaddedBounds) ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
+        mhaDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaDesc.PastKeyTensor = hasPastKey ? &inputDescs[dmlPastKeyIndex] : nullptr;
+        mhaDesc.PastValueTensor = hasPastValue ? &inputDescs[dmlPastValueIndex] : nullptr;
         mhaDesc.OutputTensor = &outputDescs[outputIndex];
         mhaDesc.OutputPresentKeyTensor = hasPresentKeyOutput ? &outputDescs[outputPresentKeyIndex] : nullptr;
         mhaDesc.OutputPresentValueTensor = hasPresentValueOutput ? &outputDescs[outputPresentValueIndex] : nullptr;
-        mhaDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
-        mhaDesc.NumHeads = numHeads;
         mhaDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
+        mhaDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
+        mhaDesc.HeadCount = numHeads;
 
         DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaDesc };
         SetDmlOperatorDesc(opDesc, kernelCreationContext);

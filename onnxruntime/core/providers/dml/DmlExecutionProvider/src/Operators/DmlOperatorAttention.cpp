@@ -274,25 +274,25 @@ public:
         const DML_OPERATOR_DESC maskSlicedDesc = { DML_OPERATOR_SLICE1, &maskSlicedOperatorDesc};
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
-        mhaOperatorDesc.InputQueryTensor = &namedQueryKeySlicedInputTensorDesc;
-        mhaOperatorDesc.InputKeyTensor = &namedQueryKeySlicedInputTensorDesc;
-        mhaOperatorDesc.InputValueTensor = &namedValueSlicedInputTensorDesc;
+        mhaOperatorDesc.QueryTensor = &namedQueryKeySlicedInputTensorDesc;
+        mhaOperatorDesc.KeyTensor = &namedQueryKeySlicedInputTensorDesc;
+        mhaOperatorDesc.ValueTensor = &namedValueSlicedInputTensorDesc;
 
         if (hasMaxSequenceMask)
         {
-            mhaOperatorDesc.InputMaskTensor = &namedMaskSliceOutputTensorDesc;
+            mhaOperatorDesc.MaskTensor = &namedMaskSliceOutputTensorDesc;
         }
         else
         {
-            mhaOperatorDesc.InputMaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
+            mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.InputUnpaddedKeyBoundsTensor = hasUnpaddedBounds ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
-        mhaOperatorDesc.InputRelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaOperatorDesc.UnpaddedKeyBoundsTensor = hasUnpaddedBounds ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;
+        mhaOperatorDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
-        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
-        mhaOperatorDesc.NumHeads = numHeads;
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
+        mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
+        mhaOperatorDesc.HeadCount = numHeads;
         const DML_OPERATOR_DESC mhaDesc = { DML_OPERATOR_MULTI_HEAD_ATTENTION, &mhaOperatorDesc };
 
         // Construct the graph
