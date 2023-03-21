@@ -7,69 +7,11 @@
 from collections import abc
 from typing import Callable, List, Union
 
-import warnings
 import torch
 
 from onnxruntime.training.ortmodule import ORTModule
 
-
-class ModuleHookSubscriberBase:
-    """
-    Base class for all module hook subscribers.
-    Currently the hook here only means post forward hook and pre backward hook.
-
-    A module hook subscriber is a class that implements the forward and backward function.
-    > The forward hook is called after the activation is generated in the forward path.
-    > The backward hook is called before the activation gradient is computed.
-
-    Forward path:
-        Module_A generate activation tensor_a --> Post forward hook (calling subscribers's forward one by one) -->
-        Module_B generate activation tensor_b --> ...
-
-    Backward path:
-        Module_B backward run, tensor_b's gradient is computed as tensor_b_grad -->
-        Pre backward hook (calling subscribers's backward one by one) -->
-        Module_A backward run, tensor_a's gradient is computed as tensor_a_grad
-
-    Be noted: the "Pre"/"Post" is described from the perspective of the Module_A.
-    """
-
-    def __init__(self, start_step: Union[None, int], end_step: Union[None, int]):
-        """
-        Steps in [start_step, end_step) will run subscriber's actions, other steps will skip.
-        """
-        self.start_step = start_step
-        self.end_step = end_step
-
-    def module_post_forward(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        """
-        This function will be run after the torch Module forward completed.
-        :param activation: Tensor to be inspected.
-        :param depth: The indend level of the torch Module generating `activation`.
-        :param name: The unique name for the `activation`.
-        :param step: Current execution step.
-        """
-        if self.start_step is not None and self.end_step is not None:
-            if self.start_step <= step < self.end_step:
-                self.module_post_forward_impl(activation, depth, name, step)
-
-    def module_pre_backward(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        """
-        This function will be run before the torch Module backward run.
-        :param activation: Tensor to be inspected.
-        :param depth: The indent level of the torch Module generating `activation`.
-        :param name: The unique name for the `activation`.
-        :param step: Current execution step.
-        """
-        if self.start_step is not None and self.end_step is not None:
-            if self.start_step <= step < self.end_step:
-                self.module_pre_backward_impl(activation, depth, name, step)
-
-    def module_post_forward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        raise NotImplementedError()
-
-    def module_pre_backward_impl(self, activation: torch.Tensor, depth: int, name: str, step: int):
-        raise NotImplementedError()
+from ._subscriber_base import SubscriberBase
 
 
 class _RuntimeStates:
@@ -115,6 +57,10 @@ class _InspectActivation(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, activation_name: str, module_idx: int, run_ctx: _RuntimeStates, input_tensor):
+        """
+        Make sure there is same number of `tensor` type inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
         depth = run_ctx.global_states.module_index_to_depth[module_idx]
 
         input_tensor_copied = None
@@ -161,6 +107,10 @@ class _IncrementStep(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, run_ctx, input_tensor):
+        """
+        Make sure there is same number of `tensor` inputs and outputs.
+        This is enforced by ORT's PythonOp's schema check.
+        """
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.run_ctx = run_ctx
 
@@ -169,7 +119,7 @@ class _IncrementStep(torch.autograd.Function):
         # We avoid the complexity to probe the last output handling, and instead, we assume once
         # the very first backward of outside-most module is called, then the forward pass MUST be completed.
 
-        # Be noted: it is not safe to register _IncrementStep only for any of the outpus of outer-most mododule,
+        # Be noted: it is not safe to register _IncrementStep only for one of the outputs of outer-most module,
         # because we are not sure which output branch is executed, for example.
         #                                   OuterMostModuleOutputs
         #                                 /                         \
@@ -212,7 +162,7 @@ class SubscriberManager:
     def __init__(self):
         self._run_ctx: _RuntimeStates = _RuntimeStates()
 
-    def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers: List[ModuleHookSubscriberBase]):
+    def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers: List[SubscriberBase]):
         """
         The API called externally to register hooks that is implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
@@ -226,8 +176,8 @@ class SubscriberManager:
             module = module.module
 
         for subscriber in subscribers:
-            if not isinstance(subscriber, ModuleHookSubscriberBase):
-                raise ValueError("subscriber must be a ModuleHookSubscriberBase instance")
+            if not isinstance(subscriber, SubscriberBase):
+                raise ValueError("subscriber must be a SubscriberBase instance")
             self._run_ctx.global_states.subscribers.add(subscriber)
 
         self._initialize(module)
@@ -237,11 +187,10 @@ class SubscriberManager:
 
     def _initialize(self, module: torch.nn.Module):
         """
-        Register hools for specified module.
+        Register hooks for specified module.
         """
         if len(self._run_ctx.global_states.subscribers) == 0:
-            warnings.warn("No subscribers are registered, skip insert hooks.")
-            return
+            raise RuntimeError("No subscribers are registered.")
 
         next_module_index = [0]
         # Register post forward hook for every module, inside the hook, we loop every tensor output of the module,
@@ -356,9 +305,9 @@ class SubscriberManager:
                 index_for_tensor_output[0] += 1
                 if first_differentiable_tensor_only is True and first_differentiable_tensor_output[0] >= 0:
                     return outputs
-                else:
-                    first_differentiable_tensor_output[0] = cur_id
-                    return func(cur_id, outputs)
+
+                first_differentiable_tensor_output[0] = cur_id
+                return func(cur_id, outputs)
 
             if not self._is_builtin_type(outputs):
                 raise RuntimeError(f"Unknown type {type(outputs)}")

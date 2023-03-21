@@ -49,7 +49,8 @@ def generate_summaries_per_step(args):
     def generate_summary_per_step(topo_order_file_path: Path, dump_src_path: Path, merge_dest_path: Path):
         logger.warning(
             "Start generating summary per step for [%s] following typological order in [%s]",
-            dump_src_path.as_posix(), topo_order_file_path.as_posix()
+            dump_src_path.as_posix(),
+            topo_order_file_path.as_posix(),
         )
         with topo_order_file_path.open(mode="r", encoding="utf-8") as order_file:
             tensor_name_in_order = order_file.readlines()

@@ -2239,7 +2239,14 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
         if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
-            assert len(node.output) == len(node.input) + 1
+            # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
+            # PythonOp when execution. The only difference is that
+            # 1). those ops having same number of tensor inputs and tensor outputs;
+            # 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
+            # Be noted, the count of custom autograd function might be bigger than output count, because there might
+            # be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
+            # inputs as ONNX op's input, instead they are stored in the attributes.
+            assert len(node.output) == len(node.input) + 1  # The output contains on extra context info.
             for input_index in range(len(node.output) - 1):
                 # Process the i-th tensor outputs.
                 vi = self.known_vi_[node.output[input_index + 1]]

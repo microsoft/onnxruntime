@@ -174,8 +174,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
-                    # Add a refence count just in case after export,
-                    # python detect the object is NOT used any more and do GC.
                     NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
             else:
                 raise wrap_exception(

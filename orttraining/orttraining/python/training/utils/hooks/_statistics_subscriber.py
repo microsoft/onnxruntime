@@ -4,16 +4,17 @@
 # --------------------------------------------------------------------------
 
 from pathlib import Path
+from typing import Union
 
 import os
 import warnings
 import shutil
 import torch
 
-from ._subscriber_manager import ModuleHookSubscriberBase
+from ._subscriber_base import SubscriberBase
 
 
-class StatisticsSubscriber(ModuleHookSubscriberBase):
+class StatisticsSubscriber(SubscriberBase):
     """
     This subscriber is used to dump the activation's statistics to files.
 
@@ -33,7 +34,11 @@ class StatisticsSubscriber(ModuleHookSubscriberBase):
     """
 
     def __init__(
-        self, output_dir: str, start_step: int = 0, end_step: int = 1000000, override_output_dir: bool = False
+        self,
+        output_dir: str,
+        start_step: Union[None, int] = None,
+        end_step: Union[None, int] = None,
+        override_output_dir: bool = False,
     ):
         """
         Steps in [start_step, end_step) will run subscriber actions.

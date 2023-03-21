@@ -3880,7 +3880,14 @@ Return true if all elements are true and false otherwise.
 
         std::string func_name = getAttribute(ctx, "name", "");
         if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);
+          // PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
+          // PythonOp when execution. The only difference is that
+          // 1). those ops having same number of tensor inputs and tensor outputs;
+          // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
+          // Be noted, the count of custom autograd function might be bigger than output count, because there might
+          // be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
+          // inputs as ONNX op's input, instead they are stored in the attributes.
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains on extra context info.
           // Set inferred output types.
           for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
             propagateElemTypeFromInputToOutput(ctx, i - 1, i);
@@ -4017,9 +4024,11 @@ Return true if all elements are true and false otherwise.
 
         std::string func_name = getAttribute(ctx, "name", "");
         if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);
-
-          // Set inferred output types.
+          // PythonOpGrad with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
+          // PythonOpGrad when execution. The only difference is that
+          // 1). those ops having same number of tensor inputs and tensor outputs;
+          // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
           for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
             propagateElemTypeFromInputToOutput(ctx, i + 1, i);
             propagateShapeFromInputToOutput(ctx, i + 1, i);
