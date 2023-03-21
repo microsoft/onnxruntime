@@ -6,6 +6,7 @@
 #include "optimizer_api.h"
 #include "core/graph/graph.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/graph_partitioner.h"  // DebugGraphFn is defined here
 
 namespace onnxruntime {
 /// <summary>
@@ -87,7 +88,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();
 /// This is called after layout transformation if new nodes are inserted, and again after those are optimized.
 /// </param>
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            std::optional<std::function<void(Graph&)>> debug_graph_fn);
+                            const DebugGraphFn& debug_graph_fn = {});
 
 /// <summary>
 /// Checks if the opset of the Graph is supported by the layout transformer.

@@ -884,7 +884,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   auto mode = saving_model_in_ort_format ? GraphPartitioner::Mode::kAssignOnly
                                          : GraphPartitioner::Mode::kNormal;
 
-  TransformLayoutFunction transform_layout_fn = nullptr;
+  layout_transformer::TransformLayoutFunction transform_layout_fn = nullptr;
 
   // only provide NCWH to NHWC layout transformer if supported
   if (layout_transformer::IsSupportedOpset(graph)) {
@@ -893,7 +893,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     // create a lambda to combine the two operations in the layout transformation function
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
-                                 std::optional<DebugGraphFn> debug_graph_fn) -> Status {
+                                 const layout_transformer::DebugGraphFn& debug_graph_fn) -> Status {
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformer::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                    debug_graph_fn));
@@ -906,8 +906,8 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
         // this is prior to GraphPartitioner::GetCapabilityForEP calling IExecutionProvider::GetCapability the second
         // time to validate the EP that requested the layout transformation can take all nodes using the new layout.
         // if that fails, this allows debugging the graph used in that GetCapability call.
-        if (debug_graph_fn && *debug_graph_fn) {
-          (*debug_graph_fn)(graph_to_transform);
+        if (debug_graph_fn) {
+          debug_graph_fn(graph_to_transform);
         }
       }
 
@@ -917,7 +917,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 
   // debug infrastructure for layout transformation. it's extremely difficult to trace the transpose optimizer changes
   // manually, so dumping out the model so it can be viewed in Netron makes it far easier
-  DebugGraphFn debug_graph_fn;
+  layout_transformer::DebugGraphFn debug_graph_fn;
   if (transform_layout_fn) {
     bool enable_debug = session_options_.config_options.GetConfigOrDefault(kDebugLayoutTransformation, "0") == "1";
 
@@ -1208,11 +1208,11 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                SessionState& session_state) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // only provide NCWH to NHWC layout transformer if supported
-  TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
-                                                    ? layout_transformer::TransformLayoutForEP
-                                                    : nullptr;
+  layout_transformer::TransformLayoutFunction transform_layout_fn = layout_transformer::IsSupportedOpset(graph)
+                                                                        ? layout_transformer::TransformLayoutForEP
+                                                                        : nullptr;
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  TransformLayoutFunction transform_layout_fn{};
+  layout_transformer::TransformLayoutFunction transform_layout_fn{};
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   GraphPartitioner partitioner(kernel_registry_manager, providers);

@@ -53,8 +53,8 @@ struct PartitionParams {
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
   std::reference_wrapper<int> fused_node_unique_id;
-  TransformLayoutFunction transform_layout_function;
-  std::optional<DebugGraphFn> debug_graph_fn;
+  layout_transformer::TransformLayoutFunction transform_layout_function;
+  std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -125,8 +125,8 @@ struct GetCapabilityForEPParams {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   GraphPartitioner::Mode mode;
-  TransformLayoutFunction transform_layout;
-  std::optional<DebugGraphFn> debug_graph_fn;
+  layout_transformer::TransformLayoutFunction transform_layout;
+  std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -334,8 +334,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
-                                           TransformLayoutFunction transform_layout_function,
-                                           std::optional<DebugGraphFn> debug_graph_fn) {
+                                           layout_transformer::TransformLayoutFunction transform_layout_function,
+                                           const layout_transformer::DebugGraphFn& debug_graph_fn) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -372,7 +372,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(capabilities),
       mode,
       transform_layout_function,
-      debug_graph_fn};
+      std::cref(debug_graph_fn)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
@@ -597,10 +597,11 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       GraphPartitioner::Mode::kOrtFormatLoad,
       partition_params.transform_layout_function,
-      std::nullopt
+      std::cref(partition_params.debug_graph_fn)
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   };
   // clang-format on
+
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
   if (capabilities.empty()) {
     return Status::OK();
@@ -691,8 +692,8 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   TransformLayoutFunction transform_layout_function, Mode mode,
-                                   std::optional<DebugGraphFn> debug_graph_fn) const {
+                                   layout_transformer::TransformLayoutFunction transform_layout_function, Mode mode,
+                                   const layout_transformer::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -719,7 +720,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
       transform_layout_function,
-      debug_graph_fn,
+      std::cref(debug_graph_fn),
   };
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

@@ -907,7 +907,7 @@ PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& nod
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
-                            std::optional<std::function<void(Graph&)>> debug_graph_fn) {
+                            const DebugGraphFn& debug_graph_fn) {
   // sub graph recurse will be added later
   auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
@@ -981,8 +981,8 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
 
   if (modified) {
     // debug the changes made inserting Transpose nodes around layout sensitive ops.
-    if (debug_graph_fn && *debug_graph_fn) {
-      (*debug_graph_fn)(graph);
+    if (debug_graph_fn) {
+      debug_graph_fn(graph);
     }
 
     OptimizeResult result =
@@ -996,8 +996,8 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
     }
 
     // debug optimization of the new Tranpose nodes using PostLayoutTransformCostCheck
-    if (debug_graph_fn && *debug_graph_fn) {
-      (*debug_graph_fn)(graph);
+    if (debug_graph_fn) {
+      debug_graph_fn(graph);
     }
   }
 

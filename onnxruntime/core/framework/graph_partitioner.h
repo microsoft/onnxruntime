@@ -12,13 +12,17 @@ namespace onnxruntime {
 class ExecutionProviders;
 class KernelRegistryManager;
 
-// infrastructure to allow debugging the graph modifications made during layout transformation that is controlled
-// by GraphPartitioner. If provided, the DebugGraphFn will be called at various points of the process.
+namespace layout_transformer {
+// TransformLayoutFunction used by GraphPartitioner when transforming a graph from NCHW to NHWC if the EP has a
+// preferred layout of NHWC.
+//
+// DebugGraphFn can be used to debug the graph modifications made during layout transformation.
 // See kDebugLayoutTransformation in /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h for
 // more details.
 using DebugGraphFn = std::function<void(const Graph&)>;
 using TransformLayoutFunction = std::function<Status(Graph& graph, bool& modified, IExecutionProvider& current_ep,
-                                                     std::optional<DebugGraphFn> debug_graph_fn)>;
+                                                     const DebugGraphFn& debug_graph_fn)>;
+}  // namespace layout_transformer
 
 class GraphPartitioner {
  public:
@@ -36,9 +40,9 @@ class GraphPartitioner {
 
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
-                   TransformLayoutFunction transform_layout_function,
+                   layout_transformer::TransformLayoutFunction transform_layout_function,
                    Mode mode = Mode::kNormal,
-                   std::optional<DebugGraphFn> debug_graph_fn = std::nullopt) const;
+                   const layout_transformer::DebugGraphFn& debug_graph_fn = {}) const;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphPartitioner);
