@@ -1207,7 +1207,7 @@ TEST(CApiTest, RegisterCustomOpForCPUAndCUDA) {
 }
 #endif
 
-#if (!defined(ORT_MINIMAL_BUILD)) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+#if (!defined(__ANDROID__)) && ((!defined(ORT_MINIMAL_BUILD)) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
 TEST(CApiTest, test_custom_op_get_const_input) {
   const auto* model_path = TSTR("testdata/test_kernel_info_get_const_input.onnx");
 
