@@ -38,6 +38,11 @@ function getMachineIpAddress() {
   return 'localhost';
 }
 
+const hostname = getMachineIpAddress();
+// In Node.js v16 and below, 'localhost' is using IPv4, so need to listen to '0.0.0.0'
+// In Node.js v17+, 'localhost' is using IPv6, so need to listen to '::'
+const listenAddress = Number.parseInt(process.versions.node.split('.')[0]) >= 17 ? '::' : '0.0.0.0';
+
 module.exports = function (config) {
   config.set({
     // global config of your BrowserStack account
@@ -78,7 +83,8 @@ module.exports = function (config) {
     browserNoActivityTimeout: 300000,
     browserDisconnectTolerance: 0,
     browserSocketTimeout: 60000,
-    hostname: getMachineIpAddress(),
+    hostname,
+    listenAddress,
     customLaunchers: {
       ChromeTest: { base: 'ChromeHeadless', flags: ['--enable-features=SharedArrayBuffer'] },
       ChromePerf: { base: 'Chrome', flags: ['--window-size=1,1', '--enable-features=SharedArrayBuffer'] },
