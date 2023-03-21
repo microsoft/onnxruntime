@@ -3,7 +3,10 @@
 
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 
+#include <cassert>
+
 #include "core/common/common.h"
+#include "core/common/narrow.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
@@ -88,7 +91,7 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
         assert(consumer_node_ptr != nullptr);
         const Node& consumer_node = *consumer_node_ptr;
         const auto consumer_explicit_input_defs_count = consumer_node.InputDefs().size();
-        return dq_output_edge.dst_arg_index >= consumer_explicit_input_defs_count;
+        return narrow<size_t>(dq_output_edge.dst_arg_index) >= consumer_explicit_input_defs_count;
       });
 
   const bool has_output_edge_to_implicit_input = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
