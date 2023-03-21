@@ -38,23 +38,23 @@ auto GetGraphBuilder(GraphConfig config) {
       concat.AddAttribute("axis", int64_t{-1});
     }
 
-    // TODO handle config.has_subgraph_consumer
     if (config.has_subgraph_consumer) {
-      auto create_if_subgraph = [&](bool /*condition*/) {
+      auto create_if_subgraph = [&](bool condition) {
         auto model = Model{"model for generating graph proto", true, DefaultLoggingManager().DefaultLogger()};
         auto& graph = model.MainGraph();
 
-        ModelTestBuilder subgraph_builder(graph);
-
         const auto& dq_output_name = dq_output->Name();
 
-        ONNX_NAMESPACE::TypeProto dq_output_type_proto{};
-        dq_output_type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-        NodeArg& local_dq_output = graph.GetOrCreateNodeArg(dq_output_name, &dq_output_type_proto);
+        ONNX_NAMESPACE::TypeProto type_proto{};
+        type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+        NodeArg& local_dq_output = graph.GetOrCreateNodeArg(dq_output_name, &type_proto);
         graph.AddOuterScopeNodeArg(local_dq_output.Name());
 
-        NodeArg* out = subgraph_builder.MakeOutput();
-        subgraph_builder.AddNode("Identity", {&local_dq_output}, {out});
+        NodeArg& out = graph.GetOrCreateNodeArg(condition ? "output_then" : "output_else", &type_proto);
+        graph.AddNode("identity", "Identity", "pass through identity", {&local_dq_output}, {&out});
+
+        graph.SetOutputs({&out});
 
         ORT_THROW_IF_ERROR(graph.Resolve());
 
@@ -137,7 +137,18 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumer) {
   GraphConfig config{};
   config.num_explicit_consumer_nodes = 3;
   config.num_inputs_per_explicit_consumer_node = 1;
-  config.has_subgraph_consumer = true;  // TODO fix this
+  config.has_subgraph_consumer = true;
+
+  // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
+  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 4);
+}
+
+TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodesWithSubgraphConsumerAndGraphOutput) {
+  GraphConfig config{};
+  config.num_explicit_consumer_nodes = 3;
+  config.num_inputs_per_explicit_consumer_node = 1;
+  config.has_graph_output = true;
+  config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node (3) = 4
   RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 4);
@@ -157,6 +168,27 @@ TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithGraphOutput) {
   config.num_explicit_consumer_nodes = 2;
   config.num_inputs_per_explicit_consumer_node = 5;
   config.has_graph_output = true;
+
+  // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
+  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
+}
+
+TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumer) {
+  GraphConfig config{};
+  config.num_explicit_consumer_nodes = 2;
+  config.num_inputs_per_explicit_consumer_node = 5;
+  config.has_subgraph_consumer = true;
+
+  // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
+  RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
+}
+
+TEST(EnsureUniqueDQForNodeUnitTests, DQSharedAmongNodeInputsWithSubgraphConsumerAndGraphOutput) {
+  GraphConfig config{};
+  config.num_explicit_consumer_nodes = 2;
+  config.num_inputs_per_explicit_consumer_node = 5;
+  config.has_graph_output = true;
+  config.has_subgraph_consumer = true;
 
   // expected count = preserved original (1) + one for each explicit consumer node input (2 * 5) = 11
   RunEnsureUniqueDQForNodeUnitTest(GetGraphBuilder(config), 11);
