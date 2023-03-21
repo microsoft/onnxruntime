@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.capi._pybind_state import register_torch_autograd_function, register_miscellaneous_const_input
 from onnxruntime.training import ortmodule
 
 from . import _logger
@@ -56,21 +56,6 @@ def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
-
-
-# For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
-# we firstly append it into a global store to hold a reference (in case it is released after module exported).
-# Add a ref count between export and PythonOp kernel creation. In the middle, if no other reference
-# it will be GC-ed.
-# Can be safely cleaned once session is initialized, where op kernel creation finished and add
-# refcnt for the object.
-# Should be fine to used by inference_manager and training_manager, because they are exporpted
-# sequentially.
-NONTENSOR_OBJECT_POINTER_STORE = {}
-
-
-def _clear_nontensor_object_references():
-    NONTENSOR_OBJECT_POINTER_STORE.clear()
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -174,7 +159,9 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
-                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
+                    # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+                    # we append it into a global store to hold a reference (in case it is released after module exported).
+                    register_miscellaneous_const_input(arg)
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,

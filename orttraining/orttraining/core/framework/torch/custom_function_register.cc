@@ -6,6 +6,8 @@
 #include "orttraining/core/framework/torch/refcount_tracker.h"
 #include "core/platform/env.h"
 #include <cstdio>
+#include <sstream>
+#include <string>
 
 namespace onnxruntime {
 namespace language_interop_ops {
@@ -151,6 +153,15 @@ PyObject* OrtTorchFunctionPool::GetBackwardCore(const std::string& key) {
   return iter->second.get();
 }
 
+void OrtTorchFunctionPool::RegisterMiscellaneousConstInput(PyObject* obj) {
+  ORT_ENFORCE(obj, "Cannot register NULL reference input.");
+  const void* address = static_cast<const void*>(obj);
+  std::stringstream ss;
+  ss << address;
+  std::string key = ss.str();
+  RegisterEntry(mutex_, key, obj, miscellaneous_const_input_pool_);
+}
+
 int64_t OrtTorchFunctionPool::RegisterContext(PyObject* autograd_context) {
   static int64_t index_ = 0x1000000;
   std::lock_guard<std::mutex> lock(mutex_);
@@ -190,6 +201,7 @@ void OrtTorchFunctionPool::UnRegisterFunctions() {
   backward_runner_.reset();
   forward_core_pool_.clear();
   backward_core_pool_.clear();
+  miscellaneous_const_input_pool_.clear();
   func_context_pool_.clear();
 }
 

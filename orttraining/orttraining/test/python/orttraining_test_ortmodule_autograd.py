@@ -343,8 +343,6 @@ def test_pointer_type():
 
         @staticmethod
         def backward(ctx, grad_output):
-            (input,) = ctx.saved_tensors
-            name = ctx.name
             return grad_output, None
 
     class StringInputFunctionTestModel(torch.nn.Module):

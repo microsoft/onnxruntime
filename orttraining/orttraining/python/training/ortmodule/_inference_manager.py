@@ -14,7 +14,6 @@ from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_determin
 from ._execution_agent import InferenceAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from ._custom_autograd_function_exporter import _clear_nontensor_object_references
 from .debug_options import DebugOptions
 
 
@@ -178,5 +177,3 @@ class InferenceManager(GraphExecutionManager):
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
-
-        _clear_nontensor_object_references()

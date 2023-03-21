@@ -15,7 +15,6 @@ from . import _are_deterministic_algorithms_enabled, _io, _logger, _use_determin
 from ._execution_agent import TrainingAgent
 from ._fallback import ORTModuleFallbackException, _FallbackManager, _FallbackPolicy
 from ._graph_execution_manager import GraphExecutionManager, _RunStateInfo, _SkipCheck
-from ._custom_autograd_function_exporter import _clear_nontensor_object_references
 from .debug_options import DebugOptions
 
 
@@ -366,8 +365,6 @@ class TrainingManager(GraphExecutionManager):
             provider_options,
             local_device_rank,
         )
-
-        _clear_nontensor_object_references()
 
     def _reinitialize_graph_builder(self, input_info):
         """Return true if the module graph builder was reinitialized"""
