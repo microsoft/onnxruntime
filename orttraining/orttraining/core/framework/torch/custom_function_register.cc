@@ -196,13 +196,21 @@ PyObject* OrtTorchFunctionPool::GetContext(int64_t context_index) {
   return iter->second.get();
 }
 
-void OrtTorchFunctionPool::UnRegisterFunctions() {
+void OrtTorchFunctionPool::UnRegisterGlobalFunctions() {
   forward_runner_.reset();
   backward_runner_.reset();
+  func_context_pool_.clear();
+}
+
+void OrtTorchFunctionPool::UnRegisterModelSpecificFunctions() {
   forward_core_pool_.clear();
   backward_core_pool_.clear();
   miscellaneous_const_input_pool_.clear();
-  func_context_pool_.clear();
+}
+
+void OrtTorchFunctionPool::UnRegisterFunctions() {
+  UnRegisterGlobalFunctions();
+  UnRegisterModelSpecificFunctions();
 }
 
 }  // namespace torch

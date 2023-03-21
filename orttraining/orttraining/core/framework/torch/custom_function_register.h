@@ -84,6 +84,9 @@ class OrtTorchFunctionPool final {
   OrtTorchFunctionPool(){};
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OrtTorchFunctionPool);
 
+  void UnRegisterGlobalFunctions();
+  void UnRegisterModelSpecificFunctions();
+
   PythonObjectPtr forward_runner_;
   PythonObjectPtr backward_runner_;
 
