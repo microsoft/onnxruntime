@@ -12,11 +12,11 @@ describe('OnnxruntimeModuleExample', () => {
     await device.launchApp({ newInstance: true });
   });
 
-  it('OnnxruntimeModuleExampleE2ETest OutputComponentExists', async () => {
+  it('OnnxruntimeModuleExampleE2ETest CheckOutputComponentExists', async () => {
     await element(by.id('output'));
   });
 
-  it('OnnxruntimeModuleExampleE2ETest InferenceResultValueIsCorrect', async () => {
+  it('OnnxruntimeModuleExampleE2ETest CheckInferenceResultValueIsCorrect', async () => {
     await expect(element(by.id('output'))).toHaveText('Result: 3');
   });
 });

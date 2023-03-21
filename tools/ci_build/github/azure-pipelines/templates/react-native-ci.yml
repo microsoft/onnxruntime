@@ -52,6 +52,13 @@ jobs:
     inputs:
       versionSpec: $(pythonVersion)
 
+  - task: JavaToolInstaller@0
+    displayName: Use jdk 11
+    inputs:
+      versionSpec: '11'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+
   - task: NodeTool@0
     inputs:
       versionSpec: '16.x'

@@ -419,23 +419,23 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
    ```
 ### E2E Testing with Detox framework
 
-  When Testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) for Android and iOS e2e apps:
+  When testing with integrated [Detox](https://wix.github.io/Detox/docs/next/introduction/getting-started) framework for Android and iOS e2e apps:
   - Detox prerequisites:
 
     Install detox command line tools:
     ```
     yarn global add detox-cli
     ```
-    Install applesimutils which is quired by Detox to work with iOS simulators. (Requires a MacOS device)
+    Install applesimutils which is required by Detox to work with iOS simulators. (Requires a MacOS device)
     ```
     brew tap wix/brew
     brew install applesimutils
     ```
-  - Add Jest and install Detox itself for e2e Detox project from project directory `<ORT_ROOT>/js/react_native/e2e`.
+  - Add [Jest](https://jestjs.io/) dependency and install Detox itself for e2e Detox project from project directory `<ORT_ROOT>/js/react_native/e2e`.
     ```
     yarn add "jest@^29" --dev
     ```
-    At the end of this step, should be able to see jest written to `package.json` file in the project root folder.
+    At the end of this step, should be able to see jest written to `package.json` file under the project root folder.
 
     Then install detox itself.
     ```
@@ -443,7 +443,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
     ```
     Main Detox project files:
       - `.detoxrc.js` -Detox config file;
-      - `e2e/jest.config.js` -Jest confiuration;
+      - `e2e/jest.config.js` -Jest configuration;
       - `e2e/OnnxruntimeModuleExample.test.js` - initial react native onnxruntimemodule e2e detox test.
   - Build the detox e2e testing app.
 
@@ -458,7 +458,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
     detox build --configuration android.emu.debug
     ```
     * Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file, 
-    modify the device name in config files to match local device name otherwise would cause a build failure.
+    modify the device name in config files accordingly to match local device name otherwise would cause a build failure.
 
   - Run the detox e2e tests.
     
@@ -473,7 +473,7 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
     detox test --configuration android.emu.debug
     ```
 
-    To record logs for testing results, add `--record-logs all`. Output logs and test results will be produced in the `e2e/artifacts/`folder.
+    To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/`folder.
     See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
 
 
