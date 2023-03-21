@@ -4,16 +4,25 @@
 # --------------------------------------------------------------------------
 
 # This file is modified from https://github.com/microsoft/onnxconverter-common/blob/master/onnxconverter_common/float16.py
-# Modifications: keep_io_types can be list of names; convert initializers if needed to preserve precision; add force_fp16_initializers option.
+# Modifications:
+# (1) Update default value of min_positive_val and max_finite_val
+# (2) keep_io_types can be list of names
+# (3) convert initializers if needed to preserve precision
+# (4) add force_fp16_initializers option
+# (5) handle Resize and GroupNorm with mixed float inputs
+# (6) allow convert_float_to_float16 to accept model path
 
 import itertools
 import logging
+import os
+import tempfile
 from typing import Dict, List
 
 import numpy as np
 import onnx
 from onnx import helper, numpy_helper
 from onnx import onnx_pb as onnx_proto
+from onnx.shape_inference import infer_shapes, infer_shapes_path
 from packaging import version
 
 logger = logging.getLogger(__name__)
@@ -40,6 +49,22 @@ def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65
     def between(a, b, c):
         return np.logical_and(a < b, b < c)
 
+    if np_array[np.where(np_array > 0)].shape[0] > 0:
+        positive_max = np_array[np.where(np_array > 0)].max()
+        positive_min = np_array[np.where(np_array > 0)].min()
+        if positive_max >= max_finite_val:
+            logger.info("the float32 number {} will be truncated to {}".format(positive_max, max_finite_val))
+        if positive_min <= min_positive_val:
+            logger.info("the float32 number {} will be truncated to {}".format(positive_min, min_positive_val))
+
+    if np_array[np.where(np_array < 0)].shape[0] > 0:
+        negative_max = np_array[np.where(np_array < 0)].max()
+        negative_min = np_array[np.where(np_array < 0)].min()
+        if negative_min <= -max_finite_val:
+            logger.info("the float32 number {} will be truncated to {}".format(negative_min, -max_finite_val))
+        if negative_max >= -min_positive_val:
+            logger.info("the float32 number {} will be truncated to {}".format(negative_max, -min_positive_val))
+
     np_array = np.where(between(0, np_array, min_positive_val), min_positive_val, np_array)
     np_array = np.where(between(-min_positive_val, np_array, 0), -min_positive_val, np_array)
     np_array = np.where(between(max_finite_val, np_array, float("inf")), max_finite_val, np_array)
@@ -63,7 +88,7 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
     """
 
     if not isinstance(tensor, onnx_proto.TensorProto):
-        raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
     if tensor.data_type == onnx_proto.TensorProto.FLOAT:
         tensor.data_type = onnx_proto.TensorProto.FLOAT16
@@ -102,6 +127,7 @@ DEFAULT_OP_BLOCK_LIST = [
     "LinearRegressor",
     "Normalizer",
     "OneHotEncoder",
+    "RandomUniformLike",
     "SVMClassifier",
     "SVMRegressor",
     "Scaler",
@@ -148,17 +174,19 @@ def convert_float_to_float16(
     node_block_list=None,
     force_fp16_initializers=False,
 ):
-    """Convert model tensor float type in the ONNX ModelProto input to tensor float16.
+    """Convert tensor float type in the input ONNX model to tensor float16.
 
     Args:
-        model (ModelProto): The ONNX model to convert.
+        model (ModelProto or str): The ONNX model or path of the model to convert.
         min_positive_val (float, optional): minimal positive value. Defaults to 5.96e-08.
         max_finite_val (float, optional): maximal finite value of float16. Defaults to 65504.
         keep_io_types (Union[bool, List[str]], optional): It could be boolean or a list of float32 input/output names.
-                                                          If True, model inputs/outputs should be left as float32. Defaults to False.
-        disable_shape_infer (bool, optional): Skips running onnx shape/type inference. Useful if shape inference has been done. Defaults to False.
+                                                          If True, model inputs/outputs should be left as float32.
+                                                          Defaults to False.
+        disable_shape_infer (bool, optional): Skips running onnx shape/type inference.
+                                              Useful if shape inference has been done. Defaults to False.
         op_block_list (List[str], optional): List of op types to leave as float32.
-                                             Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST` as default.
+                                             Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST`.
         node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
         force_fp16_initializers(bool): force converting all float initializers to float16.
                                        Default to false, which will convert only the one needed to avoid precision loss.
@@ -173,17 +201,28 @@ def convert_float_to_float16(
     ), "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
     assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
+    if isinstance(model, str):
+        model_path = model
+        if version.parse(onnx.__version__) >= version.parse("1.8.0") and not disable_shape_infer:
+            # shape_infer_model_path should be in the same folder of model_path
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(model_path)) as tmpfile:
+                shape_infer_model_path = tmpfile.name
+                # infer_shapes_path can be used for model >2GB, and infer_shapes cannot.
+                infer_shapes_path(model_path, shape_infer_model_path)
+                model = onnx.load(shape_infer_model_path)
+                disable_shape_infer = True
+        else:
+            model = onnx.load(model_path)
+
+    if not isinstance(model, onnx_proto.ModelProto):
+        raise ValueError(f"Expected an ONNX ModelProto but got {type(model)}")
+
     func_infer_shape = None
     if not disable_shape_infer and version.parse(onnx.__version__) >= version.parse("1.2.0"):
         try:
-            from onnx.shape_inference import infer_shapes
-
             func_infer_shape = infer_shapes
         finally:
             pass
-
-    if not isinstance(model, onnx_proto.ModelProto):
-        raise ValueError("Expected model type is an ONNX ModelProto but got %s" % type(model))
 
     # create blocklists
     if op_block_list is None:
@@ -414,7 +453,7 @@ def convert_float_to_float16(
 def float_to_float16_max_diff(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """Measure the maximum absolute difference after converting a float tensor to float16."""
     if not isinstance(tensor, onnx_proto.TensorProto):
-        raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
     if tensor.data_type != onnx_proto.TensorProto.FLOAT:
         raise ValueError("Expected tensor data type is float.")
 
