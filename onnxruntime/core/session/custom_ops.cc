@@ -281,6 +281,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetOutputTypeInfo, _In_ const OrtKernelI
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Out_ int* is_constant, _Outptr_ const OrtValue** out) {
+  API_IMPL_BEGIN
+  const auto* op_info = reinterpret_cast<const onnxruntime::OpKernelInfo*>(info);
+  *is_constant = static_cast<int>(op_info->TryGetConstantInput(index, out));
+  return nullptr;
+  API_IMPL_END
+};
+
 ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetNodeName, _In_ const OrtKernelInfo* info, _Out_ char* out,
                     _Inout_ size_t* size) {
   API_IMPL_BEGIN
@@ -479,12 +488,14 @@ common::Status CreateCustomRegistry(gsl::span<OrtCustomOpDomain* const> op_domai
 
         const auto type = op->GetOutputType(op, i);
         if (ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED == type) {  // Dynamic typed output
-          ORT_ENFORCE(type_id_counter == 1,
-                      "There must be one (and only one) dynamic typed input to the custom op. "
-                      "Its type info at runtime will be used to infer the type info of this dynamic typed output "
-                      "which is required for the success of the model loading step. "
-                      "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
-                      "cannot be inferred without which model loading cannot proceed.");
+          if (op->GetOutputCharacteristic(op, i) == OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED) {
+              ORT_ENFORCE(type_id_counter == 1,
+                          "There must be one (and only one) dynamic typed input to the custom op. "
+                          "Its type info at runtime will be used to infer the type info of this dynamic typed output "
+                          "which is required for the success of the model loading step. "
+                          "More than one dynamic typed inputs are currently not supported as differing types at runtime means the output type "
+                          "cannot be inferred without which model loading cannot proceed.");
+          }
 
           schema.Output(i, "Output" + std::to_string(i), "", "T0", option, is_homogeneous, min_arity);
         } else {

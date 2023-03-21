@@ -450,4 +450,7 @@ ORT_API_STATUS_IMPL(Logger_LogMessage, _In_ const OrtLogger* logger, OrtLoggingL
                     _In_z_ const char* message, _In_z_ const ORTCHAR_T* file_path, int line_number,
                     _In_z_ const char* func_name);
 ORT_API_STATUS_IMPL(Logger_GetLoggingSeverityLevel, _In_ const OrtLogger* logger, _Out_ OrtLoggingLevel* out);
+
+ORT_API_STATUS_IMPL(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, _In_ size_t index,
+                    _Out_ int* is_constant, _Outptr_ const OrtValue** out);
 }  // namespace OrtApis
