@@ -746,7 +746,7 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  for (const auto entry : expected_op_count) {
+  for (const auto& entry : expected_op_count) {
     if (entry.second == 0) {
       ASSERT_TRUE(op_to_count.find(entry.first) == op_to_count.end())
           << entry.first << " should not exist in the graph";
