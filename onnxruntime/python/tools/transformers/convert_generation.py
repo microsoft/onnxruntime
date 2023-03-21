@@ -1026,7 +1026,7 @@ def shape_of(vi):
     return tuple([d.dim_param if (d.dim_param) else d.dim_value for d in vi.type.tensor_type.shape.dim])
 
 
-def update_decoder_subgraph_past_present_share_buffer(subg):
+def update_decoder_subgraph_past_present_share_buffer(subg: GraphProto):
     input_past_0 = 3
     output_past_0 = 1
     new_inputs = []
@@ -1074,37 +1074,82 @@ def update_decoder_subgraph_past_present_share_buffer(subg):
     return subg
 
 
-def update_decoder_subgraph_use_decoder_masked_multihead_attention(subg) -> bool:
+def update_decoder_subgraph_use_decoder_masked_multihead_attention(
+    subg: GraphProto, is_beam_search: bool, switch_attention: bool
+) -> bool:
     """Update the Attention nodes to DecoderMaskedMultiheadAttention.
 
     Args:
         subg (GraphProto): GraphProto of the decoder subgraph
+        is_beam_search (bool): Boolean specifying if the sampling algo is BeamSearch
+        switch_attention (bool): Boolean specifying if `Attention` is to be switched with `DecoderMaskedMultiheadAttention`
     """
-    decoder_masked_attention_supported_attr = [
-        "past_present_share_buffer",
-        "num_heads",
-        "scale",
-        "domain",
-    ]
-    new_nodes = []
-    for node in subg.node:
-        if node.op_type == "Attention":
-            kwargs = kwargs_of(node)
-            for k in kwargs.copy():
-                # The Attention operator does not support different qkv hidden sizes when past/present
-                # input/output exists (GPT2 model). Hence, we should never run into this.
-                # But, if we do, do not go ahead with the optimization.
-                if k == "qkv_hidden_sizes":
-                    return False
+    if is_beam_search:
+        new_inputs = []
+        for i, vi in enumerate(subg.input):
+            new_inputs.extend([vi])
 
-                if k not in decoder_masked_attention_supported_attr:
-                    del kwargs[k]
-            nis = []
-            nis.extend(node.input)
-            node = onnx.helper.make_node("DecoderMaskedMultiheadAttention", nis, node.output, name=node.name, **kwargs)
-        new_nodes.extend([node])
-    subg.ClearField("node")
-    subg.node.extend(new_nodes)
+        # Add 2 BeamSearch specific inputs
+        new_inputs.extend([onnx.helper.make_tensor_value_info("beam_width", onnx.TensorProto.INT32, shape=[1])])
+        new_inputs.extend(
+            [
+                onnx.helper.make_tensor_value_info(
+                    "cache_indirection", onnx.TensorProto.INT32, shape=["batch_size", "beam_width", "max_seq_len"]
+                )
+            ]
+        )
+        subg.ClearField("input")
+        subg.input.extend(new_inputs)
+
+    if switch_attention:
+        decoder_masked_attention_supported_attr = [
+            "past_present_share_buffer",
+            "num_heads",
+            "scale",
+            "domain",
+        ]
+
+        new_nodes = []
+        for node in subg.node:
+            if node.op_type == "Attention":
+                kwargs = kwargs_of(node)
+                for k in kwargs.copy():
+                    # The Attention operator does not support different qkv hidden sizes when past/present
+                    # input/output exists (GPT2 model). Hence, we should never run into this.
+                    # But, if we do, do not go ahead with the optimization.
+                    if k == "qkv_hidden_sizes":
+                        return False
+
+                    if k not in decoder_masked_attention_supported_attr:
+                        # Log the fact that we are removing certain attributes from the node
+                        # We don't need to log it for "unidirectional" as we are aware that
+                        # decoding attention kernels are unidirectional by definition.
+                        if k != "unidirectional":
+                            logger.warning(
+                                f"Removing attribute: {k} from Attention node while switching to DecoderMaskedMultiheadAttention"
+                            )
+
+                        del kwargs[k]
+
+                nis = []
+                nis.extend(node.input)
+
+                # Add 2 BeamSearch specific inputs
+                if is_beam_search:
+                    while len(nis) < 7:
+                        nis.extend([""])
+                    if len(nis) < 8:
+                        nis.extend(["beam_width"])
+                    if len(nis) < 9:
+                        nis.extend(["cache_indirection"])
+
+                node = onnx.helper.make_node(
+                    "DecoderMaskedMultiheadAttention", nis, node.output, name=node.name, **kwargs
+                )
+            new_nodes.extend([node])
+        subg.ClearField("node")
+        subg.node.extend(new_nodes)
+
     return True
 
 
@@ -1452,9 +1497,9 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     is_beamsearch: bool = generation_type == GenerationType.BEAMSEARCH
     is_greedysearch: bool = generation_type == GenerationType.GREEDYSEARCH
     is_sampling: bool = generation_type == GenerationType.SAMPLING
-    past_present_share_buffer: bool = args.past_present_share_buffer and (is_greedysearch or is_sampling)
+    past_present_share_buffer: bool = args.past_present_share_buffer
 
-    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}, is_greedysearch={is_greedysearch}")
+    logger.info(f"**** past_present_share_buffer={past_present_share_buffer}")
 
     if is_greedysearch or is_sampling:
         if not is_gpt2:
@@ -1463,6 +1508,29 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             raise NotImplementedError("output_sequences_scores currently is not supported in greedy search/sampling")
         if args.output_token_scores:
             raise NotImplementedError("output_token_scores currently is not supported in greedy search/sampling")
+
+    # For BeamSearch, sharing buffers for past and present states is only supported
+    # when using `use_decoder_masked_multihead_attention`
+    if past_present_share_buffer and is_beamsearch and not args.use_decoder_masked_multihead_attention:
+        raise ValueError(
+            "`use_decoder_masked_multihead_attention` MUST be turned on to use `past_present_share_buffer` in case of BeamSearch"
+        )
+
+    # For any kind of sampling, using decoder masked multihead attention is only supported
+    # when using `past_present_share_buffer`
+    if args.use_decoder_masked_multihead_attention and not past_present_share_buffer:
+        raise ValueError(
+            "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
+        )
+
+    # For any kind of sampling, using decoder masked multihead attention is only supported
+    # on GPUs
+    if args.use_decoder_masked_multihead_attention and not args.use_gpu:
+        raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
+
+    # Using decoder masked multihead attention is only supported for GPT2
+    if args.use_decoder_masked_multihead_attention and args.model_type in ["t5", "mt5"]:
+        raise ValueError("`use_decoder_masked_multihead_attention` option is only supported for GPT2")
 
     if is_gpt2:
         if args.decoder_onnx and os.path.exists(args.decoder_onnx):
@@ -1699,6 +1767,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     node.attribute.extend(attr_to_extend)
 
     initializers = []
+
     if args.model_type in ["t5", "mt5"]:
         if args.run_shape_inference:
             logger.info(f"Symbolic shape inference on {args.encoder_decoder_init_onnx}. The file will be overwritten.")
@@ -1745,37 +1814,43 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
                 logger.info(
                     f"{len(initializers)} shared initializers ({[i.name for i in initializers]}) in decoder and init decoder subgraphs are moved to the main graph"
                 )
-            # Update for init decoder subgraph
+
+            # Update init decoder subgraph in preparation to use past present share buffer
             if past_present_share_buffer:
                 logger.info("*****update init decoder subgraph to make past and present share buffer******************")
                 update_decoder_subgraph_past_present_share_buffer(gpt2_init_decoder_model.graph)
+
+            # Update init decoder subgraph in preparation to use DecoderMaskedMultiheadAttention
+            # NOTE: Even if we will not use DecoderMaskedMultiheadAttention in the init decoder subgraph
+            # it makes the runtime changes cleaner if we keep both the init decoder and decoder subgraphs
+            # same in terms of the subgraph inputs.
+            if (
+                args.use_decoder_masked_multihead_attention
+                and not update_decoder_subgraph_use_decoder_masked_multihead_attention(
+                    gpt2_init_decoder_model.graph, is_beamsearch, False
+                )
+            ):
+                raise ValueError("Could not update the init decoder subgraph to use DecoderMaskedMultiheadAttention")
+
             node.attribute.append(onnx.helper.make_attribute("init_decoder", gpt2_init_decoder_model.graph))
         else:
             # Move initializer from subgraph to main graph could reduce memory usage in inference.
             initializers = move_initializers(decoder_model.graph)
             logger.info(f"{len(initializers)} initializers from the decoder are moved to the main graph")
 
-        # Update for non-init decoder subgraph
+        # Update decoder subgraph in preparation to use past present share buffer
         if past_present_share_buffer:
             logger.info("*****update decoder subgraph to make past and present share buffer******************")
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
 
-        # If at all, the user requests the use of `use_decoder_masked_multihead_attention`,
-        # we can only use it in the decoder subgraph - it cannot be used in the init_decoder subgraph
-        # as the kernel only supports the decoding use-case (i.e.) when input sequence length is 1.
-        if args.use_decoder_masked_multihead_attention:
-            logger.info("Update decoder subgraph to use DecoderMaskedMultiheadAttention")
-
-            if not past_present_share_buffer:
-                raise ValueError(
-                    "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_multihead_attention`"
-                )
-
-            if not args.use_gpu:
-                raise ValueError("`use_decoder_masked_multihead_attention` option is only supported on GPUs")
-
-            if not update_decoder_subgraph_use_decoder_masked_multihead_attention(decoder_model.graph):
-                raise ValueError("Could not update the decoder subgraph to use DecoderMaskedMultiheadAttention")
+        # Update decoder subgraph in preparation to use DecoderMaskedMultiheadAttention
+        if (
+            args.use_decoder_masked_multihead_attention
+            and not update_decoder_subgraph_use_decoder_masked_multihead_attention(
+                decoder_model.graph, is_beamsearch, True
+            )
+        ):
+            raise ValueError("Could not update the decoder subgraph to use DecoderMaskedMultiheadAttention")
 
         node.attribute.append(onnx.helper.make_attribute("decoder", decoder_model.graph))
 

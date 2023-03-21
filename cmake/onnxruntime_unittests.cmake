@@ -153,28 +153,13 @@ function(AddTest)
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (onnxruntime_BUILD_WEBASSEMBLY)
-      # the following code are copied from onnxruntime_nodejs.cmake
-      if (CMAKE_HOST_WIN32)
-          set(NPM_CLI npm.cmd)
-      else()
-          set(NPM_CLI npm)
-      endif()
-
-      # verify Node.js and NPM
-      execute_process(COMMAND node --version
-          OUTPUT_VARIABLE node_version
-          RESULT_VARIABLE had_error
-          OUTPUT_STRIP_TRAILING_WHITESPACE)
-      if(had_error)
-          message(FATAL_ERROR "Failed to find Node.js: " ${had_error})
-      endif()
-      execute_process(COMMAND ${NPM_CLI} --version
-          OUTPUT_VARIABLE npm_version
-          RESULT_VARIABLE had_error
-          OUTPUT_STRIP_TRAILING_WHITESPACE)
-      if(had_error)
-          message(FATAL_ERROR "Failed to find NPM: " ${had_error})
-      endif()
+      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
+      # Then the program is found the result is stored in the variable and the search will not be repeated.
+      find_program(NPM_CLI
+         NAMES "npm.cmd" "npm"
+         DOC "NPM command line client"
+         REQUIRED
+      )
 
       if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
         add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
@@ -424,6 +409,7 @@ set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
+set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -1129,7 +1115,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
-		  flatbuffers::flatbuffers
+          flatbuffers::flatbuffers
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)
@@ -1550,6 +1536,55 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
 
   set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
+endif()
+
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+
+  file(GLOB_RECURSE custom_op_get_const_input_test_library_src 
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.h"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.cc"
+  )
+
+  onnxruntime_add_shared_library_module(custom_op_get_const_input_test_library ${custom_op_get_const_input_test_library_src})
+
+  onnxruntime_add_include_to_target(custom_op_get_const_input_test_library onnxruntime_common GTest::gtest GTest::gmock)
+  target_include_directories(custom_op_get_const_input_test_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session
+                                                                            ${REPO_ROOT}/include/onnxruntime/core/common)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG 
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.def")
+  endif()
+
+  set_property(TARGET custom_op_get_const_input_test_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
+endif()
+
+if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_MINIMAL_BUILD)
+  set (onnxruntime_logging_apis_test_SRC
+       ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
+
+  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
+
+  if(NOT WIN32)
+    list(APPEND onnxruntime_logging_apis_test_LIBS nsync_cpp ${CMAKE_DL_LIBS})
+  endif()
+
+  AddTest(DYN
+          TARGET onnxruntime_logging_apis_test
+          SOURCES ${onnxruntime_logging_apis_test_SRC}
+          LIBS ${onnxruntime_logging_apis_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
 endif()
 
 if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR
