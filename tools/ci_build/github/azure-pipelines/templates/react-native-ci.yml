@@ -239,9 +239,9 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/ios'
     displayName: Pod install for onnxruntime react native ios e2e tests
 
-   - script: |
-      keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
-        -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
+  - script: |
+    keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -storepass android \
+      -keypass android -keyalg RSA -keysize 2048 -validity 999999 -dname "CN=Android Debug,O=Android,C=US"
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/android'
     displayName: Generate a debug keystore
 
