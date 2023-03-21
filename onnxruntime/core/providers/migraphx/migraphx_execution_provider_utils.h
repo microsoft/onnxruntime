@@ -77,7 +77,7 @@ bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector
   auto inputs = node->InputDefs();
   for (std::size_t i = 0; i < inputs.size(); ++i)
   {
-    const std::string& input_name = inputs.at(i)->Name();
+    const std::string& input_name = inputs[i]->Name();
     // If it is an initializer, it can be constant folded
     if (IsGraphInitializer(graph, input_name))
     {
@@ -131,7 +131,7 @@ bool canEvalNodeArgument(const GraphViewer& graph, const Node* node, std::vector
   for (auto index : indices)
   {
     // an initializer itself is a constant
-    auto input_name = inputs.at(index)->Name();
+    auto input_name = inputs[index]->Name();
     if (IsGraphInitializer(graph, input_name))
     {
       continue;
