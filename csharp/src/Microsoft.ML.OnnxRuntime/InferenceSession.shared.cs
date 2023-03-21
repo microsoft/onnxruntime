@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Buffers;
+using System.Diagnostics;
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -32,9 +33,19 @@ namespace Microsoft.ML.OnnxRuntime
         private Dictionary<string, NodeMetadata> _inputMetadata;
 
         /// <summary>
+        /// Ordered list of input names
+        /// </summary>
+        private List<string> _inputNames;
+
+        /// <summary>
         /// Dictionary that represent output metadata
         /// </summary>
         private Dictionary<string, NodeMetadata> _outputMetadata;
+
+        /// <summary>
+        /// Ordered list of output names
+        /// </summary>
+        private List<string> _outputNames;
 
         /// <summary>
         /// Dictionary that represents overridableInitializers metadata
@@ -164,6 +175,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Ordered list of input names that can be accessed by index;
+        /// </summary>
+        public IReadOnlyList<string> InputNames { get { return _inputNames; } }
+
+        /// <summary>
         /// Metadata regarding the output nodes, keyed by output names
         /// </summary>
         public IReadOnlyDictionary<string, NodeMetadata> OutputMetadata
@@ -173,6 +189,11 @@ namespace Microsoft.ML.OnnxRuntime
                 return _outputMetadata;
             }
         }
+
+        /// <summary>
+        /// Ordered list of output names that can be accessed by index.
+        /// </summary>
+        public IReadOnlyList<string> OutputNames { get { return _outputNames; } }
 
         /// <summary>
         /// Metadata regarding the overridable initializers, keyed by node names
@@ -203,7 +224,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="inputs">Specify a collection of <see cref="NamedOnnxValue"/> that indicates the input values.</param>
         /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
-        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<string> outputNames)
         {
             return Run(inputs, outputNames, _builtInRunOptions);
         }
@@ -215,13 +237,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="outputNames">Specify a collection of string that indicates the output names to fetch.</param>
         /// <param name="options"></param>
         /// <returns>Output Tensors in a Collection of NamedOnnxValue. User must dispose the output.</returns>
-        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs, IReadOnlyCollection<string> outputNames, RunOptions options)
+        public IDisposableReadOnlyCollection<DisposableNamedOnnxValue> Run(IReadOnlyCollection<NamedOnnxValue> inputs,
+            IReadOnlyCollection<string> outputNames,
+            RunOptions options)
         {
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputs, v => v.Name, cleanupList);
-                var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputs, v => v.Name, LookupInputMetadata, cleanupList);
+                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata, cleanupList);
 
                 var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
                 return CreateDisposableResult(ortValues, outputNames);
@@ -238,9 +262,7 @@ namespace Microsoft.ML.OnnxRuntime
             IReadOnlyCollection<string> inputNames,
             IReadOnlyCollection<FixedBufferOnnxValue> inputValues)
         {
-            string[] outputNames = new string[_outputMetadata.Count];
-            _outputMetadata.Keys.CopyTo(outputNames, 0);
-            return Run(inputNames, inputValues, outputNames, _builtInRunOptions);
+            return Run(inputNames, inputValues, _outputNames, _builtInRunOptions);
         }
 
         /// <summary>
@@ -279,9 +301,9 @@ namespace Microsoft.ML.OnnxRuntime
 
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata, cleanupList);
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata, cleanupList);
 
 
                 var ortValues = RunImpl(options, inputNamesArray, inputValuesArray, outputNamesArray, cleanupList);
@@ -336,11 +358,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata, cleanupList);
                 IntPtr[] inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata, cleanupList);
                 IntPtr[] outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -371,7 +393,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        ///
+        /// 
         /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
         ///
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
@@ -386,11 +408,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             using (var cleanupList = new DisposableList<IDisposable>())
             {
-                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
-                var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, LookupInputMetadata, cleanupList);
+                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
 
-                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, cleanupList);
-                var outputValuesArray = GetOrtValuesHandles(outputs, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, LookupOutputMetadata, cleanupList);
+                var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
@@ -444,11 +466,11 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, cleanupList);
-                var inputValuesArray = GetOrtValuesHandles(inputs, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputs, i => i.Name, LookupInputMetadata, cleanupList);
+                var inputValuesArray = GetOrtValuesHandles(inputs, LookupInputMetadata, ExtractOrtValueForInput, cleanupList);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputNames, n => n, LookupOutputMetadata, cleanupList);
                 var outputValuesArray = GetOrtValuesHandles(outputValues, false);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
@@ -482,7 +504,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        ///
+        /// 
         /// Runs the loaded model for the given inputs and outputs. Uses the given RunOptions for this run.
         ///
         /// Outputs need to be created with correct type and dimension to receive the fetched data.
@@ -505,12 +527,12 @@ namespace Microsoft.ML.OnnxRuntime
             using (var cleanupList = new DisposableList<IDisposable>())
             {
                 // prepare inputs
-                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, cleanupList);
+                var inputNamesArray = ConvertNamesToUtf8(inputNames, n => n, LookupInputMetadata, cleanupList);
                 var inputValuesArray = GetOrtValuesHandles(inputValues, true);
 
                 // prepare outputs
-                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, cleanupList);
-                var outputValuesArray = GetOrtValuesHandles(outputs, cleanupList);
+                var outputNamesArray = ConvertNamesToUtf8(outputs, o => o.Name, LookupOutputMetadata, cleanupList);
+                var outputValuesArray = GetOrtValuesHandles(outputs, LookupOutputMetadata, ExtractOrtValueForOutput, cleanupList);
 
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtRun(
                                                     _nativeHandle,
@@ -619,22 +641,96 @@ namespace Microsoft.ML.OnnxRuntime
         // Delegate for string extraction from an arbitrary input/output object
         private delegate string NameExtractor<in TInput>(TInput input);
 
+        // delegate to fetch input/output OrtValue
+        private delegate OrtValue OrtValueExtractor(NamedOnnxValue value, NodeMetadata metadata, out IDisposable memOwner);
+
+        // Delegate to lookup metadata for input/initializers/output
+        private delegate NodeMetadata MetadataLookup(string nodeName);
+
+        /// <summary>
+        /// Checks if the name is a known input or overridable initializer name
+        /// and if so, returns metadata for it.
+        /// metadata
+        /// </summary>
+        /// <param name="nodeName"></param>
+        /// <returns>NodeMetadata for the nodeName</returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        private NodeMetadata LookupInputMetadata(string nodeName)
+        {
+            NodeMetadata meta;
+            if (!_inputMetadata.TryGetValue(nodeName, out meta) &&
+                !_overridableInitializerMetadata.TryGetValue(nodeName, out meta))
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input/output name: '{nodeName}' is not in the metadata");
+            }
+            return meta;
+        }
+
+        /// <summary>
+        /// Checks if the nodeName is a known output name and if so returns metadata for it.
+        /// </summary>
+        /// <param name="nodeName"></param>
+        /// <returns></returns>
+        /// <exception cref="OnnxRuntimeException"></exception>
+        private NodeMetadata LookupOutputMetadata(string nodeName)
+        {
+            NodeMetadata meta;
+            if (!_outputMetadata.TryGetValue(nodeName, out meta))
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Input/output name: '{nodeName}' is not in the metadata");
+            }
+            return meta;
+        }
+
+        /// <summary>
+        /// Fetches/creates OrtValue for the content of the input
+        /// </summary>
+        /// <param name="input"></param>
+        /// <param name="metadata"></param>
+        /// <param name="memOwner"></param>
+        /// <returns></returns>
+        private static OrtValue ExtractOrtValueForInput(NamedOnnxValue input, NodeMetadata metadata, out IDisposable memOwner)
+        {
+            return input.InputToOrtValue(metadata, out memOwner);
+        }
+
+        /// <summary>
+        /// Fetches/Creates OrtValue for output
+        /// </summary>
+        /// <param name="output"></param>
+        /// <param name="metadata"></param>
+        /// <param name="memOwner"></param>
+        /// <returns>May return null if the onnx value type does not support pre-creation of output OrtValues</returns>
+        private static OrtValue ExtractOrtValueForOutput(NamedOnnxValue output, NodeMetadata metadata, out IDisposable memOwner)
+        {
+            return output.OutputToOrtValue(metadata, out memOwner);
+        }
+
         /// <summary>
         /// Run helper
         /// </summary>
-        /// <param name="names">names to convert to zero terminated utf8 and pin</param>
+        /// <param name="values">names to convert to zero terminated utf8 and pin</param>
+        /// <param name="nameExtractor">extractor functor that helps extracting names from inputs</param>
+        /// <param name="metaDict">inputs/outputs metadata</param>
         /// <param name="cleanupList">list to add pinned memory to for later disposal</param>
         /// <returns></returns>
-        private IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> inputs, NameExtractor<T> extractor,
+        private IntPtr[] ConvertNamesToUtf8<T>(IReadOnlyCollection<T> values, NameExtractor<T> nameExtractor,
+            MetadataLookup metaLookup,
             DisposableList<IDisposable> cleanupList)
         {
-            var result = new IntPtr[inputs.Count];
-            for (int i = 0; i < inputs.Count; ++i)
+            cleanupList.Capacity += values.Count;
+            var result = new IntPtr[values.Count];
+            for (int i = 0; i < values.Count; ++i)
             {
-                var name = extractor(inputs.ElementAt(i));
-                var utf8Name = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(name);
-                var pinnedHandle = new PinnedGCHandle(GCHandle.Alloc(utf8Name, GCHandleType.Pinned));
-                result[i] = pinnedHandle.Pointer;
+                var name = nameExtractor(values.ElementAt(i));
+                NodeMetadata meta = metaLookup(name);
+                var utf8Name = meta.ZeroTerminatedUtf8Name;
+                Debug.Assert(utf8Name != null);
+                var pinnedHandle = new Memory<byte>(utf8Name).Pin();
+                unsafe
+                {
+                    result[i] = (IntPtr)pinnedHandle.Pointer;
+                }
                 cleanupList.Add(pinnedHandle);
             }
             return result;
@@ -642,28 +738,41 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// This function obtains ortValues for NamedOnnxValue.
-        /// The problem with NamedOnnxValue is that it does not contain any Onnx (OrtValue)
-        /// so calling ToOrtValue creates a new instance of OrtValue that needs to be disposed.
+        /// The problem with NamedOnnxValue is that it is not disposable and can not contain any disposable items.
+        /// so calling InputToOrtValue creates a new instance of OrtValue that needs to be disposed.
         /// The deriving object DisposableNamedValue actually contains and owns OrtValue and it returns
         /// it.
         /// </summary>
-        /// <param name="values"></param>
-        /// <param name="cleanupList"></param>
+        /// <param name="values">a collection of NamedOnnxValues</param>
+        /// <param name="metaLookup">Metadata lookup function (input/initializers/output)</param>
+        /// <param name="cleanupList">list to cleanup in an exception safe manner</param>
         /// <returns></returns>
-        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<NamedOnnxValue> values, DisposableList<IDisposable> cleanupList)
+        private IntPtr[] GetOrtValuesHandles(IReadOnlyCollection<NamedOnnxValue> values, MetadataLookup metaLookup,
+            OrtValueExtractor ortValueExtractor,
+            DisposableList<IDisposable> cleanupList)
         {
+            cleanupList.Capacity += values.Count * 2;
             IntPtr[] result = new IntPtr[values.Count];
-            for (int inputIndex = 0; inputIndex < values.Count; ++inputIndex)
+            for (int valueIndex = 0; valueIndex < values.Count; ++valueIndex)
             {
-                var input = values.ElementAt(inputIndex);
-                MemoryHandle? memHandle;
-                var ortValue = input.ToOrtValue(out memHandle);
-                if (memHandle.HasValue)
+                var value = values.ElementAt(valueIndex);
+                var meta = metaLookup(value.Name);
+                var ortValue = ortValueExtractor(value, meta, out IDisposable memHolder);
+                if (memHolder != null)
                 {
-                    cleanupList.Add(memHandle);
+                    cleanupList.Add(memHolder);
                 }
-                cleanupList.Add(ortValue);
-                result[inputIndex] = ortValue.Handle;
+                if (ortValue != null)
+                {
+                    if (ortValue.IsOwned)
+                        cleanupList.Add(ortValue);
+
+                    result[valueIndex] = ortValue.Handle;
+                }
+                else
+                {
+                    result[valueIndex] = IntPtr.Zero;
+                }
             }
             return result;
         }
@@ -687,7 +796,8 @@ namespace Microsoft.ML.OnnxRuntime
         private DisposableList<OrtValue> RunImpl(RunOptions options, IntPtr[] inputNames, IntPtr[] inputValues, IntPtr[] outputNames,
            DisposableList<IDisposable> cleanupList)
         {
-            var ortValues = new DisposableList<OrtValue>(outputNames.Length);
+            cleanupList.Capacity += 1;
+            var ortValues = new DisposableList<OrtValue>(outputNames.Length + 1);
             cleanupList.Add(ortValues);
 
             IntPtr[] outputValuesArray = new IntPtr[outputNames.Length];
@@ -717,8 +827,7 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 for (int i = 0; i < ortValues.Count; i++)
                 {
-                    var ortValue = ortValues[i];
-                    result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames.ElementAt(i), ortValue));
+                    result.Add(DisposableNamedOnnxValue.CreateFromOrtValue(outputNames.ElementAt(i), ortValues[i]));
                 }
             }
             catch (OnnxRuntimeException)
@@ -820,40 +929,53 @@ namespace Microsoft.ML.OnnxRuntime
             _nativeHandle = session;
             try
             {
-
                 // Initialize input/output metadata
-                _inputMetadata = new Dictionary<string, NodeMetadata>();
-                _outputMetadata = new Dictionary<string, NodeMetadata>();
-                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>();
 
                 // get input count
                 UIntPtr inputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputCount(_nativeHandle, out inputCount));
 
                 // get all the input names and metadata
+                _inputMetadata = new Dictionary<string, NodeMetadata>((int)inputCount);
+                _inputNames = new List<string>((int)inputCount);
+
                 for (ulong i = 0; i < (ulong)inputCount; i++)
                 {
-                    var iname = GetInputName(i);
-                    _inputMetadata[iname] = GetInputMetadata(i);
+                    var inputMeta = GetInputMetadata(i);
+                    var iname = GetInputName(i, out byte[] utf8);
+                    _inputNames.Add(iname);
+                    inputMeta.ZeroTerminatedUtf8Name = utf8;
+                    _inputMetadata[iname] = inputMeta;
                 }
                 // get output count
                 UIntPtr outputCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputCount(_nativeHandle, out outputCount));
 
                 // get all the output names and metadata
+                _outputMetadata = new Dictionary<string, NodeMetadata>((int)outputCount);
+                _outputNames = new List<string>((int)outputCount);
+
                 for (ulong i = 0; i < (ulong)outputCount; i++)
                 {
-                    _outputMetadata[GetOutputName(i)] = GetOutputMetadata(i);
+                    var outputMeta = GetOutputMetadata(i);
+                    var oname = GetOutputName(i, out byte[] utf8);
+                    _outputNames.Add(oname);
+                    outputMeta.ZeroTerminatedUtf8Name = utf8;
+                    _outputMetadata[oname] = outputMeta;
                 }
 
                 // get overridable initializer count
                 UIntPtr initilaizerCount = UIntPtr.Zero;
                 NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerCount(_nativeHandle, out initilaizerCount));
 
+                _overridableInitializerMetadata = new Dictionary<string, NodeMetadata>((int)initilaizerCount);
                 // get all the overridable initializer names and metadata
                 for (ulong i = 0; i < (ulong)initilaizerCount; i++)
                 {
-                    _overridableInitializerMetadata[GetOverridableInitializerName(i)] = GetOverridableInitializerMetadata(i);
+                    var meta = GetOverridableInitializerMetadata(i);
+                    var iname = GetOverridableInitializerName(i, out byte[] utf8);
+                    meta.ZeroTerminatedUtf8Name = utf8;
+                    _overridableInitializerMetadata[iname] = meta;
                 }
                 // set profiling's start time
                 UIntPtr startTime = UIntPtr.Zero;
@@ -861,7 +983,7 @@ namespace Microsoft.ML.OnnxRuntime
                                                                     out startTime));
                 _profilingStartTimeNs = (ulong)startTime;
             }
-            catch (OnnxRuntimeException)
+            catch (Exception)
             {
                 if (_nativeHandle != IntPtr.Zero)
                 {
@@ -875,11 +997,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 
-        private string GetOutputName(ulong index)
+        private string GetOutputName(ulong index, out byte[] utf8)
         {
+            string str;
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr nameHandle = IntPtr.Zero;
-            string str = null;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOutputName(
                                            _nativeHandle,
                                            (UIntPtr)index,
@@ -888,15 +1010,15 @@ namespace Microsoft.ML.OnnxRuntime
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
             }
 
             return str;
         }
 
-        private string GetInputName(ulong index)
+        private string GetInputName(ulong index, out byte[] utf8)
         {
-            string str = null;
+            string str;
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr nameHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetInputName(
@@ -907,14 +1029,14 @@ namespace Microsoft.ML.OnnxRuntime
 
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
             }
             return str;
         }
 
-        private string GetOverridableInitializerName(ulong index)
+        private string GetOverridableInitializerName(ulong index, out byte[] utf8)
         {
-            string str = null;
+            string str;
             var allocator = OrtAllocator.DefaultInstance;
             IntPtr nameHandle = IntPtr.Zero;
             NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionGetOverridableInitializerName(
@@ -924,7 +1046,7 @@ namespace Microsoft.ML.OnnxRuntime
                                             out nameHandle));
             using (var ortAllocation = new OrtMemoryAllocation(allocator, nameHandle, 0))
             {
-                str = NativeOnnxValueHelper.StringFromNativeUtf8(nameHandle);
+                NativeOnnxValueHelper.StringAndUtf8FromNative(nameHandle, out str, out utf8);
             }
             return str;
         }
@@ -1198,7 +1320,7 @@ namespace Microsoft.ML.OnnxRuntime
             ElementTypeInfo = TensorBase.GetElementTypeInfo(elementType);
             if (ElementTypeInfo == null)
             {
-                throw new ArgumentException("Unregistered TensorElementType value of: " + elementType.ToString());
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument, "Unregistered TensorElementType value of: " + elementType.ToString());
             }
             ElementDataType = elementType;
             Dimensions = dimensions;
@@ -1349,7 +1471,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (!IsTensor)
             {
-                throw new InvalidOperationException("OnnxValueType must either be a tensor or sparse tensor");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "OnnxValueType must either be a tensor or sparse tensor");
             }
         }
 
@@ -1362,7 +1484,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (OnnxValueType != OnnxValueType.ONNX_TYPE_MAP)
             {
-                throw new InvalidOperationException("Instance does not contain Map metadata");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "Instance does not contain Map metadata");
             }
             return _metadata as MapMetadata;
         }
@@ -1376,7 +1498,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (OnnxValueType != OnnxValueType.ONNX_TYPE_SEQUENCE)
             {
-                throw new InvalidOperationException("Instance does not contain Sequence metadata");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "Instance does not contain Sequence metadata");
             }
             return _metadata as SequenceMetadata;
         }
@@ -1392,7 +1514,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             if (OnnxValueType != OnnxValueType.ONNX_TYPE_OPTIONAL)
             {
-                throw new InvalidOperationException("Instance does not contain Optional metadata");
+                throw new OnnxRuntimeException(ErrorCode.Fail, "Instance does not contain Optional metadata");
             }
             return _metadata as OptionalMetadata;
         }
@@ -1402,6 +1524,15 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <value>A value of OnnxValueType enum</value>
         public OnnxValueType OnnxValueType { get; }
+
+        /// <summary>
+        /// Zero terminated UTF-8 name of the input/output
+        /// Present only on the top-level instance
+        /// metadata dictionary entries.
+        /// 
+        /// Used to avoid utf8 conversions on every run and associated allocations
+        /// </summary>
+        public byte[] ZeroTerminatedUtf8Name { get; set; }
 
         /// <summary>
         /// Tensor shape valid only if this is a Tensor.
@@ -1457,6 +1588,9 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        /// <summary>
+        /// Convinience method to check for string
+        /// </summary>
         public bool IsString
         {
             get

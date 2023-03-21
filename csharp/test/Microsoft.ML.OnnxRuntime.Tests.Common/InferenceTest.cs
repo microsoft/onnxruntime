@@ -588,7 +588,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var container = new List<NamedOnnxValue>();
             container.Add(NamedOnnxValue.CreateFromTensor<float>("wrong_name", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.Contains("Invalid Feed Input", ex.Message);
+            Assert.Contains("Input/output name: 'wrong_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -604,9 +604,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var tensor = new DenseTensor<int>(inputDataInt, inputMeta["data_0"].Dimensions);
             container.Add(NamedOnnxValue.CreateFromTensor<int>("data_0", tensor));
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            var msg = ex.ToString().Substring(0, 101);
-            // TODO: message is diff in LInux. Use substring match
-            Assert.Equal("Microsoft.ML.OnnxRuntime.OnnxRuntimeException: [ErrorCode:InvalidArgument] Unexpected input data type", msg);
+            var msg = ex.ToString();
+            Assert.Contains("Tensor element data type discovered", msg);
             session.Dispose();
         }
 
@@ -624,7 +623,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             container.Add(nov1);
             container.Add(nov2);
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
-            Assert.StartsWith("[ErrorCode:InvalidArgument] Invalid Feed Input Name", ex.Message);
+            Assert.Contains("Input/output name: 'extra' is not in the metadata", ex.Message);
             session.Dispose();
         }
 
@@ -653,9 +652,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputTensor = tuple.Item3;
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
             var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 2 });
-            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
-            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
-            Assert.Contains("Invalid Output Name", ex.Message);
+            // var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("bad_output_name", outputTensor) };
+            var bad_names = new string[] {"bad_output_name"};
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
+            Assert.Contains("Input/output name: 'bad_output_name' is not in the metadata", ex.Message);
             session.Dispose();
         }
 

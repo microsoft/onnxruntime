@@ -48,6 +48,7 @@
 
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxMl.cs"/>
+    <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OnnxData.cs"/>
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\InferenceTest.netcore.cs" />
     <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\TestDataLoader.cs" />
 

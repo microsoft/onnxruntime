@@ -84,9 +84,28 @@ namespace Microsoft.ML.OnnxRuntime
             return Encoding.UTF8.GetString(buffer, 0, buffer.Length);
         }
 
+        /// <summary>
+        /// Reads UTF-8 string from native C zero terminated string,
+        /// converts it to C# UTF-16 string and returns both C# string and utf-8
+        /// bytes as a zero terminated array, suitable for use as a C-string
+        /// </summary>
+        /// <param name="nativeUtf8">input</param>
+        /// <param name="str">C# UTF-16 string</param>
+        /// <param name="utf8">UTF-8 bytes in a managed buffer, zero terminated</param>
+        internal static void StringAndUtf8FromNative(IntPtr nativeUtf8, out string str, out byte[] utf8)
+        {
+            // .NET 8.0 has Marshal.PtrToStringUTF8 that does the below
+            int len = 0;
+            while (Marshal.ReadByte(nativeUtf8, len) != 0) ++len;
+            utf8 = new byte[len + 1];
+            Marshal.Copy(nativeUtf8, utf8, 0, len);
+            utf8[len] = 0;
+            str = Encoding.UTF8.GetString(utf8, 0, len);
+        }
+
         internal static string StringFromUtf8Span(ReadOnlySpan<byte> utf8Span)
         {
-            // For now we have to copy into byte[], this produces a copy
+            // XXX: For now we have to copy into byte[], this produces a copy
             // Converting from span is available in later versions
             var utf8Bytes = utf8Span.ToArray();
             return Encoding.UTF8.GetString(utf8Bytes, 0, utf8Bytes.Length);

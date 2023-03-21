@@ -37,16 +37,16 @@ OrtTypeInfo::OrtTypeInfo(ONNXType type1) noexcept : type(type1) {
 }
 
 OrtTypeInfo::OrtTypeInfo(std::unique_ptr<OrtMapTypeInfo> map_type_info1) noexcept
-  : type(ONNX_TYPE_MAP), map_type_info(std::move(map_type_info1)) {}
+    : type(ONNX_TYPE_MAP), map_type_info(std::move(map_type_info1)) {}
 
 OrtTypeInfo::OrtTypeInfo(std::unique_ptr<OrtSequenceTypeInfo> sequence_type_info1) noexcept
-  : type(ONNX_TYPE_SEQUENCE), sequence_type_info(std::move(sequence_type_info1)) {}
+    : type(ONNX_TYPE_SEQUENCE), sequence_type_info(std::move(sequence_type_info1)) {}
 
 OrtTypeInfo::OrtTypeInfo(std::unique_ptr<OrtOptionalTypeInfo> optional_type_info1) noexcept
-  : type(ONNX_TYPE_OPTIONAL), optional_type_info(std::move(optional_type_info1)) {}
+    : type(ONNX_TYPE_OPTIONAL), optional_type_info(std::move(optional_type_info1)) {}
 
 OrtTypeInfo::OrtTypeInfo(ONNXType type1, std::unique_ptr<OrtTensorTypeAndShapeInfo> data1) noexcept
-  : type(type1), data(std::move(data1)) {
+    : type(type1), data(std::move(data1)) {
 }
 
 OrtTypeInfo::~OrtTypeInfo() = default;
@@ -59,7 +59,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOnnxTypeFromTypeInfo, _In_ const struct OrtTypeI
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtTypeInfo* input,
-  _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
+                    _Outptr_result_maybenull_ const struct OrtTensorTypeAndShapeInfo** out) {
   API_IMPL_BEGIN
   *out = (input->type == ONNX_TYPE_TENSOR || input->type == ONNX_TYPE_SPARSETENSOR) ? input->data.get() : nullptr;
   return nullptr;
@@ -67,7 +67,7 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToTensorInfo, _In_ const struct OrtType
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* type_info,
-  _Outptr_result_maybenull_ const OrtMapTypeInfo** out) {
+                    _Outptr_result_maybenull_ const OrtMapTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_MAP ? type_info->map_type_info.get() : nullptr;
   return nullptr;
@@ -75,7 +75,7 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToMapTypeInfo, _In_ const OrtTypeInfo* 
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeInfo* type_info,
-  _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out) {
+                    _Outptr_result_maybenull_ const OrtSequenceTypeInfo** out) {
   API_IMPL_BEGIN
   *out = type_info->type == ONNX_TYPE_SEQUENCE ? type_info->sequence_type_info.get() : nullptr;
   return nullptr;
@@ -83,9 +83,9 @@ ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToSequenceTypeInfo, _In_ const OrtTypeI
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CastTypeInfoToOptionalTypeInfo, _In_ const OrtTypeInfo* type_info,
-  _Outptr_result_maybenull_ const OrtOptionalTypeInfo** out) {
+                    _Outptr_result_maybenull_ const OrtOptionalTypeInfo** out) {
   API_IMPL_BEGIN
-  *out = (type_info->type != ONNX_TYPE_OPTIONAL) ? type_info->optional_type_info.get() : nullptr;
+  *out = (type_info->type == ONNX_TYPE_OPTIONAL) ? type_info->optional_type_info.get() : nullptr;
   return nullptr;
   API_IMPL_END
 }
@@ -104,9 +104,12 @@ ORT_API(void, OrtApis::ReleaseTypeInfo, _Frees_ptr_opt_ OrtTypeInfo* ptr) {
 }
 
 OrtTypeInfo::Ptr OrtTypeInfo::FromOrtValue(const OrtValue& value) {
+
+  Ptr result = MakePtr(ONNX_TYPE_UNKNOWN);
+
   onnxruntime::MLDataType type = value.Type();
   if (type == nullptr) {
-    return MakePtr(ONNX_TYPE_UNKNOWN);
+    return result;
   }
 
   // GetType<Tensor> and GetType<SparseTensor> do not have TypeProto populated because they return a static
@@ -155,36 +158,37 @@ OrtTypeInfo::Ptr OrtTypeInfo::FromOrtValue(const OrtValue& value) {
     // Place Opaque first as tensors will be mostly handled above and maps and sequences are not common
     switch (type_proto->value_case()) {
       case on::TypeProto::kOpaqueType: {
-        return MakePtr(ONNX_TYPE_OPAQUE);
+        result = MakePtr(ONNX_TYPE_OPAQUE);
       } break;
       case on::TypeProto::kMapType: {
 #if !defined(DISABLE_ML_OPS)
         auto map_type_info = OrtMapTypeInfo::FromTypeProto(*type_proto);
-        return MakePtr(std::move(map_type_info));
-      } break;
+        result = MakePtr(std::move(map_type_info));
 #else
         ORT_NOT_IMPLEMENTED("Map types are not supported in this build");
 #endif
+      } break;
       case on::TypeProto::kSequenceType: {
         auto seq_info = OrtSequenceTypeInfo::FromTypeProto(*type_proto);
-        return MakePtr(std::move(seq_info));
+        result = MakePtr(std::move(seq_info));
       } break;
       // Real Tensor support
-#if !defined(DISABLE_SPARSE_TENSORS)
       case on::TypeProto::kSparseTensorType:
+#if !defined(DISABLE_SPARSE_TENSORS)
         [[fallthrough]];
 #else
         ORT_NOT_IMPLEMENTED("SparseTensor types are not supported in this build");
+        break;
 #endif
-      case on::TypeProto::kTensorType: {
+      case on::TypeProto::kTensorType:
         ORT_THROW("Tensor types should have been handled already");
-      } break;
+        break;
       default:
-        // NOT_IMPLEMENTED
+        ORT_NOT_IMPLEMENTED("This OrtValue is neither Tensor, SparseTensor, Map or Sequence type");
         break;
     }
   }
-  ORT_NOT_IMPLEMENTED("This OrtValue is neither Tensor, SparseTensor, Map or Sequence type");
+  return result;
 }
 
 const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
@@ -193,6 +197,8 @@ const DataTypeImpl* OrtTypeInfo::ElementTypeFromProto(int type) {
 }
 
 OrtTypeInfo::Ptr OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto& input) {
+  Ptr result;
+
   auto value_case = input.value_case();
   switch (value_case) {
     case on::TypeProto::kSparseTensorType:
@@ -200,6 +206,7 @@ OrtTypeInfo::Ptr OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto& inp
       [[fallthrough]];
 #else
       ORT_NOT_IMPLEMENTED("SparseTensor types are not supported in this build");
+      break;
 #endif
     case on::TypeProto::kTensorType: {
       ONNXType ten_type = ONNX_TYPE_UNKNOWN;
@@ -251,46 +258,42 @@ OrtTypeInfo::Ptr OrtTypeInfo::FromTypeProto(const ONNX_NAMESPACE::TypeProto& inp
         type_shape = OrtTensorTypeAndShapeInfo::GetTensorShapeAndType(TensorShape(), nullptr, input);
       }
 
-      auto type_info = MakePtr(ten_type, std::move(type_shape));
-      type_info->denotation = input.denotation();
-      return type_info;
+      result = MakePtr(ten_type, std::move(type_shape));
+      result->denotation = input.denotation();
     } break;
     case on::TypeProto::kSequenceType: {
       auto sequence_type_info = OrtSequenceTypeInfo::FromTypeProto(input);
-      auto type_info = MakePtr(std::move(sequence_type_info));
-      type_info->denotation = input.denotation();
-      return type_info;
+      result = MakePtr(std::move(sequence_type_info));
+      result->denotation = input.denotation();
     } break;
 #if !defined(DISABLE_ML_OPS)
     case on::TypeProto::kMapType: {
       auto map_type_info = OrtMapTypeInfo::FromTypeProto(input);
-      auto type_info = MakePtr(std::move(map_type_info));
-      type_info->denotation = input.denotation();
-      return type_info;
+      result = MakePtr(std::move(map_type_info));
+      result->denotation = input.denotation();
     } break;
 #endif
     case on::TypeProto::kOptionalType: {
       auto optional_type_info = OrtOptionalTypeInfo::FromTypeProto(input);
-      auto type_info = MakePtr(std::move(optional_type_info));
-      type_info->denotation = input.denotation();
-      return type_info;
+      result = MakePtr(std::move(optional_type_info));
+      result->denotation = input.denotation();
     } break;
     case on::TypeProto::kOpaqueType: {
-      auto type_info = MakePtr(ONNX_TYPE_OPAQUE);
-      type_info->denotation = input.denotation();
-      return type_info;
+      result = MakePtr(ONNX_TYPE_OPAQUE);
+      result->denotation = input.denotation();
     } break;
     case on::TypeProto::VALUE_NOT_SET:
       ORT_THROW("This TypeProto does not have ValueCase set");
       break;
     default:
-      // Not implemented
+      ORT_NOT_IMPLEMENTED("The type is not tensor, sparse tensor, sequence, map or optional type");
       break;
   }
-  ORT_NOT_IMPLEMENTED("The type is not tensor, sparse tensor, sequence, map or optional type");
+  return result;
 }
 
 OrtTypeInfo::Ptr OrtTypeInfo::Clone() const {
+  Ptr result;
   switch (type) {
     case ONNX_TYPE_SPARSETENSOR:
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -303,37 +306,33 @@ OrtTypeInfo::Ptr OrtTypeInfo::Clone() const {
       if (data) {
         info = data->Clone();
       }
-      auto type_info = MakePtr(type, std::move(info));
-      type_info->denotation = denotation;
-      return type_info;
-    }
+      result = MakePtr(type, std::move(info));
+      result->denotation = denotation;
+    } break;
 
     case ONNX_TYPE_SEQUENCE: {
       auto seq_clone = sequence_type_info->Clone();
-      auto type_info = MakePtr(std::move(seq_clone));
-      type_info->denotation = denotation;
-      return type_info;
-    }
+      result = MakePtr(std::move(seq_clone));
+      result->denotation = denotation;
+    } break;
     case ONNX_TYPE_MAP: {
       auto map_clone = map_type_info->Clone();
-      auto type_info = MakePtr(std::move(map_clone));
-      type_info->denotation = denotation;
-      return type_info;
-    }
+      result = MakePtr(std::move(map_clone));
+      result->denotation = denotation;
+    } break;
     case ONNX_TYPE_OPTIONAL: {
       auto opt_clone = optional_type_info->Clone();
-      auto type_info = MakePtr(std::move(opt_clone));
-      type_info->denotation = denotation;
-      return type_info;
-    }
+      result = MakePtr(std::move(opt_clone));
+      result->denotation = denotation;
+    } break;
     case ONNX_TYPE_OPAQUE: {
-      auto type_info = MakePtr(type);
-      type_info->denotation = denotation;
-      return type_info;
-    }
+      result = MakePtr(type);
+      result->denotation = denotation;
+    } break;
     default:
-      // Not implemented
+      ORT_NOT_IMPLEMENTED("The type is not tensor, sparse tensor, sequence, map or optional type");
       break;
   }
-  ORT_NOT_IMPLEMENTED("The type is not tensor, sparse tensor, sequence, map or optional type");
+
+  return result;
 }
