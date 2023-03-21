@@ -86,6 +86,10 @@ if (NOT MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-fvisibility=hidden")
 endif()
 
+if (WIN32)
+target_link_libraries(onnxruntime_pybind11_state PRIVATE debug dbghelp)
+endif()
+
 if(onnxruntime_PYBIND_EXPORT_OPSCHEMA)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE onnxruntime_PYBIND_EXPORT_OPSCHEMA)
 endif()

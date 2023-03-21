@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <DbgHelp.h>
+#pragma comment(lib, "Dbghelp.lib")
 
 #include "core/common/logging/logging.h"
 #include "core/common/gsl.h"

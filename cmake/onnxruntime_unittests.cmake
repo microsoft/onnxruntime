@@ -819,6 +819,10 @@ if (UNIX AND onnxruntime_USE_TENSORRT)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
 endif()
 
+if (WIN32)
+target_link_libraries(onnxruntime_test_all PRIVATE debug dbghelp)
+endif()
+
 if (MSVC AND onnxruntime_ENABLE_STATIC_ANALYSIS)
 # attention_op_test.cc: Function uses '49152' bytes of stack:  exceeds /analyze:stacksize '16384'..
 target_compile_options(onnxruntime_test_all PRIVATE  "/analyze:stacksize 131072")
