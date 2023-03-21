@@ -97,6 +97,11 @@ if (onnxruntime_USE_MIMALLOC)
   target_link_libraries(onnxruntime_common PRIVATE onnxruntime_mimalloc_shim)
 endif()
 
+if (WIN32)
+# include dbghelp in case safeint throw an exception, as that exception includes a stacktrace, which requires dbghelp.
+target_link_libraries(onnxruntime_common PRIVATE debug dbghelp)
+endif()
+
 if(NOT onnxruntime_DISABLE_ABSEIL)
   target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
   if (MSVC)
