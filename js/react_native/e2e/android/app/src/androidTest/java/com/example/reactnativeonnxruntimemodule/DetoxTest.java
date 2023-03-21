@@ -1,3 +1,7 @@
+// Dummy auxiliary Android Test
+// Detox requires the project to have a single dummy native Android TEst with some special content,
+// which will be picked up by the testRunner.
+
 package com.example.reactnativeonnxruntimemodule;
 
 import com.wix.detox.Detox;
