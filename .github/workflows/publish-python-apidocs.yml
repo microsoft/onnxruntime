@@ -46,5 +46,5 @@ jobs:
       - name: Upload docs artifact
         uses: actions/upload-artifact@v3
         with:
-          name: onnxruntime-python-docs
+          name: onnxruntime-python-apidocs
           path: _site
