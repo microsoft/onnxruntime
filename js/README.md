@@ -450,30 +450,37 @@ From ORT v1.13 onwards the 'full' ONNX Runtime package is used. It supports both
     From `<ORT_ROOT>/js/react_native/e2e`, run the command to build the e2e testing app. Before that ensure you have android emulator/ios simulator started locally.
 
     iOS (Debug):
+
     ```
     detox build --configuration ios.sim.debug
     ```
+    
     Android (Debug):
+
     ```
     detox build --configuration android.emu.debug
     ```
+    
     * Note: If names of local testing android/ios devices do not match the default setting in `.detoxrc.js` file, 
     modify the device name in config files accordingly to match local device name otherwise would cause a build failure.
 
   - Run the detox e2e tests.
     
-    From ``<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
+    From `<ORT_ROOT>/js/react_native/e2e`, run Detox tests using the following command:
 
     iOS (Debug):
+
     ```
     detox test --configuration ios.sim.debug
     ```
+
     Android (Debug):
+
     ```
     detox test --configuration android.emu.debug
     ```
 
-    To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/`folder.
+    To record logs for testing results, add `--record-logs`. Output logs and test results will be produced in the `e2e/artifacts/` folder.
     See: [Detox/logger#artifacts](https://wix.github.io/Detox/docs/api/logger#artifacts)
 
 
