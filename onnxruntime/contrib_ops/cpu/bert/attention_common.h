@@ -59,6 +59,22 @@ struct AttentionParameters {
   AttentionMaskType mask_type;
 };
 
+// Parameters deduced from node attributes and inputs/outputs.
+struct PackedAttentionParameters {
+  int batch_size;
+  int sequence_length;
+  int input_hidden_size;  // hidden size of input
+  int hidden_size;        // hidden size of Q or K
+  int head_size;          // hidden size per head of Q or K
+  int v_hidden_size;      // hidden size of V
+  int v_head_size;        // hidden size per head of V
+  int num_heads;
+  float scale;
+  int token_count;
+  bool has_relative_position_bias;
+  bool broadcast_res_pos_bias;
+};
+
 namespace attention {
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
