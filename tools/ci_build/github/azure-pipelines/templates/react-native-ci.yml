@@ -65,6 +65,10 @@ jobs:
     displayName: Install detox cli tools
   
   - script:
+      brew tap wix/brew
+    displayName: brew tap wix/brew
+  
+  - script:
       brew install applesimutils
     displayName: Install applesimutils tools required by detox ios
 
