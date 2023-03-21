@@ -22,6 +22,7 @@ class BenchmarkSkipLayerNorm(BenchmarkOp):
     def __init__(self, args):
         BenchmarkOp.__init__(self, args)
 
+    @classmethod
     def create_inputs_outputs(cls, op_param):
         np.random.seed(0)
         input_data = np.random.rand(op_param.batch_size, op_param.seq_len, op_param.hidden_size).astype(
@@ -55,6 +56,7 @@ class BenchmarkSkipLayerNorm(BenchmarkOp):
         op_param = OpParam(1, 384, 1024, data_type)
         self.add_case(op_param, model)
 
+    @classmethod
     def case_profile(cls, op_param, time):
         profile = f"(batch seq_len hidden_size) = ({op_param.batch_size} {op_param.seq_len} {op_param.hidden_size}), {time:7.4f} ms"
         return profile

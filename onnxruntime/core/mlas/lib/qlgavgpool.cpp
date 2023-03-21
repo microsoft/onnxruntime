@@ -23,13 +23,10 @@ MlasQLinearSafePaddingElementCount(
     size_t ElementCount
     )
 {
-    if (!(ElementSize == 1 || ElementSize == 2 || ElementSize == 4 || ElementSize == 8 || ElementSize == 16)) {
-
-#ifdef MLAS_NO_EXCEPTION
-        abort();
-#else
-        throw std::invalid_argument("ElementSize must be power of 2 and less or equal than 16!");
-#endif
+    if (!(ElementSize == 1 || ElementSize == 2 || ElementSize == 4 || ElementSize == 8 ||
+          ElementSize == 16)) {
+        MLAS_THROW_EX(std::invalid_argument,
+                      "ElementSize must be power of 2 and less or equal than 16!");
     }
     return ElementCount + (size_t{256} / ElementSize - 1);
 }
@@ -43,25 +40,16 @@ CheckQLinearGlobalAveragePoolScaleAndSize(
     )
 {
     if (ImageSize >= 0x1000000) {
-
-#ifdef MLAS_NO_EXCEPTION
-        abort();
-#else
-        throw std::invalid_argument("QLinearGlobalAveragePool ImageSize too large!");
-#endif
+        MLAS_THROW_EX(std::invalid_argument, "QLinearGlobalAveragePool ImageSize too large!");
     }
 
     float scale = ScaleInput / (ScaleOutput * static_cast<float>(ImageSize));
     if (scale < 0x1.0p-32f || scale >= 256.0f) {
-
-        // In first case, the scale is too small, ScaleInput/ScaleOutput < 1/256 no matter what ImageSize
-        // In second case, the scale is too large, ScaleInput/ScaleOutput >= 256 no matter what Image Size
-        // both case make output value constant, and hence not meaningful.
-#ifdef MLAS_NO_EXCEPTION
-        abort();
-#else
-        throw std::invalid_argument("QLinearGlobalAveragePool parameter out of computation range!");
-#endif
+        // In first case, the scale is too small, ScaleInput/ScaleOutput < 1/256 no matter what
+        // ImageSize In second case, the scale is too large, ScaleInput/ScaleOutput >= 256 no matter
+        // what Image Size both case make output value constant, and hence not meaningful.
+        MLAS_THROW_EX(std::invalid_argument,
+                      "QLinearGlobalAveragePool parameter out of computation range!");
     }
     return scale;
 }
