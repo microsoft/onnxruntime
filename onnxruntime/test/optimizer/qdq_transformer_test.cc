@@ -2768,12 +2768,15 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_BasicQDQCleanup) {
     };
 
     // if we block removal of the DQ node the Q node in the pair will not be removed either
-    int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+    const int expected_qdq_count = 0 + (block_removal_of_first_dq ? 1 : 0) + (block_removal_of_last_dq ? 1 : 0);
+    // blocking removal of DQ by adding an additional edge will cause EnsureUniqueDQForNodeUnit to duplicate the DQ,
+    // so we expect twice as many DQ's as original QDQ pairs
+    const int expected_dq_count = expected_qdq_count * 2;
 
-    auto check_graph = [expected_qdq_count](InferenceSessionWrapper& session) {
+    auto check_graph = [expected_qdq_count, expected_dq_count](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
       EXPECT_EQ(op_to_count["QuantizeLinear"], expected_qdq_count);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_qdq_count);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], expected_dq_count);
       EXPECT_EQ(op_to_count["Concat"], 1);
     };
 
@@ -2898,9 +2901,10 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
   test_case(false);
 }
 
-// Not fuse if DQ produces graph output
-TEST(QDQTransformerTests, DQ_Produce_Graph_Output) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
+TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis, bool enable_dq_duplication) {
+    SCOPED_TRACE(MakeString("enable DQ duplication: ", enable_dq_duplication));
+
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
       auto* dq_output_arg = builder.MakeOutput();
@@ -2935,11 +2939,25 @@ TEST(QDQTransformerTests, DQ_Produce_Graph_Output) {
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
-      EXPECT_EQ(op_to_count["Softmax"], 1);
-      EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      if (!enable_dq_duplication) {
+        // expect no fusion because DQ has multiple consumers
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
+        EXPECT_EQ(op_to_count["Softmax"], 1);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
+      } else {
+        // expect fusion because DQ duplication ensures that the node unit has unique DQ nodes
+        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
+        EXPECT_EQ(op_to_count["Softmax"], 0);
+        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);  // duplicate of first DQ and original second DQ
+      }
     };
+
+    InlinedHashSet<std::string> disabled_optimizers{};
+    if (!enable_dq_duplication) {
+      disabled_optimizers.emplace("EnsureUniqueDQForNodeUnit");
+    }
 
     TransformerTester(build_test_case,
                       check_graph,
@@ -2948,10 +2966,13 @@ TEST(QDQTransformerTests, DQ_Produce_Graph_Output) {
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
                       0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+                      {} /*transformer*/,
+                      {} /*add_session_options*/,
+                      disabled_optimizers);
   };
 
-  test_case({1, 12, 37}, -1);
+  test_case({1, 12, 37}, -1, true);
+  test_case({1, 12, 37}, -1, false);
 }
 
 }  // namespace test

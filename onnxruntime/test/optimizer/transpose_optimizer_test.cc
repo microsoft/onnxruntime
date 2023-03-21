@@ -3739,11 +3739,21 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
     EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
   };
 
+  // disable DQ duplication transformer which interferes with the test setup
+  // TODO do we need this test and the associated transpose optimizer behavior of only swapping DQ/transpose when the
+  // transpose is the only consumer now? see https://github.com/microsoft/onnxruntime/pull/12099
+  const InlinedHashSet<std::string> disabled_optimizers{"EnsureUniqueDQForNodeUnit"};
+
   TransformerTester(build_test_case_1,
                     check_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 10);
+                    /*opset_version*/ 10,
+                    /*per_sample_tolerance*/ 0.0,
+                    /*relative_per_sample_tolerance*/ 0.0,
+                    /*transformer*/ {},
+                    /*add_session_options*/ {},
+                    disabled_optimizers);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {

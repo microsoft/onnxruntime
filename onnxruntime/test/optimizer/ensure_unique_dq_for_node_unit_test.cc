@@ -70,7 +70,7 @@ auto GetGraphBuilder(GraphConfig config) {
   };
 }
 
-void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> model_builder_fn,
+void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> graph_builder_fn,
                                       int expected_dq_count) {
   constexpr int opset_version = 12;
 
@@ -84,7 +84,7 @@ void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> mod
     };
 
     EXPECT_STATUS_OK(TestGraphTransformer(
-        model_builder_fn,
+        graph_builder_fn,
         opset_version,
         DefaultLoggingManager().DefaultLogger(),
         std::make_unique<EnsureUniqueDQForNodeUnit>(),
@@ -104,7 +104,7 @@ void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> mod
     };
 
     TransformerTester(
-        model_builder_fn,
+        graph_builder_fn,
         post_transform_check_fn,
         TransformerLevel::Default,
         TransformerLevel::Level1,

@@ -79,13 +79,8 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
 
   auto dq_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(dq_node, 0);
 
-  // if node has graph output (graph.NodeProducesGraphOutput(node))
-  //   or node has consumer in subgraph (check for consumer with implicit inputs),
-  //   then do not reuse the existing DQ for the first consumer edge.
-  //   otherwise, it can be reused and we only need to duplicate from the second consumer on.
-  // should only duplicate for consumers in current graph (where DQ output is not an implicit input).
-
-  // partition output edges: [edges to explicit inputs, edges to implicit inputs]
+  // We will only duplicate DQ's for edges to explicit inputs.
+  // Remove edges to implicit inputs from consideration.
   const auto dq_output_edges_to_explicit_inputs_end = std::remove_if(
       dq_output_edges.begin(), dq_output_edges.end(),
       [&const_graph = std::as_const(graph)](const graph_utils::GraphEdge& dq_output_edge) {
@@ -97,12 +92,14 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
       });
 
   const bool has_output_edge_to_implicit_input = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
-
   if (has_output_edge_to_implicit_input) {
     dq_output_edges.erase(dq_output_edges_to_explicit_inputs_end, dq_output_edges.end());
   }
 
   const bool produces_graph_output = graph.NodeProducesGraphOutput(node);
+
+  // We can reuse the original DQ as the unique DQ for the first edge to explicit input if the DQ doesn't have a graph
+  // output or a consumer in a subgraph (edge to implicit input).
   const bool can_use_original_dq = !has_output_edge_to_implicit_input && !produces_graph_output;
 
   auto next_edge_to_process = dq_output_edges.begin();
@@ -124,12 +121,7 @@ Status EnsureUniqueDQForNodeUnit::ApplyImpl(Graph& graph,
                                             bool& modified,
                                             int graph_level,
                                             const logging::Logger& logger) const {
-  // basic idea
-  // for each DQ node
-  //   if there are multiple consumer nodes, assume that each consumer node is part of a separate node group
-  //     ensure that each consumer node has its own DQ node, duplicating from this one as necessary
-
-  GraphViewer graph_viewer{graph};
+  const GraphViewer graph_viewer{graph};
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
   for (const auto node_idx : node_indices) {
     auto* node_ptr = graph.GetNode(node_idx);
