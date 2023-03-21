@@ -1,10 +1,13 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #include "orttraining/training_ops/cpu/rnn/lstm_grad_compute.h"
 
 namespace onnxruntime::lstm {
 
 namespace {
 
-void elementwise_product(const float* op1, const float* op2, float* dest, int size) {
+void ElementwiseProduct(const float* op1, const float* op2, float* dest, int size) {
   for (int i = 0; i < size; i++)
     dest[i] = op1[i] * op2[i];
 }
@@ -48,8 +51,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
   // |  |  |   |  |  |  |...|  |...|  |  |...|  |
   // |B1|B2|...|Bn|B1|B2|...|Bn|...|B1|B2|...|Bn|
   // |__|__|___|__|__|__|___|__|___|__|__|___|__|
-  // ->|H|<- Each block is of size hidden size
-  // Each B represents an index of the batch. So batch size is n
+  // -->|H |<-- Each block is of size hidden size. Each B represents an index of the batch. So batch size is n
   // <----S1-----><----S2----->....<----St-----> Sequence length is t
   // Every buffer having a sequnence length dimension are structured as the above two.
   //
@@ -59,7 +61,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
   // |   Wi    |     Wo    |     Wf     |     Wc    |
   // |_________|___________|____________|___________|
   // <---HxI---> Each block is hidden size x input size long
-  // Each blodk represents either i, o, f, c weioghts.
+  // Each block represents either i, o, f, or c weights.
   // Every weight buffer is similarly structured
 
   const size_t hidden_size_x4 = 4U * static_cast<size_t>(hidden_size_);
@@ -115,22 +117,14 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
   if (grad_bias_required) {
     std::fill_n(grad_B.data(), grad_B.size(), static_cast<T>(0));
   }
-  float* grad_Wbi = grad_bias_required ? SafeRawPointer<T>(grad_B.begin(), grad_B.end(), hidden_size_x8)
-                                       : nullptr;
-  float* grad_Wbo = grad_bias_required ? grad_Wbi + hidden_size_
-                                       : nullptr;
-  float* grad_Wbf = grad_bias_required ? grad_Wbo + hidden_size_
-                                       : nullptr;
-  float* grad_Wbc = grad_bias_required ? grad_Wbf + hidden_size_
-                                       : nullptr;
-  float* grad_Rbi = grad_bias_required ? grad_Wbc + hidden_size_
-                                       : nullptr;
-  float* grad_Rbo = grad_bias_required ? grad_Rbi + hidden_size_
-                                       : nullptr;
-  float* grad_Rbf = grad_bias_required ? grad_Rbo + hidden_size_
-                                       : nullptr;
-  float* grad_Rbc = grad_bias_required ? grad_Rbf + hidden_size_
-                                       : nullptr;
+  float* grad_Wbi = grad_bias_required ? SafeRawPointer<T>(grad_B.begin(), grad_B.end(), hidden_size_x8) : nullptr;
+  float* grad_Wbo = grad_bias_required ? grad_Wbi + hidden_size_ : nullptr;
+  float* grad_Wbf = grad_bias_required ? grad_Wbo + hidden_size_ : nullptr;
+  float* grad_Wbc = grad_bias_required ? grad_Wbf + hidden_size_ : nullptr;
+  float* grad_Rbi = grad_bias_required ? grad_Wbc + hidden_size_ : nullptr;
+  float* grad_Rbo = grad_bias_required ? grad_Rbi + hidden_size_ : nullptr;
+  float* grad_Rbf = grad_bias_required ? grad_Rbo + hidden_size_ : nullptr;
+  float* grad_Rbc = grad_bias_required ? grad_Rbf + hidden_size_ : nullptr;
 
   // Fill grad peepholes with 0s since they are used as accumulators
   auto& grad_P = outputs.grad_peephole_weights;
@@ -139,10 +133,8 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
   }
   float* grad_pi = grad_peephole_weights_required ? SafeRawPointer<T>(grad_P.begin(), grad_P.end(), hidden_size_x3)
                                                   : nullptr;
-  float* grad_po = grad_peephole_weights_required ? grad_pi + hidden_size_
-                                                  : nullptr;
-  float* grad_pf = grad_peephole_weights_required ? grad_po + hidden_size_
-                                                  : nullptr;
+  float* grad_po = grad_peephole_weights_required ? grad_pi + hidden_size_ : nullptr;
+  float* grad_pf = grad_peephole_weights_required ? grad_po + hidden_size_ : nullptr;
 
   constexpr float alpha = 1.0f;
   // Gemm accumulation results in incorrect values. For now, use custom accumulation logic.
@@ -170,7 +162,6 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
 
   for (int idx = 0; idx < batch_size_; ++idx) {
     const size_t hidden_sizexidx = static_cast<size_t>(idx) * static_cast<size_t>(hidden_size_);
-    // maybe the first input is used and not the last.
     const float* grad_Cfinal = inputs.grad_final_cell_state.empty()
                                    ? nullptr
                                    : SafeRawPointer<const T>(inputs.grad_final_cell_state.begin() + hidden_sizexidx,
@@ -234,7 +225,7 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
 
       // Ht = ot (.) Ct2_tilde
       // dL/dot = dL/dHt (.) Ct2_tilde ---------- (1)
-      elementwise_product(grad_Ht, grad_Ct2, grad_ao, hidden_size_);
+      ElementwiseProduct(grad_Ht, grad_Ct2, grad_ao, hidden_size_);
 
       // Ht = ot (.) Ct2_tilde
       // dL/dCt2_tilde = dL/dHt (.) ot ---------- (2)
@@ -250,21 +241,21 @@ void LSTMGradImpl<T>::ComputeGradient(const LSTMGradInputs<T>& inputs, LSTMGradO
 
       // Ct = ft (.) Ct-1 + it (.) ct
       // dL/dit = dL/dCt (.) ct ---------- (5)
-      elementwise_product(grad_Ct, ct, grad_ai, hidden_size_);
+      ElementwiseProduct(grad_Ct, ct, grad_ai, hidden_size_);
 
       // Ct = ft (.) Ct-1 + it (.) ct
       // dL/dct = dL/dCt (.) it ---------- (6)
-      elementwise_product(grad_Ct, it, grad_ac, hidden_size_);
+      ElementwiseProduct(grad_Ct, it, grad_ac, hidden_size_);
 
       // Ct = ft (.) Ct-1 + it (.) ct
       // dL/dft = dL/dCt (.) Ct-1 ---------- (7)
-      elementwise_product(grad_Ct, Ctminus1, grad_af, hidden_size_);
+      ElementwiseProduct(grad_Ct, Ctminus1, grad_af, hidden_size_);
 
       // Ct = ft (.) Ct-1 + it (.) ct
       // dL/dCt-1 = dL/dCt (.) ft ---------- (8)
       // Note that peephole weights do not impact the backward propagation to Ct-1 and Ct
       // as noted in the paper.
-      elementwise_product(grad_Ct, ft, grad_Ct, hidden_size_);
+      ElementwiseProduct(grad_Ct, ft, grad_Ct, hidden_size_);
 
       // ct = tanh(ac)
       // dL/dac = dL/dct (.) (1 - (tanh(ac))^2) ---------- (9)

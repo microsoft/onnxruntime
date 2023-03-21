@@ -358,7 +358,8 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
       }
 
       span_T_iter batched_cell_states = training_mode_ ? all_cell_states.begin() + step * output_step_length
-                                                       : all_cell_states.begin();
+                                                       // values are not used if training mode is false
+                                                       : all_cell_states.end();
       span_T_iter batched_cell_states_end = all_cell_states.end();
 
       span_T_iter step_out_IOFC_end = step_out_IOFC + num_seq_to_compute_adjusted * hidden_size_x4;
@@ -388,7 +389,7 @@ void UniDirectionalLstm<T>::ComputeImpl(const gsl::span<const T>& inputs_arg,
 
             if (training_mode_) {
               auto all_cell_states_lrow = all_cell_states.begin() + step * output_step_length + lrow * hidden_size_;
-              std::fill_n(all_cell_states_lrow, hidden_size_, (T)0);
+              std::fill_n(all_cell_states_lrow, hidden_size_, T{});
             }
           }
         }
