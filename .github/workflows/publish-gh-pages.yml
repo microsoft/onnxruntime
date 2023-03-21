@@ -40,11 +40,32 @@ jobs:
           source: ./
           destination: ./_site
 
-      - name: Download apidocs artifact
+      - name: Download C apidocs artifact
         uses: dawidd6/action-download-artifact@v2
         with:
-          name: onnxruntime-apidocs
-          workflow: publish-apidocs.yml
+          name: onnxruntime-c-apidocs
+          workflow: publish-c-apidocs.yml
+          path: apidocs
+
+      - name: Download C# apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-csharp-apidocs
+          workflow: publish-csharp-apidocs.yml
+          path: apidocs
+
+      - name: Download Java apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-java-apidocs
+          workflow: publish-java-apidocs.yml
+          path: apidocs
+
+      - name: Download Python apidocs artifact
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          name: onnxruntime-python-apidocs
+          workflow: publish-python-apidocs.yml
           path: apidocs
 
       - name: Move apidocs folder into place
