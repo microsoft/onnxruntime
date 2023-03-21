@@ -2659,6 +2659,19 @@ references:
   isSpec: "True"
   fullName: Microsoft.ML.OnnxRuntime.OrtEnv.GetAvailableProviders
   nameWithType: OrtEnv.GetAvailableProviders
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString
+  name: GetVersionString()
+  href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_GetVersionString
+  commentId: M:Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString()
+  nameWithType: OrtEnv.GetVersionString()
+- uid: Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString*
+  name: GetVersionString
+  href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_GetVersionString_
+  commentId: Overload:Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString
+  isSpec: "True"
+  fullName: Microsoft.ML.OnnxRuntime.OrtEnv.GetVersionString
+  nameWithType: OrtEnv.GetVersionString
 - uid: Microsoft.ML.OnnxRuntime.OrtEnv.Instance
   name: Instance()
   href: api/Microsoft.ML.OnnxRuntime.OrtEnv.html#Microsoft_ML_OnnxRuntime_OrtEnv_Instance
