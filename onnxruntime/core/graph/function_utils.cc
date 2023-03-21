@@ -229,7 +229,7 @@ static void IOTypeConstraintHelper(const ONNX_NAMESPACE::FunctionProto& onnx_fun
 
   int i = 0;
   for (auto& input : input_types_list) {
-    if (! input.first.empty()) {
+    if (!input.first.empty()) {
       op_schema->Input(i, input.first, "", input.second);
     } else {
       // Handle unused input: its type can be anything.
