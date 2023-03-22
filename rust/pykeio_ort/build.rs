@@ -502,7 +502,7 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
         (Os::Windows, ABI::Macabi | ABI::None, _) => {
 
         },
-        (Os::MacOs, ABI::Macabi | ABI::None, _) => {
+        (Os::MacOS, ABI::Macabi | ABI::None, _) => {
             config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
             config.define("CMAKE_SYSTEM_NAME", "Darwin");
             config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
@@ -845,7 +845,7 @@ fn prepare_libort_dir_compiled() -> PathBuf {
     */
     config = prepare_cmake_config(config);
 
-    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
+    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::GPU) {
         config.define("onnxruntime_USE_CUDA", "ON");
     }
 
