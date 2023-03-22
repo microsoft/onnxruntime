@@ -1,4 +1,4 @@
-from onnx import GraphProto, NodeProto
+from onnx import GraphProto
 
 # These are helper functions that refactored from the ONNXModel class in quantization/onnx_model.py
 # The ONNXModel class is not used in the fp16_converter.py script because it cannot be used for sub-graphs

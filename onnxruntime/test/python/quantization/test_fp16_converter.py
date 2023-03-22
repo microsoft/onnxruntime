@@ -203,9 +203,9 @@ class TestONNXModel(unittest.TestCase):
         new_model = converter.get_model()
         batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
         cast_nodes = {"Cast": batch_normalization_count * 2}
-        test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float16)}
         check_op_type_count(self, model_fp16_path, **cast_nodes)
         # Cannot verify correctness because the input and output names are different
+        # test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float16)}
         # check_model_correctness(
         #     self,
         #     model_fp32_path,
