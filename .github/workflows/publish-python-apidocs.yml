@@ -1,10 +1,14 @@
 name: Update Python API Docs
+
+# Run when the Python API changes or every month so that the artifact does not expire
 on:
   push:
     branches:
       - main
     paths:
       - onnxruntime/python
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 concurrency:
@@ -48,3 +52,4 @@ jobs:
         with:
           name: onnxruntime-python-apidocs
           path: _site
+          retention-days: 60

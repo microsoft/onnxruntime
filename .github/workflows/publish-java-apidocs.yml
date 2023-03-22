@@ -1,10 +1,14 @@
 name: Update Java API Docs
+
+# Run when the Java API changes or every month so that the artifact does not expire
 on:
   push:
     branches:
       - main
     paths:
       - java
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 concurrency:
@@ -43,3 +47,4 @@ jobs:
         with:
           name: onnxruntime-java-apidocs
           path: _site
+          retention-days: 60

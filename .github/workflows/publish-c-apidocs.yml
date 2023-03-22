@@ -1,10 +1,14 @@
 name: Update C/C++ API Docs
+
+# Run when the C API changes or every month so that the artifact does not expire
 on:
   push:
     branches:
       - main
     paths:
       - include/onnxruntime/core/session
+  schedule:
+    - cron: '0 0 1 * *'
   workflow_dispatch:
 
 concurrency:
@@ -44,3 +48,4 @@ jobs:
         with:
           name: onnxruntime-c-apidocs
           path: _site
+          retention-days: 60

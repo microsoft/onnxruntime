@@ -2,7 +2,7 @@
 name: Publish site
 
 on:
-  # Runs on pushes targeting the default branch
+  # Runs on pushes targeting the branch where the website sources live
   push:
     branches: ["gh-pages"]
 
