@@ -152,14 +152,6 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   if (extra_add_qk != nullptr) {
     ORT_NOT_IMPLEMENTED("Addition after QxK' not implemented for CPU");
   }
-  if (key != nullptr && past_key != nullptr) {
-    ORT_NOT_IMPLEMENTED("MHA with both key and past key not implemented for CPU");
-  }
-  if (value != nullptr && past_value != nullptr) {
-    ORT_NOT_IMPLEMENTED("MHA with both value and past value not implemented for CPU");
-  }
-
-  const Tensor* past = nullptr;
   
   // Check that K/V have data
   ORT_ENFORCE(key != nullptr && value != nullptr);
@@ -182,6 +174,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
+  const int past_kv_sequence_length = parameters.past_sequence_length;
+  const int total_kv_sequence_length = parameters.total_sequence_length;
   int qk_head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
   int qk_hidden_size = parameters.hidden_size;
@@ -199,6 +193,37 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int k_bias_offset = qk_hidden_size;
   const int v_bias_offset = 2 * qk_hidden_size;
 
+  bool past_kv_and_current_kv = key != nullptr && past_key != nullptr && value != nullptr && past_value != nullptr;
+  bool kv_BNSH = key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4;
+  
+  Tensor* present_k = nullptr;
+  Tensor* present_v = nullptr;
+  if (kv_BNSH || past_kv_and_current_kv) {
+    std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(qk_head_size)});
+    std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(total_kv_sequence_length), static_cast<int64_t>(v_head_size)});
+    present_k = context->Output(1, present_k_shape);
+    present_v = context->Output(2, present_v_shape);
+  }
+
+  Tensor* past_kv = nullptr;
+  OrtValue past;
+  if (past_kv_and_current_kv) {
+    // Concatenate past_key and past_value into past_kv
+    // We assume qk_head_size == v_head_size
+    AllocatorPtr allocator;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    std::vector<int64_t> new_dims({2, batch_size, num_heads_, past_kv_sequence_length, qk_head_size});
+    gsl::span<const int64_t> new_dims_span{new_dims};
+    TensorShape past_kv_2BNSH(new_dims_span);
+    Tensor::InitOrtValue(element_type, past_kv_2BNSH, allocator, past);
+    
+    const int num_past_k_elements = batch_size * num_heads_ * past_kv_sequence_length * qk_head_size;
+    const int num_past_v_elements = batch_size * num_heads_ * past_kv_sequence_length * v_head_size;
+    memcpy(past.GetMutable<Tensor>()->MutableData<T>(), past_key->Data<T>(), num_past_k_elements * sizeof(T));
+    memcpy(past.GetMutable<Tensor>()->MutableData<T>() + num_past_k_elements, past_value->Data<T>(), num_past_v_elements * sizeof(T));
+    past_kv = past.GetMutable<Tensor>();
+  }
+
   OrtValue Q;
   {
     AllocatorPtr allocator;
@@ -210,18 +235,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     AddBiasTranspose(query, qkv_bias, Q, q_bias_offset, batch_size, q_sequence_length, num_heads_, qk_head_size, qk_hidden_size, context);
   }
 
-  if (key->Shape().GetDims().size() == 4 && value->Shape().GetDims().size() == 4) {
-    std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(kv_sequence_length), static_cast<int64_t>(qk_head_size)});
-    std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size), static_cast<int64_t>(num_heads_), static_cast<int64_t>(kv_sequence_length), static_cast<int64_t>(v_head_size)});
-    Tensor* present_k = context->Output(1, present_k_shape);
-    Tensor* present_v = context->Output(2, present_v_shape);
+  if (kv_BNSH) {
     // No bias add needed for K/V, key already of shape BxNxLxH, value already of shape BxNxLxH_v
-    ORT_RETURN_IF_ERROR(ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(),
-                                       key_padding_mask, past, output, present_k, present_v, 
-                                       batch_size, q_sequence_length, kv_sequence_length, 
-                                       qk_head_size, v_head_size, v_hidden_size, 
-                                       extra_add_qk, true, context));
-    return Status::OK();
+    return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), key->Data<T>(), value->Data<T>(),
+                          key_padding_mask, past_kv, output, present_k, present_v, 
+                          batch_size, q_sequence_length, kv_sequence_length, 
+                          qk_head_size, v_head_size, v_hidden_size, 
+                          extra_add_qk, kv_BNSH, context);
   }
 
   OrtValue K;
@@ -248,10 +268,10 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(), K.GetMutable<Tensor>()->MutableData<T>(), V.GetMutable<Tensor>()->MutableData<T>(), 
-                        key_padding_mask, past, output, nullptr, nullptr,
+                        key_padding_mask, past_kv, output, present_k, present_v,
                         batch_size, q_sequence_length, kv_sequence_length, 
                         qk_head_size, v_head_size, v_hidden_size, 
-                        extra_add_qk, false, context);
+                        extra_add_qk, past_kv_and_current_kv, context);
 }
 }  // namespace contrib
 }  // namespace onnxruntime
