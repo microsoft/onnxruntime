@@ -79,7 +79,9 @@ void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> gra
 
     auto post_transform_check_fn = [expected_dq_count](const Graph& graph) {
       const auto op_counts = CountOpsInGraph(graph);
-      ORT_RETURN_IF_NOT(OpCount(op_counts, "DequantizeLinear") == expected_dq_count);
+      const auto actual_dq_count = OpCount(op_counts, "DequantizeLinear");
+      ORT_RETURN_IF_NOT(actual_dq_count == expected_dq_count,
+                        "Expected DQ count: ", expected_dq_count, ", actual: ", actual_dq_count);
       return Status::OK();
     };
 
