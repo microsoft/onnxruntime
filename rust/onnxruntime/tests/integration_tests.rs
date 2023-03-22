@@ -103,7 +103,7 @@ mod download {
         // and iterate on resulting probabilities, creating an index to later access labels.
         let mut probabilities: Vec<(usize, f32)> = outputs[0]
             .softmax(ndarray::Axis(1))
-            .into_iter()
+            .into()
             .copied()
             .enumerate()
             .collect::<Vec<_>>();
@@ -192,7 +192,7 @@ mod download {
 
         let mut probabilities: Vec<(usize, f32)> = outputs[0]
             .softmax(ndarray::Axis(1))
-            .into_iter()
+            .into()
             .copied()
             .enumerate()
             .collect::<Vec<_>>();
