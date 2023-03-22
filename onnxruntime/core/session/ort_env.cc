@@ -113,9 +113,10 @@ onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryIn
   return status;
 }
 
-onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, int* provider_global_index) {
+onnxruntime::common::Status OrtEnv::CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options,
+                                                                       int* provider_global_index) {
   std::string provider_type_str(provider_type);
-  auto status = value_->CreateAndRegisterExecutionProvider(use_arena, provider_type_str, provider_global_index);
+  auto status = value_->CreateAndRegisterExecutionProvider(use_arena, provider_type_str, provider_options, provider_global_index);
   return status;
 }
 

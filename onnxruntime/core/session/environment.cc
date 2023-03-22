@@ -335,24 +335,22 @@ Internal copy node
   return status;
 }
 
-Status Environment::CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, int* provider_global_index) {
+Status Environment::CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, ProviderOptions provider_options, int* provider_global_index) {
   *provider_global_index = -1;
   std::unique_ptr<IExecutionProvider> ep;
   if (provider_type == kCpuExecutionProvider) {
     ep = onnxruntime::CPUProviderFactoryCreator::Create(use_arena)->CreateProvider();
   } else if (provider_type == kXnnpackExecutionProvider) {
 #ifdef USE_XNNPACK
-    SessionOptions so;
-    OrtValue ov;
-    ORT_THROW_IF_ERROR(so.AddInitializer("k1", &ov));
+    SessionOptions so{};
     so.enable_cpu_mem_arena = use_arena;
-    onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}, &so)->CreateProvider();
+    ep = onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
 #endif  // USE_XNNPACK
   }
 
   if (ep) {
     ORT_THROW_IF_ERROR(execution_providers_.Add(provider_type, std::move(ep)));
-    *provider_global_index = static_cast<int>(execution_providers_.NumProviders());
+    *provider_global_index = static_cast<int>(execution_providers_.NumProviders())-1;
   }
   return Status::OK();
 }

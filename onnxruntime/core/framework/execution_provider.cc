@@ -51,6 +51,7 @@ OrtDevice IExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
 }
 
 std::vector<AllocatorPtr>& IExecutionProvider::GetCachedAllocators() {
+  std::lock_guard<OrtMutex> lock(mutex_);
   if (allocator_list_.size() == 0) {
     std::vector<AllocatorPtr> preferred_allocators = CreatePreferredAllocators();
     for (int i = 0; i < preferred_allocators.size(); i++) {

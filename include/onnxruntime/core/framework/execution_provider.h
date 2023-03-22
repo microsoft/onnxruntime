@@ -12,7 +12,6 @@
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
 #include "core/framework/tensor.h"
-#include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
 class GraphViewer;
@@ -305,6 +304,8 @@ class IExecutionProvider {
   const logging::Logger* logger_ = nullptr;
 
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
+
+  OrtMutex mutex_;
 
  protected:
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

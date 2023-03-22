@@ -424,7 +424,7 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
-  Env& CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider
+  Env& CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider
 };
 
 /** \brief Custom Op Domain

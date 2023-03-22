@@ -3962,7 +3962,8 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseDnnlProviderOptions)(_Frees_ptr_opt_ OrtDnnlProviderOptions* input);
 
-  ORT_API2_STATUS(CreateAndRegisterExecutionProvider, _Inout_ OrtEnv* env, _In_ bool use_arena, _In_ const char* provider_type, _Out_ int* provider_global_index);
+  ORT_API2_STATUS(CreateAndRegisterExecutionProvider, _Inout_ OrtEnv* env, _In_ bool use_arena, _In_ const char* provider_type, _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _Out_ int* provider_global_index);
 
   ORT_API2_STATUS(CreateSessionWithProviderGlobalIndex, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path, _In_ int* provider_global_index, size_t global_index_length, _Outptr_ OrtSession** out);
 
