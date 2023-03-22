@@ -16,6 +16,9 @@ const ORT_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_LIB_LOCATION";
 const ORT_ENV_CMAKE_TOOLCHAIN: &str = "ORT_CMAKE_TOOLCHAIN";
 const ORT_ENV_CMAKE_PROGRAM: &str = "ORT_CMAKE_PROGRAM";
 const ORT_ENV_PYTHON_PROGRAM: &str = "ORT_PYTHON_PROGRAM";
+const ORT_RUST_ENV_GPU: &str = "ORT_RUST_USE_CUDA"; //Paco
+const ORT_RUST_ENV_SYSTEM_LIB_LOCATION: &str = "ORT_RUST_LIB_LOCATION"; //Paco
+const ORT_RUST_ENV_STRATEGY: &str = "ORT_RUST_STRATEGY"; //Paco
 const ORT_EXTRACT_DIR: &str = "onnxruntime";
 const ORT_GIT_DIR: &str = "onnxruntime";
 const ORT_GIT_REPO: &str = "https://github.com/microsoft/onnxruntime";
@@ -106,6 +109,27 @@ impl FromStr for Os {
 	}
 }
 
+// Check is simulator
+#[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
+enum Simulator {
+    Yes,
+    No,
+}
+
+impl FromStr for Simulator {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "aarch64-apple-ios-sim" => Ok(Simulator::Yes),
+            "x86_64-apple-ios" => Ok(Simulator::Yes),
+            "aarch64-apple-ios" | "aarch64-apple-ios-macabi" | "x86_64-apple-ios-macabi" | "x86_64-apple-darwin" | "aarch64-apple-darwin" => Ok(Simulator::No),
+            _ => Err(format!("Unsupported OS: {}", s)),
+        }
+    }
+}
+
 impl OnnxPrebuiltArchive for Os {
 	fn as_onnx_str(&self) -> Cow<str> {
 		match self {
@@ -117,10 +141,36 @@ impl OnnxPrebuiltArchive for Os {
 	}
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ABI {
+	Macabi,
+	None,
+}
+
+impl FromStr for ABI {
+	type Err = String;
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"macabi" => Ok(ABI::Macabi),
+			_ => Ok(ABI::None),
+		}
+	}
+}
+
 #[derive(Debug)]
 enum Accelerator {
 	None,
 	Gpu
+}
+
+impl FromStr for Accelerator {
+	type Err = String;
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		 match s.to_lowercase().as_str() {
+			"1" | "yes" | "true" | "on" => Ok(Accelerator::Gpu),
+			_ => Ok(Accelerator::None),
+		}
+	}
 }
 
 impl OnnxPrebuiltArchive for Accelerator {
@@ -845,9 +895,9 @@ fn prepare_libort_dir_compiled() -> PathBuf {
     */
     config = prepare_cmake_config(config);
 
-    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::GPU) {
-        config.define("onnxruntime_USE_CUDA", "ON");
-    }
+    //if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Gpu) {
+    //    config.define("onnxruntime_USE_CUDA", "ON");
+    //}
 
     config.build()
 }
