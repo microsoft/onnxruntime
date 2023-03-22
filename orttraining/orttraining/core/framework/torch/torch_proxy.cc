@@ -152,12 +152,7 @@ void InvokeRunner(
     PyObject* py_obj = PyTuple_GetItem(result_ptr.get(), 0);
     if (is_training_mode) {
       if (py_obj == Py_None) {
-        {
-          static std::once_flag once;
-          std::call_once(once, [] {
-            LOGS_DEFAULT(WARNING) << "Under training mode, autograd context found to be Py_None.";
-          });
-        }
+        LOGS_DEFAULT(VERBOSE) << "Under training mode, autograd context found to be Py_None.";
       } else {
         const auto refcnt = Py_REFCNT(py_obj);
         // We don't need do ref increase here because, python returns tensor.grad_fn as part of
@@ -167,12 +162,7 @@ void InvokeRunner(
         // and backward() functions.
         ORT_ENFORCE(refcnt >= 2, "Ref count of context should be 2, but actually it's ", refcnt, ".");
         if (refcnt > 2) {
-          {
-            static std::once_flag once;
-            std::call_once(once, [refcnt] {
-              LOGS_DEFAULT(WARNING) << "Autograd context refcnt > 2, refcnt: " << refcnt;
-            });
-          }
+          LOGS_DEFAULT(VERBOSE) << "Autograd context refcnt > 2, refcnt: " << refcnt;
         }
       }
     } else {
