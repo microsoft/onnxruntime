@@ -176,8 +176,7 @@ void PythonOpBase::AddPointerScalarArgs() {
     PyObject* ptr = reinterpret_cast<PyObject*>(input_pointer_scalars_.at(i));
     // We don't want to own the Python object from C++ side because once C++ destructor called through pybind,
     // it may trigger python side object destroying, potentially requires GILs, resulting in a hang.
-    // Instead, we have mechanism during exporting we increase the ref count already.
-
+    // Instead, we have mechanism during exporting we increase the reference count already.
     const_arg_set_.Add(input_pointer_scalar_positions_.at(i), ptr, false /*owned*/);
   }
 }
