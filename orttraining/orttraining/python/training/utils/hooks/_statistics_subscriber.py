@@ -16,14 +16,14 @@ from ._subscriber_base import SubscriberBase
 
 class StatisticsSubscriber(SubscriberBase):
     """
-    This subscriber is used to dump the activation's statistics to files.
+    This subscriber is used to dump the activation statistics into files.
 
     Each activation will be summarized into 1 or 2 files, depending on whether it is used in the backward pass.
-    So for each run step, there will be many files.
     > In the forward pass, summarize the tensor's statistics and write to a file.
-    > In the backward pass, summarize the tensor's gradient's statistics and write into another file.
+    > In the backward pass, summarize the tensor's gradient statistics and write it into another file.
+    So for each run step, there will be many files.
 
-    Currently the statistics mainly include:
+    Currently, the statistics mainly include:
     > Number of inf/nan values.
     > Common statistics: tensor shape, data type, total element size, min/max/mean/std of the tensor elements.
     > Number of zero/negative/positive elements.
@@ -42,10 +42,12 @@ class StatisticsSubscriber(SubscriberBase):
     ):
         """
         Steps in [start_step, end_step) will run subscriber actions.
-        :param output_dir: the directory all activation statistics files will be stored.
-        :param start_step: the first step that runs subscriber actions.
-        :param end_step: the end step (exclusively) that runs subscriber actions.
-        :param override_output_dir: whether `output_dir` can be overridden if it already exists.
+
+        Args:
+            output_dir: the directory in all activation statistics files will be stored.
+            start_step: the first step that runs subscriber actions.
+            end_step: the end step (exclusively) that runs subscriber actions.
+            override_output_dir: whether `output_dir` can be overridden if it already exists.
         """
         super().__init__(start_step=start_step, end_step=end_step)
         self._output_dir = output_dir
@@ -82,12 +84,12 @@ class StatisticsSubscriber(SubscriberBase):
         order_file_path = step_path / "order.txt"
         tensor_file_path = step_path / output_file_name
 
-        # This is to try best effort to align the count of number per line for easier comparison in diff view,
-        # though it does not always guarantee doing this way.
+        # This is to try the best effort to align the count of numbers per line for easier comparison in diff views,
+        # though it does not always guarantee to do this way.
         torch.set_printoptions(precision=6, linewidth=128)
 
         flatten_array = tensor.flatten()
-        zerotensor = torch.tensor(0, dtype=flatten_array.dtype, device=flatten_array.device)
+        zero_tensor = torch.tensor(0, dtype=flatten_array.dtype, device=flatten_array.device)
         num_nan = torch.isnan(flatten_array).sum()
         num_inf = torch.isinf(flatten_array).sum()
 
@@ -104,8 +106,8 @@ class StatisticsSubscriber(SubscriberBase):
             f.write(f"samples(top 128): {flatten_array[:128]}\n")
 
             f.write(
-                f"neg: {torch.less(flatten_array, zerotensor).to(torch.int64).sum()}, "
-                f"pos: {torch.greater(flatten_array, zerotensor).to(torch.int64).sum()}, "
-                f"zero: {torch.eq(flatten_array, zerotensor).to(torch.int64).sum()},\n"
+                f"neg: {torch.less(flatten_array, zero_tensor).to(torch.int64).sum()}, "
+                f"pos: {torch.greater(flatten_array, zero_tensor).to(torch.int64).sum()}, "
+                f"zero: {torch.eq(flatten_array, zero_tensor).to(torch.int64).sum()},\n"
             )
             f.write(f"{'='*16}\n")

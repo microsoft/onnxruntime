@@ -3834,7 +3834,7 @@ Return true if all elements are true and false otherwise.
           static_cast<int64_t>(0))
       .Attr(
           "comment",
-          "comment only for debugging purpose.",
+          "comment only for debugging purposes.",
           AttributeProto::STRING, false)
       .TypeConstraint(
           "T",
@@ -3856,16 +3856,16 @@ Return true if all elements are true and false otherwise.
                     "PythonOp's input list and \"input_tensor_types\" attribute should have the same length.");
         for (auto i = 0; i < input_tensor_types_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
-          ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type, "PythonOp's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOp's ", i, "th input type must be a tensor.");
+                      "PythonOp's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i),
-                      "PythonOp's ", i, "th input type must be ",
+                      "PythonOp's ", i, "-th input type must be ",
                       TensorProto_DataType_Name(input_tensor_types_proto->ints().at(i)), " but got ",
                       TensorProto_DataType_Name(inferred_input_type->tensor_type().elem_type()));
         }
 
-        // The first output is a pointer which points to
+        // The first output is a pointer that points to
         // a Python object created by torch.autograd.Function.apply.
         // For details, see how we interpret it (the 1st input of PythonOpGrad)
         // in PythonOpGrad's implementation.
@@ -3880,14 +3880,14 @@ Return true if all elements are true and false otherwise.
 
         std::string func_name = getAttribute(ctx, "name", "");
         if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          // PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
-          // PythonOp when execution. The only difference is that
-          // 1). those ops having same number of tensor inputs and tensor outputs;
-          // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
-          // Be noted, the count of custom autograd function might be bigger than output count, because there might
+          // PythonOp with the name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly the
+          // same as a normal PythonOp when execution. The only difference is that:
+          // 1). those ops having the same number of tensor inputs and tensor outputs;
+          // 2). and the i-th output tensor's shape is the same as i-th input tensor's shape.
+          // Be noted, the count of custom autograd function might be bigger than the output count, because there might
           // be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
           // inputs as ONNX op's input, instead they are stored in the attributes.
-          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains on extra context info.
+          ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains one extra context info.
           // Set inferred output types.
           for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
             propagateElemTypeFromInputToOutput(ctx, i - 1, i);
@@ -3895,7 +3895,7 @@ Return true if all elements are true and false otherwise.
           }
         } else {
           size_t rank_count = 0;
-          // Create symbolic shape.
+          // Create a symbolic shape.
           const auto output_tensor_ranks = ctx.getAttribute("output_tensor_ranks")->ints();
           // Set inferred output types.
           for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
@@ -3945,13 +3945,13 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "inplace",
-          "Indicate if the output should reuse input memory. Todo(pengwa): do we really need it?",
+          "Indicate if the output should reuse input memory. Todo(pengwa): do we need it?",
           AttributeProto::INT,
           static_cast<int64_t>(0))
       .Attr(
           "input_tensor_types",
           "Input types of autograd.Function.backward (including only tensor inputs)."
-          "This attribute is mostly used for input checks for better robustnes.",
+          "This attribute is mostly used for input checks for better robustness.",
           AttributeProto::INTS,
           false)
       .Attr(
@@ -3981,7 +3981,7 @@ Return true if all elements are true and false otherwise.
           AttributeProto::STRING)
       .Attr(
           "comment",
-          "comment only for debugging purpose.",
+          "comment only for debugging purposes.",
           AttributeProto::STRING,
           false)
       .TypeConstraint(
@@ -4008,11 +4008,11 @@ Return true if all elements are true and false otherwise.
         // For details, see how we interpret it in PythonOpGrad implementation.
         for (auto i = 1; i < input_count; ++i) {
           const auto inferred_input_type = ctx.getInputType(i);
-          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "th input type is missing.");
+          ORT_ENFORCE(inferred_input_type, "PythonOpGrad's ", i, "-th input type is missing.");
           ORT_ENFORCE(inferred_input_type->value_case() == TypeProto::kTensorType,
-                      "PythonOpGrad's ", i, "th input type must be a tensor.");
+                      "PythonOpGrad's ", i, "-th input type must be a tensor.");
           ORT_ENFORCE(inferred_input_type->tensor_type().elem_type() == input_tensor_types_proto->ints().at(i - 1),
-                      "PythonOpGrad's ", i, "th input type must be ", input_tensor_types_proto->ints().at(i - 1));
+                      "PythonOpGrad's ", i, "-th input type must be ", input_tensor_types_proto->ints().at(i - 1));
         }
 
         // Load expected output types.
@@ -4024,9 +4024,9 @@ Return true if all elements are true and false otherwise.
 
         std::string func_name = getAttribute(ctx, "name", "");
         if (func_name == "_InspectActivation" || func_name == "_IncrementStep") {
-          // PythonOpGrad with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
-          // PythonOpGrad when execution. The only difference is that
-          // 1). those ops having same number of tensor inputs and tensor outputs;
+          // PythonOpGrad with name attribute being "_InspectActivation" or "_IncrementStep" will behave exactly
+          // the same as a normal PythonOpGrad when execution. The only difference is that:
+          // 1). those ops having the same number of tensor inputs and tensor outputs;
           // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
           for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {

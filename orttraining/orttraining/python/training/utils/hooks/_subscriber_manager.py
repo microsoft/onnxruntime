@@ -20,8 +20,8 @@ class _RuntimeStates:
     > Global states that are one-time collected during model hook registration. A global execution step is
       also initialized to reflect how many steps have been executed, it will get updated after each step
       completes its forward path.
-    > Intra execution step states, initialized and cleaned up intended only for current execution step.
-      Usually it carriers intermediate informations during the model execution.
+    > Intra-execution step states, initialized and cleaned up intended only for current execution step.
+      Usually, it carries intermediate information during the model execution.
     """
 
     class _GlobalStates:
@@ -51,14 +51,13 @@ class _RuntimeStates:
 
 class _InspectActivation(torch.autograd.Function):
     """
-    This class is used to run the subscriber's forward and backward function.
-    It also manages step related checks, including run subscribers only for between start_step and end_step.
+    This class is used to run the subscriber's forward and backward functions.
     """
 
     @staticmethod
     def forward(ctx, activation_name: str, module_idx: int, run_ctx: _RuntimeStates, input_tensor):
         """
-        Make sure there is same number of `tensor` type inputs and outputs.
+        Make sure there is a same number of `tensor` type inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
         """
         depth = run_ctx.global_states.module_index_to_depth[module_idx]
@@ -75,7 +74,7 @@ class _InspectActivation(torch.autograd.Function):
         ctx.depth = depth
         ctx.subscribers = run_ctx.global_states.subscribers
 
-        # Run subscribers squentially.
+        # Run subscribers sequentially.
         for subscriber in run_ctx.global_states.subscribers:
             subscriber.module_post_forward(input_tensor_copied, depth, activation_name, ctx.current_step)
 
@@ -98,9 +97,9 @@ class _InspectActivation(torch.autograd.Function):
 class _IncrementStep(torch.autograd.Function):
     """
     This class is used to manage the global execution step, e.g.
-    global step increment by one, once a full forward path completed and state clear.
+    global step increment by one, once a full forward path is completed and the state clear.
 
-    This autograd Function is registered as a post forward hook to the root module. So once the root
+    This autograd Function is registered as a post-forward hook to the root module. So once the root
     module's forward path is completed, this backward function will be called immediately, triggering
     global step increment and state clear.
     """
@@ -108,19 +107,19 @@ class _IncrementStep(torch.autograd.Function):
     @staticmethod
     def forward(ctx, run_ctx, input_tensor):
         """
-        Make sure there is same number of `tensor` inputs and outputs.
+        Make sure there is a same number of `tensor` inputs and outputs.
         This is enforced by ORT's PythonOp's schema check.
         """
         ctx.current_step = run_ctx.global_states.execution_step
         ctx.run_ctx = run_ctx
 
         # We cannot do the step incremental here. Imagine the outside-most module has multiple outputs,
-        # we need increase the step only at the very last output handling.
+        # we need to increase the step only at the very last output handling.
         # We avoid the complexity to probe the last output handling, and instead, we assume once
-        # the very first backward of outside-most module is called, then the forward pass MUST be completed.
+        # the very first backward of the outside-most module is called, then the forward pass MUST be completed.
 
-        # Be noted: it is not safe to register _IncrementStep only for one of the outputs of outer-most module,
-        # because we are not sure which output branch is executed, for example.
+        # Be noted: it is not safe to register _IncrementStep only for one of the outputs of the outside-most module,
+        # because we are not sure which output branch is executed earlier, for example.
         #                                   OuterMostModuleOutputs
         #                                 /                         \
         #  OuterMostModuleOutputs_0_0th_output             OuterMostModuleOutputs_0_1th_output
@@ -147,14 +146,14 @@ class _IncrementStep(torch.autograd.Function):
 
 class SubscriberManager:
     """
-    This class is used to manage all the subscribers, and register post forward hook to the root module.
-    _register_subscriber() is used to register a subscriber, and can be chained with other register calls.
+    This class is used to manage all the subscribers and register the post-forward hook to the root module.
+    `subscribe()` is used to register a list of subscribers.
 
-    Currently, the hook handled here is post forward hook for nn.Module. Hook is registered for all nn.Modules
-    recursively. Each hook insert a PythonOp for every tensor output generated by the corresponding module.
+    Currently, the hook handled here is post forward hook for nn.Module. The hook is registered for all nn.Modules
+    recursively. Each hook inserts a PythonOp for every tensor output generated by the corresponding module.
     Each subscriber implementation is called in the PythonOp's forward function, and backward function.
 
-    There is one special handling for global step increment and state clear. A post forward hook is registered
+    There is one special handling for global step increment and state clear. A post-forward hook is registered
     for the outside-most module, which is the root module. In that hook, _IncrementStep is called, which will
     increase the step by 1 once the very first time its backward is called (check _IncrementStep for details).
     """
@@ -164,7 +163,7 @@ class SubscriberManager:
 
     def subscribe(self, module: Union[torch.nn.Module, ORTModule], subscribers: List[SubscriberBase]):
         """
-        The API called externally to register hooks that is implicitly defined by subscribers.
+        The API is called externally to register hooks that are implicitly defined by subscribers.
         Each time all global states will be cleaned up once called.
         """
         if not isinstance(module, torch.nn.Module):
@@ -187,21 +186,21 @@ class SubscriberManager:
 
     def _initialize(self, module: torch.nn.Module):
         """
-        Register hooks for specified module.
+        Register hooks for the specified module.
         """
         if len(self._run_ctx.global_states.subscribers) == 0:
             raise RuntimeError("No subscribers are registered.")
 
         next_module_index = [0]
         # Register post forward hook for every module, inside the hook, we loop every tensor output of the module,
-        # and wrap it with a autograd Function called _InspectActivation (which take in a tensor and return the same
+        # and wrap it with an autograd Function called _InspectActivation (which takes in a tensor and returns the same
         # tensor). In this way, we keep ORT and PyTorch run have the same boundary to check activation equality.
         self._register_hooks_recursively(module, 1, next_module_index)
 
-        # Register post forward hook for outmost module, then we increase the dump step.
-        # Be noted, if backward is not triggered, the global dump step remain the original number,
-        # which means the subsequent run will override the previous dump files. This indeed happens imagine ORTModule
-        # firstly export graph (run the forward only), after gradient graph is built, another forward+backward is
+        # Register post forward hook for the outside-most module, then we increase the dump step.
+        # Be noted, if backward is not triggered, the global dump step remains the original number,
+        # which means the subsequent run will override the previous dump files. This indeed happens to imagine ORTModule
+        # firstly export graph (run the forward only), after the gradient graph is built, another forward+backward is
         # triggered, override the previous dump files.
         def _post_forward_outmost_module_hook(module, _, module_outputs):
             def _apply_to_tensors_func(_, outputs):
@@ -218,9 +217,11 @@ class SubscriberManager:
         Called to register hooks for every `torch.nn.Module`. Due to `Module` can contain child `Module`s,
         this function is called recursively by passing in `next_module_index` - a list of int to maintain a
         global incremental unique module id.
-        :param module: torch.nn.Module to register hook.
-        :param depth: the indent of module compared with the outer-most Module.
-        :param next_module_index: list of int, carrying a global unique module index that can be used next.
+
+        Args:
+            module: torch.nn.Module to register hook.
+            depth: the indent of the module compared with the outside-most Module.
+            next_module_index: list of int, carrying a global unique module index that can be used next.
         """
         module_index = next_module_index[0]
         self._run_ctx.global_states.module_index_to_depth[module_index] = depth
@@ -257,10 +258,12 @@ class SubscriberManager:
     ):
         """
         Apply func to all tensors in the given object.
-        :param module: the module that generates the tensors.
-        :param data: the object that contains activation tensors.
-        :param func: the function to apply to the tensors.
-        :param first_differentiable_tensor_only: only apply the `func` for the first differentiable tensor only.
+
+        Args:
+            module: the module that generates the tensors.
+            data: the object that contains activation tensors.
+            func: the function to apply to the tensors.
+            first_differentiable_tensor_only: only apply the `func` for the first differentiable tensor only.
         """
         tensor_output_idx: List[int] = [0]
         first_differentiable_tensor_output: List[int] = [-1]
