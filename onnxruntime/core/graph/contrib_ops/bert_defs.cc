@@ -473,6 +473,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
               OPTIONAL_VALUE)
+        .Attr("mask_filter_value",
+              "The value to be filled in the attention mask. Default value is -10000.0f",
+              AttributeProto::FLOAT,
+              OPTIONAL_VALUE)
         .Input(0,
                "input",
                "Input tensor with shape (batch_size, 1, input_hidden_size)",
@@ -571,7 +575,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "key",
                "Key with shape (batch_size, kv_sequence_length, hidden_size), or packed KV with shape (batch_size, kv_sequence_length, num_heads, 2, head_size), "
-                "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
+               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size)",
                "T",
                OpSchema::Optional)
         .Input(2,
