@@ -15,6 +15,9 @@ pub type Result<T> = std::result::Result<T, OrtError>;
 #[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum OrtError {
+    /// For errors with libloading
+    #[error("Failed to load or call onnxruntime library {0}")]
+    Library(#[from] libloading::Error),
     /// The C API can message to the caller using a C `char *` which needs to be converted
     /// to Rust's `String`. This operation can fail.
     #[error("Failed to construct String")]

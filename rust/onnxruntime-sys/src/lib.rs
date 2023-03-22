@@ -25,11 +25,12 @@
 #![allow(clippy::all)]
 #![allow(improper_ctypes)]
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/generated/bindings.rs"
+));
 
-// use std::process;
-println!("{}", env!("OUT_DIR"));
-// std::process::exit(-1);
+// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 #[cfg(target_os = "windows")]
 pub type OnnxEnumInt = i32;
@@ -37,3 +38,7 @@ pub type OnnxEnumInt = i32;
 pub type OnnxEnumInt = u32;
 
 pub use libloading::library_filename;
+
+// use std::process;
+// println!("{}", env!("OUT_DIR"));
+// std::process::exit(-1);

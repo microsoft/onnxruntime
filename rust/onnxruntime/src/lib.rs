@@ -156,10 +156,12 @@ use sys::OnnxEnumInt;
 pub use ndarray;
 
 lazy_static! {
+    // use onnxruntime_sys as sys;
     // static ref G_ORT: Arc<Mutex<AtomicPtr<sys::OrtApi>>> =
     //     Arc::new(Mutex::new(AtomicPtr::new(unsafe {
     //         sys::OrtGetApiBase().as_ref().unwrap().GetApi.unwrap()(sys::ORT_API_VERSION)
     //     } as *mut sys::OrtApi)));
+    // static ref pacoTesting = unsafe { sys::OrtGetApiBase() };
     static ref G_ORT_API: Arc<Mutex<AtomicPtr<sys::OrtApi>>> = {
         let base: *const sys::OrtApiBase = unsafe { sys::OrtGetApiBase() };
         assert_ne!(base, std::ptr::null());

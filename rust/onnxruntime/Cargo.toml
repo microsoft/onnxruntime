@@ -19,6 +19,7 @@ name = "integration_tests"
 required-features = ["model-fetching"]
 
 [dependencies]
+libloading = "0.7"
 onnxruntime-sys = { version = "0.0.14", path = "../onnxruntime-sys" }
 
 lazy_static = "1.4"
