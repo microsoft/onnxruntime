@@ -149,7 +149,7 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
                 domain_to_version, {}, logger);
     Graph& graph = model.MainGraph();
     ModelTestBuilder helper(graph);
-    ORT_RETURN_IF_NOT(build_test_case);
+    ORT_RETURN_IF_NOT(build_test_case, "build_test_case must be provided");
     build_test_case(helper);
     helper.SetGraphOutputs();
     ORT_RETURN_IF_ERROR(graph.Resolve());
