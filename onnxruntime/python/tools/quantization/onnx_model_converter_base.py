@@ -1,9 +1,3 @@
-from typing import List
-
-import numpy as np
-from onnx import TensorProto, ValueInfoProto, helper, numpy_helper
-
-from onnxruntime.quantization.onnx_model import ONNXModel
 from onnxruntime.quantization.onnx_model_processor_base import ONNXModelProcessorBase
 
 
@@ -20,15 +14,14 @@ class ConverterBase(ONNXModelProcessorBase):
     ]
 
     def __init__(self, model=None, allow_list=None):
-        if model is not None:
-            new_model = ONNXModel(model)
-            new_model.topological_sort()
-            model = new_model.model
         self.allow_list = allow_list if allow_list is not None else self.default_allow_list
-        super().__init__(model)
+        super().__init__(model, True)
 
     def set_allow_list(self, allow_list: list = None):
         self.allow_list = allow_list if allow_list is None else self.default_allow_list
+
+    def import_model_from_path(self, model_path: str, optimize_model=True, sort_model=True):
+        super().import_model_from_path(model_path, optimize_model, sort_model)
 
     @staticmethod
     def parse_arguments():
