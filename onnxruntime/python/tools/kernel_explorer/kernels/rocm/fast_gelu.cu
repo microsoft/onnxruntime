@@ -110,7 +110,7 @@ class FastGeluTunable : public IKernelExplorer {
       .def("Run", &name<type>::Run)                                        \
       .def("IsSupported", &name<type>::IsSupported);
 
-void InitFastGelu(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK(FastGelu, double);

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "python/tools/kernel_explorer/kernels/rocm/skip_layer_norm.h"
-
 #include <hip/hip_fp16.h>
 #include <pybind11/pybind11.h>
 
@@ -20,8 +18,8 @@ class SkipLayerNormSmall : public IKernelExplorer {
   SkipLayerNormSmall(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, DeviceArray& skip,
                      DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                      float epsilon, int hidden_size, int element_count)
-      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()), 
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+      : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -45,7 +43,7 @@ class SkipLayerNormRegular : public IKernelExplorer {
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -65,11 +63,11 @@ class SkipLayerNormRegular : public IKernelExplorer {
 template <typename T>
 class SkipLayerNormStaticSelection : public IKernelExplorer {
  public:
-  SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input, 
+  SkipLayerNormStaticSelection(DeviceArray& output, DeviceArray& skip_input_bias_add_output, DeviceArray& input,
                                DeviceArray& skip, DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                                float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {}
 
   void Run() override {
@@ -93,9 +91,8 @@ class SkipLayerNormTunable : public IKernelExplorer {
                        DeviceArray& gamma, DeviceArray& beta, DeviceArray& bias,
                        float epsilon, int hidden_size, int element_count)
       : params_(TuningContext(), Stream(), static_cast<T*>(output.ptr()), static_cast<T*>(skip_input_bias_add_output.ptr()),
-                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()), 
+                static_cast<T*>(input.ptr()), static_cast<T*>(skip.ptr()), static_cast<T*>(gamma.ptr()),
                 static_cast<T*>(beta.ptr()), static_cast<T*>(bias.ptr()), epsilon, hidden_size, element_count) {
-
     params_.TuningContext()->EnableTunableOp();
   }
 
@@ -113,14 +110,14 @@ class SkipLayerNormTunable : public IKernelExplorer {
   contrib::rocm::SkipLayerNormTunableOp<T> op_{};
 };
 
-#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                    \
-  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size)  \
-      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                                     \
-                    DeviceArray&, DeviceArray&, DeviceArray&,                                                   \
-                    float, int, int>())                                                                         \
-      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                  \
-      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                        \
-      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                                \
+#define REGISTER_OP(name, type, threads_per_block, vec_size)                                                   \
+  py::class_<name<type, threads_per_block, vec_size>>(m, #name "_" #type "_" #threads_per_block "_" #vec_size) \
+      .def(py::init<DeviceArray&, DeviceArray&, DeviceArray&, DeviceArray&,                                    \
+                    DeviceArray&, DeviceArray&, DeviceArray&,                                                  \
+                    float, int, int>())                                                                        \
+      .def("SetRepeats", &name<type, threads_per_block, vec_size>::SetRepeats)                                 \
+      .def("Profile", &name<type, threads_per_block, vec_size>::Profile)                                       \
+      .def("Run", &name<type, threads_per_block, vec_size>::Run)                                               \
       .def("IsSupported", &name<type, threads_per_block, vec_size>::IsSupported);
 
 #define REGISTER_OP_FOR_ALL_VEC_SIZE(name, type, threads_per_block) \
@@ -157,7 +154,7 @@ class SkipLayerNormTunable : public IKernelExplorer {
       .def("Run", &name<type>::Run)                                         \
       .def("IsSupported", &name<type>::IsSupported);
 
-void InitSkipLayerNorm(py::module m) {
+KE_REGISTER(m) {
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, half);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormSmall, float);
   REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK_ALL_VEC_SIZE(SkipLayerNormRegular, half);
