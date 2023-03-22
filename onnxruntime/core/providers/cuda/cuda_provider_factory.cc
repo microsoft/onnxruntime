@@ -252,6 +252,7 @@ struct CUDA_Provider : Provider {
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
     info.tunable_op.enabled = params->tunable_op_enabled;
+    info.tunable_op.tuning = params->tunable_op_tuning;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }

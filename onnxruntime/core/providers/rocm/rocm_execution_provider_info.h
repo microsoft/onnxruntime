@@ -39,6 +39,7 @@ struct ROCMExecutionProviderExternalAllocatorInfo {
 namespace rocm {
 struct TunableOpInfo {
   bool enabled{false};
+  bool tuning{false};
 };
 }  // namespace rocm
 
@@ -73,6 +74,7 @@ struct std::hash<::onnxruntime::rocm::TunableOpInfo> {
   size_t operator()(const ::onnxruntime::rocm::TunableOpInfo& info) const {
     size_t seed_and_value{0xbc9f1d34};
     onnxruntime::HashCombine(info.enabled, seed_and_value);
+    onnxruntime::HashCombine(info.tuning, seed_and_value);
     return seed_and_value;
   }
 };

@@ -157,11 +157,22 @@ ROCMExecutionProvider::PerThreadContext::~PerThreadContext() {
 }
 
 void OverrideTunableOpInfoByEnv(ROCMExecutionProviderInfo& info) {
-  auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
-      "ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
-  if (env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
+  if (auto env_tunable_op_enabled = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_ROCM_TUNABLE_OP_ENABLED", {"0", "1"}, "Use provider_options \"tunable_op_enabled\" instead.");
+      env_tunable_op_enabled.has_value() && env_tunable_op_enabled != info.tunable_op.enabled) {
     LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_ENABLED is set to " << *env_tunable_op_enabled;
     info.tunable_op.enabled = *env_tunable_op_enabled;
+  }
+
+  if (auto env_tunable_op_tuning = onnxruntime::ParseTestOnlyEnvironmentVariable<bool>(
+          "ORT_ROCM_TUNABLE_OP_TUNING", {"0", "1"}, "Use provider_options \"tunable_op_tuning\" instead.");
+      env_tunable_op_tuning.has_value() && env_tunable_op_tuning != info.tunable_op.tuning) {
+    LOGS_DEFAULT(INFO) << "ORT_ROCM_TUNABLE_OP_TUNING is set to " << *env_tunable_op_tuning;
+    info.tunable_op.tuning = *env_tunable_op_tuning;
+  }
+
+  if (info.tunable_op.tuning && !info.tunable_op.enabled) {
+    LOGS_DEFAULT(WARNING) << "TunableOp is enabled for tuning but is not enabled for using. This will have no effect.";
   }
 }
 

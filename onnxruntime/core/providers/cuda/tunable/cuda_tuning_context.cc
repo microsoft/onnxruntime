@@ -63,6 +63,20 @@ bool CudaTuningContext::IsTunableOpEnabled() const {
   return info_->enabled;
 }
 
+void CudaTuningContext::EnableTuning() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning for CUDA Execution Provider";
+  info_->tuning = true;
+}
+
+void CudaTuningContext::DisableTuning() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning for CUDA Execution Provider";
+  info_->tuning = false;
+}
+
+bool CudaTuningContext::IsTuningEnabled() const {
+  return info_->tuning;
+}
+
 TuningResultsManager& CudaTuningContext::GetTuningResultsManager() {
   return manager_;
 }

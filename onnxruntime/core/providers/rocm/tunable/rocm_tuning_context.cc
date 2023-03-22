@@ -94,6 +94,20 @@ bool RocmTuningContext::IsTunableOpEnabled() const {
   return info_->enabled;
 }
 
+void RocmTuningContext::EnableTuning() {
+  LOGS_DEFAULT(INFO) << "Enable TunableOp tuning for ROCm Execution Provider";
+  info_->tuning = true;
+}
+
+void RocmTuningContext::DisableTuning() {
+  LOGS_DEFAULT(INFO) << "Disable TunableOp tuning for ROCm Execution Provider";
+  info_->tuning = false;
+}
+
+bool RocmTuningContext::IsTuningEnabled() const {
+  return info_->tuning;
+}
+
 TuningResultsManager& RocmTuningContext::GetTuningResultsManager() {
   return manager_;
 }
