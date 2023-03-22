@@ -29,6 +29,9 @@ public:
             dmlQueryIndex,
             dmlKeyIndex,
             dmlValueIndex,
+            dmlStackedQueryKeyIndex,
+            dmlStackedKeyValueIndex,
+            dmlStackedQueryKeyValueIndex,
             dmlBiasIndex,
             dmlKeyPaddingMaskIndex,
             dmlUnpaddedKeyBoundsIndex,
@@ -50,7 +53,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
         const bool keyValueIsPast = kernelCreationContext.IsInputValid(keyIndex) && kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 4;
-        const bool hasKey = kernelCreationContext.IsInputValid(keyIndex) && !keyValueIsPast;
         const bool hasValue = kernelCreationContext.IsInputValid(valueIndex) && !keyValueIsPast;
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasKeyPaddingMask = kernelCreationContext.IsInputValid(keyPaddingMaskIndex);
@@ -60,11 +62,17 @@ public:
         const bool hasPresentKeyOutput = kernelCreationContext.IsOutputValid(outputPresentKeyIndex);
         const bool hasPresentValueOutput = kernelCreationContext.IsOutputValid(outputPresentValueIndex);
         const bool maskIsUnpaddedBounds = hasKeyPaddingMask && kernelCreationContext.GetInputTensorDimensionCount(keyPaddingMaskIndex) == 1;
+        const bool stackedQkv = kernelCreationContext.GetInputTensorDimensionCount(queryIndex) == 5;
+        const bool stackedKv = kernelCreationContext.IsInputValid(keyIndex) && kernelCreationContext.GetInputTensorDimensionCount(keyIndex) == 5;
+        const bool hasKey = !stackedKv && !keyValueIsPast && kernelCreationContext.IsInputValid(keyIndex);
 
         std::vector<std::optional<uint32_t>> inputIndices = {
-            queryIndex,
-            keyValueIsPast ? std::nullopt : std::optional<uint32_t>(keyIndex),
-            keyValueIsPast ? std::nullopt : std::optional<uint32_t>(valueIndex),
+            stackedQkv ? std::nullopt : std::optional<uint32_t>(queryIndex),
+            hasKey ? std::optional<uint32_t>(keyIndex) : std::nullopt,
+            hasValue ? std::optional<uint32_t>(valueIndex) : std::nullopt,
+            std::nullopt,
+            stackedKv ? std::optional<uint32_t>(keyIndex) : std::nullopt,
+            stackedQkv ? std::optional<uint32_t>(queryIndex) : std::nullopt,
             biasIndex,
             maskIsUnpaddedBounds ? std::nullopt : std::optional<uint32_t>(keyPaddingMaskIndex),
             maskIsUnpaddedBounds ? std::optional<uint32_t>(keyPaddingMaskIndex) : std::nullopt,
@@ -80,54 +88,114 @@ public:
         };
         DmlOperator::Initialize(kernelCreationContext, inputIndices, outputIndices, std::nullopt, std::nullopt, 1);
 
-        auto queryTensorShape = m_inputTensorDescs[dmlQueryIndex].GetSizes();
-        ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3 || queryTensorShape.size() == 5);
+        ML_CHECK_VALID_ARGUMENT(!stackedQkv || m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetDimensionCount() == 5);
+        ML_CHECK_VALID_ARGUMENT(stackedQkv || m_inputTensorDescs[dmlQueryIndex].GetDimensionCount() == 3);
+        ML_CHECK_VALID_ARGUMENT(!hasKey || m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3);
+        ML_CHECK_VALID_ARGUMENT(!hasValue || m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == 3);
+        ML_CHECK_VALID_ARGUMENT(!hasPastKey || m_inputTensorDescs[dmlPastKeyIndex].GetDimensionCount() == 4);
+        ML_CHECK_VALID_ARGUMENT(!hasPastValue || m_inputTensorDescs[dmlPastValueIndex].GetDimensionCount() == 4);
 
-        const uint32_t batchSize = queryTensorShape[0];
+        const uint32_t batchSize = stackedQkv
+            ? m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetSizes()[0]
+            : m_inputTensorDescs[dmlQueryIndex].GetSizes()[0];
+
         const uint32_t numHeads = gsl::narrow_cast<uint32_t>(kernelCreationContext.GetAttribute<int64_t>(AttrName::NumHeads));
-        const uint32_t headSize = queryTensorShape.size() == 5 ? queryTensorShape[4] : queryTensorShape[2] / numHeads;
+        const uint32_t headSize = stackedQkv
+            ? m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetSizes()[4]
+            : m_inputTensorDescs[dmlQueryIndex].GetSizes()[2] / numHeads;
 
+        const uint32_t sequenceLength = stackedQkv
+            ? m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetSizes()[1]
+            : m_inputTensorDescs[dmlQueryIndex].GetSizes()[1];
+
+        uint32_t kvSequenceLength;
         if (hasKey)
         {
-            ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3);
-
-            if (hasValue)
-            {
-                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3);
-                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlValueIndex].GetDimensionCount() == 3);
-            }
-            else
-            {
-                ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 5);
-            }
+            kvSequenceLength = m_inputTensorDescs[dmlKeyIndex].GetSizes()[1];
+        }
+        else if (stackedKv)
+        {
+            kvSequenceLength = m_inputTensorDescs[dmlStackedKeyValueIndex].GetSizes()[1];
         }
         else if (hasPastKey)
         {
-            ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 3);
+            kvSequenceLength = m_inputTensorDescs[dmlPastKeyIndex].GetSizes()[2];
         }
         else
         {
-            ML_CHECK_VALID_ARGUMENT(queryTensorShape.size() == 5);
+            kvSequenceLength = sequenceLength;
+        }
+
+        const uint32_t hiddenSize = numHeads * headSize;
+        const uint32_t vHiddenSize = hasValue ? m_inputTensorDescs[dmlValueIndex].GetSizes()[2] : hiddenSize;
+        const uint32_t pastSequenceLength = hasPastKey ? m_inputTensorDescs[dmlPastKeyIndex].GetSizes()[2] : 0;
+        const uint32_t totalSequenceLength = kvSequenceLength + pastSequenceLength;
+
+        if (stackedQkv)
+        {
+            auto stackedQkvSizes = m_inputTensorDescs[dmlStackedQueryKeyValueIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(stackedQkvSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(stackedQkvSizes[1] == sequenceLength);
+            ML_CHECK_VALID_ARGUMENT(stackedQkvSizes[2] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(stackedQkvSizes[3] == 3);
+            ML_CHECK_VALID_ARGUMENT(stackedQkvSizes[4] == headSize);
+        }
+        else
+        {
+            auto querySizes = m_inputTensorDescs[dmlQueryIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(querySizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(querySizes[1] == sequenceLength);
+            ML_CHECK_VALID_ARGUMENT(querySizes[2] == hiddenSize);
+        }
+
+        if (hasKey)
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlKeyIndex].GetDimensionCount() == 3);
+
+            auto keySizes = m_inputTensorDescs[dmlKeyIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(keySizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(keySizes[1] == kvSequenceLength);
+            ML_CHECK_VALID_ARGUMENT(keySizes[2] == hiddenSize);
+        }
+
+        if (hasValue)
+        {
+            auto valueSizes = m_inputTensorDescs[dmlValueIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(valueSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(valueSizes[1] == kvSequenceLength);
+            ML_CHECK_VALID_ARGUMENT(valueSizes[2] == vHiddenSize);
+        }
+
+        if (stackedKv)
+        {
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlStackedKeyValueIndex].GetDimensionCount() == 5);
+
+            auto stackedKvSizes = m_inputTensorDescs[dmlStackedKeyValueIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(stackedKvSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(stackedKvSizes[1] == kvSequenceLength);
+            ML_CHECK_VALID_ARGUMENT(stackedKvSizes[2] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(stackedKvSizes[3] == 2);
+            ML_CHECK_VALID_ARGUMENT(stackedKvSizes[4] == headSize);
         }
 
         if (hasBias)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlBiasIndex].GetDimensionCount() == 1);
+            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlBiasIndex].GetSizes()[0] == hiddenSize + hiddenSize + vHiddenSize);
         }
 
         if (hasKeyPaddingMask && !maskIsUnpaddedBounds)
         {
             auto keyPaddingMaskTensorShape = m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape.size() == 2);
-
-            const uint32_t kvSequenceLength = keyPaddingMaskTensorShape[1];
-            const uint32_t sequenceLength = queryTensorShape[1];
+            ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(keyPaddingMaskTensorShape[1] == kvSequenceLength);
 
             const uint32_t actualShape[4] = {batchSize, 1, 1, kvSequenceLength};
             const uint32_t desiredShape[4] = {batchSize, numHeads, sequenceLength, kvSequenceLength};
 
-            m_inputTensorDescs[keyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
-                m_inputTensorDescs[keyPaddingMaskIndex].GetMlOperatorDataType(),
+            m_inputTensorDescs[dmlKeyPaddingMaskIndex] = TensorDesc::ConstructBroadcastedTensorDesc(
+                m_inputTensorDescs[dmlKeyPaddingMaskIndex].GetMlOperatorDataType(),
                 desiredShape,
                 actualShape);
         }
@@ -136,9 +204,9 @@ public:
         {
             auto unpaddedKeyBoundsShape = m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetSizes();
             ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape.size() == 1);
-            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] % batchSize == 0);
+            ML_CHECK_VALID_ARGUMENT(unpaddedKeyBoundsShape[0] == batchSize);
 
-            uint32_t desiredShape[2] = {unpaddedKeyBoundsShape[0] / batchSize, batchSize};
+            uint32_t desiredShape[2] = {1, batchSize};
             m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex] = TensorDesc(
                 m_inputTensorDescs[dmlUnpaddedKeyBoundsIndex].GetDmlDataType(),
                 desiredShape);
@@ -147,25 +215,41 @@ public:
         if (hasRelativePositionBias)
         {
             ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlRelativePositionBiasIndex].GetDimensionCount() == 4);
+
+            auto relativePositionBiasSizes = m_inputTensorDescs[dmlRelativePositionBiasIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[2] == sequenceLength);
+            ML_CHECK_VALID_ARGUMENT(relativePositionBiasSizes[3] == totalSequenceLength);
         }
 
         if (hasPastKey)
         {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastKeyIndex].GetDimensionCount() == 4);
+            auto pastKeySizes = m_inputTensorDescs[dmlPastKeyIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(pastKeySizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(pastKeySizes[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(pastKeySizes[2] == pastSequenceLength);
+            ML_CHECK_VALID_ARGUMENT(pastKeySizes[3] == headSize);
         }
 
         if (hasPastValue)
         {
-            ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[dmlPastValueIndex].GetDimensionCount() == 4);
+            auto pastValueSizes = m_inputTensorDescs[dmlPastValueIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(pastValueSizes[0] == batchSize);
+            ML_CHECK_VALID_ARGUMENT(pastValueSizes[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(pastValueSizes[2] == pastSequenceLength);
+            ML_CHECK_VALID_ARGUMENT(pastValueSizes[3] == headSize);
         }
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaDesc = {};
-        mhaDesc.QueryTensor = &inputDescs[dmlQueryIndex];
+        mhaDesc.QueryTensor = stackedQkv ? nullptr : &inputDescs[dmlQueryIndex];
         mhaDesc.KeyTensor = hasKey ? &inputDescs[dmlKeyIndex] : nullptr;
         mhaDesc.ValueTensor = hasValue ? &inputDescs[dmlValueIndex] : nullptr;
+        mhaDesc.StackedKeyValueTensor = stackedKv ? &inputDescs[dmlStackedKeyValueIndex] : nullptr;
+        mhaDesc.StackedQueryKeyValueTensor = stackedQkv ? &inputDescs[dmlStackedQueryKeyValueIndex] : nullptr;
         mhaDesc.BiasTensor = hasBias ? &inputDescs[dmlBiasIndex] : nullptr;
         mhaDesc.MaskTensor = (hasKeyPaddingMask && !maskIsUnpaddedBounds) ? &inputDescs[dmlKeyPaddingMaskIndex] : nullptr;
         mhaDesc.UnpaddedKeyBoundsTensor = (hasKeyPaddingMask && maskIsUnpaddedBounds) ? &inputDescs[dmlUnpaddedKeyBoundsIndex] : nullptr;

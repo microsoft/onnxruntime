@@ -1940,9 +1940,12 @@ struct DML_DIAGONAL_MATRIX1_OPERATOR_DESC
 
 struct DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC
 {
-    const DML_TENSOR_DESC* QueryTensor;
+    _Maybenull_ const DML_TENSOR_DESC* QueryTensor;
     _Maybenull_ const DML_TENSOR_DESC* KeyTensor;
     _Maybenull_ const DML_TENSOR_DESC* ValueTensor;
+    _Maybenull_ const DML_TENSOR_DESC* StackedQueryKeyTensor;
+    _Maybenull_ const DML_TENSOR_DESC* StackedKeyValueTensor;
+    _Maybenull_ const DML_TENSOR_DESC* StackedQueryKeyValueTensor;
     _Maybenull_ const DML_TENSOR_DESC* BiasTensor;
     _Maybenull_ const DML_TENSOR_DESC* MaskTensor;
     _Maybenull_ const DML_TENSOR_DESC* UnpaddedKeyBoundsTensor;

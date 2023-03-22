@@ -49,6 +49,23 @@ public:
     DmlOperatorAttention(const MLOperatorKernelCreationContext& kernelCreationContext)
     :   DmlOperator(kernelCreationContext)
     {
+        enum DmlInputIndex : uint32_t
+        {
+            mhaQueryIndex,
+            mhaKeyIndex,
+            mhaValueIndex,
+            mhaStackedQueryKeyIndex,
+            mhaStackedKeyValueIndex,
+            mhaStackedQueryKeyValueIndex,
+            mhaBiasIndex,
+            mhaKeyPaddingMaskIndex,
+            mhaUnpaddedKeyBoundsIndex,
+            mhaRelativePositionBiasIndex,
+            mhaPastKeyIndex,
+            mhaPastValueIndex,
+            mhaInputCount,
+        };
+
         enum InputIndex : uint32_t
         {
             inputIndex,
@@ -74,12 +91,12 @@ public:
             kernelCreationContext.IsInputValid(maskIndex) &&
             kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
 
-        uint32_t dmlInputIndex = inputIndex;
-        uint32_t dmlWeightsIndex = weightsIndex;
-        uint32_t dmlBiasIndex = biasIndex;
-        uint32_t dmlKeyPaddingMaskIndex = maskIndex;
-        uint32_t dmlUnpaddedKeyBoundsIndex = maskIndex;
-        uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
+        const uint32_t dmlInputIndex = inputIndex;
+        const uint32_t dmlWeightsIndex = weightsIndex;
+        const uint32_t dmlBiasIndex = biasIndex;
+        const uint32_t dmlKeyPaddingMaskIndex = maskIndex;
+        const uint32_t dmlUnpaddedKeyBoundsIndex = maskIndex;
+        const uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex) && !maskIsUnpaddedBounds;
@@ -212,7 +229,7 @@ public:
         gemmOperatorDesc.FusedActivation = nullptr;
         const DML_OPERATOR_DESC gemmDesc {DML_OPERATOR_GEMM, &gemmOperatorDesc};
 
-        std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize};
+        std::array<uint32_t, 3> queryKeySlicedTensorShape {batchSize, sequenceLength, hiddenSize + hiddenSize};
         TensorDesc queryKeySlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, queryKeySlicedTensorShape);
         DML_TENSOR_DESC namedQueryKeySlicedInputTensorDesc = queryKeySlicedInputTensorDesc.GetDmlDesc();
 
@@ -220,38 +237,89 @@ public:
         TensorDesc valueSlicedInputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, valueSlicedTensorShape);
         DML_TENSOR_DESC namedValueSlicedInputTensorDesc = valueSlicedInputTensorDesc.GetDmlDesc();
 
-        std::array<uint32_t, 3> querySliceOffset = {0, 0, 0};
-        std::array<uint32_t, 3> keySliceOffset = {0, 0, hiddenSize};
+        // Transpose slice QK from [batchSize, sequenceLength, 2, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 2, headSize]
+        std::array<uint32_t, 5> queryKeyTransposedTensorShape {batchSize, sequenceLength, numHeads, 2, headSize};
+        std::array<uint32_t, 5> queryKeyTransposedStrides {
+            sequenceLength * numHeads * 2 * headSize,
+            numHeads * 2 * headSize,
+            headSize,
+            numHeads * headSize,
+            1,
+        };
+
+        TensorDesc queryKeyTransposedInputTensorDesc = TensorDesc(
+            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            queryKeyTransposedTensorShape,
+            queryKeyTransposedStrides);
+        DML_TENSOR_DESC namedQueryKeyTransposedInputTensorDesc = queryKeyTransposedInputTensorDesc.GetDmlDesc();
+
+        TensorDesc queryKeyTransposedOutputTensorDesc = TensorDesc(
+            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            queryKeyTransposedTensorShape);
+        DML_TENSOR_DESC namedQueryKeyTransposedOutputTensorDesc = queryKeyTransposedOutputTensorDesc.GetDmlDesc();
+
+        // Transpose QKV from [batchSize, sequenceLength, 3, numHeads, headSize] to [batchSize, sequenceLength, numHeads, 3, headSize]
+        std::array<uint32_t, 5> queryKeyValueTransposedTensorShape {batchSize, sequenceLength, numHeads, 3, headSize};
+        std::array<uint32_t, 5> queryKeyValueTransposedStrides {
+            sequenceLength * numHeads * 3 * headSize,
+            numHeads * 3 * headSize,
+            headSize,
+            numHeads * headSize,
+            1,
+        };
+
+        TensorDesc queryKeyValueTransposedInputTensorDesc = TensorDesc(
+            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            queryKeyValueTransposedTensorShape,
+            queryKeyValueTransposedStrides);
+        DML_TENSOR_DESC namedQueryKeyValueTransposedInputTensorDesc = queryKeyValueTransposedInputTensorDesc.GetDmlDesc();
+
+        TensorDesc queryKeyValueTransposedOutputTensorDesc = TensorDesc(
+            m_inputTensorDescs[dmlInputIndex].GetDmlDataType(),
+            queryKeyValueTransposedTensorShape);
+        DML_TENSOR_DESC namedQueryKeyValueTransposedOutputTensorDesc = queryKeyValueTransposedOutputTensorDesc.GetDmlDesc();
+
+        std::array<uint32_t, 3> queryKeySliceOffset = {0, 0, 0};
+        std::array<uint32_t, 3> queryKeySliceSize = {batchSize, sequenceLength, hiddenSize + hiddenSize};
+        std::array<int32_t, 3> queryKeySliceStrides = {1, 1, 1};
+
         std::array<uint32_t, 3> valueSliceOffset = {0, 0, 2 * hiddenSize};
-        std::array<uint32_t, 3> queryKeySliceSize = {batchSize, sequenceLength, hiddenSize};
         std::array<uint32_t, 3> valueSliceSize = {batchSize, sequenceLength, vHiddenSize};
-        std::array<int32_t, 3> strides = {1, 1, 1};
-        DML_SLICE1_OPERATOR_DESC querySlicedOperatorDesc = {};
-        querySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        querySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
-        querySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
-        querySlicedOperatorDesc.InputWindowOffsets = querySliceOffset.data();
-        querySlicedOperatorDesc.InputWindowSizes = queryKeySliceSize.data();
-        querySlicedOperatorDesc.InputWindowStrides = strides.data();
-        const DML_OPERATOR_DESC querySlicedDesc = { DML_OPERATOR_SLICE1, &querySlicedOperatorDesc };
+        std::array<int32_t, 3> valueSliceStrides = {1, 1, 1};
+        const bool hasSlicedValue = hiddenSize != vHiddenSize;
 
-        DML_SLICE1_OPERATOR_DESC keySlicedOperatorDesc = {};
-        keySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        keySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
-        keySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
-        keySlicedOperatorDesc.InputWindowOffsets = keySliceOffset.data();
-        keySlicedOperatorDesc.InputWindowSizes = queryKeySliceSize.data();
-        keySlicedOperatorDesc.InputWindowStrides = strides.data();
-        const DML_OPERATOR_DESC keySlicedDesc = { DML_OPERATOR_SLICE1, &keySlicedOperatorDesc };
-
+        // We need to slice the value tensor when its hidden size is different from the query and key
+        DML_SLICE1_OPERATOR_DESC queryKeySlicedOperatorDesc = {};
         DML_SLICE1_OPERATOR_DESC valueSlicedOperatorDesc = {};
-        valueSlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
-        valueSlicedOperatorDesc.OutputTensor = &namedValueSlicedInputTensorDesc;
-        valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(valueSlicedTensorShape.size());
-        valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
-        valueSlicedOperatorDesc.InputWindowSizes = valueSliceSize.data();
-        valueSlicedOperatorDesc.InputWindowStrides = strides.data();
+        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeOperatorDesc = {};
+        if (hasSlicedValue)
+        {
+            queryKeySlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
+            queryKeySlicedOperatorDesc.OutputTensor = &namedQueryKeySlicedInputTensorDesc;
+            queryKeySlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(queryKeySlicedTensorShape.size());
+            queryKeySlicedOperatorDesc.InputWindowOffsets = queryKeySliceOffset.data();
+            queryKeySlicedOperatorDesc.InputWindowSizes = queryKeySliceSize.data();
+            queryKeySlicedOperatorDesc.InputWindowStrides = queryKeySliceStrides.data();
+
+            valueSlicedOperatorDesc.InputTensor = &namedFirstGemmOutputTensorDesc;
+            valueSlicedOperatorDesc.OutputTensor = &namedValueSlicedInputTensorDesc;
+            valueSlicedOperatorDesc.DimensionCount = gsl::narrow_cast<uint32_t>(valueSlicedTensorShape.size());
+            valueSlicedOperatorDesc.InputWindowOffsets = valueSliceOffset.data();
+            valueSlicedOperatorDesc.InputWindowSizes = valueSliceSize.data();
+            valueSlicedOperatorDesc.InputWindowStrides = valueSliceStrides.data();
+
+            transposeOperatorDesc.InputTensor = &namedQueryKeyTransposedInputTensorDesc;
+            transposeOperatorDesc.OutputTensor = &namedQueryKeyTransposedOutputTensorDesc;
+        }
+        else
+        {
+            // When Q/K/V all have the same hidden size, we just have to transpose it before sending it to MHA
+            transposeOperatorDesc.InputTensor = &namedQueryKeyValueTransposedInputTensorDesc;
+            transposeOperatorDesc.OutputTensor = &namedQueryKeyValueTransposedOutputTensorDesc;
+        }
+        const DML_OPERATOR_DESC queryKeySlicedDesc = { DML_OPERATOR_SLICE1, &queryKeySlicedOperatorDesc};
         const DML_OPERATOR_DESC valueSlicedDesc = { DML_OPERATOR_SLICE1, &valueSlicedOperatorDesc};
+        const DML_OPERATOR_DESC transposedDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposeOperatorDesc};
 
         std::array<uint32_t, 4> maskSliceOutputShape {batchSize, numHeads, sequenceLength, sequenceLength};
         std::array<int32_t, 4> maskSliceStrides = {1, 1, 1, 1};
@@ -274,9 +342,9 @@ public:
         const DML_OPERATOR_DESC maskSlicedDesc = { DML_OPERATOR_SLICE1, &maskSlicedOperatorDesc};
 
         DML_MULTI_HEAD_ATTENTION_OPERATOR_DESC mhaOperatorDesc = {};
-        mhaOperatorDesc.QueryTensor = &namedQueryKeySlicedInputTensorDesc;
-        mhaOperatorDesc.KeyTensor = &namedQueryKeySlicedInputTensorDesc;
-        mhaOperatorDesc.ValueTensor = &namedValueSlicedInputTensorDesc;
+        mhaOperatorDesc.ValueTensor = hasSlicedValue ? &namedValueSlicedInputTensorDesc : nullptr;
+        mhaOperatorDesc.StackedQueryKeyTensor = hasSlicedValue ? &namedQueryKeyTransposedOutputTensorDesc : nullptr;
+        mhaOperatorDesc.StackedQueryKeyValueTensor = hasSlicedValue ? nullptr : &namedQueryKeyValueTransposedOutputTensorDesc;
 
         if (hasMaxSequenceMask)
         {
@@ -300,39 +368,52 @@ public:
         std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
         std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
 
-        enum NodeIndex : uint32_t
-        {
-            gemm,
-            querySlice,
-            keySlice,
-            valueSlice,
-            mha,
-            maskSlice,
-            count,
-        };
-
         std::vector<const DML_OPERATOR_DESC*> opDescs = {
             &gemmDesc,
-            &querySlicedDesc,
-            &keySlicedDesc,
-            &valueSlicedDesc,
             &mhaDesc,
         };
 
+        uint32_t currentNodeIndex = 0;
+        const uint32_t gemmNodeIndex = currentNodeIndex++;
+        const uint32_t mhaNodeIndex = currentNodeIndex++;
+
+        uint32_t valueSliceNodeIndex = 0;
+        uint32_t queryKeySliceNodeIndex = 0;
+        uint32_t queryKeyTransposedNodeIndex = 0;
+        uint32_t queryKeyValueTransposedNodeIndex = 0;
+        if (hasSlicedValue)
+        {
+            opDescs.push_back(&queryKeySlicedDesc);
+            queryKeySliceNodeIndex = currentNodeIndex++;
+
+            opDescs.push_back(&valueSlicedDesc);
+            valueSliceNodeIndex = currentNodeIndex++;
+
+            opDescs.push_back(&transposedDesc);
+            queryKeyTransposedNodeIndex = currentNodeIndex++;
+        }
+        else
+        {
+            opDescs.push_back(&transposedDesc);
+            queryKeyValueTransposedNodeIndex = currentNodeIndex++;
+        }
+
+        uint32_t maskSliceNodeIndex = 0;
         if (hasMaxSequenceMask)
         {
             opDescs.push_back(&maskSlicedDesc);
+            maskSliceNodeIndex = currentNodeIndex++;
         }
 
         DML_INPUT_GRAPH_EDGE_DESC inputToGemmEdge = {};
         inputToGemmEdge.GraphInputIndex = dmlInputIndex;
-        inputToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+        inputToGemmEdge.ToNodeIndex = gemmNodeIndex;
         inputToGemmEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(inputToGemmEdge);
 
         DML_INPUT_GRAPH_EDGE_DESC weightToGemmEdge = {};
         weightToGemmEdge.GraphInputIndex = dmlWeightsIndex;
-        weightToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+        weightToGemmEdge.ToNodeIndex = gemmNodeIndex;
         weightToGemmEdge.ToNodeInputIndex = 1;
         inputEdges.push_back(weightToGemmEdge);
 
@@ -340,7 +421,7 @@ public:
         {
             DML_INPUT_GRAPH_EDGE_DESC biasToGemmEdge = {};
             biasToGemmEdge.GraphInputIndex = dmlBiasIndex;
-            biasToGemmEdge.ToNodeIndex = NodeIndex::gemm;
+            biasToGemmEdge.ToNodeIndex = gemmNodeIndex;
             biasToGemmEdge.ToNodeInputIndex = 2;
             inputEdges.push_back(biasToGemmEdge);
         }
@@ -351,23 +432,23 @@ public:
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMaskSliceEdge = {};
                 maskToMaskSliceEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
-                maskToMaskSliceEdge.ToNodeIndex = NodeIndex::maskSlice;
+                maskToMaskSliceEdge.ToNodeIndex = maskSliceNodeIndex;
                 maskToMaskSliceEdge.ToNodeInputIndex = 0;
                 inputEdges.push_back(maskToMaskSliceEdge);
 
                 DML_INTERMEDIATE_GRAPH_EDGE_DESC maskSliceToMhaEdge = {};
-                maskSliceToMhaEdge.FromNodeIndex = NodeIndex::maskSlice;
+                maskSliceToMhaEdge.FromNodeIndex = maskSliceNodeIndex;
                 maskSliceToMhaEdge.FromNodeOutputIndex = 0;
-                maskSliceToMhaEdge.ToNodeIndex = NodeIndex::mha;
-                maskSliceToMhaEdge.ToNodeInputIndex = 4;
+                maskSliceToMhaEdge.ToNodeIndex = mhaNodeIndex;
+                maskSliceToMhaEdge.ToNodeInputIndex = mhaKeyPaddingMaskIndex;
                 intermediateEdges.push_back(maskSliceToMhaEdge);
             }
             else
             {
                 DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
                 maskToMhaEdge.GraphInputIndex = dmlKeyPaddingMaskIndex;
-                maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
-                maskToMhaEdge.ToNodeInputIndex = 4;
+                maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
+                maskToMhaEdge.ToNodeInputIndex = mhaKeyPaddingMaskIndex;
                 inputEdges.push_back(maskToMhaEdge);
             }
         }
@@ -376,8 +457,8 @@ public:
         {
             DML_INPUT_GRAPH_EDGE_DESC maskToMhaEdge = {};
             maskToMhaEdge.GraphInputIndex = dmlUnpaddedKeyBoundsIndex;
-            maskToMhaEdge.ToNodeIndex = NodeIndex::mha;
-            maskToMhaEdge.ToNodeInputIndex = 5;
+            maskToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            maskToMhaEdge.ToNodeInputIndex = mhaUnpaddedKeyBoundsIndex;
             inputEdges.push_back(maskToMhaEdge);
         }
 
@@ -385,55 +466,69 @@ public:
         {
             DML_INPUT_GRAPH_EDGE_DESC relativePositionBiasToMhaEdge = {};
             relativePositionBiasToMhaEdge.GraphInputIndex = dmlRelativePositionBiasIndex;
-            relativePositionBiasToMhaEdge.ToNodeIndex = NodeIndex::mha;
-            relativePositionBiasToMhaEdge.ToNodeInputIndex = 6;
+            relativePositionBiasToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            relativePositionBiasToMhaEdge.ToNodeInputIndex = mhaRelativePositionBiasIndex;
             inputEdges.push_back(relativePositionBiasToMhaEdge);
         }
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToQuerySliceEdge = {};
-        gemmToQuerySliceEdge.FromNodeIndex = NodeIndex::gemm;
-        gemmToQuerySliceEdge.FromNodeOutputIndex = 0;
-        gemmToQuerySliceEdge.ToNodeIndex = NodeIndex::querySlice;
-        gemmToQuerySliceEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(gemmToQuerySliceEdge);
+        if (hasSlicedValue)
+        {
+            // We need to slice QK and V, and transpose QK
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToQueryKeySliceEdge = {};
+            gemmToQueryKeySliceEdge.FromNodeIndex = gemmNodeIndex;
+            gemmToQueryKeySliceEdge.FromNodeOutputIndex = 0;
+            gemmToQueryKeySliceEdge.ToNodeIndex = queryKeySliceNodeIndex;
+            gemmToQueryKeySliceEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(gemmToQueryKeySliceEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToKeySliceEdge = {};
-        gemmToKeySliceEdge.FromNodeIndex = NodeIndex::gemm;
-        gemmToKeySliceEdge.FromNodeOutputIndex = 0;
-        gemmToKeySliceEdge.ToNodeIndex = NodeIndex::keySlice;
-        gemmToKeySliceEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(gemmToKeySliceEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC queryKeySliceToTransposeEdge = {};
+            queryKeySliceToTransposeEdge.FromNodeIndex = queryKeySliceNodeIndex;
+            queryKeySliceToTransposeEdge.FromNodeOutputIndex = 0;
+            queryKeySliceToTransposeEdge.ToNodeIndex = queryKeyTransposedNodeIndex;
+            queryKeySliceToTransposeEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(queryKeySliceToTransposeEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToValueSliceEdge = {};
-        gemmToValueSliceEdge.FromNodeIndex = NodeIndex::gemm;
-        gemmToValueSliceEdge.FromNodeOutputIndex = 0;
-        gemmToValueSliceEdge.ToNodeIndex = NodeIndex::valueSlice;
-        gemmToValueSliceEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(gemmToValueSliceEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC queryKeyTransposedToMhaEdge = {};
+            queryKeyTransposedToMhaEdge.FromNodeIndex = queryKeyTransposedNodeIndex;
+            queryKeyTransposedToMhaEdge.FromNodeOutputIndex = 0;
+            queryKeyTransposedToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            queryKeyTransposedToMhaEdge.ToNodeInputIndex = mhaStackedQueryKeyIndex;
+            intermediateEdges.push_back(queryKeyTransposedToMhaEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC querySliceEdgeToMhaEdge = {};
-        querySliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::querySlice;
-        querySliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
-        querySliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
-        querySliceEdgeToMhaEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(querySliceEdgeToMhaEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToValueSliceEdge = {};
+            gemmToValueSliceEdge.FromNodeIndex = gemmNodeIndex;
+            gemmToValueSliceEdge.FromNodeOutputIndex = 0;
+            gemmToValueSliceEdge.ToNodeIndex = valueSliceNodeIndex;
+            gemmToValueSliceEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(gemmToValueSliceEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC keySliceEdgeToMhaEdge = {};
-        keySliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::keySlice;
-        keySliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
-        keySliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
-        keySliceEdgeToMhaEdge.ToNodeInputIndex = 1;
-        intermediateEdges.push_back(keySliceEdgeToMhaEdge);
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC valueSliceToMhaEdge = {};
+            valueSliceToMhaEdge.FromNodeIndex = valueSliceNodeIndex;
+            valueSliceToMhaEdge.FromNodeOutputIndex = 0;
+            valueSliceToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            valueSliceToMhaEdge.ToNodeInputIndex = mhaValueIndex;
+            intermediateEdges.push_back(valueSliceToMhaEdge);
+        }
+        else
+        {
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC gemmToQueryKeyValueTransposeEdge = {};
+            gemmToQueryKeyValueTransposeEdge.FromNodeIndex = gemmNodeIndex;
+            gemmToQueryKeyValueTransposeEdge.FromNodeOutputIndex = 0;
+            gemmToQueryKeyValueTransposeEdge.ToNodeIndex = queryKeyValueTransposedNodeIndex;
+            gemmToQueryKeyValueTransposeEdge.ToNodeInputIndex = 0;
+            intermediateEdges.push_back(gemmToQueryKeyValueTransposeEdge);
 
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC valueSliceEdgeToMhaEdge = {};
-        valueSliceEdgeToMhaEdge.FromNodeIndex = NodeIndex::valueSlice;
-        valueSliceEdgeToMhaEdge.FromNodeOutputIndex = 0;
-        valueSliceEdgeToMhaEdge.ToNodeIndex = NodeIndex::mha;
-        valueSliceEdgeToMhaEdge.ToNodeInputIndex = 2;
-        intermediateEdges.push_back(valueSliceEdgeToMhaEdge);
+            // All we need to do here is transpose the stacked QKV tensor into something DML supports
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC queryKeyValueTransposedToMhaEdge = {};
+            queryKeyValueTransposedToMhaEdge.FromNodeIndex = queryKeyValueTransposedNodeIndex;
+            queryKeyValueTransposedToMhaEdge.FromNodeOutputIndex = 0;
+            queryKeyValueTransposedToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            queryKeyValueTransposedToMhaEdge.ToNodeInputIndex = mhaStackedQueryKeyValueIndex;
+            intermediateEdges.push_back(queryKeyValueTransposedToMhaEdge);
+        }
 
         DML_OUTPUT_GRAPH_EDGE_DESC mhaToOutputEdge = {};
-        mhaToOutputEdge.FromNodeIndex = NodeIndex::mha;
+        mhaToOutputEdge.FromNodeIndex = mhaNodeIndex;
         mhaToOutputEdge.FromNodeOutputIndex = 0;
         mhaToOutputEdge.GraphOutputIndex = 0;
         outputEdges.push_back(mhaToOutputEdge);
