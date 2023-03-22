@@ -316,7 +316,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         }));
 
 constexpr const char* DecoderMaskedMultiheadAttention_ver1_doc = R"DOC(
-Uni-directional attention that supports input sequence length of 1.
+Multi-head attention that supports input sequence length of 1.
 
 The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
 is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,
@@ -352,12 +352,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T")
         .Input(1,
                "weights",
-               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)",
+               "Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)"
+               "or (input_hidden_size, hidden_size) (q_weights for Cross Attention)",
                "T")
         .Input(2,
                "bias",
-               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection",
-               "T")
+               "Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection"
+               "or (hidden_size) (q_bias for Cross Attention). In T5, bias is not needed.",
+               "T",
+               OpSchema::Optional)
         .Input(3,
                "mask_index",
                "Mask values of shape (batch_size, total_sequence_length)",
@@ -370,11 +373,22 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "its shape is (2, batch_size, num_heads, max_sequence_length, head_size). "
                "The first `batch_size * num_heads * max_sequence_length * head_size` elements correspond to keys "
                "and the next `batch_size * num_heads * max_sequence_length * head_size` elements correspond to values. "
+               "If past_value is provided then past means past_key and it's shape is (batch_size, num_heads, "
+               "past_sequence_length, head_size). When past_present_share_buffer is set, "
+               "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
                "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
                "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "
                "(batch_size, num_heads, max_sequence_length, head_size / x, x) is reordered to "
                "become (batch_size, num_heads, head_size / x, max_sequence_length, x) where `x = 16 / sizeof(T)`.",
                "T")
+        .Input(5,
+               "past_value",
+               "past state for value with shape (batch_size, num_heads, past_sequence_length, head_size)"
+               "When past_present_share_buffer is set, "
+               "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
+               "the past_value is used when past only refers to past_keys",
+               "T",
+               OpSchema::Optional)
         .Input(5,
                "relative_position_bias",
                "additional add to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
@@ -405,8 +419,19 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "past state for key and value with shape (2, batch_size, num_heads, total_sequence_length, head_size). "
                 "If past_present_share_buffer is set, "
                 "its shape is (2, batch_size, num_heads, max_sequence_length, head_size), "
-                "while effective_seq_length = (past_sequence_length + kv_sequence_length).",
+                "while effective_seq_length = (past_sequence_length + kv_sequence_length)."
+                "If present_value is provided then present means present_key and it's shape is (batch_size, num_heads, "
+                "total_sequence_length, head_size). If past_present_share_buffer is set, "
+                "its shape is (batch_size, num_heads, max_sequence_length, head_size).",
                 "T")
+        .Output(2,
+                "present_value",
+                "past state for value with shape (batch_size, num_heads, total_sequence_length, head_size). "
+                "If past_present_share_buffer is set, "
+                "its shape is (batch_size, num_heads, max_sequence_length, head_size)."
+                "The present_value is used when present only refers to present_keys."
+                "T",
+                OpSchema::Optional)
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")
@@ -414,6 +439,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                         {"tensor(int32)"},
                         "Constrain mask index to integer types")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+          // TODO: Create another TypeAndShapeInference() function for this op
           constexpr int past_input_index = 4;
           AttentionTypeAndShapeInference(ctx, past_input_index);
         }));

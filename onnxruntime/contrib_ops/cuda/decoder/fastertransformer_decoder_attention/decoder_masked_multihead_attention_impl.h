@@ -22,6 +22,8 @@ struct DecoderMaskedMultiheadAttentionParams : AttentionParameters {
   void* v = nullptr;
   void* v_bias = nullptr;
 
+  void* relative_attention_bias = nullptr;
+
   void* k_cache = nullptr;
   void* v_cache = nullptr;
 
