@@ -297,7 +297,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   // Default format for memory efficient attention.
-  // When there is past state, the format shal be BxNxSxH, so we disable memory efficient attention when there is past.
+  // When there is past state, the format shall be BxNxSxH, so we disable memory efficient attention when there is past.
   DUMP_TENSOR_INIT();
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {

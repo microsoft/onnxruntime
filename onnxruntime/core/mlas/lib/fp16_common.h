@@ -53,6 +53,10 @@ MLAS_FLOAT16X8
 MlasZeroFloat16x8(void) { return vreinterpretq_f16_f32(vdupq_n_f32(0.0f)); }
 
 MLAS_FORCEINLINE
+MLAS_FLOAT16X4
+MlasZeroFloat16x4(void) { return vreinterpret_f16_f32(vdup_n_f32(0.0f)); }
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasLoadFloat16x8(const _mlas_fp16_* Buffer) { return vreinterpretq_f16_u16(vld1q_u16(Buffer)); }
 
