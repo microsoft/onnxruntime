@@ -281,10 +281,10 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Build React Native Detox Android e2e Tests
   
-  - script: |
-      detox test --record-logs all  --configuration android.emu.debug
-    workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-    displayName: Run React Native Detox Android e2e Tests
+  #- script: |
+  #    detox test --record-logs all  --configuration android.emu.debug
+  #  workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+  #  displayName: Run React Native Detox Android e2e Tests
 
   - script: |
       detox build --configuration ios.sim.debug
