@@ -397,174 +397,7 @@ fn prepare_libort_dir() -> (PathBuf, bool) {
 			(lib_dir, needs_link)
 		}
 		"compile" => {
-			use std::process::Command;
-
-			let target = env::var("TARGET").unwrap();
-			let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-
-			let python = env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
-
-			Command::new("git")
-				.args([
-					"clone",
-					"--depth",
-					"1",
-					"--single-branch",
-					"--branch",
-					&format!("v{ORT_VERSION}"),
-					"--shallow-submodules",
-					"--recursive",
-					ORT_GIT_REPO,
-					ORT_GIT_DIR
-				])
-				.current_dir(&out_dir)
-				.stdout(Stdio::null())
-				.stderr(Stdio::null())
-				.status()
-				.expect("failed to clone ORT repo");
-
-			let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-			let _cmake_toolchain = env::var(ORT_ENV_CMAKE_TOOLCHAIN).map_or_else(
-				|_| {
-					if cfg!(target_os = "linux") && target.contains("aarch64") && target.contains("linux") {
-						root.join("toolchains").join("default-aarch64-linux-gnu.cmake")
-					} else if cfg!(target_os = "linux") && target.contains("aarch64") && target.contains("windows") {
-						root.join("toolchains").join("default-aarch64-w64-mingw32.cmake")
-					} else if cfg!(target_os = "linux") && target.contains("x86_64") && target.contains("windows") {
-						root.join("toolchains").join("default-x86_64-w64-mingw32.cmake")
-					} else {
-						PathBuf::default()
-					}
-				},
-				PathBuf::from
-			);
-
-			let mut command = Command::new(python);
-			command
-				.current_dir(&out_dir.join(ORT_GIT_DIR))
-				.stdout(Stdio::null())
-				.stderr(Stdio::inherit());
-
-			// note: --parallel will probably break something... parallel build *while* doing another parallel build (cargo)?
-			let mut build_args = vec!["tools/ci_build/build.py", "--build", "--update", "--parallel", "--skip_tests", "--skip_submodule_sync"];
-			let config = if cfg!(debug_assertions) {
-				"Debug"
-			} else if cfg!(feature = "minimal-build") {
-				"MinSizeRel"
-			} else {
-				"Release"
-			};
-			build_args.push("--config");
-			build_args.push(config);
-
-			if cfg!(feature = "minimal-build") {
-				build_args.push("--disable_exceptions");
-			}
-
-			build_args.push("--disable_rtti");
-
-			if target.contains("windows") {
-				build_args.push("--disable_memleak_checker");
-			}
-
-			if !cfg!(feature = "compile-static") {
-				build_args.push("--build_shared_lib");
-			} else {
-				build_args.push("--enable_msvc_static_runtime");
-			}
-
-			// onnxruntime will still build tests when --skip_tests is enabled, this filters out most of them
-			// this "fixes" compilation on alpine: https://github.com/microsoft/onnxruntime/issues/9155
-			// but causes other compilation errors: https://github.com/microsoft/onnxruntime/issues/7571
-			// build_args.push("--cmake_extra_defines");
-			// build_args.push("onnxruntime_BUILD_UNIT_TESTS=0");
-
-			#[cfg(windows)]
-			{
-				use vswhom::VsFindResult;
-				let vs_find_result = VsFindResult::search();
-				match vs_find_result {
-					Some(VsFindResult { vs_exe_path: Some(vs_exe_path), .. }) => {
-						let vs_exe_path = vs_exe_path.to_string_lossy();
-						// the one sane thing about visual studio is that the version numbers are somewhat predictable...
-						if vs_exe_path.contains("14.1") {
-							build_args.push("--cmake_generator=Visual Studio 15 2017");
-						} else if vs_exe_path.contains("14.2") {
-							build_args.push("--cmake_generator=Visual Studio 16 2019");
-						} else if vs_exe_path.contains("14.3") {
-							build_args.push("--cmake_generator=Visual Studio 17 2022");
-						}
-					}
-					Some(VsFindResult { vs_exe_path: None, .. }) | None => panic!("[ort] unable to find Visual Studio installation")
-				};
-			}
-
-			let current_line = line!();
-			println!("defined on line: {current_line}");
-
-			build_args.push("--build_dir=build");
-			command.args(build_args);
-
-			println!("{:?}", command);
-
-			let code = command.status().expect("failed to run build script");
-			assert!(code.success(), "failed to build ONNX Runtime");
-			println!("defined on line: {current_line}");
-
-			let lib_dir = out_dir.join(ORT_GIT_DIR).join("build").join(config);
-			let lib_dir = if cfg!(target_os = "windows") { lib_dir.join(config) } else { lib_dir };
-			for lib in &["common", "flatbuffers", "framework", "graph", "mlas", "optimizer", "providers", "session", "util"] {
-				println!("{0}", lib_dir.display());
-				let lib_path = lib_dir.join(if cfg!(target_os = "windows") {
-					format!("onnxruntime_{lib}.lib")
-				} else {
-					format!("libonnxruntime_{lib}.a")
-				});
-				// sanity check, just make sure the library exists before we try to link to it
-				if lib_path.exists() {
-					println!("cargo:rustc-link-lib=static=onnxruntime_{lib}");
-				} else {
-					panic!("[ort] unable to find ONNX Runtime library: {}", lib_path.display());
-				}
-			}
-
-			let current_line2 = line!();
-			println!("defined on line: {current_line2}");
-
-			println!("cargo:rustc-link-search=native={}", lib_dir.display());
-
-			let external_lib_dir = lib_dir.join("external");
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("protobuf").join("cmake").display());
-			println!("cargo:rustc-link-lib=static=protobuf-lited");
-
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("onnx").display());
-			println!("cargo:rustc-link-lib=static=onnx");
-			println!("cargo:rustc-link-lib=static=onnx_proto");
-
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("nsync").display());
-			println!("cargo:rustc-link-lib=static=nsync_cpp");
-
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("re2").display());
-			println!("cargo:rustc-link-lib=static=re2");
-
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("base").display());
-			println!("cargo:rustc-link-lib=static=absl_base");
-			println!("cargo:rustc-link-lib=static=absl_throw_delegate");
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("hash").display());
-			println!("cargo:rustc-link-lib=static=absl_hash");
-			println!("cargo:rustc-link-lib=static=absl_low_level_hash");
-			println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("container").display());
-			println!("cargo:rustc-link-lib=static=absl_raw_hash_set");
-
-			if cfg!(target_os = "macos") {
-				println!("cargo:rustc-link-lib=framework=Foundation");
-			}
-
-			println!("cargo:rustc-link-lib=onnxruntime_providers_shared");
-			#[cfg(feature = "rocm")]
-			println!("cargo:rustc-link-lib=onnxruntime_providers_rocm");
-
-			(out_dir, false)
+			(prepare_libort_dir_compiled(), false)
 		}
 		_ => panic!("[ort] unknown strategy: {} (valid options are `download` or `system`)", strategy.unwrap_or_else(|_| "unknown".to_string()))
 	}
@@ -578,7 +411,6 @@ fn generate_bindings(include_dir: &Path) {
 	];
 
 	println!("cargo:rerun-if-changed=src/wrapper.h");
-	println!("Paco: hello");
 	let bindings = bindgen::Builder::default()
         .header("src/wrapper.h")
         .clang_args(clang_args)
@@ -605,16 +437,12 @@ fn generate_bindings(include_dir: &Path) {
 }
 
 fn main() {
-	println!("Paco: hello main 1");
 	if std::env::var("DOCS_RS").is_err() {
 		let (install_dir, needs_link) = prepare_libort_dir();
-		println!("Paco: hello main 2");
 
 		let include_dir = install_dir.join("include");
-		println!("Paco: hello main 3");
 		let lib_dir = install_dir.join("lib");
 
-		println!("Paco: hello main 4");
 		if needs_link {
 			println!("cargo:rustc-link-lib=onnxruntime");
 			println!("cargo:rustc-link-search=native={}", lib_dir.display());
@@ -626,4 +454,400 @@ fn main() {
 		#[cfg(feature = "generate-bindings")]
 		generate_bindings(&include_dir);
 	}
+}
+
+// Prepare cmake config
+fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
+    print!("{:?}", env::var("CARGO_CFG_TARGET_ABI"));
+    for (key, value) in env::vars() {
+        println!("{key}: {value}");
+    }
+    let target_os: Os = env::var("CARGO_CFG_TARGET_OS")
+                    .expect("Unable to get TARGET_OS")
+                    .parse()
+                    .unwrap();
+
+    let target_abi: ABI = match env::var("CARGO_CFG_TARGET_ABI") {
+        Ok(val) => val.parse().unwrap(),
+        Err(_e) => ABI::None,
+    };
+    let target_simulator: Simulator = env::var("TARGET")
+                                    .expect("Unable to get TARGET")
+                                    .parse()
+                                    .unwrap();
+
+    let target_arch: Architecture = env::var("CARGO_CFG_TARGET_ARCH")
+                                        .expect("Unable to get TARGET_ARCH")
+                                        .parse()
+                                        .unwrap();
+
+    let triplet = Triplet {
+        os: env::var("CARGO_CFG_TARGET_OS")
+            .expect("Unable to get TARGET_OS")
+            .parse()
+            .unwrap(),
+        arch: env::var("CARGO_CFG_TARGET_ARCH")
+            .expect("Unable to get TARGET_ARCH")
+            .parse()
+            .unwrap(),
+        accelerator: env::var(ORT_RUST_ENV_GPU)
+            .unwrap_or_default()
+            .parse()
+            .unwrap(),
+    };
+    print!("Paco: prebuilt triplet: {:?}, {:?}, {:?}. Please use {}=system and {}=/path/to/onnxruntime",
+    triplet.os, triplet.arch, triplet.accelerator, ORT_RUST_ENV_STRATEGY, ORT_RUST_ENV_SYSTEM_LIB_LOCATION);
+    //aarch64-apple-ios-sim
+    match (target_os, target_abi, target_simulator) {
+        (Os::Windows, ABI::Macabi | ABI::None, _) => {
+
+        },
+        (Os::MacOs, ABI::Macabi | ABI::None, _) => {
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("CMAKE_SYSTEM_NAME", "Darwin");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "OFF");
+
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+
+        },
+        (Os::Linux, ABI::Macabi | ABI::None, _) => {
+
+        },
+        (Os::IOs, ABI::None, Simulator::Yes) => {
+            println!("Running IOS + No ABI");
+            config.define("CMAKE_SYSTEM_NAME", "ios");
+            config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
+            //config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
+            config.define("CMAKE_VERBOSE_MAKEFILE", "ON");
+            config.define("CMAKE_EXPORT_COMPILE_COMMANDS", "ON");
+            //config.env("IPHONEOS_DEPLOYMENT_TARGET", "13.0");
+            env::set_var("IPHONEOS_DEPLOYMENT_TARGET", "13.0");
+
+            config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "13.0");
+            //config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk");
+            config.define("CMAKE_OSX_SYSROOT", "iphonesimulator");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "ON");
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src --target=arm64-apple-ios14.0-simulator -D__thread= -mios-simulator-version-min=13.0");
+            //config.define("__thread", ""); //wrong
+            //add_definitions(-Dfoo=5)
+
+            // Use local protobuf as the protoc compiled via cmake crashes immeidately.
+            config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS", "OFF");
+            config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
+        },
+        (Os::IOs, ABI::None, Simulator::No) => {
+            println!("Running IOS + No ABI");
+            config.define("CMAKE_SYSTEM_NAME", "iOS");
+            config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
+            //config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+
+            config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "11.0");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "ON");
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+
+            // Use local protobuf as the protoc compiled via cmake crashes immeidately.
+            config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+            config.define("onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS", "OFF");
+            config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
+            config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
+        },
+        (Os::IOs, ABI::Macabi, _) => {
+            // rustup default nightly-2022-08-03 && cargo build --target aarch64-apple-ios-macabi --verbose
+            // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target aarch64-apple-ios-macabi
+            // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target x86_64-apple-ios-macabi
+            println!("Running IOS + MacABI");
+            config.define("CMAKE_SYSTEM_NAME", "Darwin"); //for Catalyst
+            config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+            config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+            config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk");
+            config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+            config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+            config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+            config.define("CMAKE_USE_PTHREADS_INIT", "1");
+            config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+            config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+            config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+            config.define("onnxruntime_ENABLE_BITCODE", "OFF");
+
+            match target_arch {
+                Architecture::X86 | Architecture::X86_64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "x86_64");
+                },
+                Architecture::Arm | Architecture::Arm64 => {
+                    config.define("CMAKE_OSX_ARCHITECTURES", "arm64");
+                }
+            }
+
+            config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+        },
+    }
+    //std::process::exit(-1);
+    config
+}
+
+fn prepare_libort_dir_compiled() -> PathBuf {
+	// use std::process::Command;
+
+	// let target = env::var("TARGET").unwrap();
+	// let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+	// let python = env::var("PYTHON").unwrap_or_else(|_| "python".to_string());
+
+	// Command::new("git")
+	// 	.args([
+	// 		"clone",
+	// 		"--depth",
+	// 		"1",
+	// 		"--single-branch",
+	// 		"--branch",
+	// 		&format!("v{ORT_VERSION}"),
+	// 		"--shallow-submodules",
+	// 		"--recursive",
+	// 		ORT_GIT_REPO,
+	// 		ORT_GIT_DIR
+	// 	])
+	// 	.current_dir(&out_dir)
+	// 	.stdout(Stdio::null())
+	// 	.stderr(Stdio::null())
+	// 	.status()
+	// 	.expect("failed to clone ORT repo");
+
+	// let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+	// let _cmake_toolchain = env::var(ORT_ENV_CMAKE_TOOLCHAIN).map_or_else(
+	// 	|_| {
+	// 		if cfg!(target_os = "linux") && target.contains("aarch64") && target.contains("linux") {
+	// 			root.join("toolchains").join("default-aarch64-linux-gnu.cmake")
+	// 		} else if cfg!(target_os = "linux") && target.contains("aarch64") && target.contains("windows") {
+	// 			root.join("toolchains").join("default-aarch64-w64-mingw32.cmake")
+	// 		} else if cfg!(target_os = "linux") && target.contains("x86_64") && target.contains("windows") {
+	// 			root.join("toolchains").join("default-x86_64-w64-mingw32.cmake")
+	// 		} else {
+	// 			PathBuf::default()
+	// 		}
+	// 	},
+	// 	PathBuf::from
+	// );
+
+	// let mut command = Command::new(python);
+	// command
+	// 	.current_dir(&out_dir.join(ORT_GIT_DIR))
+	// 	.stdout(Stdio::null())
+	// 	.stderr(Stdio::inherit());
+
+	// // note: --parallel will probably break something... parallel build *while* doing another parallel build (cargo)?
+	// let mut build_args = vec!["tools/ci_build/build.py", "--build", "--update", "--parallel", "--skip_tests", "--skip_submodule_sync"];
+	// let config = if cfg!(debug_assertions) {
+	// 	"Debug"
+	// } else if cfg!(feature = "minimal-build") {
+	// 	"MinSizeRel"
+	// } else {
+	// 	"Release"
+	// };
+	// build_args.push("--config");
+	// build_args.push(config);
+
+	// if cfg!(feature = "minimal-build") {
+	// 	build_args.push("--disable_exceptions");
+	// }
+
+	// build_args.push("--disable_rtti");
+
+	// if target.contains("windows") {
+	// 	build_args.push("--disable_memleak_checker");
+	// }
+
+	// if !cfg!(feature = "compile-static") {
+	// 	build_args.push("--build_shared_lib");
+	// } else {
+	// 	build_args.push("--enable_msvc_static_runtime");
+	// }
+
+	// // onnxruntime will still build tests when --skip_tests is enabled, this filters out most of them
+	// // this "fixes" compilation on alpine: https://github.com/microsoft/onnxruntime/issues/9155
+	// // but causes other compilation errors: https://github.com/microsoft/onnxruntime/issues/7571
+	// // build_args.push("--cmake_extra_defines");
+	// // build_args.push("onnxruntime_BUILD_UNIT_TESTS=0");
+
+	// #[cfg(windows)]
+	// {
+	// 	use vswhom::VsFindResult;
+	// 	let vs_find_result = VsFindResult::search();
+	// 	match vs_find_result {
+	// 		Some(VsFindResult { vs_exe_path: Some(vs_exe_path), .. }) => {
+	// 			let vs_exe_path = vs_exe_path.to_string_lossy();
+	// 			// the one sane thing about visual studio is that the version numbers are somewhat predictable...
+	// 			if vs_exe_path.contains("14.1") {
+	// 				build_args.push("--cmake_generator=Visual Studio 15 2017");
+	// 			} else if vs_exe_path.contains("14.2") {
+	// 				build_args.push("--cmake_generator=Visual Studio 16 2019");
+	// 			} else if vs_exe_path.contains("14.3") {
+	// 				build_args.push("--cmake_generator=Visual Studio 17 2022");
+	// 			}
+	// 		}
+	// 		Some(VsFindResult { vs_exe_path: None, .. }) | None => panic!("[ort] unable to find Visual Studio installation")
+	// 	};
+	// }
+
+	// let current_line = line!();
+	// println!("defined on line: {current_line}");
+
+	// build_args.push("--build_dir=build");
+	// command.args(build_args);
+
+	// println!("{:?}", command);
+
+	// let code = command.status().expect("failed to run build script");
+	// assert!(code.success(), "failed to build ONNX Runtime");
+	// println!("defined on line: {current_line}");
+
+	// let lib_dir = out_dir.join(ORT_GIT_DIR).join("build").join(config);
+	// let lib_dir = if cfg!(target_os = "windows") { lib_dir.join(config) } else { lib_dir };
+	// for lib in &["common", "flatbuffers", "framework", "graph", "mlas", "optimizer", "providers", "session", "util"] {
+	// 	println!("{0}", lib_dir.display());
+	// 	let lib_path = lib_dir.join(if cfg!(target_os = "windows") {
+	// 		format!("onnxruntime_{lib}.lib")
+	// 	} else {
+	// 		format!("libonnxruntime_{lib}.a")
+	// 	});
+	// 	// sanity check, just make sure the library exists before we try to link to it
+	// 	if lib_path.exists() {
+	// 		println!("cargo:rustc-link-lib=static=onnxruntime_{lib}");
+	// 	} else {
+	// 		panic!("[ort] unable to find ONNX Runtime library: {}", lib_path.display());
+	// 	}
+	// }
+
+	// let current_line2 = line!();
+	// println!("defined on line: {current_line2}");
+
+	// println!("cargo:rustc-link-search=native={}", lib_dir.display());
+
+	// let external_lib_dir = lib_dir.join("external");
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("protobuf").join("cmake").display());
+	// println!("cargo:rustc-link-lib=static=protobuf-lited");
+
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("onnx").display());
+	// println!("cargo:rustc-link-lib=static=onnx");
+	// println!("cargo:rustc-link-lib=static=onnx_proto");
+
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("nsync").display());
+	// println!("cargo:rustc-link-lib=static=nsync_cpp");
+
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("re2").display());
+	// println!("cargo:rustc-link-lib=static=re2");
+
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("base").display());
+	// println!("cargo:rustc-link-lib=static=absl_base");
+	// println!("cargo:rustc-link-lib=static=absl_throw_delegate");
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("hash").display());
+	// println!("cargo:rustc-link-lib=static=absl_hash");
+	// println!("cargo:rustc-link-lib=static=absl_low_level_hash");
+	// println!("cargo:rustc-link-search=native={}", external_lib_dir.join("abseil-cpp").join("absl").join("container").display());
+	// println!("cargo:rustc-link-lib=static=absl_raw_hash_set");
+
+	// if cfg!(target_os = "macos") {
+	// 	println!("cargo:rustc-link-lib=framework=Foundation");
+	// }
+
+	// println!("cargo:rustc-link-lib=onnxruntime_providers_shared");
+	// #[cfg(feature = "rocm")]
+	// println!("cargo:rustc-link-lib=onnxruntime_providers_rocm");
+
+	// return out_dir
+
+	// PACO VERSION DOWN BELOW
+    let mut config = cmake::Config::new("../../cmake");
+    //config.showCXXFlag();
+    //std::process::exit(-1);
+    //println!("Rust Paco: {}", config.get_profile());
+    /*
+    //config.define("CMAKE_SYSTEM_NAME", "iOS"); //for iOS only
+    config.define("CMAKE_SYSTEM_NAME", "Darwin"); //for Catalyst
+    config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+    //config.define("ONNX_CUSTOM_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+    //config.define("PROTOBUF_PROTOC_EXECUTABLE", "/usr/local/bin/protoc-3.21.12.0");
+    //config.define("PROTOBUF_INCLUDE_DIR", "/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+
+    //config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
+    //config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake"); //for iOS
+
+    config.define("onnxruntime_BUILD_SHARED_LIB", "ON");
+    config.define("PYTHON_EXECUTABLE", "/usr/bin/python3");
+    //config.define("CMAKE_OSX_DEPLOYMENT_TARGET", "11.0"); //for iOS
+
+    //config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS.sdk"); //for iOS, Catalyst uses MacOSX sdk
+    config.define("CMAKE_OSX_SYSROOT", "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX13.0.sdk"); //for Catalyst, iOS uses iPhoneOS sdk
+
+    config.define("CMAKE_THREAD_LIBS_INIT", "-lpthread");
+    config.define("CMAKE_HAVE_THREADS_LIBRARY", "1");
+    config.define("CMAKE_USE_WIN32_THREADS_INIT", "0");
+    config.define("CMAKE_USE_PTHREADS_INIT", "1");
+    config.define("THREADS_PREFER_PTHREAD_FLAG", "ON");
+    config.define("onnxruntime_BUILD_UNIT_TESTS", "OFF");
+    config.define("onnxruntime_BUILD_APPLE_FRAMEWORK", "ON");
+
+    //config.define("onnxruntime_BUILD_SHARED_LIB", "OFF"); //for Catalyst??
+
+    //config.define("onnxruntime_ENABLE_BITCODE", "ON"); //for iOS
+    config.define("onnxruntime_ENABLE_BITCODE", "OFF"); //for Catalyst
+
+    // config.define("INCLUDE_DIRECTORIES", "/opt/homebrew/opt/flatbuffers/include");
+    config.cxxflag("-I/opt/homebrew/opt/flatbuffers/include -I/Users/goodnotesci/goodnotes/gn_onnx/third_party/protobuf-21.12/src");
+    */
+    config = prepare_cmake_config(config);
+
+    if env::var(ORT_RUST_ENV_GPU).unwrap_or_default().parse() == Ok(Accelerator::Cuda) {
+        config.define("onnxruntime_USE_CUDA", "ON");
+    }
+
+    config.build()
 }
