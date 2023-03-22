@@ -186,7 +186,7 @@ class NhwcFp16PoolOpTester {
 };
 
 
-TEST(NhwcFp16MaxPoolOpTest, MaxPool1D) {
+TEST(NhwcFp16PoolOpTest, MaxPool1D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(true);
     test.GenerateRandomInput({1, 23, channels});
@@ -196,7 +196,7 @@ TEST(NhwcFp16MaxPoolOpTest, MaxPool1D) {
   }
 }
 
-TEST(NhwcFp16MaxPoolOpTest, MaxPool2D) {
+TEST(NhwcFp16PoolOpTest, MaxPool2D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(true);
     test.GenerateRandomInput({1, 15, 19, channels});
@@ -206,7 +206,7 @@ TEST(NhwcFp16MaxPoolOpTest, MaxPool2D) {
   }
 }
 
-TEST(NhwcFp16MaxPoolOpTest, MaxPool3D) {
+TEST(NhwcFp16PoolOpTest, MaxPool3D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(true);
     test.GenerateRandomInput({1, 9, 13, 15, channels});
@@ -216,7 +216,7 @@ TEST(NhwcFp16MaxPoolOpTest, MaxPool3D) {
   }
 }
 
-TEST(NhwcFp16MaxPoolOpTest, MaxPoolStrides) {
+TEST(NhwcFp16PoolOpTest, MaxPoolStrides) {
   NhwcFp16PoolOpTester test(true);
   test.GenerateRandomInput({4, 23, 19, 32});
   test.SetKernelShape({3, 3});
@@ -224,7 +224,7 @@ TEST(NhwcFp16MaxPoolOpTest, MaxPoolStrides) {
   test.Run();
 }
 
-TEST(NhwcFp16MaxPoolOpTest, MaxPoolDilations) {
+TEST(NhwcFp16PoolOpTest, MaxPoolDilations) {
   NhwcFp16PoolOpTester test(true);
   test.GenerateRandomInput({4, 23, 19, 32});
   test.SetKernelShape({3, 3});
@@ -232,7 +232,7 @@ TEST(NhwcFp16MaxPoolOpTest, MaxPoolDilations) {
   test.Run();
 }
 
-TEST(NhwcFp16AvgPoolOpTest, MaxPool1D) {
+TEST(NhwcFp16PoolOpTest, AvgPool1D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(false);
     test.GenerateRandomInput({1, 23, channels});
@@ -242,7 +242,7 @@ TEST(NhwcFp16AvgPoolOpTest, MaxPool1D) {
   }
 }
 
-TEST(NhwcFp16AvgPoolOpTest, MaxPool2D) {
+TEST(NhwcFp16PoolOpTest, AvgPool2D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(false);
     test.GenerateRandomInput({1, 15, 19, channels});
@@ -252,7 +252,7 @@ TEST(NhwcFp16AvgPoolOpTest, MaxPool2D) {
   }
 }
 
-TEST(NhwcFp16AvgPoolOpTest, MaxPool3D) {
+TEST(NhwcFp16PoolOpTest, AvgPool3D) {
   for (int64_t channels = 1; channels < 94; channels++) {
     NhwcFp16PoolOpTester test(false);
     test.GenerateRandomInput({1, 9, 13, 15, channels});
@@ -262,7 +262,7 @@ TEST(NhwcFp16AvgPoolOpTest, MaxPool3D) {
   }
 }
 
-TEST(NhwcFp16AvgPoolOpTest, MaxPoolStrides) {
+TEST(NhwcFp16PoolOpTest, AvgPoolStrides) {
   NhwcFp16PoolOpTester test(false);
   test.GenerateRandomInput({4, 23, 19, 32});
   test.SetKernelShape({3, 3});
@@ -270,13 +270,41 @@ TEST(NhwcFp16AvgPoolOpTest, MaxPoolStrides) {
   test.Run();
 }
 
-TEST(NhwcFp16AvgPoolOpTest, MaxPoolDilations) {
+TEST(NhwcFp16PoolOpTest, AvgPoolDilations) {
   NhwcFp16PoolOpTester test(false);
   test.GenerateRandomInput({4, 23, 19, 32});
   test.SetKernelShape({3, 3});
   test.SetDilations({2, 2});
   test.Run();
 }
+
+TEST(NhwcFp16PoolOpTest, AvgPoolIncludePadPixel) {
+  OpTester test("NhwcAvgPool", 1, onnxruntime::kMSDomain);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+  std::vector<MLFloat16> x_vals = {
+      MLFloat16(0.3337f), MLFloat16(0.8794f), MLFloat16(0.3375f),
+      MLFloat16(0.6666f), MLFloat16(0.4426f), MLFloat16(0.6474f),
+      MLFloat16(0.7675f), MLFloat16(0.8823f), MLFloat16(0.8852f)};
+
+  std::vector<int64_t> x_dims = {1, 3, 3, 1};
+  std::vector<int64_t> expected_dims = {1, 4, 4, 1};
+  std::vector<MLFloat16> expected_vals = {
+      MLFloat16(0.0834f), MLFloat16(0.3033f), MLFloat16(0.3042f), MLFloat16(0.0844f),
+      MLFloat16(0.2501f), MLFloat16(0.5806f), MLFloat16(0.5767f), MLFloat16(0.2462f),
+      MLFloat16(0.3585f), MLFloat16(0.6897f), MLFloat16(0.7144f), MLFloat16(0.3832f),
+      MLFloat16(0.1919f), MLFloat16(0.4124f), MLFloat16(0.4419f), MLFloat16(0.2213f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+
 
 #endif
 }  // namespace test

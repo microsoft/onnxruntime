@@ -86,8 +86,12 @@ Status NhwcPoolFp16::Compute(OpKernelContext* context) const {
   int64_t col_buffer_batch_count = std::min(output_image_size, output_batch_count);
   auto* col_data = alloc->Alloc(SafeInt<size_t>(sizeof(const MLFloat16*)) * kernel_size * col_buffer_batch_count);
   BufferUniquePtr col_buffer(col_data, BufferDeleter(std::move(alloc)));
-  std::vector<MLFloat16> padding_data(static_cast<size_t>(C), MLFloat16());
+
   const bool need_padding = !is_max_pool_ && pool_attrs_.count_include_pad;
+  std::vector<MLFloat16> padding_data;
+  if (need_padding) {
+    padding_data.resize(static_cast<size_t>(C), MLFloat16());
+  }
 
   const auto* Xdata = X->Data<MLFloat16>();
   auto* Ydata = Y->MutableData<MLFloat16>();

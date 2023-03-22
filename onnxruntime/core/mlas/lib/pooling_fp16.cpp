@@ -66,7 +66,8 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 PoolInit16x8<MaxPoolAggregation>()
 {
-    return MlasBroadcastFloat16x8(MLAS_Float2Half(-65504.f));
+    // lowest fp16 -65504.0f
+    return MlasBroadcastFloat16x8(0xfbff);
 }
 
 template <>
@@ -74,7 +75,8 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X4
 PoolInit16x4<MaxPoolAggregation>()
 {
-    return MlasBroadcastFloat16x4(MLAS_Float2Half(-65504.f));
+    // lowest fp16 -65504.0f
+    return MlasBroadcastFloat16x4(0xfbff);
 }
 
 template<>
@@ -257,7 +259,6 @@ MlasPoolFp16HWC(
                     continue;
                 }
                 MLAS_FLOAT16X8 InputVector0 = MlasLoadFloat16x8(&Input[k][ChannelOffset]);
-
                 MaximumVector0 = PoolAggregate16x8<AggregationType>(MaximumVector0, InputVector0);
                 cnt++;
             }
