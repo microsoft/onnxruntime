@@ -11,11 +11,12 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
     node_to_consumers = kwargs["node_to_consumers"]
     validate_updates = kwargs["validate_updates"]
 
+    graph_outputs = set([output.name for output in graph.output])
     nodes_to_update = []
     for node in filter(lambda node: node.op_type == "DequantizeLinear", graph.node):
         # node providing graph output won't have consumer nodes
         consumers = node_to_consumers[node] if node in node_to_consumers else []
-        if len(consumers) > 1:
+        if len(consumers) > 1 or (len(consumers) == 1 and node.output[0] in graph_outputs):
             if not all(consumer in graph.node for consumer in consumers):
                 # TODO: If this does ever occur, as long as it's only consumed in one subgraph we could leave that
                 # value as is (no need to handle recursing into the subgraph) and update the consumers in this
@@ -36,7 +37,6 @@ def _duplicate_dq_nodes_with_multiple_consumers(graph: onnx.GraphProto, **kwargs
     if nodes_to_update:
         dup_idx = 0
         new_graph = onnx.GraphProto()
-        graph_outputs = set([output.name for output in graph.output])
         for node in graph.node:
             new_graph.node.append(node)
             if node in nodes_to_update:
