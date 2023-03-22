@@ -191,8 +191,8 @@ Status CheckInputs(const T* query,
     if (mask_dims.size() == 1) {
       if (mask_dims[0] == static_cast<int64_t>(batch_size)) {
         mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-      } else if (mask_dims[0] == static_cast<int64_t>(2 * batch_size + 1)) {
-        mask_type = AttentionMaskType::MASK_1D_KEY_QUERY_LEN;
+      } else if (mask_dims[0] == static_cast<int64_t>(3 * batch_size + 2)) {
+        mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
       }
     } else if (mask_dims.size() == 2 && mask_dims[0] == static_cast<int64_t>(batch_size) && mask_dims[1] == static_cast<int64_t>(kv_sequence_length)) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;

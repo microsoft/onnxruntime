@@ -3097,9 +3097,9 @@ void GetAttentionDataCutlassRelPosBias(AttentionTestData& data) {
   data.batch_size = 1;
   data.sequence_length = 8;
   data.kv_sequence_length = 0;
-  data.mask_type = AttentionMaskType::MASK_1D_KEY_QUERY_LEN;
+  data.mask_type = AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
-  data.key_padding_mask_data = {8, 0, 8};
+  data.key_padding_mask_data = {8, 0, 8, 0, 8};
 
   data.skip_kernel_types = {
       AttentionKernelType::AttentionKernel_TrtFlashAttention,

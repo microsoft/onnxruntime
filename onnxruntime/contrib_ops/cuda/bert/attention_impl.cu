@@ -449,8 +449,8 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
       DUMP_TENSOR_D("relative_position_bias", data.relative_position_bias, num_heads, sequence_length, kv_sequence_length);
     }
 
-    if (data.mask_index != nullptr && parameters.mask_type == AttentionMaskType::MASK_1D_KEY_QUERY_LEN) {
-      DUMP_TENSOR_D("mask_index", data.mask_index, 2 * batch_size + 1, 1);
+    if (data.mask_index != nullptr && parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) {
+      DUMP_TENSOR_D("mask_index", data.mask_index, 3 * batch_size + 2, 1);
     }
 
     if (data.fused_cross_attention_kernel != nullptr) {
@@ -743,6 +743,7 @@ Status QkvToContext(
     return Status::OK();
   }
 
+  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(qk_head_size))
                                                : parameters.scale;
 
@@ -772,9 +773,9 @@ Status QkvToContext(
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_unidirectional;
     p.scale = scale;
-    p.cu_seqlens_q = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
-    p.cu_seqlens_k = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
     p.seqlen_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index));
+    p.seqstart_q_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + batch_size));
+    p.seqstart_k_ptr = nullptr == data.mask_index ? nullptr : const_cast<int32_t*>(reinterpret_cast<const int32_t*>(data.mask_index + 2 * batch_size + 1));
     p.query = query;
     p.key = key;
     p.value = value;
@@ -802,7 +803,6 @@ Status QkvToContext(
   float one = 1.0f;
   float zero = 0.f;
 
-  // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
   float alpha = use_raw_attention_mask ? one : scale;
 
   cublasSetStream(cublas, stream);

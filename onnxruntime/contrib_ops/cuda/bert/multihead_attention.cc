@@ -116,7 +116,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int sm = device_prop.major * 10 + device_prop.minor;
 
   bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
-  bool is_mask_1d_key_query_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_QUERY_LEN;
+  bool is_mask_1d_key_seq_len_start = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START;
 
   bool use_fused_cross_attention = !disable_fused_cross_attention_ &&
                                    nullptr == key_padding_mask &&
@@ -176,7 +176,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                         !disable_memory_efficient_attention_ &&
                                         is_long_sequence &&
                                         (relative_position_bias == nullptr || is_good_for_rpb) &&
-                                        (nullptr == key_padding_mask || is_mask_1d_key_query_len) &&
+                                        (nullptr == key_padding_mask || is_mask_1d_key_seq_len_start) &&
                                         has_memory_efficient_attention(sm, sizeof(T) == 2);
 #else
   constexpr bool use_memory_efficient_attention = false;

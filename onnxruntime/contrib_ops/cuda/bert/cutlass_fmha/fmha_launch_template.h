@@ -10,7 +10,7 @@
 #endif
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
+#include "41_fused_multi_head_attention/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -25,8 +25,8 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.key_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.key));
     p.value_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.value));
     p.attn_bias_ptr = const_cast<T*>(reinterpret_cast<const T*>(params.attn_bias));
-    p.seqstart_q_ptr = params.cu_seqlens_q;
-    p.seqstart_k_ptr = params.cu_seqlens_k;
+    p.seqstart_q_ptr = params.seqstart_q_ptr;
+    p.seqstart_k_ptr = params.seqstart_k_ptr;
     p.seqlen_k_ptr = params.seqlen_k_ptr;
 
     p.logsumexp_ptr = nullptr;  // [num_heads, num_queries] for backward or nullptr for forward

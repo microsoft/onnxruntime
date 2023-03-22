@@ -274,13 +274,13 @@ Status AttentionBase::CheckMask(const Tensor* mask_index,
                                 int64_t total_sequence_length) const {
   const auto& mask_dims = mask_index->Shape().GetDims();
   if (mask_dims.size() == 1) {
-    if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size && mask_dims[0] != 2 * batch_size + 1) {
+    if (mask_dims[0] != batch_size && mask_dims[0] != 2 * batch_size && mask_dims[0] != 3 * batch_size + 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 2 * batch_size + 1");
+                             "Inputs 'mask_index' with 1D data shall have length of batch_size or 2 * batch_size or 3 * batch_size + 2");
     }
     mask_type = (mask_dims[0] == batch_size ?
                  AttentionMaskType::MASK_1D_KEY_SEQ_LEN :
-                 mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START : AttentionMaskType::MASK_1D_KEY_QUERY_LEN);
+                 mask_dims[0] == 2 * batch_size ? AttentionMaskType::MASK_1D_END_START : AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START);
   } else if (mask_dims.size() == 2) {
     if (mask_dims[0] == batch_size && mask_dims[1] == total_sequence_length) {
       mask_type = AttentionMaskType::MASK_2D_KEY_PADDING;

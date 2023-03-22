@@ -21,12 +21,13 @@ struct MemoryEfficientAttentionParams {
   int32_t qk_head_size;
   int32_t v_head_size;
   bool causal;
+  // The default shape of attn_bias is [1, N, S, S*]. Sometimes we need to use [B, N, S, S*] in custom models.
   bool is_attn_bias_batched;
 
   float scale;
 
-  int32_t* cu_seqlens_q;
-  int32_t* cu_seqlens_k;
+  int32_t* seqstart_q_ptr;
+  int32_t* seqstart_k_ptr;
   int32_t* seqlen_k_ptr;
 
   const void* query;        // [B, S, N, H]
