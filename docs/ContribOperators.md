@@ -51,6 +51,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.NGramRepeatBlock">com.microsoft.NGramRepeatBlock</a>
   * <a href="#com.microsoft.NhwcConv">com.microsoft.NhwcConv</a>
   * <a href="#com.microsoft.NhwcMaxPool">com.microsoft.NhwcMaxPool</a>
+  * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
@@ -2604,6 +2605,78 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(int8), tensor(uint8)</dt>
 <dd></dd>
+</dl>
+
+
+### <a name="com.microsoft.PackedAttention"></a><a name="com.microsoft.packedattention">**com.microsoft.PackedAttention**</a>
+
+  This is the packed version of Attention.
+  
+  Sequences in one batch usually don't have same length and they are padded to have same length,
+  e.g., below is a batch with 3 sequences and tokens* are padded.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PackedAttention is designed to takes in packed input, i.e., only the real tokens without padding.
+  An input as above will be packed into 3 tensors like below:
+   - input ([h0, h4, h5, h8, h9, h10, h11])
+   - token_offset: 0, 4, 5, 8, 9, 10, 11,  1*, 2*, 3*, 6*, 7*
+   - cumulated_token_count: 0, 1, 1+2, 1+2+4
+  
+  Input tensors contains the hidden embedding of real tokens.
+  Token_offset records the offset of token in the unpacked input.
+  cumulated_token_count records cumulated length of each sequnces length.
+  
+  The operator only supports BERT like model with padding on right now.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads</dd>
+<dt><tt>qkv_hidden_sizes</tt> : list of ints</dt>
+<dd>Hidden dimension of Q, K, V: hidden_size, hidden_size and v_hidden_size</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+</dl>
+
+#### Inputs (5 - 6)
+
+<dl>
+<dt><tt>input</tt> : T</dt>
+<dd>Input tensor with shape (token_count, input_hidden_size)</dd>
+<dt><tt>weights</tt> : T</dt>
+<dd>Merged Q/K/V weights with shape (input_hidden_size, hidden_size + hidden_size + v_hidden_size)</dd>
+<dt><tt>bias</tt> : T</dt>
+<dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
+<dt><tt>token_offset</tt> : M</dt>
+<dd>In packing mode, it specifies the offset of each token(batch_size, sequence_length).</dd>
+<dt><tt>cumulative_sequence_length</tt> : M</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence length.</dd>
+<dt><tt>relative_position_bias</tt> (optional) : T</dt>
+<dd>A tensor with shape (batch_size, num_heads, sequence_length, sequence_length)or (1, num_heads, sequence_length, sequence_length).It specifies the additional bias to QxK'</dd>
+</dl>
+
+#### Outputs
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>2D output tensor with shape (token_count, v_hidden_size)</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>M</tt> : tensor(int32)</dt>
+<dd>Constrain mask index to integer types</dd>
 </dl>
 
 
