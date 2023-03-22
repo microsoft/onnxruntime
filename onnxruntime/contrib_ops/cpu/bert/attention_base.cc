@@ -41,7 +41,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
-  //     (B), (2 * B), (2 * B + 1)
+  //     (B), (2 * B), (3 * B + 2)
   //     (B, T)
   //     (B, S, T)
   //     (B, 1, M, M)
