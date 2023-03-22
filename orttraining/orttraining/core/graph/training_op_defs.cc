@@ -17,6 +17,45 @@ namespace training {
 
 using namespace ONNX_NAMESPACE;
 
+namespace {
+std::array<TensorShapeProto::Dimension, 6> GetLSTMDimensions(InferenceContext& ctx) {
+  TensorShapeProto::Dimension num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size;
+
+  const auto direction = getAttribute(ctx, "direction", "forward");
+  if ((direction == "forward") || (direction == "reverse"))
+    num_directions.set_dim_value(1);
+  else if (direction == "bidirectional")
+    num_directions.set_dim_value(2);
+  else
+    fail_shape_inference("Attribute direction must be one of forward, reverse, or bidirectional. Actual: ", direction);
+
+  const auto hidden_size_value = ctx.getAttribute("hidden_size");
+  if (!hidden_size_value) {
+    fail_shape_inference("Attribute hidden size not provided.");
+  }
+
+  if (hasInputShape(ctx, 0)) {
+    const auto& x_shape = getInputShape(ctx, 0);
+    if (x_shape.dim_size() != 3) {
+      fail_shape_inference("Input tensor must have rank 3. Actual: ", x_shape.dim_size());
+    }
+    sequence_length = x_shape.dim(0);
+    batch_size = x_shape.dim(1);
+    input_size = x_shape.dim(2);
+  }
+
+  if (hasInputShape(ctx, 1)) {
+    const auto& weight_shape = getInputShape(ctx, 1);
+    if (weight_shape.dim_size() != 3) {
+      fail_shape_inference("Weight tensor must have rank 3. Actual: ", weight_shape.dim_size());
+    }
+    hidden_size_x4 = weight_shape.dim(1);
+  }
+
+  return {num_directions, sequence_length, batch_size, hidden_size, hidden_size_x4, input_size};
+}
+}  // namespace
+
 void AddRepeatedInputs(
     OpSchema& op_schema,
     const int start,
@@ -4242,6 +4281,253 @@ Return true if all elements are true and false otherwise.
           "Constrain the gradient mask input to bool tensors.")
       .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
         propagateShapeAndTypeFromFirstInput(ctx);
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMTraining)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "LSTMTraining operator is adapted from LSTM operator (https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14)."
+          "The difference between the two operators is that LSTMTraining generates two additional outputs:"
+          "a) all cell states over all sequence steps. b) intermediate iofc gate outputs."
+          "These extra outputs are needed for the gradient computation while training.")
+      .Attr(
+          "activations",
+          "A list of 3 (or 6 if bidirectional) activation functions "
+          "for input, output, forget, cell, and hidden. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g, h) in LSTM. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g, h) in LSTM. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "input_forget",
+          "Couple the input and forget gates if 1, default 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the LSTM cell.", "T")
+      .Input(1, "W", "Input weight parameters to the LSTM cell.", "T")
+      .Input(2, "R", "Input recurrence weight parameters to the LSTM cell.", "T")
+      .Input(3, "B", "Input bias parameters to the LSTM cell.", "T", OpSchema::Optional)
+      .Input(4, "SL", "Sequence lengths of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(5, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(6, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(7, "P", "Input peephole weight parameters to the LSTM cell.", "T", OpSchema::Optional)
+      .Output(0, "HAll", "Hidden states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(1, "HFinal", "Final hidden state.", "T", OpSchema::Optional)
+      .Output(2, "CFinal", "Final cell state.", "T", OpSchema::Optional)
+      .Output(3, "CAll", "Cell states over all sequence steps.", "T", OpSchema::Optional)
+      .Output(4, "iofc", "Intermediate gate computations for all sequence steps.", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto lstm_dimensions = GetLSTMDimensions(ctx);
+        const auto& num_directions = lstm_dimensions[0];
+        const auto& sequence_length = lstm_dimensions[1];
+        const auto& batch_size = lstm_dimensions[2];
+        const auto& hidden_size = lstm_dimensions[3];
+        const auto& hidden_size_x4 = lstm_dimensions[4];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // All hidden states
+          updateOutputShape(ctx, 0, {sequence_length, num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 1)
+          // Final hidden state
+          updateOutputShape(ctx, 1, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 2)
+          // Final cell state
+          updateOutputShape(ctx, 2, {num_directions, batch_size, hidden_size});
+
+        if (num_outputs > 3) {
+          // All cell states
+          updateOutputShape(ctx, 3, {sequence_length, num_directions, batch_size, hidden_size});
+        }
+
+        if (num_outputs > 4)
+          // IOFC gate computations
+          updateOutputShape(ctx, 4, {sequence_length, num_directions, batch_size, hidden_size_x4});
+      });
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(LSTMGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(
+          "LSTMGrad operator that computes the partial derivative of the loss with respect to LSTM inputs: "
+          "a) The input sequence, b) Weight parameters, c) Recurrence weight parameters, d) Bias parameters, "
+          "e) Peephole weight parameters, f) Previous cell state, g) Previous hidden state."
+          "This operator computes the gradient of the LSTM operator from opset version 14: "
+          "https://github.com/onnx/onnx/blob/main/docs/Changelog.md#LSTM-14")
+      .Attr(
+          "activations",
+          "A list of 3 (or 6 if bidirectional) activation functions "
+          "for input, output, forget, cell, and hidden. The activation functions must "
+          "be one of the activation functions specified above. Optional: See the equations "
+          "for default if not specified.",
+          AttributeProto::STRINGS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_alpha",
+          "Optional scaling values used by some activation functions. The values are consumed "
+          "in the order of activation functions, for example (f, g, h) in LSTM. Default values "
+          "are the same as of corresponding ONNX operators.For example with LeakyRelu, the "
+          "default alpha is 0.01.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "activation_beta",
+          "Optional scaling values used by some activation functions. The values are consumed in "
+          "the order of activation functions, for example (f, g, h) in LSTM. Default values are "
+          "the same as of corresponding ONNX operators.",
+          AttributeProto::FLOATS,
+          OPTIONAL_VALUE)
+      .Attr(
+          "clip",
+          "Cell clip threshold. Clipping bounds the elements of a tensor in the range of "
+          "[-threshold, +threshold] and is applied to the input of activations. No clip if not "
+          "specified.",
+          AttributeProto::FLOAT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "input_forget",
+          "Couple the input and forget gates if 1, default 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
+      .Attr(
+          "hidden_size",
+          "Number of neurons in the hidden layer.",
+          AttributeProto::INT,
+          OPTIONAL_VALUE)
+      .Attr(
+          "direction",
+          "Specify if the RNN is forward, reverse, or bidirectional. Must be one of "
+          "forward (default), reverse, or bidirectional.",
+          AttributeProto::STRING,
+          std::string("forward"))
+      .Input(0, "X", "Original input to the LSTM cell.", "T")
+      .Input(1, "W", "Input weight parameters to the LSTM cell.", "T")
+      .Input(2, "R", "Input recurrent weight parameters to the LSTM cell.", "T")
+      .Input(3, "SL", "Input sequence length of the input sequence.", "TSize", OpSchema::Optional)
+      .Input(4, "Ht0", "Initial hidden state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(5, "Ct0", "Initial cell state input to the LSTM cell", "T", OpSchema::Optional)
+      .Input(6, "HAll", "Hidden states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(7, "CAll", "Cell states over all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(8, "iofc", "Intermediate gate computations for all sequence steps output from LSTMTraining.", "T", OpSchema::Optional)
+      .Input(9, "dHAll", "Gradient of loss with respect to the output Y of the LSTM cell", "T", OpSchema::Optional)
+      .Input(10, "dHFinal", "Gradient of loss with respect to the output Y_h of the LSTM cell", "T", OpSchema::Optional)
+      .Input(11, "dCFinal", "Gradient of loss with respect to the output Y_c of the LSTM cell", "T", OpSchema::Optional)
+      .Output(0, "dX", "Gradient of loss with respect to the input (to the LSTM cell).", "T", OpSchema::Optional)
+      .Output(1, "dW", "Gradient of loss with respect to the weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(2, "dR", "Gradient of loss with respect to the recurrence weight parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(3, "dB", "Gradient of loss with respect to the bias parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(4, "dH0", "Gradient of loss with respect to the previous hidden state (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(5, "dC0", "Gradient of loss with respect to the previous cell state (of the LSTM cell).", "T", OpSchema::Optional)
+      .Output(6, "dP", "Gradient of loss with respect to the peephole parameters (of the LSTM cell).", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float)"},
+          "Constrain the gradient input and output types to float tensors.")
+      .TypeConstraint(
+          "TSize",
+          {"tensor(int32)"},
+          "Constrain the length types to int32 tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        const auto lstm_dimensions = GetLSTMDimensions(ctx);
+        const auto& num_directions = lstm_dimensions[0];
+        const auto& sequence_length = lstm_dimensions[1];
+        const auto& batch_size = lstm_dimensions[2];
+        const auto& hidden_size = lstm_dimensions[3];
+        const auto& hidden_size_x4 = lstm_dimensions[4];
+        const auto& input_size = lstm_dimensions[5];
+
+        const auto num_outputs = ctx.getNumOutputs();
+        for (size_t i = 0; i < num_outputs; ++i) {
+          propagateElemTypeFromInputToOutput(ctx, 0, i);
+        }
+
+        if (num_outputs > 0)
+          // Gradient with respect to the input tensor
+          updateOutputShape(ctx, 0, {sequence_length, batch_size, input_size});
+
+        if (num_outputs > 1)
+          // Gradient with respect to the weight tensor
+          updateOutputShape(ctx, 1, {num_directions, hidden_size_x4, input_size});
+
+        if (num_outputs > 2)
+          // Gradient with respect to the recurrence weight tensor
+          updateOutputShape(ctx, 2, {num_directions, hidden_size_x4, hidden_size});
+
+        if (num_outputs > 3) {
+          TensorShapeProto::Dimension eight;
+          eight.set_dim_value(8);
+          // Gradient with respect to the bias tensor
+          updateOutputShape(ctx, 3, {num_directions, eight * hidden_size});
+        }
+
+        if (num_outputs > 4) {
+          if (hasInputShape(ctx, 5)) {
+            // Gradient with respect to the initial hidden state
+            updateOutputShape(ctx, 4, {num_directions, batch_size, hidden_size});
+          }
+        }
+
+        if (num_outputs > 5) {
+          if (hasInputShape(ctx, 6)) {
+            // Gradient with respect to the initial cell state
+            updateOutputShape(ctx, 5, {num_directions, batch_size, hidden_size});
+          }
+        }
+
+        if (num_outputs > 6) {
+          TensorShapeProto::Dimension three;
+          three.set_dim_value(3);
+          // Gradient with respect to the peephole weight tensor
+          updateOutputShape(ctx, 6, {num_directions, three * hidden_size});
+        }
       });
 }
 
