@@ -25,8 +25,8 @@ class AttentionCPUBase : public AttentionBase {
                         const Tensor* mask_index,             // mask index. nullptr if no mask or its size is B
                         const Tensor* past,                   // past state
                         Tensor* output,                       // output tensor
-                        Tensor* present_k,                    // present K tensor (if separating present KV)
-                        Tensor* present_v,                    // present V tensor (if separating present KV)
+                        Tensor* present_k,                    // present K output tensor (if separating present KV)
+                        Tensor* present_v,                    // present V output tensor (if separating present KV)
                         int batch_size,                       // batch size (B)
                         int sequence_length,                  // sequence length of Q (S)
                         int kv_sequence_length,               // sequence length of K or V (L)
@@ -114,7 +114,7 @@ class AttentionCPUBase : public AttentionBase {
 
     if (separate_present_kv) {
       SeparatePresentKV(present_data, present_k->MutableData<T>(), present_v->MutableData<T>(), 
-                        batch_size, kv_sequence_length, qk_head_size, v_head_size, context);
+                        batch_size, total_sequence_length, qk_head_size, v_head_size, context);
     }
 
     return Status::OK();
@@ -294,17 +294,17 @@ class AttentionCPUBase : public AttentionBase {
   }
 
   template <typename T>
-  void SeparatePresentKV(T* present_kv,       // concatenated present K and present V data with size 2xBxNxLxH
-                         T* present_k,        // present K output tensor
-                         T* present_v,        // present V output tensor
-                         int batch_size,           // batch size
-                         int kv_sequence_length,   // sequence length of K or V
-                         int qk_head_size,         // head size of Q or K (H)
-                         int v_head_size,          // head size of V (H_v)
+  void SeparatePresentKV(T* present_kv,                // concatenated present K and present V data with size 2xBxNxLxH
+                         T* present_k,                 // present K output tensor
+                         T* present_v,                 // present V output tensor
+                         int batch_size,               // batch size
+                         int total_kv_sequence_length, // total sequence length (kv_sequence_length + past_kv_sequence_length)
+                         int qk_head_size,             // head size of Q or K (H)
+                         int v_head_size,              // head size of V (H_v)
                          OpKernelContext* context) const {
 
-    const int num_k_elements = batch_size * num_heads_ * kv_sequence_length * qk_head_size;
-    const int num_v_elements = batch_size * num_heads_ * kv_sequence_length * v_head_size;
+    const int num_k_elements = batch_size * num_heads_ * total_kv_sequence_length * qk_head_size;
+    const int num_v_elements = batch_size * num_heads_ * total_kv_sequence_length * v_head_size;
     memcpy(present_k, present_kv, num_k_elements * sizeof(T));
     memcpy(present_v, present_kv + num_k_elements, num_v_elements * sizeof(T));
   }
