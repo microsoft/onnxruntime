@@ -410,7 +410,7 @@ fn generate_bindings(include_dir: &Path) {
 		format!("-I{}", include_dir.join("onnxruntime").join("core").join("session").display())
 	];
 
-	println!("cargo:rerun-if-changed=src/wrapper.h");
+	println!("cargo:rerun-if-changed=src/wrapper.h"); //Contains onnxruntime_c_api.h
 	let bindings = bindgen::Builder::default()
         .header("src/wrapper.h")
         .clang_args(clang_args)
@@ -532,7 +532,7 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
         (Os::Linux, ABI::Macabi | ABI::None, _) => {
 
         },
-        (Os::IOs, ABI::None, Simulator::Yes) => {
+        (Os::IOS, ABI::None, Simulator::Yes) => {
             println!("Running IOS + No ABI");
             config.define("CMAKE_SYSTEM_NAME", "ios");
             config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
@@ -574,7 +574,7 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
             config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
             config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
         },
-        (Os::IOs, ABI::None, Simulator::No) => {
+        (Os::IOS, ABI::None, Simulator::No) => {
             println!("Running IOS + No ABI");
             config.define("CMAKE_SYSTEM_NAME", "iOS");
             config.define("CMAKE_TOOLCHAIN_FILE", "../cmake/onnxruntime_ios.toolchain.cmake");
@@ -600,7 +600,7 @@ fn prepare_cmake_config(mut config: cmake::Config) -> cmake::Config {
             config.define("protobuf_BUILD_PROTOC_BINARIES", "OFF");
             config.define("onnxruntime_BUILD_SHARED_LIB", "OFF");
         },
-        (Os::IOs, ABI::Macabi, _) => {
+        (Os::IOS, ABI::Macabi, _) => {
             // rustup default nightly-2022-08-03 && cargo build --target aarch64-apple-ios-macabi --verbose
             // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target aarch64-apple-ios-macabi
             // rustup default nightly-2022-08-03 && cargo build -Z build-std=panic_abort,std --target x86_64-apple-ios-macabi
