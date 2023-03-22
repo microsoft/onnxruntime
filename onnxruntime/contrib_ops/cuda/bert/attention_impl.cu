@@ -297,7 +297,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   // Default format for memory efficient attention.
-  // When there is past state, the format shal be BxNxSxH, so we disable memory efficient attention when there is past.
+  // When there is past state, the format shall be BxNxSxH, so we disable memory efficient attention when there is past.
   DUMP_TENSOR_INIT();
   if (nullptr != data.gemm_buffer) {
     if (data.bias == nullptr) {
@@ -334,53 +334,79 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              3, parameters.do_rotary, parameters.original_past_sequence_length);
     }
   }
-  // cross attention with past/present state
+  // attention with past/present state
   else if (data.past_key != nullptr || data.present_key != nullptr) {
-    // no bias for T5 cross attention
-    assert(data.bias == nullptr);
-    // cross attention with past state
-    if (data.past_key != nullptr && data.present_key == nullptr) {
-      assert(data.past_value != nullptr);
-      assert(data.query != nullptr);
-      assert(data.key == nullptr);
-      assert(data.value == nullptr);
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                                         max_threads_per_block, false, data.query, q));
-    }
-    // cross attention with present state or self attention with present state
-    else if (data.past_key == nullptr && data.present_key != nullptr) {
-      assert(data.past_value == nullptr);
-      assert(data.present_value != nullptr);
-      assert(data.query != nullptr);
-      assert(data.key != nullptr);
-      assert(data.value != nullptr);
+    if (data.bias == nullptr) {
+      // cross attention with past state
+      if (data.past_key != nullptr && data.present_key == nullptr) {
+        assert(data.past_value != nullptr);
+        assert(data.query != nullptr);
+        assert(data.key == nullptr);
+        assert(data.value == nullptr);
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                                          max_threads_per_block, false, data.query, q));
+      }
+      // cross attention with present state or self attention with present state
+      else if (data.past_key == nullptr && data.present_key != nullptr) {
+        assert(data.past_value == nullptr);
+        assert(data.present_value != nullptr);
+        assert(data.query != nullptr);
+        assert(data.key != nullptr);
+        assert(data.value != nullptr);
 
-      // TODO: supporting packed qkv for self attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                          max_threads_per_block, false, data.query, q));
+        // TODO: supporting packed qkv for self attention may benefit performance
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                            max_threads_per_block, false, data.query, q));
 
-      // TODO: supporting packed kv for cross attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                          max_threads_per_block, false, data.key, data.present_key));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                          max_threads_per_block, false, data.value, data.present_value));
-    }
-    // self attention with past and present state
-    else {
-      assert(data.past_key != nullptr);
-      assert(data.past_value != nullptr);
-      assert(data.present_key != nullptr);
-      assert(data.present_value != nullptr);
-      assert(data.query != nullptr);
-      assert(data.key != nullptr);
-      assert(data.value != nullptr);
-      // TODO: supporting packed qkv for self attention may benefit performance
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
-                          max_threads_per_block, false, data.query, q));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
-                          max_threads_per_block, false, data.key, k));
-      ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
-                          max_threads_per_block, false, data.value, v));
+        // TODO: supporting packed kv for cross attention may benefit performance
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                            max_threads_per_block, false, data.key, data.present_key));
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                            max_threads_per_block, false, data.value, data.present_value));
+      }
+      // self attention with past and present state
+      else {
+        assert(data.past_key != nullptr);
+        assert(data.past_value != nullptr);
+        assert(data.present_key != nullptr);
+        assert(data.present_value != nullptr);
+        assert(data.query != nullptr);
+        assert(data.key != nullptr);
+        assert(data.value != nullptr);
+        // TODO: supporting packed qkv for self attention may benefit performance
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, sequence_length, batch_size, qk_head_size, num_heads,
+                            max_threads_per_block, false, data.query, q));
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, qk_head_size, num_heads,
+                            max_threads_per_block, false, data.key, k));
+        ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, 1, kv_sequence_length, batch_size, v_head_size, num_heads,
+                            max_threads_per_block, false, data.value, v));
+      }
+    } else {
+      // Use unfused kernel for Q, use unfused kernel for K and V if needed
+      constexpr int format = 0;
+      // Query (BxSxNxH) => Q (BxNxSxH)
+      LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
+                                batch_size, sequence_length, num_heads, qk_head_size,
+                                data.query, data.bias, q,
+                                true, -1);
+
+      if (data.key != nullptr && data.value != nullptr) {
+        // Key (BxLxNxH) => K (BxNxLxH)
+        LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
+                                  batch_size, kv_sequence_length, num_heads, qk_head_size,
+                                  data.key, data.bias + num_heads * qk_head_size, k,
+                                  true, -1);
+
+        // Value (BxLxNxH_v) => K (BxNxLxH_v)
+        LaunchAddBiasTranspose<T>(stream, 1, format, max_threads_per_block,
+                                  batch_size, kv_sequence_length, num_heads, v_head_size,
+                                  data.value, data.bias + 2 * num_heads * qk_head_size, v,
+                                  true, -1);
+
+        DUMP_TENSOR_D("q(BNSH)", q, batch_size * num_heads, sequence_length, qk_head_size);
+        DUMP_TENSOR_D("k(BNSH)", k, batch_size * num_heads, kv_sequence_length, qk_head_size);
+        DUMP_TENSOR_D("v(BNSH)", v, batch_size * num_heads, kv_sequence_length, v_head_size);
+      } 
     }
     qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
   } else if (data.key == nullptr) {  // gemm_buffer == nullptr and packed qkv
@@ -397,7 +423,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                              batch_size, sequence_length, num_heads, qk_head_size,
                              data.query, data.bias, qkv,
                              true, v_head_size, qkv_add_bias, 3);
-      DUMP_TENSOR_D("k(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
+      DUMP_TENSOR_D("q(BSNH)", q, batch_size * sequence_length, num_heads, qk_head_size);
       DUMP_TENSOR_D("k(BSNH)", k, batch_size * kv_sequence_length, num_heads, qk_head_size);
       DUMP_TENSOR_D("v(BSNH)", v, batch_size * kv_sequence_length, num_heads, v_head_size);
       qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
@@ -595,6 +621,18 @@ Status QkvToContext(
       } else if (nullptr == data.past_key && nullptr != data.present_key) {
         k = data.present_key;
         v = data.present_value;
+      } else if (parameters.pass_past_in_kv) {
+        // past_key and past_value are used directly as key and value in attention computations
+        k = const_cast<T*>(data.past_key);
+        v = const_cast<T*>(data.past_value);
+
+        // This path has a memory copy from past_key and past_value to present_key and present_value
+        // Avoid this path since the memory copy is unnecessary because past_key == present_key and
+        // past_value == present_value
+        int64_t k_size = (int64_t)batch_size * num_heads * parameters.total_sequence_length * qk_head_size;
+        int64_t v_size = (int64_t)batch_size * num_heads * parameters.total_sequence_length * v_head_size;
+        cudaMemcpyAsync(data.present_key, data.past_key, k_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+        cudaMemcpyAsync(data.present_value, data.past_value, v_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
       } else {
         ORT_RETURN_IF_ERROR(
             LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, sequence_length, batch_size, qk_head_size, num_heads,
@@ -602,7 +640,6 @@ Status QkvToContext(
         ORT_RETURN_IF_ERROR(
             LaunchConcatTensorToTensor(stream, parameters.total_sequence_length, sequence_length, batch_size, v_head_size, num_heads,
                                        max_threads_per_block, 1, data.past_value, v, data.present_value));
-
         // Update pointers to present_k and present_v.
         k = data.present_key;
         v = data.present_value;
