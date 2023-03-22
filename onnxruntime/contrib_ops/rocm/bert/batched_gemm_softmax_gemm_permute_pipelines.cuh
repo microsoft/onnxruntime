@@ -454,7 +454,7 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       std::vector<ck::index_t> out_buffer_lengths = {G0, G1, M, O};
       std::vector<ck::index_t> out_buffer_strides = {M * G1 * O, O, G1 * O, 1};  // permute 0213
 
-      std::array<const void*, kNumBiasBuffer> bias_buffers{};
+      std::array<void*, kNumBiasBuffer> bias_buffers{};
       std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_lengths{};
       std::array<std::vector<ck::index_t>, kNumBiasBuffer> bias_strides{};
       if constexpr (USE_BIAS) {
@@ -465,8 +465,8 @@ auto GetCKGemmSoftmaxGemmPermuteTypeStringAndOps() {
       if constexpr (USE_MASK) {
         if (params->mask_index_buffer != nullptr) {
           bias_buffers[kNumBiasBuffer - 1] = params->workspace_buffer;
-        } else {
-          bias_buffers[kNumBiasBuffer - 1] = params->mask_buffer;
+        } else if (params->mask_buffer != nullptr) {
+          bias_buffers[kNumBiasBuffer - 1] = const_cast<T*>(params->mask_buffer);
         }
         bias_lengths[kNumBiasBuffer - 1] = {G0, G1, M, N};  // BN(G0*G1), S(M), T(N)
         if (params->mask_index_dims.size() == 2) {          // [B,T]

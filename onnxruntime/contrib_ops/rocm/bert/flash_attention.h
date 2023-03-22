@@ -21,7 +21,8 @@ class FlashAttention final : public RocmKernel {
                      const TensorShape &key_shape,
                      const TensorShape &value_shape,
                      const Tensor* att_mask,
-                     const Tensor* att_bias) const;
+                     const Tensor* att_bias,
+		     void *att_param) const;
 
  private:
   int64_t num_heads_;

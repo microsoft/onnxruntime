@@ -91,21 +91,22 @@ class FusionFlashAttention(Fusion):
         # search nodes before softmax
         qk_matmul_nodes = self.model.match_parent_path(
             softmax_node,
-            ["Add", "Reshape", "Add", "Mul", "MatMul"],
-            [0, None, 0, None, 0],
+            ["Add", "Reshape", "Mul", "MatMul", "Transpose"],
+            [0, None, 0, 0, 1],
         )
         if qk_matmul_nodes is not None:
-            (mask_add, r_mask, qk_add, qk_mul, matmul_qk) = qk_matmul_nodes
+            (mask_add, r_mask, qk_mul, matmul_qk, trans_k) = qk_matmul_nodes
         else:
             return None, []
 
         need_to_remove.extend(qk_matmul_nodes)
 
         # get q and k node
-        q_input, k_input = matmul_qk.input[0], matmul_qk.input[1]
+        q_input, k_input = matmul_qk.input[0], trans_k.input[0]
 
         # get add input 
-        add_input = qk_add.input[0] if qk_add.input[1] == qk_mul.output[0] else qk_add.input[1]
+        #add_input = qk_add.input[0] if qk_add.input[1] == qk_mul.output[0] else qk_add.input[1]
+        add_input = None
 
         # get mask add input
         mask_input = mask_add.input[0] if mask_add.input[1] == r_mask.output[0] else mask_add.input[1]
@@ -243,8 +244,8 @@ class FusionFlashAttention(Fusion):
         V-------------------------------------------------------
 
 
-            K                            Mask
-            |                             |
+            K                   Mask
+            |                    |
         Q-->MatMul --> Div -->  Add --> [Softmax] --> MatMul --> Transpose
                                                                |
                                                                |
@@ -256,8 +257,8 @@ class FusionFlashAttention(Fusion):
         # search nodes before softmax
         qk_matmul_nodes = self.model.match_parent_path(
             softmax_node,
-            ["Add", "Reshape", "Add", "Mul", "MatMul"],
-            [0, None, 0, None, 0],
+            ["Add", "Reshape", "Mul", "MatMul"],
+            [0, None, 0, 0],
         )
         if qk_matmul_nodes is not None:
             new_node, need_to_remove = self.fuse_alibi_pattern(softmax_node, input_name_to_nodes, output_name_to_node)

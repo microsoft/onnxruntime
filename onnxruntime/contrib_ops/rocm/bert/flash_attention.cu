@@ -6,6 +6,7 @@
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
 #include "core/providers/rocm/tunable/gemm.h"
 #include "contrib_ops/rocm/bert/batched_gemm_softmax_gemm_permute_pipelines.cuh"
+#include "contrib_ops/rocm/bert/transformer_common.h"
 
 using namespace onnxruntime::rocm;
 using namespace ::onnxruntime::common;
@@ -45,13 +46,14 @@ Status FlashAttention<T>::CheckInputs(const TensorShape &query_shape,
                                  const TensorShape &value_shape,
                                  const Tensor* att_mask,
                                  const Tensor* att_bias,
-				 AttentionParameters *attn) const {
-  auto &q_dims = query_shape.GetDims();
-  auto &k_dims = key_shape.GetDims();
-  auto &v_dims = value_shape.GetDims();
+                                 void *att_param) const {
+  AttentionParameters *atten = reinterpret_cast<AttentionParameters*>(att_param);
+  const auto &q_dims = query_shape.GetDims();
+  const auto &k_dims = key_shape.GetDims();
+  const auto &v_dims = value_shape.GetDims();
 
   if (q_dims.size() != k_dims.size() || k_dims.size() != v_dims.size()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input QKV should have same dims, got ", dims.size());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input QKV should have same dims, got ", q_dims.size());
   }
 
   atten->past_sequence_length = 0;
@@ -65,7 +67,7 @@ Status FlashAttention<T>::CheckInputs(const TensorShape &query_shape,
 
   AttentionMaskType mask_type = AttentionMaskType::MASK_NONE;
   if (att_mask != nullptr) {
-    auto &m_dims = att_mask->Shape().GetDims();
+    const auto &m_dims = att_mask->Shape().GetDims();
     if (m_dims.size() != 4) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "mask input shape is invalid");
     }
@@ -112,8 +114,8 @@ Status FlashAttention<T>::CheckInputs(const TensorShape &query_shape,
     atten->max_sequence_length = static_cast<int>(kv_seqlen);
     atten->input_hidden_size = static_cast<int>(hidden);
     atten->v_hidden_size = static_cast<int>(v_hidden);
-    atten->head_size = batch_head / num_heads_;
-    atten->v_head_size = batch_head / num_heads_;
+    atten->head_size = batch / num_heads_;
+    atten->v_head_size = batch / num_heads_;
     atten->num_heads = num_heads_;
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input QKV should be 3D or 4D");
@@ -181,14 +183,14 @@ Status FlashAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
     if (att_bias != nullptr) {
       params.bias_buffer = reinterpret_cast<const HipT*>(att_bias->DataRaw());
-      params.bias_dims = att_bias->Shape().GetDims();
+      params.bias_dims = att_bias->Shape().AsShapeVector();
     }
 
     if (att_mask != nullptr) {
       // params.mask_index_buffer = mask_index->Data<int>();
       // params.mask_index_dims = mask_index->Shape().GetDims();
       params.mask_buffer = reinterpret_cast<const HipT*>(att_mask->DataRaw());
-      params.mask_index_dims = att_mask->Shape().GetDims();
+      params.mask_index_dims = att_mask->Shape().AsShapeVector();
     }
 
     params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
