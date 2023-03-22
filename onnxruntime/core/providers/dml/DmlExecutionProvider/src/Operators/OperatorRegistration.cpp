@@ -31,10 +31,9 @@ class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, Co
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 1,  Loop);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 10, Loop);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, Loop);
-class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 12, Loop);
 class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, Loop);
+class ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 16, Loop);
 
 }
 
@@ -124,37 +123,11 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
     Loop);
 
-ONNX_OPERATOR_KERNEL_EX(
-    Loop,
-    kOnnxDomain,
-    10,
-    kDmlExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
-        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Loop);
-
 // zero variadic argument support was added in opset 11. using same implementation as for previous version
 ONNX_OPERATOR_KERNEL_EX(
     Loop,
     kOnnxDomain,
     11,
-    kDmlExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
-        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
-        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
-        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllFixedSizeTensorTypes()),
-    Loop);
-
-ONNX_OPERATOR_KERNEL_EX(
-    Loop,
-    kOnnxDomain,
-    12,
     kDmlExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
@@ -178,6 +151,18 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     Loop);
 
+ONNX_OPERATOR_KERNEL_EX(
+    Loop,
+    kOnnxDomain,
+    16,
+    kDmlExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'M' needs to be on CPU
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'cond' needs to be on CPU
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypes()),
+    Loop);
 }
 
 namespace Dml
@@ -975,10 +960,9 @@ void RegisterCpuOperatorsAsDml(onnxruntime::KernelRegistry* registry)
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceErase)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, SequenceInsert)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 1,  Loop)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 10, Loop)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 11, Loop)>,
-        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 12, Loop)>,
         BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 13, Loop)>,
+        BuildKernelCreateInfo<ONNX_OPERATOR_KERNEL_CLASS_NAME(kDmlExecutionProvider, kOnnxDomain, 16, Loop)>,
     };
 
     for (auto& function_table_entry : function_table) {
