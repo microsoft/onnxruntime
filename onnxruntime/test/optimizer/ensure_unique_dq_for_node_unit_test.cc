@@ -23,8 +23,8 @@ struct GraphConfig {
 auto GetGraphBuilder(GraphConfig config) {
   return [=](ModelTestBuilder& builder) {
     const auto input_shape = std::vector<int64_t>{1, 2, 4};
-    const float scale = 0.5f;
-    const uint8_t zero_point = 0;
+    constexpr float scale = 0.5f;
+    constexpr uint8_t zero_point = 0;
 
     auto* dq_input = builder.MakeInput<uint8_t>(input_shape, uint8_t{0}, uint8_t{255});
     auto* dq_output = config.has_graph_output ? builder.MakeOutput() : builder.MakeIntermediate();
