@@ -3,6 +3,7 @@
 
 #include "core/providers/common.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/tensor_shape.h"
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
@@ -140,8 +141,9 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
     return false;
   }
 
-  if (std::find(input_shape.begin(), input_shape.end(), int64_t{0}) != input_shape.end()) {
-    LOGS(logger, VERBOSE) << "Cases that input dimensions with value of 0 is not supported";
+  const TensorShape shape(input_shape);
+  if (shape.Size() == 0) {
+    LOGS(logger, VERBOSE) << "Cases that input data being empty due to a dimension with value of 0 is not supported";
     return false;
   }
 
