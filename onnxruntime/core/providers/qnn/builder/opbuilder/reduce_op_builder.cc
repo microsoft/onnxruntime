@@ -83,8 +83,6 @@ class ReduceOpBuilder : public BaseOpBuilder {
 
   // Maps an operator type to the opset in which "axes" became an input instead of an attribute.
   static const std::array<int, REDUCE_OP_TYPE_COUNT> opset_with_axes_as_input;
-  static const std::array<std::vector<const char*>, REDUCE_OP_TYPE_COUNT> data_input_types;
-  static const std::array<std::vector<const char*>, REDUCE_OP_TYPE_COUNT> data_input_quant_types;
 };
 
 const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_input = {
@@ -94,38 +92,6 @@ const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_
   18,  // ReduceProd
   13   // ReduceSum
 };
-
-const std::array<std::vector<const char*>, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::data_input_types = {
-    std::vector<const char*>{"float"},  // ReduceMax
-    std::vector<const char*>{"float"},  // ReduceMin
-    std::vector<const char*>{"float"},  // ReduceMean
-    std::vector<const char*>{"float"},  // ReduceProd
-    std::vector<const char*>{"float", "int32"},  // ReduceSum
-};
-
-const std::array<std::vector<const char*>, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::data_input_quant_types = {
-    std::vector<const char*>{"uint8", "int8"},  // ReduceMax
-    std::vector<const char*>{"uint8", "int8"},  // ReduceMax
-    std::vector<const char*>{"uint8", "int8"},  // ReduceMean
-    std::vector<const char*>{},                 // ReduceProd (not supported by HTP)
-    std::vector<const char*>{"uint8", "int8"},  // ReduceSum
-};
-
-Status ReduceOpBuilder::IsTypeAllowed(ONNX_NAMESPACE::DataType type, const std::vector<const char*>& allowed_types,
-                                      const char* err_prefix) const {
-  for (auto allowed_type : allowed_types) {
-    if (ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(allowed_type) == type) {
-      return Status::OK();
-    }
-  }
-
-  std::string err_msg = err_prefix;
-  err_msg += " Type ";
-  err_msg += *type;
-  err_msg += " is not supported.";
-
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, err_msg);
-}
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                    InlinedHashSet<AxesOnnxIntType>& axes_set) const {
@@ -219,7 +185,6 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                       const NodeUnit& node_unit,
                                       const logging::Logger& logger,
                                       bool is_quantized_model) const {
-  ORT_UNUSED_PARAMETER(logger);
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
@@ -236,12 +201,6 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(data_input.node_arg, input_data_shape),
                     "Cannot get shape of data input");
   const size_t input_data_rank = input_data_shape.size();
-
-  // Check allowed data input type.
-  const std::vector<const char*>& allowed_data_types = is_quantized_model ? data_input_quant_types[reduce_op_type] : data_input_types[reduce_op_type];
-  ONNX_NAMESPACE::DataType input_data_type = data_input.node_arg.Type();
-  ORT_RETURN_IF_ERROR(IsTypeAllowed(input_data_type, allowed_data_types,
-                                    "Invalid data input type for QNN reduce operator."));
   
   InlinedHashSet<AxesOnnxIntType> axes_set;
   ORT_RETURN_IF_ERROR(GetAxesSet(qnn_model_wrapper, node_unit, axes_set));
@@ -250,6 +209,7 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   // Check that the output data type matches the input data type.
   const auto& reduced_output = node_unit.Outputs()[0];
   ONNX_NAMESPACE::DataType output_data_type = reduced_output.node_arg.Type();
+  ONNX_NAMESPACE::DataType input_data_type = data_input.node_arg.Type();
   if (output_data_type != input_data_type) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Output data for QNN reduce operator must match the input data type");
   }
@@ -270,7 +230,7 @@ Status ReduceOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                            "K = max(1, rank(input[0]) - num_axes) if keepdims is false");
   }
 
-  return Status::OK();
+  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, is_quantized_model, true);
 }
 
 Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
