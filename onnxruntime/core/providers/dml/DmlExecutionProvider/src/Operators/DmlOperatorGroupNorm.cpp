@@ -14,16 +14,14 @@ public:
     {
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() == 3);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() == 1);
-
-        std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
-        DmlOperator::Initialize(kernelCreationContext, kernelInputIndices);
+        DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
 
         std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
         std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
 
         const float epsilon = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Epsilon, DefaultEpsilon);
-        const int activation = kernelCreationContext.GetAttribute<int>(AttrName::Activation);
-        const int groups = kernelCreationContext.GetAttribute<int>(AttrName::Activation);
+        const int64_t activation = kernelCreationContext.GetAttribute<int64_t>(AttrName::Activation);
+        const int64_t groups = kernelCreationContext.GetAttribute<int64_t>(AttrName::Groups);
 
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs.size() == 3);
 
@@ -47,7 +45,7 @@ public:
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[1].GetDmlDataType() == m_inputTensorDescs[2].GetDmlDataType());
 
         // DML doesn't support grouped MVN, so split the data and perform MVN separately on each one of them
-        const uint32_t splitChannels = channels / groups;
+        const uint32_t splitChannels = channels / static_cast<uint32_t>(groups);
 
         // Use NHWC strides with NCHW sizes to satisfy DML's requirements
         const std::array<uint32_t, 4> inputShape = {batch, channels, height, width};
@@ -105,6 +103,7 @@ public:
         joinDesc.InputTensors = splitInputTensors.data();
         joinDesc.OutputTensor = &inputDmlTensorDesc;
         joinDesc.Axis = 1;
+        DML_OPERATOR_DESC dmlJoinDesc = { DML_OPERATOR_JOIN, &joinDesc };
 
         // Construct the graph
         std::vector<const DML_OPERATOR_DESC*> opDescs;
@@ -122,6 +121,9 @@ public:
 
         const uint32_t splitBetaNodeIndex = currentNodeIndex++;
         opDescs.push_back(&dmlSplitGammaBetaDesc);
+
+        const uint32_t joinNodeIndex = currentNodeIndex++;
+        opDescs.push_back(&dmlJoinDesc);
 
         DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
         inputEdge.GraphInputIndex = 0;
@@ -171,14 +173,18 @@ public:
             intermediateEdges.push_back(splitBetaToMvnEdge);
 
             DML_INTERMEDIATE_GRAPH_EDGE_DESC mvnToJoinEdge = {};
-            mvnToJoinEdge.FromNodeIndex = splitBetaNodeIndex;
-            mvnToJoinEdge.FromNodeOutputIndex = splitTensorIndex;
-            mvnToJoinEdge.ToNodeIndex = mvnNodeIndex;
-            mvnToJoinEdge.ToNodeInputIndex = 2;
+            mvnToJoinEdge.FromNodeIndex = mvnNodeIndex;
+            mvnToJoinEdge.FromNodeOutputIndex = 0;
+            mvnToJoinEdge.ToNodeIndex = joinNodeIndex;
+            mvnToJoinEdge.ToNodeInputIndex = splitTensorIndex;
             intermediateEdges.push_back(mvnToJoinEdge);
         }
 
-         opDescs.push_back(&dmlJoinDesc);
+        DML_OUTPUT_GRAPH_EDGE_DESC outputEdge{};
+        outputEdge.FromNodeIndex = joinNodeIndex;
+        outputEdge.FromNodeOutputIndex = 0;
+        outputEdge.GraphOutputIndex = 0;
+        outputEdges.push_back(outputEdge);
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
@@ -189,7 +195,6 @@ public:
         operatorGraphDesc.outputEdges = outputEdges.data();
         operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
         operatorGraphDesc.nodesAsOpDesc = opDescs.data();
-
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
 };
