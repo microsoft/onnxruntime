@@ -49,17 +49,19 @@ class OnnxModel:
         input_name_to_nodes = {}
         for node in self.nodes():
             for input_name in node.input:
-                if input_name not in input_name_to_nodes:
-                    input_name_to_nodes[input_name] = [node]
-                else:
-                    input_name_to_nodes[input_name].append(node)
+                if input_name:  # could be empty when it is optional
+                    if input_name not in input_name_to_nodes:
+                        input_name_to_nodes[input_name] = [node]
+                    else:
+                        input_name_to_nodes[input_name].append(node)
         return input_name_to_nodes
 
     def output_name_to_node(self):
         output_name_to_node = {}
         for node in self.nodes():
             for output_name in node.output:
-                output_name_to_node[output_name] = node
+                if output_name:  # could be empty when it is optional
+                    output_name_to_node[output_name] = node
         return output_name_to_node
 
     def nodes(self):
@@ -599,7 +601,7 @@ class OnnxModel:
                                                        Defaults to True.
             keep_io_types (Union[bool, List[str]], optional): boolean or a list of float32 input/output names.
                                                               If True, model inputs/outputs should be left as float32.
-                                                              Defaults to False.
+                                                              Defaults to True.
             op_block_list (List[str], optional): List of operator types to leave as float32.
                                                  Defaults to None, which will use `float16.DEFAULT_OP_BLOCK_LIST`.
             node_block_list (List[str], optional): List of node names to leave as float32. Defaults to None.
@@ -751,14 +753,18 @@ class OnnxModel:
         if len(unused_nodes) > 0:
             logger.debug(f"Removed unused constant nodes: {len(unused_nodes)}")
 
-    def prune_graph(self, outputs=None):
+    def prune_graph(self, outputs=None, allow_remove_graph_inputs=True):
         """
-        Prune graph to keep only required outputs. It removes unnecessary inputs and nodes.
-        Nodes are not linked (directly or indirectly) to any required output will be removed.
+        Prune graph to keep only required outputs. It removes unnecessary nodes that are not linked
+        (directly or indirectly) to any required output.
+
+        There is also an option to remove graph inputs that are not used to generate any required output.
 
         Args:
             outputs (list): a list of graph outputs to retain. If it is None, all graph outputs will be kept.
+            allow_remove_graph_inputs (bool): allow remove graph inputs.
         """
+
         if len(self.graphs()) > 1:
             logger.debug("Skip prune_graph since graph has subgraph")
             return
@@ -793,13 +799,14 @@ class OnnxModel:
             self.model.graph.output.remove(output)
 
         # remove inputs not used by any node.
-        input_name_to_nodes = self.input_name_to_nodes()
         input_to_remove = []
-        for input in self.model.graph.input:
-            if input.name not in input_name_to_nodes:
-                input_to_remove.append(input)
-        for input in input_to_remove:
-            self.model.graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            input_name_to_nodes = self.input_name_to_nodes()
+            for input in self.model.graph.input:
+                if input.name not in input_name_to_nodes:
+                    input_to_remove.append(input)
+            for input in input_to_remove:
+                self.model.graph.input.remove(input)
 
         if input_to_remove or output_to_remove or nodes_to_remove:
             removed = []
@@ -813,7 +820,7 @@ class OnnxModel:
 
         self.update_graph()
 
-    def update_graph(self, verbose=False):
+    def update_graph(self, verbose=False, allow_remove_graph_inputs=False):
         graph = self.model.graph
 
         remaining_input_names = []
@@ -831,11 +838,12 @@ class OnnxModel:
 
         # remove graph input that is not used
         inputs_to_remove = []
-        for input in graph.input:
-            if input.name not in remaining_input_names:
-                inputs_to_remove.append(input)
-        for input in inputs_to_remove:
-            graph.input.remove(input)
+        if allow_remove_graph_inputs:
+            for input in graph.input:
+                if input.name not in remaining_input_names:
+                    inputs_to_remove.append(input)
+            for input in inputs_to_remove:
+                graph.input.remove(input)
 
         names_to_remove = [input.name for input in inputs_to_remove]
         logger.debug(f"remove {len(inputs_to_remove)} unused inputs: {names_to_remove}")

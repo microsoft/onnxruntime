@@ -89,7 +89,7 @@ def test_gelu():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_GeLU_custom_func_rets_not_as_module_output():
+def test_gelu_custom_func_rets_not_as_module_output():
     @torch.jit.script
     def bias_gelu(bias, y):
         x = bias + y
@@ -147,7 +147,7 @@ def test_GeLU_custom_func_rets_not_as_module_output():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_GeLU_multiple_forward_runs():
+def test_gelu_multiple_forward_runs():
     @torch.jit.script
     def bias_gelu(bias, y):
         x = bias + y
@@ -199,7 +199,7 @@ def test_GeLU_multiple_forward_runs():
     run_training_test_and_compare(model_builder, input_generator, label_input, run_forward_twice=True)
 
 
-def test_MegatronF():
+def test_megatronf():
     # MegatronGFunction is tested in distributed test files.
     class MegatronFFunction(torch.autograd.Function):
         @staticmethod
@@ -239,7 +239,7 @@ def test_MegatronF():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_ScalarAndTuple():
+def test_scalar_and_tuple():
     class ScalarAndTupleFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input, alpha, beta, gamma):
@@ -286,7 +286,7 @@ def test_ScalarAndTuple():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_ScalarAndTupleReordered():
+def test_scalar_and_tuple_reordered():
     class ScalarAndTupleReorderedFunction(torch.autograd.Function):
         @staticmethod
         def forward(ctx, alpha, beta, input, gamma):
@@ -326,6 +326,41 @@ def test_ScalarAndTupleReordered():
 
     def input_generator():
         return torch.randn(output_size, dtype=torch.float)
+
+    # generate a label that have same shape as forward output.
+    label_input = torch.ones([output_size])
+
+    run_training_test_and_compare(model_builder, input_generator, label_input)
+
+
+def test_pointer_type():
+    class StringInputFunction(torch.autograd.Function):
+        @staticmethod
+        def forward(ctx, input, name: str):
+            ctx.save_for_backward(input)
+            ctx.name = name
+            return input.detach()
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            return grad_output, None
+
+    class StringInputFunctionTestModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.func = StringInputFunction.apply
+
+        def forward(self, x):
+            h = self.func(x, "temp_name")
+            return h
+
+    output_size = 2
+
+    def model_builder():
+        return StringInputFunctionTestModel()
+
+    def input_generator():
+        return torch.randn(output_size, dtype=torch.float).requires_grad_()
 
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
@@ -633,7 +668,7 @@ def test_InplaceUpdateInputAsOutputRequireGradWithMarkDirty():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_EvalTest():
+def test_evaluation():
     class EvalTestFunction(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
@@ -679,7 +714,7 @@ def test_EvalTest():
     torch_version_lower_than("1.10.0"),
     reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
 )
-def test_TwoOutputFunction():
+def test_two_outputs_function():
     class TwoOutputFunction1(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
@@ -739,7 +774,7 @@ def test_TwoOutputFunction():
     run_training_test_and_compare(model_builder, input_generator, label_input)
 
 
-def test_InnerModuleCall():
+def test_inner_module_call():
     class InnerModel(torch.nn.Module):
         def __init__(self, dim, device):
             super(InnerModel, self).__init__()
@@ -814,7 +849,7 @@ def test_InnerModuleCall():
     torch_version_lower_than("1.10.0"),
     reason="PyTorch older than 1.10.0 has bugs for exporting multiple output custom function",
 )
-def test_Share_Input():
+def test_share_input():
     class TwoOutputFunction2(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
@@ -865,7 +900,7 @@ def test_Share_Input():
     run_training_test_and_compare(model_builder, input_generator_with_requires_grad, label_input)
 
 
-def test_MultipleStream_InForwardFunction():
+def test_multiple_stream_in_forward_function():
     class MultipleStreamFunction1(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
@@ -913,7 +948,7 @@ def test_MultipleStream_InForwardFunction():
     )
 
 
-def test_NonDefaultStream_InForwardFunction1():
+def test_nondefault_stream_in_forward_function1():
     class MultipleStreamFunction2(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
@@ -961,7 +996,7 @@ def test_NonDefaultStream_InForwardFunction1():
     )
 
 
-def test_NonDefaultStream_InForwardFunction2():
+def test_nondefault_stream_in_forward_function2():
     class MultipleStreamFunction3(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
@@ -1008,7 +1043,7 @@ def test_NonDefaultStream_InForwardFunction2():
     )
 
 
-def test_NonDefaultStreamInplaceUpdate_InForwardFunction():
+def test_nondefault_stream_inplace_update_in_forward_function():
     class MultipleStreamFunction4(torch.autograd.Function):
         @staticmethod
         def forward(ctx, input):
