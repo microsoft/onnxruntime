@@ -326,7 +326,7 @@ class SymbolicShapeInference:
                     return unique_dims[int_dim]
                 else:
                     if self.verbose_ > 0:
-                        logger.debug("dim {} has been merged with dim {}".format(unique_dims[1:], unique_dims[0]))
+                        logger.debug(f"dim {unique_dims[1:]} has been merged with dim {unique_dims[0]}")
                     return dims[0]
             else:
                 return None

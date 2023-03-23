@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_torch_autograd_function, register_miscellaneous_const_input
+from onnxruntime.capi._pybind_state import register_miscellaneous_const_input, register_torch_autograd_function
 from onnxruntime.training import ortmodule
 
 from . import _logger

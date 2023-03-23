@@ -4,6 +4,5 @@
 # --------------------------------------------------------------------------
 
 
-from ._subscriber_manager import SubscriberManager
-
 from ._statistics_subscriber import StatisticsSubscriber
+from ._subscriber_manager import SubscriberManager
