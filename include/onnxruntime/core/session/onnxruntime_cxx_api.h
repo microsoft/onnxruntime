@@ -1938,11 +1938,125 @@ class OutputTensor : public Tensor {
   const size_t indice_;
 };
 
+/////////////////////////////////////////////////////////////////////////////////////////
+
+template <typename T>
+struct Span {
+  const T* data_ = {};
+  size_t size_ = {};
+  void Assign(const T* data, size_t size) {
+    data_ = data;
+    size_ = size;
+  }
+  size_t size() const { return size_; }
+  T operator[](size_t indice) const {
+    return data_[indice];
+  }
+};
+
+template <typename T>
+class TensorT : public Tensor {
+ public:
+  using TT = typename std::remove_reference<T>::type;
+  TensorT(OrtKernelContext* ctx, size_t indice, bool is_input) : Tensor(ctx), indice_(indice), is_input_(is_input) {
+    if (is_input) {
+      const_value_ = ctx_.GetInput(indice);
+      auto type_shape_info = const_value_.GetTensorTypeAndShapeInfo();
+      shape_ = type_shape_info.GetShape();
+    }
+  }
+  std::vector<int64_t> Shape() const {
+    return shape_;
+  }
+  const TT* Data() const {
+    return reinterpret_cast<const TT*>(const_value_.GetTensorRawData());
+  }
+  TT* Allocate(const std::vector<int64_t>& shape) {
+    if (!data_) {
+      data_ = ctx_.GetOutput(indice_, shape).GetTensorMutableData<TT>();
+    }
+    return data_;
+  }
+  static TT GetT() { return (TT)0; }
+
+  const Span<T>& AsSpan() {
+    // assert shape_ is 1-d
+    span_.Assign(Data(), shape_[0]);
+    return span_;
+  }
+
+  const T& AsScalar() {
+    // assert shape_ is {1}
+    return *Data();
+  }
+
+ private:
+  size_t indice_;
+  bool is_input_;
+  ConstValue const_value_;  // for input
+  TT* data_{};              // for output
+  std::vector<int64_t> shape_;
+  Span<T> span_;
+};
+
+//template <typename T>
+//class vector {
+// public:
+//  using TT = typename std::remove_reference<T>::type;
+//
+//  vector(OrtKernelContext* ctx, size_t indice, bool is_input) : ctx_(ctx), indice_(indice) {
+//    if (is_input) {
+//      auto const_value = ctx_.GetInput(indice);
+//      auto type_shape_info = const_value.GetTensorTypeAndShapeInfo();
+//      data_readonly_ = const_value.GetTensorData<TT>;
+//      //enforce the shape is 1-d
+//      size_ = type_shape_info.GetShape()[0];
+//    }
+//  }
+//
+//  size_t size() const { return size_; }
+//  const TT* data() const { return data_readonly_; }
+//  TT* data() { return data_readwrite_; }
+//  void reserve(size_t size) {
+//    //enforce it is output
+//    data_readwrite_ = ctx_.GetOutput(indice_, {size}).GetTensorMutableRawData();
+//  };
+//
+// private:
+//  const TT* data_readonly_ = {};
+//  TT* data_readwrite_ = {};
+//  int64_t size_ = {};
+//  size_t indice_ = {};
+//  struct KernelContext ctx_;
+//};
+
 template <typename... Args>
 OrtCustomOp* CreateCustomOp(const char* op_name,
                             const char* execution_provider,
                             void (*custom_compute_fn)(Args...));
-}  // namespace custom
+
+template <typename... Args>
+OrtCustomOp* CreateCustomOp(const char* op_name,
+                            const char* execution_provider,
+                            void* (*custom_init_fn)(const OrtKernelInfo*),
+                            void (*custom_compute_fn)(Args...),
+                            void (*custom_exit_fn)(void*));
+
+///////////////////////////////////////////////////////////////////////////
+
+template <typename... Args>
+OrtCustomOp* CreateCustomOpT(const char* op_name,
+                             const char* execution_provider,
+                             void (*custom_compute_fn)(Args...));
+
+template <typename T, typename... Args>
+OrtCustomOp* CreateCustomOpT(const char* op_name,
+                             const char* execution_provider,
+                             T* (*custom_init_fn)(const OrtKernelInfo*),
+                             void (*custom_compute_fn)(Args...),
+                             void (*custom_exit_fn)(T*));
+
+}  // namespace Custom
 
 }  // namespace Ort
 

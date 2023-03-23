@@ -1,0 +1,4 @@
+LIBRARY "simple_custom_op.dll"
+EXPORTS
+ RegisterCustomOps @1
+ RegisterCustomOpsAltName @2
