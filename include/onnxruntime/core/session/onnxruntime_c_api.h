@@ -4088,7 +4088,17 @@ struct OrtApi {
   ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out); 
 
 #ifdef __cplusplus
-  OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
+  // We would like to disable copying of this structure
+  // However, deleting the copy constructor and assignment operator
+  // prevents us from initializing it memberwise.
+  // This m_no_copy implicitly deletes the copy constructor and assignment operator.
+  struct NoCopy {
+    int dummy = 5;
+    NoCopy() = default;
+    NoCopy(const NoCopy&) = delete;
+    NoCopy& operator=(const NoCopy&) = delete;
+  };
+  NoCopy m_no_copy;
 #endif
 };
 
