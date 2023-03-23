@@ -582,13 +582,13 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention) {
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention) {
   // last_outputs: logits, present_0, present_1, ...
   // next_inputs: input_ids, position_id, attention_mask, past_0, past_1
   ORT_UNUSED_PARAMETER(stream);
   ORT_UNUSED_PARAMETER(beam_indices_gpu);
   ORT_UNUSED_PARAMETER(input_sequence_len);
-  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+  ORT_UNUSED_PARAMETER(has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
   // The following updates inputs for subgraph
 
@@ -904,7 +904,7 @@ template Status UpdateGptFeeds<float>(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 template Status UpdateDecoderFeeds<float>(
     AllocatorPtr allocator,
