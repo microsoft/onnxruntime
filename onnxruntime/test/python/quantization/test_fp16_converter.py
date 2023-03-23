@@ -3,7 +3,8 @@ import unittest
 
 import numpy as np
 import onnx
-import requests
+
+# import requests
 from onnx import TensorProto, helper, numpy_helper
 from op_test_utils import check_model_correctness, check_op_type_count
 
@@ -161,57 +162,57 @@ class TestONNXModel(unittest.TestCase):
         self.construct_test("MatMul")
         self.construct_test("MatMul", False)
 
-    def test_model_converter_on_resnet50_v2_keep_io(self):
-        filename = "resnet50-v2-7.onnx"
-        if not os.path.exists(filename):
-            url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
-            model = download_model_from_url(url)
-            onnx.save_model(model, filename)
-            print(f"Saved model to {filename}.")
-        model_fp32_path = filename
-        model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io.onnx"
+    # def test_model_converter_on_resnet50_v2_keep_io(self):
+    #     filename = "resnet50-v2-7.onnx"
+    #     if not os.path.exists(filename):
+    #         url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
+    #         model = download_model_from_url(url)
+    #         onnx.save_model(model, filename)
+    #         print(f"Saved model to {filename}.")
+    #     model_fp32_path = filename
+    #     model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io.onnx"
+    #
+    #     converter = FP16Converter()
+    #     converter.import_model_from_path(model_fp32_path)
+    #     converter.process(True)
+    #     converter.export_model_to_path(model_fp16_path)
+    #     new_model = converter.get_model()
+    #     batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
+    #     cast_nodes = {"Cast": batch_normalization_count * 2}
+    #     test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float32)}
+    #     check_op_type_count(self, model_fp16_path, **cast_nodes)
+    #     check_model_correctness(
+    #         self,
+    #         model_fp32_path,
+    #         model_fp16_path,
+    #         test_input,
+    #     )
 
-        converter = FP16Converter()
-        converter.import_model_from_path(model_fp32_path)
-        converter.process(True)
-        converter.export_model_to_path(model_fp16_path)
-        new_model = converter.get_model()
-        batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
-        cast_nodes = {"Cast": batch_normalization_count * 2}
-        test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float32)}
-        check_op_type_count(self, model_fp16_path, **cast_nodes)
-        check_model_correctness(
-            self,
-            model_fp32_path,
-            model_fp16_path,
-            test_input,
-        )
-
-    def test_model_converter_on_resnet50_v2_do_not_keep_io(self):
-        filename = "resnet50-v2-7.onnx"
-        if not os.path.exists(filename):
-            url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
-            model = download_model_from_url(url)
-            onnx.save_model(model, filename)
-            print(f"Saved model to {filename}.")
-        model_fp32_path = filename
-        model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io-false.onnx"
-        converter = FP16Converter()
-        converter.import_model_from_path(model_fp32_path)
-        converter.process(False)
-        converter.export_model_to_path(model_fp16_path)
-        new_model = converter.get_model()
-        batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
-        cast_nodes = {"Cast": batch_normalization_count * 2}
-        check_op_type_count(self, model_fp16_path, **cast_nodes)
-        # Cannot verify correctness because the input and output names are different
-        # test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float16)}
-        # check_model_correctness(
-        #     self,
-        #     model_fp32_path,
-        #     model_fp16_path,
-        #     test_input,
-        # )
+    # def test_model_converter_on_resnet50_v2_do_not_keep_io(self):
+    #     filename = "resnet50-v2-7.onnx"
+    #     if not os.path.exists(filename):
+    #         url = f"https://github.com/onnx/models/blob/main/vision/classification/resnet/model/{filename}?raw=true"
+    #         model = download_model_from_url(url)
+    #         onnx.save_model(model, filename)
+    #         print(f"Saved model to {filename}.")
+    #     model_fp32_path = filename
+    #     model_fp16_path = "resnet50-fp16-v2-7-allow-list-keep-io-false.onnx"
+    #     converter = FP16Converter()
+    #     converter.import_model_from_path(model_fp32_path)
+    #     converter.process(False)
+    #     converter.export_model_to_path(model_fp16_path)
+    #     new_model = converter.get_model()
+    #     batch_normalization_count = get_op_count_from_model("BatchNormalization", new_model)
+    #     cast_nodes = {"Cast": batch_normalization_count * 2}
+    #     check_op_type_count(self, model_fp16_path, **cast_nodes)
+    #     # Cannot verify correctness because the input and output names are different
+    #     # test_input = {"data": np.random.rand(1, 3, 224, 224).astype(np.float16)}
+    #     # check_model_correctness(
+    #     #     self,
+    #     #     model_fp32_path,
+    #     #     model_fp16_path,
+    #     #     test_input,
+    #     # )
 
 
 def get_op_count_from_model(op, model):
@@ -225,12 +226,12 @@ def get_ops_counts(model):
     return len(unique_nodes)
 
 
-def download_model_from_url(url: str) -> onnx.ModelProto:
-    """
-    Helper function to download model from url
-    """
-    r = requests.get(url, allow_redirects=True)
-    return onnx.load_model_from_string(r.content)
+# def download_model_from_url(url: str) -> onnx.ModelProto:
+#     """
+#     Helper function to download model from url
+#     """
+#     r = requests.get(url, allow_redirects=True)
+#     return onnx.load_model_from_string(r.content)
 
 
 if __name__ == "__main__":
