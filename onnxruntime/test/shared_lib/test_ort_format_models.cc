@@ -122,7 +122,8 @@ TEST(OrtFormatCustomOpTests, ConvertOnnxModelToOrt) {
 // CUDA EP for the test.
 #ifndef USE_CUDA
 TEST(OrtFormatCustomOpTests, LoadOrtModel) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+  // const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx");
 
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
   Ort::CustomOpDomain custom_op_domain("test");
@@ -143,7 +144,8 @@ TEST(OrtFormatCustomOpTests, LoadOrtModel) {
 }
 
 TEST(OrtFormatCustomOpTests, LoadOrtModelStandaloneCustomOpImplementation) {
-  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+  //const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx.ort");
+  const std::basic_string<ORTCHAR_T> ort_file = ORT_TSTR("testdata/foo_1.onnx");
 
   StandaloneCustomOp standalone_op{onnxruntime::kCpuExecutionProvider};
   Ort::CustomOpDomain custom_op_domain("test");
