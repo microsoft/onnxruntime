@@ -206,7 +206,7 @@ MlasPoolFp16HWC(
                 MaximumVector3 = PoolAggregate16x8<AggregationType>(MaximumVector3, InputVector3);
                 cnt++;
             }
-            AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
+            typename AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
             MaximumVector0 = PoolSummary16x8<AggregationType>(MaximumVector0, context);
             MaximumVector1 = PoolSummary16x8<AggregationType>(MaximumVector1, context);
             MaximumVector2 = PoolSummary16x8<AggregationType>(MaximumVector2, context);
@@ -238,7 +238,7 @@ MlasPoolFp16HWC(
                 MaximumVector1 = PoolAggregate16x8<AggregationType>(MaximumVector1, InputVector1);
                 cnt++;
             }
-            AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
+            typename AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
             MaximumVector0 = PoolSummary16x8<AggregationType>(MaximumVector0, context);
             MaximumVector1 = PoolSummary16x8<AggregationType>(MaximumVector1, context);
 
@@ -262,7 +262,7 @@ MlasPoolFp16HWC(
                 MaximumVector0 = PoolAggregate16x8<AggregationType>(MaximumVector0, InputVector0);
                 cnt++;
             }
-            AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
+            typename AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
             MaximumVector0 = PoolSummary16x8<AggregationType>(MaximumVector0, context);
 
             MlasStoreFloat16x8(&Output[0], MaximumVector0);
@@ -284,7 +284,7 @@ MlasPoolFp16HWC(
                 MaximumVector0 = PoolAggregate16x4<AggregationType>(MaximumVector0, InputVector0);
                 cnt++;
             }
-            AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
+            typename AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
             MaximumVector0 = PoolSummary16x4<AggregationType>(MaximumVector0, context);
 
             MlasStoreFloat16x4(&Output[0], MaximumVector0);
@@ -307,7 +307,7 @@ MlasPoolFp16HWC(
                 MaximumVector0 = PoolAggregate16x4<AggregationType>(MaximumVector0, InputVector0);
                 cnt++;
             }
-            AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
+            typename AggregationType::CtxType context = PoolCreateContext<AggregationType>(cnt);
             MaximumVector0 = PoolSummary16x4<AggregationType>(MaximumVector0, context);
 
             MlasStorePartialFloat16x4(&Output[0], MaximumVector0, c);
