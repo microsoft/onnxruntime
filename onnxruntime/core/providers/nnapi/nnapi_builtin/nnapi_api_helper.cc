@@ -66,7 +66,7 @@ static int32_t GetDeviceFeatureLevelInternal(const NnApi& nnapi_handle, gsl::spa
  *
  */
 Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
-                        InlinedVector<DeviceWrapper>& devices) {
+                        DeviceWrapperVector& devices) {
   // GetTargetDevices is only supported when NNAPI runtime feature level >= ANEURALNETWORKS_FEATURE_LEVEL_3
   if (GetNNAPIRuntimeFeatureLevel(nnapi_handle) < ANEURALNETWORKS_FEATURE_LEVEL_3)
     return Status::OK();
@@ -134,7 +134,7 @@ std::string GetDevicesDescription(gsl::span<const DeviceWrapper> devices) {
 // Return -1 if failed.
 // It's not necessary to handle the error here, because level=-1 will refuse all ops in NNAPI EP.
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option) {
-  InlinedVector<DeviceWrapper> nnapi_target_devices;
+  DeviceWrapperVector nnapi_target_devices;
   if (auto st = GetTargetDevices(nnapi_handle, target_device_option, nnapi_target_devices); !st.IsOK()) {
     LOGS_DEFAULT(WARNING) << "GetTargetDevices failed for:" << st.ErrorMessage();
     return -1;

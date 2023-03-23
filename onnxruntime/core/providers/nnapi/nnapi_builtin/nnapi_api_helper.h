@@ -54,12 +54,16 @@ constexpr const char* const kNnapiCpuDeviceName = "nnapi-reference";
  */
 int32_t GetNNAPIEffectiveFeatureLevel(const NnApi& nnapi_handle, gsl::span<const DeviceWrapper> device_handles);
 
+// The value 3 is somewhat arbitrary. It's accounting for one each of ANEURALNETWORKS_DEVICE_ACCELERATOR,
+// ANEURALNETWORKS_DEVICE_CPU, and ANEURALNETWORKS_DEVICE_GPU.
+constexpr size_t kDefaultDeviceWrapperInlinedVectorSize = 3;
+using DeviceWrapperVector = InlinedVector<DeviceWrapper, kDefaultDeviceWrapperInlinedVectorSize>;
+
 /**
  * Get all target devices specified by target_device_option.
- *
  */
 Status GetTargetDevices(const NnApi& nnapi_handle, TargetDeviceOption target_device_option,
-                        InlinedVector<DeviceWrapper>& nnapi_target_devices);
+                        DeviceWrapperVector& nnapi_target_devices);
 
 int32_t GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(const NnApi& nnapi_handle, TargetDeviceOption target_device_option);
 

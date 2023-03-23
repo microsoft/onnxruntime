@@ -46,7 +46,7 @@ class NnapiExecutionProvider : public IExecutionProvider {
 
   // For Android NNAPI and stub implementation.
   const NnApi* nnapi_handle_ = nullptr;
-  InlinedVector<nnapi::DeviceWrapper> nnapi_target_devices_;
+  nnapi::DeviceWrapperVector nnapi_target_devices_;
   nnapi::TargetDeviceOption target_device_option_;
 };
 }  // namespace onnxruntime
