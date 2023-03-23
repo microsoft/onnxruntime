@@ -91,6 +91,49 @@ GetQDQTestCaseFn BuildQDQConvTransposeTestCase(const std::vector<int64_t>& input
   };
 }
 
+// Creates the graph:
+//                                  _______________________
+//               input_u8 -> DQ -> |                       | -> Q -> output_u8
+// scale_u8 (initializer) -> DQ -> | InstanceNormalization |
+// bias_u8 (initializer)  -> DQ -> |_______________________|
+//
+// Currently used to test QNN EP.
+template <typename InputQType, typename ScaleQType, typename BiasQType>
+GetQDQTestCaseFn BuildQDQInstanceNormTestCase(const std::vector<int64_t>& input_shape, float epsilon) {
+  return [input_shape, epsilon](ModelTestBuilder& builder) {
+    const int64_t num_channels = input_shape[1];
+    const InputQType quant_zero_point = 0;
+    const float quant_scale = 1.0f;
+
+    auto* dq_scale_output = builder.MakeIntermediate();
+    auto* scale = builder.MakeInitializer<ScaleQType>({num_channels}, static_cast<ScaleQType>(0),
+                                                      static_cast<ScaleQType>(127));
+    builder.AddDequantizeLinearNode<ScaleQType>(scale, quant_scale, quant_zero_point, dq_scale_output);
+
+    // Add bias (initializer) -> DQ ->
+    auto* dq_bias_output = builder.MakeIntermediate();
+    auto* bias = builder.MakeInitializer<BiasQType>({num_channels}, static_cast<BiasQType>(0),
+                                                    static_cast<BiasQType>(4));
+    builder.AddDequantizeLinearNode<BiasQType>(bias, 1.0f, 0, dq_bias_output);
+
+    // Add input_u8 -> DQ ->
+    auto* input_u8 = builder.MakeInput<InputQType>(input_shape, static_cast<InputQType>(0),
+                                                   static_cast<InputQType>(10));
+    auto* dq_input_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<InputQType>(input_u8, quant_scale, quant_zero_point, dq_input_output);
+
+    // Add dq_input_output -> InstanceNormalization ->
+    auto* instance_norm_output = builder.MakeIntermediate();
+    Node& inst_norm_node = builder.AddNode("InstanceNormalization", {dq_input_output, dq_scale_output, dq_bias_output},
+                                           {instance_norm_output});
+    inst_norm_node.AddAttribute("epsilon", epsilon);
+
+    // Add instance_norm_output -> Q -> output_u8
+    auto* output_u8 = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<InputQType>(instance_norm_output, quant_scale, quant_zero_point, output_u8);
+  };
+}
+
 template <typename InputType, typename WeightType, typename BiasType, typename OutputType>
 GetQDQTestCaseFn BuildQDQConvTestCase(const std::vector<int64_t>& input_shape, const std::vector<int64_t>& weights_shape) {
   return [input_shape, weights_shape](ModelTestBuilder& builder) {
@@ -378,6 +421,9 @@ GetQDQTestCaseFn BuildConsolidationTestCase(
     auto* split_output_3 = builder.MakeIntermediate();
     Node& split_node = builder.AddNode("Split", {upper_dq_output}, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
+    }
 
     // add Q
     auto* lower_q_output_1 = builder.MakeIntermediate();
@@ -456,6 +502,9 @@ GetQDQTestCaseFn BuildQDQSplitTestCase(
     auto* split_output_3 = builder.MakeIntermediate();
     Node& split_node = builder.AddNode("Split", {dq_output}, {split_output_1, split_output_2, split_output_3});
     split_node.AddAttribute("axis", axis);
+    if (builder.DomainToVersionMap().find(kOnnxDomain)->second >= 18) {
+      split_node.AddAttribute("num_outputs", static_cast<int64_t>(3));
+    }
 
     // add Q
     auto* q_split_output_1 = builder.MakeOutput();

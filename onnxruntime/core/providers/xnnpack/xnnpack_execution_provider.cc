@@ -158,7 +158,7 @@ void XnnpackExecutionProvider::RegisterAllocator(AllocatorManager& allocator_man
   // by all following xnnpack EP sessions. A static allocator is used to extend its life cycle.
   const auto& [stored_allocator, xnn_allocator] = GetStoredAllocator();
   // if EP is used in multiple inference sessions we may already have an allocator. if so use that.
-  auto cpu_alloc = GetAllocator(cpu_device.Id(), OrtMemTypeDefault);
+  auto cpu_alloc = GetAllocator(OrtMemTypeDefault);
   if (!cpu_alloc) {
     // use shared allocator if available
     cpu_alloc = allocator_manager.GetAllocator(OrtMemTypeDefault, cpu_device);

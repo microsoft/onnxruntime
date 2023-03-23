@@ -7,6 +7,7 @@
 #include "core/providers/nnapi/nnapi_builtin/nnapi_execution_provider.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksTypes.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/nnapi_implementation.h"
+#include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
 #include "core/session/inference_session.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -64,10 +65,10 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_y, values_mul_y,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_y, values_mul_y,
                        &ml_value_y);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -92,7 +93,7 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -119,7 +120,7 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
 
   NameMLValMap feeds;
@@ -148,7 +149,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_x, values_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_x, values_x,
                        &ml_value_x);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -205,13 +206,13 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_y);
   OrtValue ml_value_z;
-  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims_mul_x, values_mul_x,
+  CreateMLValue<float>(TestNnapiExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims_mul_x, values_mul_x,
                        &ml_value_z);
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
@@ -327,8 +328,9 @@ TEST(NnapiExecutionProviderTest, TestQDQResizeNCHW) {
   // Use bi-linear and asymmetric for NNAPI EP only
   auto Mode = ExpectedEPNodeAssignment::None;
 #if defined(__ANDROID__)
-  const auto* nnapi = NnApiImplementation();
-  if (nnapi->nnapi_runtime_feature_level >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  const auto* nnapi_handle = NnApiImplementation();
+  if (nnapi_handle && nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(
+                          *nnapi_handle, nnapi::TargetDeviceOption::ALL_DEVICES) >= ANEURALNETWORKS_FEATURE_LEVEL_3) {
     Mode = ExpectedEPNodeAssignment::All;
   }
 #endif
@@ -458,8 +460,9 @@ TEST(NnapiExecutionProviderTest, TestQDQConcat_UnsupportedInputScalesAndZp) {
   // See https://developer.android.com/studio/run/emulator-commandline for some info on
   // starting a testing android emulator in command line. (Run an android build with emulator started)
   // TODO: consider to configure this and enable it to run in Android CI.
-  const auto* nnapi = NnApiImplementation();
-  if (nnapi->nnapi_runtime_feature_level < ANEURALNETWORKS_FEATURE_LEVEL_3) {
+  const auto* nnapi_handle = NnApiImplementation();
+  if (nnapi_handle && nnapi::GetNNAPIEffectiveFeatureLevelFromTargetDeviceOption(
+                          *nnapi_handle, nnapi::TargetDeviceOption::ALL_DEVICES) < ANEURALNETWORKS_FEATURE_LEVEL_3) {
     RunQDQModelTest(BuildQDQConcatTestCaseUnsupportedInputScaleZp(),
                     "nnapi_qdq_test_graph_concat_unsupported",
                     {ExpectedEPNodeAssignment::None});
@@ -539,7 +542,7 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   std::vector<float> data = random.Gaussian<float>(dims, 0.0f, 1.f);
 
   OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault), dims, data,
+  CreateMLValue<float>(TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault), dims, data,
                        &ml_value);
 
   NameMLValMap feeds;

@@ -41,7 +41,7 @@ Tensor copy_sort(const Tensor& src, const AllocatorPtr& allocator) {
 template <typename T>
 void sort_expected_and_actual_buffers(const Tensor& expected, Tensor& expected_sorted,
                                       const Tensor& actual, Tensor& actual_sorted) {
-  auto allocator = TestCPUExecutionProvider()->GetAllocator(0, OrtMemTypeDefault);
+  auto allocator = TestCPUExecutionProvider()->GetAllocator(OrtMemTypeDefault);
   expected_sorted = copy_sort<T>(expected, allocator);
   actual_sorted = copy_sort<T>(actual, allocator);
 }
@@ -413,9 +413,9 @@ struct TensorCheck<BFloat16> {
           if (abs_error <= abs_threshold) {
             // if the absolute error is small enough, then no need to calculate realative error
             EXPECT_NEAR(0, abs_error, abs_threshold) << "provider_type: "
-                                                 << provider_type;
+                                                     << provider_type;
           } else {
-            //default for existing tests.
+            // default for existing tests.
             const float rel_error = abs_error / max_value;
             EXPECT_NEAR(0, rel_error, threshold) << "provider_type: "
                                                  << provider_type;
@@ -985,6 +985,7 @@ bool SetEpsForAllNodes(
           provider_type == onnxruntime::kNnapiExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
+          provider_type == onnxruntime::kQnnExecutionProvider ||
           provider_type == onnxruntime::kSnpeExecutionProvider) {
         found = true;
         break;
@@ -1219,6 +1220,7 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kNnapiExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
+          kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
       };
@@ -1257,6 +1259,8 @@ void OpTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
+        else if (provider_type == onnxruntime::kQnnExecutionProvider)
+          execution_provider = DefaultQnnExecutionProvider();
         else if (provider_type == onnxruntime::kXnnpackExecutionProvider)
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
@@ -1402,7 +1406,7 @@ void OpTester::ExecuteModelForEps(
   }
 };
 
-void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error) {
+void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_error, std::unique_ptr<IExecutionProvider> ep) {
   SessionOptions so;
   so.session_logid = op_;
   so.session_log_verbosity_level = 1;
@@ -1414,6 +1418,7 @@ void OpTester::AddReferenceOutputs(const std::string& model_path, float abs_erro
 
   Status status;
   InferenceSession subgraph_session_object{so, GetEnvironment()};
+  status = subgraph_session_object.RegisterExecutionProvider(std::move(ep));
   ASSERT_TRUE((status = subgraph_session_object.Load(model_path)).IsOK()) << status;
   ASSERT_TRUE((status = subgraph_session_object.Initialize()).IsOK()) << status;
 

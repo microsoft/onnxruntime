@@ -2,51 +2,128 @@ resources:
   pipelines:
   - pipeline: build
     source: 'Python packaging pipeline'
-    trigger: true 
-    
-jobs:
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'x86_64'
-    machine_pool: 'Linux-CPU'
-    device: 'CPU'
+    trigger: true
 
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'aarch64'
-    machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
-    device: 'CPU'
+stages:
+- stage: Linux_Test_CPU_x86_64_stage
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Linux-CPU'
+      device: 'CPU'
 
-- template: templates/py-packaging-linux-test.yml
-  parameters:
-    arch: 'x86_64'
-    machine_pool: 'Onnxruntime-Linux-GPU'
-    device: 'GPU'
-    python_wheel_suffix: '_gpu'
+- stage: Linux_Test_CPU_aarch64_stage
+  dependsOn: []
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'aiinfra-linux-ARM64-CPU-2019'
+      device: 'CPU'
 
-- job: Final
+- stage: Packages_Somking_Test
+  dependsOn: []
+  jobs:
+    - job: MacOS_py_Wheels
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-12'
+      variables:
+        MACOSX_DEPLOYMENT_TARGET: '10.15'
+      strategy:
+        matrix:
+          Python38:
+            PythonVersion: '3.8'
+          Python39:
+            PythonVersion: '3.9'
+          Python310:
+            PythonVersion: '3.10'
+      steps:
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download Pipeline Artifact'
+        inputs:
+          artifactName: 'onnxruntime'
+          targetPath: '$(Build.BinariesDirectory)/whl'
+          itemPattern: '*/*mac*x86_64.whl'
+          # The public ADO project
+          ${{ if eq(variables['System.CollectionId'], 'f3ad12f2-e480-4533-baf2-635c95467d29') }}:
+            buildType: current
+          # The private ADO project
+          ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+            project: '530acbc4-21bc-487d-8cd8-348ff451d2ff'
+            definition: 841
+            preferTriggeringPipeline: true
+            runVersion: 'latest'
+            buildType: specific
+
+      - script: |
+          set -ex
+          cd $(Build.BinariesDirectory)
+          files=(whl/*.whl)
+          FILE_NAME="${files[0]}"
+          FILE_NAME=$(basename $FILE_NAME)
+          PYTHON_PACKAGE_NAME=$(echo "$FILE_NAME" | cut -f 1 -d '-')
+          python3 -m pip install --find-links $(Build.BinariesDirectory)/whl $PYTHON_PACKAGE_NAME
+          pip show $PYTHON_PACKAGE_NAME
+          python -c "import onnxruntime as ort; print(ort.__version__)"
+        displayName: Test Package Installation
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+
+# ****The following Stage depend on all previous tags. ***
+
+# GPU resources are very limited,
+# To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
+- stage: Linux_Test_GPU_x86_64_stage
   dependsOn:
-  - Linux_Test_CPU_x86_64
-  - Linux_Test_CPU_aarch64
-  - Linux_Test_GPU_x86_64
-  #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
-  condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
-  timeoutInMinutes: 60
-  variables:
-    skipComponentGovernanceDetection: true
-  workspace:
-    clean: all
-  pool: Azure-Pipelines-EO-Windows2022-aiinfra
-  steps:
-  - task: PowerShell@2
-    displayName: 'Add Build Tag'    
-    env:
-      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
-    inputs:
-      targetType: inline
-      script: |
-        $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
-        $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
-        $headers.Add("Content-Type", "application/json")
-        $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
-        Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT
+    - Linux_Test_CPU_x86_64_stage
+    - Linux_Test_CPU_aarch64_stage
+    - Packages_Somking_Test
+  jobs:
+  - template: templates/py-packaging-linux-test.yml
+    parameters:
+      arch: 'x86_64'
+      machine_pool: 'Onnxruntime-Linux-GPU'
+      device: 'GPU'
+      python_wheel_suffix: '_gpu'
+      timeout: 480
+
+
+# if final job not extecuted, it will not run nightlly build
+- stage: Final
+  dependsOn:
+    - Linux_Test_GPU_x86_64_stage
+  jobs:
+  - job: Final
+    #Run this step only if all previous steps are succeeded and (this build was triggered by a resource trigger or it was triggered by another build).
+    condition: and(succeeded(), eq(variables['Build.Reason'], 'ResourceTrigger'))
+    timeoutInMinutes: 60
+    variables:
+      skipComponentGovernanceDetection: true
+    workspace:
+      clean: all
+    pool: Azure-Pipelines-EO-Windows2022-aiinfra
+    steps:
+    - task: PowerShell@2
+      displayName: 'Add Build Tag'
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      inputs:
+        targetType: inline
+        script: |
+          $headers = New-Object "System.Collections.Generic.Dictionary[[String],[String]]"
+          $headers.Add("Authorization", "Bearer $env:SYSTEM_ACCESSTOKEN")
+          $headers.Add("Content-Type", "application/json")
+          $uri = "https://dev.azure.com/aiinfra/Lotus/_apis/build/builds/$(resources.pipeline.build.runID)/tags/test%20pass?api-version=6.0"
+          Invoke-RestMethod -Uri $uri -Headers $headers -Method PUT

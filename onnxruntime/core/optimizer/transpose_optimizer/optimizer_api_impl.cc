@@ -90,7 +90,7 @@ class ApiNode final : public api::NodeRef {
   void CopyAttributes(const api::NodeRef& node) override;
   void ClearAttribute(std::string_view name) override;
   void SetInput(size_t i, std::string_view name) override;
-  const std::string& GetExecutionProviderType() const override;
+  std::string_view GetExecutionProviderType() const override;
   virtual int SinceVersion() const override;
 
  private:
@@ -401,7 +401,7 @@ void ApiNode::SetInput(size_t i, std::string_view name) {
   }
 }
 
-const std::string& ApiNode::GetExecutionProviderType() const {
+std::string_view ApiNode::GetExecutionProviderType() const {
   return node_.GetExecutionProviderType();
 }
 
@@ -646,6 +646,12 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_typ
     graph.UpdateProducerNode(arg->Name(), node.Index());
   }
 
+#if !defined(ORT_MINIMAL_BUILD)
+  // add schema to make it equivalent with the other nodes in the graph created by Graph::Resolve()
+  // EPs may do kernel lookup during GetCapability which requires the schema
+  graph.SetOpSchemaFromRegistryForNode(node);
+#endif
+
   return node;
 }
 
@@ -825,16 +831,57 @@ onnxruntime::Node& NodeFromApiNode(onnx_layout_transformation::api::NodeRef& nod
   return static_cast<ApiNode&>(node).Node();
 }
 
+CostCheckResult OrtEPCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                               const std::vector<int64_t>& /*perm*/,
+                               const std::unordered_set<std::string>& /*outputs_leading_to_transpose*/) {
+  // special case some kernels based on the ORT implementation details
+  if (node.GetExecutionProviderType() == kCpuExecutionProvider) {
+    if (node.IsOp("MaxPool")) {
+      // MaxPool has higher perf in the NHWC variant when supported. HandleMaxPool does the support checks.
+      return CostCheckResult::kPushTranspose;
+    }
+
+    if (node.IsOp("Resize")) {
+      // Resize is included because it has higher perf in the NHWC variant when
+      // the input X is 4D int8 tensor and the mode is linear
+      auto X_value_info = graph.GetValueInfo(node.Inputs()[0]);
+      auto X_shape = X_value_info->Shape();
+      auto X_dtype = X_value_info->DType();
+      auto mode = node.GetAttributeString("mode");
+      if (X_shape && X_shape->size() == 4 &&
+          (X_dtype == api::DataType::UINT8 || X_dtype == api::DataType::INT8) &&
+          mode && *mode == "linear") {
+        return CostCheckResult::kPushTranspose;
+      }
+    }
+  }
+
+  return CostCheckResult::kFallThrough;
+}
+
 namespace layout_transformer {
 
+// Layout sensitive NCHW ops. TransformLayoutForEP will wrap these with Transpose nodes to convert the input
+// data to NHWC and output data back to NCHW, and move the op to the internal NHWC domain (kMSInternalNHWCDomain).
+// The EP requesting these ops MUST be able to handle the node with the operator in the kMSInternalNHWCDomain.
+// Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
+// as many of the layout transposes as possible.
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
     const auto& layout_sensitive_ops = onnx_layout_transformation::GetLayoutSensitiveOps();
-#if !defined(USE_CUDA) && !defined(USE_ROCM)
-    std::unordered_set<std::string_view> ort_specific_ops = {"FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
-#else
-    std::unordered_set<std::string_view> ort_specific_ops = {"Resize", "FusedConv", "QLinearAveragePool", "QLinearGlobalAveragePool"};
+    std::unordered_set<std::string_view> ort_specific_ops =
+    { "FusedConv",
+      "QLinearAveragePool",
+      "QLinearGlobalAveragePool"
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_QNN)
+      // The CUDA/ROCM Resize kernel is layout sensitive as it only handles NCHW input.
+      // The CPU kernel and ONNX spec are not limited to handling NCHW input so are not layout sensitive, and
+      // onnx_layout_transformation::HandleResize is used.
+      ,
+      "Resize"
 #endif
+    };
+
     ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
     return ort_specific_ops;
   }();
@@ -842,9 +889,24 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   return ort_layout_sensitive_ops;
 }
 
+// Cost check for aggressively pushing the Transpose nodes involved in the layout transformation further out.
+static CostCheckResult
+PostLayoutTransformCostCheck(const api::GraphRef& graph, const api::NodeRef& node,
+                             const std::vector<int64_t>& perm,
+                             const std::unordered_set<std::string>& outputs_leading_to_transpose) {
+  // we aggressively push the layout transpose nodes
+  if (perm == ChannelFirstToLastPerm(perm.size()) ||
+      perm == ChannelLastToFirstPerm(perm.size())) {
+    return CostCheckResult::kPushTranspose;
+  }
+
+  // for other nodes use the default ORT cost check
+  return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
+}
+
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider) {
   // sub graph recurse will be added later
-  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(0, OrtMemTypeDefault), nullptr);
+  auto api_graph = MakeApiGraph(graph, execution_provider.GetAllocator(OrtMemTypeDefault), nullptr);
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
 
   for (auto& node : api_graph->Nodes()) {
@@ -909,18 +971,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
         onnx_layout_transformation::WrapTransposesAroundNode(*api_graph, *node, {&input_perm}, {&output_perm});
       }
 
-      [[maybe_unused]] auto new_node_ref =
-        onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
-
-#if !defined(ORT_MINIMAL_BUILD)
-      // Set the schema if one is available. This keeps the node equivalent with the state of the original ONNX
-      // node (if possible - some replacement nodes do not have a schema).
-      //
-      Node& new_node = NodeFromApiNode(*new_node_ref);
-      // add schema if available.
-      // not guaranteed to be (compiling EP doesn't need schemas, not available in minimal build
-      graph.SetOpSchemaFromRegistryForNode(new_node);
-#endif
+      onnx_layout_transformation::SwapNodeOpTypeAndDomain(*api_graph, *node, node->OpType(), kMSInternalNHWCDomain);
       modified = true;
     }
   }
@@ -929,6 +980,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
     OptimizeResult result =
         onnx_layout_transformation::Optimize(*api_graph, /*allow_extended_ops*/ true, execution_provider.Type(),
                                              onnx_layout_transformation::OptimizerMode::OPTIMIZE_LAYOUT_TRANSFORM,
+                                             PostLayoutTransformCostCheck,
                                              layout_sensitive_ops);
     if (result.error_msg) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Optimization after layout transformation failed: ",

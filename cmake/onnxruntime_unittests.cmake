@@ -153,23 +153,45 @@ function(AddTest)
     xctest_add_test(xctest.${_UT_TARGET} ${_UT_TARGET}_xc)
   else()
     if (onnxruntime_BUILD_WEBASSEMBLY)
-      find_program(NODE_EXECUTABLE node required)
-      if (NOT NODE_EXECUTABLE)
-        message(FATAL_ERROR "Node is required for unit tests")
-      endif()
-
-      set(TEST_NODE_FLAGS)
-      if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
-      endif()
-      if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-        list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
-      endif()
-
-      add_test(NAME ${_UT_TARGET}
-        COMMAND ${NODE_EXECUTABLE} ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+      # We might have already executed the following "find_program" code when we build ORT nodejs binding.
+      # Then the program is found the result is stored in the variable and the search will not be repeated.
+      find_program(NPM_CLI
+         NAMES "npm.cmd" "npm"
+         DOC "NPM command line client"
+         REQUIRED
       )
+
+      if (onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER)
+        add_custom_command(TARGET ${_UT_TARGET} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/package.json $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/package-lock.json $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${CMAKE_COMMAND} -E copy_if_different ${TEST_SRC_DIR}/wasm/karma.conf.js $<TARGET_FILE_DIR:${_UT_TARGET}>
+          COMMAND ${NPM_CLI} ci
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+
+        set(TEST_NPM_FLAGS)
+        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+          list(APPEND TEST_NPM_FLAGS "--wasm-threads")
+        endif()
+        add_test(NAME ${_UT_TARGET}
+          COMMAND ${NPM_CLI} test -- ${TEST_NPM_FLAGS} --entry=${_UT_TARGET} ${TEST_ARGS}
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+      else()
+        set(TEST_NODE_FLAGS)
+        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
+        endif()
+        if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
+        endif()
+
+        add_test(NAME ${_UT_TARGET}
+          COMMAND node ${TEST_NODE_FLAGS} ${_UT_TARGET}.js ${TEST_ARGS}
+          WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
+        )
+      endif()
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
@@ -387,6 +409,7 @@ set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_API_TESTS_WITHOUT_ENV_SRC_DIR "${TEST_SRC_DIR}/api_tests_without_env")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
+set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -518,6 +541,7 @@ set(ONNXRUNTIME_TEST_LIBS
     ${onnxruntime_libs}
     # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -567,6 +591,13 @@ if(onnxruntime_USE_NNAPI_BUILTIN)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nnapi)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_nnapi)
+endif()
+
+if(onnxruntime_USE_QNN)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/qnn/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -763,7 +794,7 @@ if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.
   # However, this is test code. We are less concerned.
-  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451")
+  target_compile_options(onnxruntime_test_all PRIVATE "/wd26451" "/wd4244")
 else()
   target_compile_options(onnxruntime_test_all PRIVATE "-Wno-parentheses")
 endif()
@@ -797,8 +828,8 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js)
-  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/dump-test-result-in-nodejs.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_DEPENDS ${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js)
+  set_target_properties(onnxruntime_test_all PROPERTIES LINK_FLAGS "-s STACK_SIZE=1048576 -s ALLOW_MEMORY_GROWTH=1 --pre-js \"${TEST_SRC_DIR}/wasm/onnxruntime_test_all_adapter.js\" -s \"EXPORTED_RUNTIME_METHODS=['FS']\" --preload-file ${CMAKE_CURRENT_BINARY_DIR}/testdata@/testdata -s EXIT_RUNTIME=1")
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY LINK_FLAGS " -s USE_PTHREADS=1 -s PROXY_TO_PTHREAD=1")
   endif()
@@ -855,6 +886,44 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
       )
   endif()
+
+  if (onnxruntime_USE_QNN)
+    if (NOT QNN_ARCH_ABI)
+      string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
+      if(MSVC)
+          message(STATUS "Building MSVC for architecture ${CMAKE_SYSTEM_PROCESSOR} with CMAKE_GENERATOR_PLATFORM as ${GEN_PLATFORM}")
+          if (${GEN_PLATFORM} STREQUAL "arm64")
+            set(QNN_ARCH_ABI aarch64-windows-msvc)
+          else()
+            set(QNN_ARCH_ABI x86_64-windows-msvc)
+          endif()
+      else()
+          if (${CMAKE_SYSTEM_NAME} STREQUAL "Android")
+            set(QNN_ARCH_ABI aarch64-android-clang6.0)
+          elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+            if (${GEN_PLATFORM} STREQUAL "x86_64")
+              set(QNN_ARCH_ABI x86_64-linux-clang)
+            else()
+              set(QNN_ARCH_ABI aarch64-android)
+            endif()
+          endif()
+      endif()
+    endif()
+
+    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+        file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.so" "${onnxruntime_QNN_HOME}/target/${QNN_ARCH_ABI}/lib/*.dll")
+        if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc")
+          file(GLOB EXTRA_HTP_LIB LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/target/hexagon-v68/lib/unsigned/libQnnHtpV68Skel.so")
+          list(APPEND QNN_LIB_FILES ${EXTRA_HTP_LIB})
+        endif()
+        message(STATUS "QNN lib files: " ${QNN_LIB_FILES})
+        add_custom_command(
+          TARGET ${test_data_target} POST_BUILD
+          COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
+          )
+    endif()
+  endif()
+
   if (onnxruntime_USE_DNNL)
     if(onnxruntime_DNNL_GPU_RUNTIME STREQUAL "ocl" AND onnxruntime_DNNL_OPENCL_ROOT STREQUAL "")
       message(FATAL_ERROR "--dnnl_opencl_root required")
@@ -1046,7 +1115,7 @@ if(onnxruntime_ENABLE_EAGER_MODE)
           GTest::gtest
           re2::re2
           onnxruntime_flatbuffers
-		  flatbuffers::flatbuffers
+          flatbuffers::flatbuffers
           ${CMAKE_DL_LIBS}
           )
   if(onnxruntime_ENABLE_TRAINING)
@@ -1342,6 +1411,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       onnxruntime_common
       onnxruntime_flatbuffers
     )
+
+    if (onnxruntime_ENABLE_LANGUAGE_INTEROP_OPS)
+      list(APPEND ONNXRUNTIME_TEST_LIBS onnxruntime_language_interop onnxruntime_pyop)
+    endif()
+
     target_link_libraries(onnxruntime_test_trainer PRIVATE
       ${ONNXRUNTIME_TEST_LIBS}
       ${onnxruntime_EXTERNAL_LIBRARIES}
@@ -1393,9 +1467,7 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_FILE_NAME:custom_op_library>)
           # On windows ctest requires a test to be an .exe(.com) file
-          # So there are two options 1) Install Chocolatey and its gradle package
-          # That package would install gradle.exe shim to its bin so ctest could run gradle.exe
-          # 2) With standard installation we get gradle.bat. We delegate execution to a separate .cmake file
+          # With gradle wrapper we get gradlew.bat. We delegate execution to a separate .cmake file
           # That can handle both .exe and .bat
           add_test(NAME onnxruntime4j_test COMMAND ${CMAKE_COMMAND}
             -DGRADLE_EXECUTABLE=${GRADLE_EXECUTABLE}
@@ -1406,8 +1478,15 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY)
         else()
           add_custom_command(TARGET custom_op_library POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:custom_op_library>
                           ${JAVA_NATIVE_TEST_DIR}/$<TARGET_LINKER_FILE_NAME:custom_op_library>)
-          add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
-                WORKING_DIRECTORY ${REPO_ROOT}/java)
+          if (onnxruntime_ENABLE_TRAINING_APIS)
+            message(STATUS "Running Java inference and training tests")
+            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS} -DENABLE_TRAINING=1
+                          WORKING_DIRECTORY ${REPO_ROOT}/java)
+          else()
+            message(STATUS "Running Java inference tests only")
+            add_test(NAME onnxruntime4j_test COMMAND ${GRADLE_EXECUTABLE} cmakeCheck -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR} ${ORT_PROVIDER_FLAGS}
+                          WORKING_DIRECTORY ${REPO_ROOT}/java)
+          endif()
         endif()
         set_property(TEST onnxruntime4j_test APPEND PROPERTY DEPENDS onnxruntime4j_jni)
     endif()
@@ -1457,6 +1536,55 @@ if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnx
 
   set_property(TARGET custom_op_invalid_library APPEND_STRING PROPERTY LINK_FLAGS
                ${ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG})
+endif()
+
+if (NOT onnxruntime_BUILD_WEBASSEMBLY AND (NOT onnxruntime_MINIMAL_BUILD OR onnxruntime_MINIMAL_BUILD_CUSTOM_OPS))
+
+  file(GLOB_RECURSE custom_op_get_const_input_test_library_src 
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.cc"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.h"
+        "${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op.cc"
+  )
+
+  onnxruntime_add_shared_library_module(custom_op_get_const_input_test_library ${custom_op_get_const_input_test_library_src})
+
+  onnxruntime_add_include_to_target(custom_op_get_const_input_test_library onnxruntime_common GTest::gtest GTest::gmock)
+  target_include_directories(custom_op_get_const_input_test_library PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session
+                                                                            ${REPO_ROOT}/include/onnxruntime/core/common)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    else()
+      string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG 
+             "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.def")
+  endif()
+
+  set_property(TARGET custom_op_get_const_input_test_library APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG})
+endif()
+
+if (onnxruntime_BUILD_SHARED_LIB AND NOT onnxruntime_BUILD_WEBASSEMBLY AND NOT onnxruntime_MINIMAL_BUILD)
+  set (onnxruntime_logging_apis_test_SRC
+       ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
+
+  set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
+
+  if(NOT WIN32)
+    list(APPEND onnxruntime_logging_apis_test_LIBS nsync_cpp ${CMAKE_DL_LIBS})
+  endif()
+
+  AddTest(DYN
+          TARGET onnxruntime_logging_apis_test
+          SOURCES ${onnxruntime_logging_apis_test_SRC}
+          LIBS ${onnxruntime_logging_apis_test_LIBS}
+          DEPENDS ${all_dependencies}
+  )
 endif()
 
 if (NOT onnxruntime_BUILD_WEBASSEMBLY AND onnxruntime_USE_OPENVINO AND (NOT onnxruntime_MINIMAL_BUILD OR

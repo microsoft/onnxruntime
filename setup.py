@@ -82,6 +82,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_cann"):
     package_name = "onnxruntime-cann"
 elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
     package_name = "onnxruntime-azure"
+elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
+    package_name = "onnxruntime-qnn"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -481,9 +483,12 @@ packages = [
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.transformers",
+    "onnxruntime.transformers.models.bart",
+    "onnxruntime.transformers.models.bert",
     "onnxruntime.transformers.models.gpt2",
     "onnxruntime.transformers.models.longformer",
     "onnxruntime.transformers.models.t5",
+    "onnxruntime.transformers.models.stable_diffusion",
 ]
 
 package_data = {"onnxruntime.tools.mobile_helpers": ["*.md", "*.config"]}
@@ -520,41 +525,48 @@ classifiers = [
 if not enable_training:
     classifiers.extend(["Operating System :: Microsoft :: Windows", "Operating System :: MacOS"])
 
-if enable_training:
+if enable_training or enable_training_apis:
+    packages.append("onnxruntime.training")
+    if enable_training:
+        packages.extend(
+            [
+                "onnxruntime.training.amp",
+                "onnxruntime.training.experimental",
+                "onnxruntime.training.experimental.gradient_graph",
+                "onnxruntime.training.optim",
+                "onnxruntime.training.torchdynamo",
+                "onnxruntime.training.ortmodule",
+                "onnxruntime.training.ortmodule.experimental",
+                "onnxruntime.training.ortmodule.experimental.json_config",
+                "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
+                "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
+                "onnxruntime.training.utils.data",
+            ]
+        )
+
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
+        package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
+            "*.cpp",
+            "*.cu",
+            "*.cuh",
+            "*.h",
+        ]
+
     packages.extend(
         [
-            "onnxruntime.training",
-            "onnxruntime.training.amp",
-            "onnxruntime.training.experimental",
-            "onnxruntime.training.experimental.gradient_graph",
-            "onnxruntime.training.optim",
-            "onnxruntime.training.torchdynamo",
-            "onnxruntime.training.ortmodule",
-            "onnxruntime.training.ortmodule.experimental",
-            "onnxruntime.training.ortmodule.experimental.json_config",
-            "onnxruntime.training.ortmodule.experimental.hierarchical_ortmodule",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
-            "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
-            "onnxruntime.training.utils.data",
+            "onnxruntime.training.api",
+            "onnxruntime.training.onnxblock",
+            "onnxruntime.training.onnxblock.loss",
+            "onnxruntime.training.onnxblock.optim",
         ]
     )
-    if enable_training_apis:
-        packages.append("onnxruntime.training.api")
-        packages.append("onnxruntime.training.onnxblock")
-        packages.append("onnxruntime.training.onnxblock.loss")
-        packages.append("onnxruntime.training.onnxblock.optim")
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.aten_op_executor"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cpu.torch_interop_utils"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator"] = ["*.cc"]
-    package_data["onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops"] = [
-        "*.cpp",
-        "*.cu",
-        "*.cuh",
-        "*.h",
-    ]
+
     requirements_file = "requirements-training.txt"
     # with training, we want to follow this naming convention:
     # stable:

@@ -215,7 +215,8 @@ Status CumSum<T>::Compute(OpKernelContext* ctx) const {
       ::ZeroOutSliceAtIndex<T>(output_tensor, rank, axis, index, slice_dims, steps, slice_size);
       ++index;
     }
-    {
+
+    if (index < dim) {
       // The next slice is a copy of the input (if exclusive == false then this is the first slice)
       auto input_starts(::GetStarts(rank, axis, 0));
       auto output_starts(::GetStarts(rank, axis, index));

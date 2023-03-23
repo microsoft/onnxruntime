@@ -151,21 +151,17 @@ class T5Helper:
     def auto_mixed_precision(
         onnx_model: OnnxModel,
         op_block_list: List[str] = [
-            "Pow",
-            "ReduceMean",
-            "Add",
-            "Sqrt",
-            "Div",
-            "Mul",
-            "Softmax",
+            "SimplifiedLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "Relu",
+            "Add",
         ],
     ):
         """Convert model to mixed precision.
            It detects whether original model has fp16 precision weights, and set parameters for float16 conversion automatically.
         Args:
             onnx_model (OnnxModel): optimized ONNX model
-            op_block_list (List[str], optional): . Defaults to ["Pow", "ReduceMean", "Add", "Sqrt", "Div", "Mul", "Softmax", "Relu"]
+            op_block_list (List[str], optional): . Defaults to ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization", "Relu", "Add"]
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
@@ -228,17 +224,28 @@ class T5Helper:
         hidden_size: int,
         use_external_data_format: bool = False,
         auto_mixed_precision: bool = True,
+        use_gpu: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
+
+        from fusion_options import FusionOptions
+
+        optimization_options = None
+        if is_float16:
+            optimization_options = FusionOptions("t5")
+            optimization_options.enable_skip_layer_norm = False
+
         m = optimize_model(
             onnx_model_path,
-            model_type="bert",  # TODO: support optimization for t5
+            model_type="t5",
             num_heads=num_attention_heads,
             hidden_size=hidden_size,
-            opt_level=0,
-            optimization_options=None,
+            opt_level=2 if not use_external_data_format else 0,
+            optimization_options=optimization_options,
             use_gpu=False,
+            only_onnxruntime=not use_gpu,
         )
+
         if is_float16:
             if auto_mixed_precision:
                 T5Helper.auto_mixed_precision(m)

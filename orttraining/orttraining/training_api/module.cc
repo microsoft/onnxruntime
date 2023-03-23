@@ -8,8 +8,8 @@
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
-#include "orttraining/training_api/include/module.h"
-#include "orttraining/training_api/include/utils.h"
+#include "orttraining/training_api/module.h"
+#include "orttraining/training_api/utils.h"
 
 using namespace onnxruntime;
 
@@ -149,7 +149,6 @@ Module::Module(const std::string& train_model_path_or_bytes,
                const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                const std::optional<std::string>& eval_model_path_or_bytes)
     : named_parameters_{named_parameters} {
-
   // Enforce weight prepacking is disabled
   // If user explicitly enabled weight prepacking then return error.
   // Default value is enabled. Therefore, explicitly disable it if the value is not set by user.

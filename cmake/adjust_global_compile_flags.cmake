@@ -20,6 +20,10 @@ if (onnxruntime_ENABLE_EAGER_MODE)
 endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY)
+  string(APPEND CMAKE_C_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
+  string(APPEND CMAKE_CXX_FLAGS " -s STRICT=1 -s DEFAULT_TO_CXX=1")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s ALLOW_UNIMPLEMENTED_SYSCALLS=1")
+
   # Enable LTO for release single-thread build
   if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
     # NOTES:
@@ -373,4 +377,6 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " /MP")
     # required to be set explicitly to enable Eigen-Unsupported SpecialFunctions
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
+elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    add_compile_definitions("_GNU_SOURCE")
 endif()

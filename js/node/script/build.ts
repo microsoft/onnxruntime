@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {execSync, spawnSync} from 'child_process';
+import {spawnSync} from 'child_process';
 import * as fs from 'fs-extra';
 import minimist from 'minimist';
 import * as os from 'os';
@@ -31,17 +31,14 @@ const ROOT_FOLDER = path.join(__dirname, '..');
 const BIN_FOLDER = path.join(ROOT_FOLDER, 'bin');
 const BUILD_FOLDER = path.join(ROOT_FOLDER, 'build');
 
-const NPM_BIN_FOLDER = execSync('npm bin', {encoding: 'utf8'}).trim();
-const CMAKE_JS_FULL_PATH = path.join(NPM_BIN_FOLDER, 'cmake-js');
-
 // if rebuild, clean up the dist folders
 if (REBUILD) {
   fs.removeSync(BIN_FOLDER);
   fs.removeSync(BUILD_FOLDER);
 }
 
-const command = CMAKE_JS_FULL_PATH;
 const args = [
+  'cmake-js',
   (REBUILD ? 'reconfigure' : 'configure'),
   `--arch=${ARCH}`,
   '--CDnapi_build_version=3',
@@ -62,8 +59,15 @@ if (os.platform() === 'darwin') {
   }
 }
 
+// In Windows, "npx cmake-js configure" uses a powershell script to detect the Visual Studio installation.
+// The script uses the environment variable LIB. If an invalid path is specified in LIB, the script will fail.
+// So we override the LIB environment variable to remove invalid paths.
+const envOverride = os.platform() === 'win32' && process.env.LIB ?
+    {...process.env, LIB: process.env.LIB.split(';').filter(fs.existsSync).join(';')} :
+    process.env;
+
 // launch cmake-js configure
-const procCmakejs = spawnSync(command, args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER});
+const procCmakejs = spawnSync('npx', args, {shell: true, stdio: 'inherit', cwd: ROOT_FOLDER, env: envOverride});
 if (procCmakejs.status !== 0) {
   if (procCmakejs.error) {
     console.error(procCmakejs.error);

@@ -51,7 +51,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     auto it = node.OutputEdgesBegin();
     const auto* succ_node(graph_viewer.GetNode(it->GetNode().Index()));
     // If Argmax's successive node is a Cast from int64 to int32 output
-    // The 'cast to' type is checked in operater supported related, omit the check here
+    // The 'cast to' type is checked in operator supported related, omit the check here
     if (succ_node->OpType() == "Cast") {
       // Skip the cast's input/argmax's output
       *layer->mutable_input()->Add() = node.InputDefs()[0]->Name();

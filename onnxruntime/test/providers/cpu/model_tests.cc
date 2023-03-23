@@ -48,10 +48,15 @@
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
-#define ASSERT_ORT_STATUS_OK(function)                                        \
-  do {                                                                        \
-    OrtStatus* _tmp_status = (function);                                      \
-    ASSERT_EQ(_tmp_status, nullptr) << OrtApis::GetErrorMessage(_tmp_status); \
+// asserts that the OrtStatus* result of `status_expr` does not indicate an error
+// note: this takes ownership of the OrtStatus* result
+#define ASSERT_ORT_STATUS_OK(status_expr)                                           \
+  do {                                                                              \
+    if (OrtStatus* _status = (status_expr); _status != nullptr) {                   \
+      std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> _rel_status{    \
+          _status, &OrtApis::ReleaseStatus};                                        \
+      FAIL() << "OrtStatus error: " << OrtApis::GetErrorMessage(_rel_status.get()); \
+    }                                                                               \
   } while (false)
 
 using namespace onnxruntime::common;
@@ -120,13 +125,11 @@ TEST_P(ModelTest, Run) {
     return;
   }
 
-#ifndef ENABLE_TRAINING
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-    SkipTest("It has training domain");
+    SkipTest("it has the training domain. No pipeline should need to run these tests.");
     return;
   }
-#endif
   std::set<BrokenTest> broken_tests = {
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
@@ -199,6 +202,7 @@ TEST_P(ModelTest, Run) {
       {"shape_start_negative_1", "type error", {}},
       {"simple_rnn_batchwise", "type error", {}},
       {"mod_float_mixed_sign_example", "fmod attribute must be true for floating point types", {}},
+      {"col2im_pads", "result mismatch", {"opset18"}},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -249,35 +253,8 @@ TEST_P(ModelTest, Run) {
       {"softmax_cross_entropy_input_shape_is_NCd1d2d3d4d5_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_weight", "type error", {"opset12"}},
       {"softmax_cross_entropy_mean_no_weight_ignore_index_4d", "type error", {"opset12"}},
-      // models from model zoo
-      {"BERT-Squad-int8", "failed in training", {"opset12"}},
-      {"DenseNet-121-12-int8", "failed in training", {"opset12"}},
-      {"EfficientNet-Lite4-int8", "failed in training", {"opset11"}},
-      {"EfficientNet-Lite4-qdq", "failed in training", {"opset11"}},
-      {"Faster R-CNN R-50-FPN-int8", "failed in training", {"opset12"}},
-      {"Inception-1-int8", "failed in training", {"opset12"}},
-      {"MobileNet v2-1.0-int8", "failed in traning", {"opset12"}},
-      {"MobileNet v2-1.0-qdq", "failed in training", {"opset12"}},
-      {"ResNet50-qdq", "failed in training", {"opset12"}},
-      {"ResNet50_int8", "failed in training", {"opset12"}},
-      {"ResNet50-int8", "failed in training", {"opset12"}},
-      {"ShuffleNet-v2-int8", "failed in training", {"opset12"}},
-      {"SSD-int8", "failed in training", {"opset12"}},
-      {"VGG 16-int8", "failed in training", {"opset12"}},
-      {"YOLOv3-12-int8", "failed in training", {"opset12"}},
 #endif
       {"mask_rcnn_keras", "this model currently has an invalid contrib op version set to 10", {}}};
-
-#ifdef ENABLE_TRAINING_CORE
-  // They only failed in orttraining-iinux-gpu-ci-pipelie with TRT8.5
-  if (provider_name == "cpu") {
-    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100, but it's a cpu test?", {"opset12"}});
-  }
-  if (provider_name == "cuda") {
-    broken_tests.insert({"GoogleNet-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-    broken_tests.insert({"ShuffleNet-v2-qdq", "failed in orttraining-linux-gpu, TRT8.5 with V100.", {"opset12"}});
-  }
-#endif
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
@@ -673,56 +650,60 @@ TEST_P(ModelTest, Run) {
 
   for (bool is_single_thread : use_single_thread) {
     for (ExecutionMode execution_mode : execution_modes) {
-      OrtSessionOptions* ortso;
-      ASSERT_ORT_STATUS_OK(OrtApis::CreateSessionOptions(&ortso));
+      Ort::SessionOptions ortso{};
       if (!is_single_thread) {
-        ASSERT_ORT_STATUS_OK(OrtApis::DisablePerSessionThreads(ortso));
+        ortso.DisablePerSessionThreads();
       } else {
-        ASSERT_ORT_STATUS_OK(OrtApis::SetIntraOpNumThreads(ortso, 1));
+        ortso.SetIntraOpNumThreads(1);
       }
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionExecutionMode(ortso, execution_mode));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogId(ortso, ToUTF8String(test_case_name).c_str()));
-      ASSERT_ORT_STATUS_OK(OrtApis::SetSessionLogSeverityLevel(ortso, ORT_LOGGING_LEVEL_ERROR));
+      ortso.SetExecutionMode(execution_mode);
+      ortso.SetLogId(ToUTF8String(test_case_name).c_str());
+      ortso.SetLogSeverityLevel(ORT_LOGGING_LEVEL_ERROR);
       if (provider_name == "cuda") {
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "rocm") {
         OrtROCMProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_ROCM(ortso, &ep_options));
+        ortso.AppendExecutionProvider_ROCM(ep_options);
       }
 #ifdef USE_DNNL
       else if (provider_name == "dnnl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_Dnnl(ortso, false));
+        OrtDnnlProviderOptions* ep_option;
+        ASSERT_ORT_STATUS_OK(OrtApis::CreateDnnlProviderOptions(&ep_option));
+        std::unique_ptr<OrtDnnlProviderOptions, decltype(&OrtApis::ReleaseDnnlProviderOptions)>
+            rel_dnnl_options(ep_option, &OrtApis::ReleaseDnnlProviderOptions);
+        ep_option->use_arena = 0;
+        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_Dnnl(ortso, ep_option));
       }
 #endif
       else if (provider_name == "tensorrt") {
         if (test_case_name.find(ORT_TSTR("FLOAT16")) != std::string::npos) {
           OrtTensorRTProviderOptionsV2 params{0, 0, nullptr, 1000, 1, 1 << 30,
                                               1,  // enable fp16
-                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0};
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, &params));
+                                              0, nullptr, 0, 0, 0, 0, 0, nullptr, 0, nullptr, 0, 0, 0, 0, 0, 0};
+          ortso.AppendExecutionProvider_TensorRT_V2(params);
         } else {
-          OrtTensorRTProviderOptionsV2* ep_option;
+          OrtTensorRTProviderOptionsV2* ep_option = nullptr;
           ASSERT_ORT_STATUS_OK(OrtApis::CreateTensorRTProviderOptions(&ep_option));
           std::unique_ptr<OrtTensorRTProviderOptionsV2, decltype(&OrtApis::ReleaseTensorRTProviderOptions)>
               rel_cuda_options(ep_option, &OrtApis::ReleaseTensorRTProviderOptions);
-          ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2(ortso, ep_option));
+          ortso.AppendExecutionProvider_TensorRT_V2(*ep_option);
         }
         // Enable CUDA fallback
         OrtCUDAProviderOptionsV2* cuda_options = nullptr;
         ASSERT_ORT_STATUS_OK(OrtApis::CreateCUDAProviderOptions(&cuda_options));
         std::unique_ptr<OrtCUDAProviderOptionsV2, decltype(&OrtApis::ReleaseCUDAProviderOptions)> rel_cuda_options(
             cuda_options, &OrtApis::ReleaseCUDAProviderOptions);
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2(ortso, cuda_options));
+        ortso.AppendExecutionProvider_CUDA_V2(*cuda_options);
       } else if (provider_name == "migraphx") {
         OrtMIGraphXProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX(ortso, &ep_options));
+        ortso.AppendExecutionProvider_MIGraphX(ep_options);
       } else if (provider_name == "openvino") {
         OrtOpenVINOProviderOptions ep_options;
-        ASSERT_ORT_STATUS_OK(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO(ortso, &ep_options));
+        ortso.AppendExecutionProvider_OpenVINO(ep_options);
       }
 #ifdef USE_NNAPI
       else if (provider_name == "nnapi") {
@@ -760,8 +741,7 @@ TEST_P(ModelTest, Run) {
 #ifndef USE_DNNL  // potential crash for DNNL pipeline
       if (data_count > 1 && tests_run_parallel.find(l->GetTestCaseName()) != tests_run_parallel.end()) {
         LOGS_DEFAULT(ERROR) << "Parallel test for " << l->GetTestCaseName();  // TODO(leca): change level to INFO or even delete the log once verified parallel test working
-        Ort::SessionOptions ort_session_options(ortso);
-        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ort_session_options, data_count, 1 /*repeat_count*/);
+        std::shared_ptr<TestCaseResult> results = TestCaseRequestContext::Run(tp.get(), *l, *ort_env, ortso, data_count, 1 /*repeat_count*/);
         for (EXECUTE_RESULT res : results->GetExcutionResult()) {
           EXPECT_EQ(res, EXECUTE_RESULT::SUCCESS) << "is_single_thread:" << is_single_thread << ", execution_mode:" << execution_mode << ", provider_name:"
                                                   << provider_name << ", test name:" << results->GetName() << ", result: " << res;
@@ -769,8 +749,6 @@ TEST_P(ModelTest, Run) {
         continue;
       }
 #endif  // !USE_DNNL
-      std::unique_ptr<OrtSessionOptions, decltype(&OrtApis::ReleaseSessionOptions)> rel_ort_session_option(
-          ortso, &OrtApis::ReleaseSessionOptions);
       // TODO(leca): leverage TestCaseRequestContext::Run() to make it short
       auto default_allocator = std::make_unique<MockedOrtAllocator>();
 

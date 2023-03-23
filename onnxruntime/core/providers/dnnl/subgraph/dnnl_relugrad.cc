@@ -18,13 +18,20 @@ void DnnlReluGrad::CreatePrimitive(DnnlSubgraphPrimitive& sp, DnnlNode& node) {
   auto relu_bwd_src_mem = sp.GetMemoryAndReshape(node.Input(IN_X), src_mem.get_desc(), eng);
   auto relu_bwd_diff_dst_mem = sp.GetMemoryAndReshape(node.Input(IN_dY), diff_dst_mem.get_desc(), eng);
 
+  // Generate the dst_md
+  auto dst_md = dnnl::memory::desc(src_mem.get_desc().get_dims(),
+                                   node.Output(OUT_dX).Type(),
+                                   dnnl::memory::format_tag::any);
+
   //create hints on the fly
-  auto hints_d = dnnl::eltwise_forward::desc(dnnl::prop_kind::forward, dnnl::algorithm::eltwise_relu, relu_bwd_src_mem.get_desc(), 0.0, 0.0);
-  auto hints_pd = dnnl::eltwise_forward::primitive_desc(hints_d, eng);
+  auto hints_pd = dnnl::eltwise_forward::primitive_desc(eng, dnnl::prop_kind::forward, dnnl::algorithm::eltwise_relu,
+                                                        relu_bwd_src_mem.get_desc(), dst_md, 0.0, 0.0);
 
-  auto relu_bwd_d = dnnl::eltwise_backward::desc(dnnl::algorithm::eltwise_relu, relu_bwd_diff_dst_mem.get_desc(), relu_bwd_src_mem.get_desc(), 0.0, 0.0);
-
-  auto relu_bwd_pd = dnnl::eltwise_backward::primitive_desc(relu_bwd_d, eng, hints_pd);
+  auto relu_bwd_pd = dnnl::eltwise_backward::primitive_desc(eng, dnnl::algorithm::eltwise_relu,
+                                                            relu_bwd_diff_dst_mem.get_desc(),
+                                                            relu_bwd_src_mem.get_desc(),
+                                                            src_mem.get_desc(),
+                                                            0.0, 0.0, hints_pd);
 
   auto relu_bwd_diff_src_mem = dnnl::memory(relu_bwd_pd.diff_src_desc(), eng);
 

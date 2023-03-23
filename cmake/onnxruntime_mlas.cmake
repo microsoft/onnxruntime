@@ -7,7 +7,17 @@ set(MLAS_SRC_DIR ${ONNXRUNTIME_ROOT}/core/mlas/lib)
 set(MLAS_AMX_SUPPORTED FALSE)
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
-  set(MLAS_AMX_SUPPORTED TRUE)
+  # match assembler version, AMX instructions are supported from 2.40
+  if (CMAKE_ASM-ATT_COMPILER_ID STREQUAL "GNU")
+    execute_process(
+        COMMAND ${CMAKE_ASM-ATT_COMPILER} --version
+        OUTPUT_VARIABLE _gas_version
+    )
+    # 2.40 or later
+    if (_gas_version MATCHES "GNU.[Aa]ssembler.*(2\\.[4-9][0-9])")
+        set(MLAS_AMX_SUPPORTED TRUE)
+    endif()
+  endif()
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
@@ -19,7 +29,9 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/platform.cpp
   ${MLAS_SRC_DIR}/threading.cpp
   ${MLAS_SRC_DIR}/sgemm.cpp
+  ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
+  ${MLAS_SRC_DIR}/dwconv.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
   ${MLAS_SRC_DIR}/convsym.cpp
@@ -59,6 +71,7 @@ function(setup_mlas_source_for_windows)
 
     if(onnxruntime_target_platform STREQUAL "ARM64")
       target_sources(onnxruntime_mlas PRIVATE
+        ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
@@ -73,6 +86,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvSymU8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/DepthwiseQConvKernelSize9Neon.asm
+        ${MLAS_SRC_DIR}/arm64/HalfGemmKernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmS8S8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/QgemmU8X8KernelUdot.asm
@@ -305,6 +319,7 @@ else()
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvSymU8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/DepthwiseQConvKernelSize9Neon.S
+          ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUdot.S
@@ -314,10 +329,16 @@ else()
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelNeon.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdot.S
           ${MLAS_SRC_DIR}/aarch64/SymQgemmS8KernelSdotLd64.S
+          ${MLAS_SRC_DIR}/activate_fp16.cpp
+          ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
         )
+        set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        set_source_files_properties(${MLAS_SRC_DIR}/activate_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+        set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
             onnxruntime_add_static_library(onnxruntime_mlas_arm64 ${mlas_platform_srcs})
             set_target_properties(onnxruntime_mlas_arm64 PROPERTIES OSX_ARCHITECTURES "arm64")
