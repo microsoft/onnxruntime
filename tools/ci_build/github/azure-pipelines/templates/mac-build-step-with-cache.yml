@@ -9,7 +9,7 @@ parameters:
   default: '$(Pipeline.Workspace)/ccache'
 
 - name: BuildStep
-  type: step
+  type: stepList
 
 - name: AdditionalKey
   type: string
