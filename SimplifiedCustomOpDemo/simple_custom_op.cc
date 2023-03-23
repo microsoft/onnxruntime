@@ -36,10 +36,10 @@ FuseImpl<float>* InitFuse(const OrtKernelInfo* info) {
 
 void Fuse(FuseImpl<float>* fuse_impl,
           OrtKernelContext* ctx,
-          const Ort::Custom::Span<float>& vector_1,
-          const Ort::Custom::Span<float>& vector_2,
+          const Ort::Custom2::Span<float>& vector_1,
+          const Ort::Custom2::Span<float>& vector_2,
           int32_t alpha,
-          Ort::Custom::TensorT<float>& vector_output) {
+          Ort::Custom2::TensorT<float>& vector_output) {
   auto len_output = std::min(vector_1.size(), vector_2.size());
   float* floats_out = static_cast<float*>(vector_output.Allocate({(int64_t)len_output}));
   for (size_t i = 0; i < len_output; ++i) {
@@ -53,8 +53,8 @@ void ExitFuse(FuseImpl<float>* fuse_impl) {
 
 /////////////////////////////////// Select ////////////////////////////////////////
 
-void Select(const Ort::Custom::Span<int32_t>& indices_in,
-            Ort::Custom::TensorT<int32_t>& indices_out) {
+void Select(const Ort::Custom2::Span<int32_t>& indices_in,
+            Ort::Custom2::TensorT<int32_t>& indices_out) {
   std::vector<int32_t> selected_indices;
   for (size_t i = 0; i < indices_in.size(); ++i) {
     if (indices_in[i] % 2 == 0) {
@@ -70,8 +70,8 @@ void Select(const Ort::Custom::Span<int32_t>& indices_in,
 
 /////////////////////////////////// Filter ////////////////////////////////////////
 
-void Filter(const Ort::Custom::TensorT<float>& floats_in,
-            Ort::Custom::TensorT<float>& floats_out) {
+void Filter(const Ort::Custom2::TensorT<float>& floats_in,
+            Ort::Custom2::TensorT<float>& floats_out) {
   const float* in = floats_in.Data();
   auto in_len = floats_in.Shape()[0];
 

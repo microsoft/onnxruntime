@@ -13,46 +13,6 @@ class Tensor {
 };
 
 template <typename T>
-class InputTensor : public Tensor {
- public:
-  using TT = typename std::remove_reference<T>::type;
-
-  InputTensor(OrtKernelContext* ctx, size_t indice) : Tensor(ctx) {
-    const_value_ = ctx_.GetInput(indice);
-  };
-  std::vector<int64_t> Shape() const {
-    // assert(const_value_);
-    auto type_shape_info = const_value_.GetTensorTypeAndShapeInfo();
-    return type_shape_info.GetShape();
-  }
-  const TT* Data() const {
-    // assert(const_value_);
-    return reinterpret_cast<const TT*>(const_value_.GetTensorRawData());
-  }
-
- private:
-  ConstValue const_value_;
-};
-
-template <typename T>
-class OutputTensor : public Tensor {
- public:
-  OutputTensor(OrtKernelContext* ctx, size_t indice) : Tensor(ctx), indice_(indice) {}
-  void* Allocate(const std::vector<int64_t>& shape) {
-    if (!data_) {
-      data_ = ctx_.GetOutput(indice_, shape).GetTensorMutableRawData();
-    }
-    return data_;
-  }
-
- private:
-  void* data_{};
-  const size_t indice_;
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////
-
-template <typename T>
 struct Span {
   const T* data_ = {};
   size_t size_ = {};
@@ -231,7 +191,7 @@ struct OrtCustomOpT2 : public OrtCustomOp {
 
   // span inputs
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  typename std::enable_if<std::is_same<T, const Custom::Span<float>&>::value, std::tuple<T, Ts...>>::type
+  typename std::enable_if<std::is_same<T, const Custom2::Span<float>&>::value, std::tuple<T, Ts...>>::type
   CreateInputTuple(OrtKernelContext* context) {
     tensors_.push_back(std::make_unique<Custom2::TensorT<float>>(context, ith_input, true));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<Custom2::TensorT<float>*>(tensors_.back().get())->AsSpan()};
@@ -240,7 +200,7 @@ struct OrtCustomOpT2 : public OrtCustomOp {
   }
 
   template <size_t ith_input, size_t ith_output, typename T, typename... Ts>
-  typename std::enable_if<std::is_same<T, const Custom::Span<int32_t>&>::value, std::tuple<T, Ts...>>::type
+  typename std::enable_if<std::is_same<T, const Custom2::Span<int32_t>&>::value, std::tuple<T, Ts...>>::type
   CreateInputTuple(OrtKernelContext* context) {
     tensors_.push_back(std::make_unique<Custom2::TensorT<int32_t>>(context, ith_input, true));
     std::tuple<T> current = std::tuple<T>{reinterpret_cast<Custom2::TensorT<int32_t>*>(tensors_.back().get())->AsSpan()};
@@ -322,14 +282,14 @@ struct OrtCustomOpT2 : public OrtCustomOp {
 
   // span inputs
   template <typename T, typename... Ts>
-  typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom::Span<float>&>::value>::type
+  typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::Span<float>&>::value>::type
   ParseArgs() {
     input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
     ParseArgs<Ts...>();
   }
 
   template <typename T, typename... Ts>
-  typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom::Span<int32_t>&>::value>::type
+  typename std::enable_if<0 <= sizeof...(Ts) && std::is_same<T, const Custom2::Span<int32_t>&>::value>::type
   ParseArgs() {
     input_types_.push_back(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32);
     ParseArgs<Ts...>();
@@ -385,7 +345,7 @@ template <typename... Args>
 OrtCustomOp* CreateCustomOpT2(const char* op_name,
                               const char* execution_provider,
                               void (*custom_compute_fn)(Args...)) {
-  using OrtCustomOpTPtr = detail::OrtCustomOpT2<void, Args...>;
+  using OrtCustomOpTPtr = OrtCustomOpT2<void, Args...>;
   return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, nullptr, custom_compute_fn, nullptr).release();
 }
 
@@ -395,7 +355,7 @@ OrtCustomOp* CreateCustomOpT2(const char* op_name,
                               T* (*custom_init_fn)(const OrtKernelInfo*),
                               void (*custom_compute_fn)(Args...),
                               void (*custom_exit_fn)(T*)) {
-  using OrtCustomOpTPtr = detail::OrtCustomOpT2<T, Args...>;
+  using OrtCustomOpTPtr = OrtCustomOpT2<T, Args...>;
   return std::make_unique<OrtCustomOpTPtr>(op_name, execution_provider, custom_init_fn, custom_compute_fn, custom_exit_fn).release();
 }
 
