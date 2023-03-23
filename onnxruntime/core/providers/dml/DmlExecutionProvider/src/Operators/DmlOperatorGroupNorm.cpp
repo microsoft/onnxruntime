@@ -47,48 +47,25 @@ public:
         // DML doesn't support grouped MVN, so split the data and perform MVN separately on each one of them
         const uint32_t channelsPerGroup = channels / groups;
 
-        // 1. Stride the input from [batch, height, width, channels] to [batch, channels, height, width]
-        // 2. Transpose to NCHW
-        const std::array<uint32_t, 4> inputShape = {batch, channels, height, width};
-        const std::array<uint32_t, 4> inputStrides = {channels * height * width, 1, channels * width, channels};
+        // 1. Reshape the input from [batch, height, width, channels] to [batch, height, width, groups, channelsPerGroup]
+        // 2. Stride the reshaped input from [batch, height, width, groups, channelsPerGroup] to [batch, channelsPerGroup, height, width, groups]
+        const std::array<uint32_t, 5> inputShape = {batch, channelsPerGroup, height, width, groups};
+        const std::array<uint32_t, 5> inputStrides = {channelsPerGroup * height * width * groups, 1, width * channelsPerGroup * groups, groups * channelsPerGroup, channelsPerGroup};
         TensorDesc inputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape, inputStrides);
         const DML_TENSOR_DESC inputDmlTensorDesc = inputTensorDesc.GetDmlDesc();
 
-        TensorDesc transposedInputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape);
-        const DML_TENSOR_DESC transposedInputDmlTensorDesc = transposedInputTensorDesc.GetDmlDesc();
-
-        // Reshape the transposed input from [batch, channels, height, width] to [batch, groups, channelsPerGroup, height, width]
-        const std::array<uint32_t, 5> groupedInputShape = {batch, groups, channelsPerGroup, height, width};
-        TensorDesc groupedInputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), groupedInputShape);
-        const DML_TENSOR_DESC groupedInputDmlTensorDesc = groupedInputTensorDesc.GetDmlDesc();
-
         // 1. Reshape the gamma and beta from [channels] to [groups, channelsPerGroup]
-        // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, groups, channelsPerGroup, height, width]
-        const std::array<uint32_t, 5> gammaBetaStrides = {0, channelsPerGroup, 1, 0, 0};
-        TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), groupedInputShape, gammaBetaStrides);
+        // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, height, width, groups, channelsPerGroup]
+        // 3. Stride the brodcasted gamma and beta from [batch, height, width, groups, channelsPerGroup] to [batch, channelsPerGroup, height, width, groups]
+        const std::array<uint32_t, 5> gammaBetaStrides = {0, 1, 0, 0, channelsPerGroup};
+        TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), inputShape, gammaBetaStrides);
         const DML_TENSOR_DESC gammaBetaDmlTensorDesc = gammaBetaTensorDesc.GetDmlDesc();
 
-        // 1. Reshape the output from [batch, groups, channelsPerGroup, height, width] to [batch, channels, height, width]
-        // 2. Transpose the output from [batch, channels, height, width] to [batch, height, width, channels]
-        const std::array<uint32_t, 4> outputShape = {batch, height, width, channels};
-        const std::array<uint32_t, 4> outputStrides = {channels * height * width, width, 1, height * width};
+        // Transpose the output to the format expected by ORT
+        const std::array<uint32_t, 5> outputShape = {batch, channelsPerGroup, height, width, groups};
+        const std::array<uint32_t, 5> outputStrides = {channelsPerGroup * height * width * groups, 1, width * channelsPerGroup * groups, groups * channelsPerGroup, channelsPerGroup};
         TensorDesc outputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), outputShape, outputStrides);
         const DML_TENSOR_DESC outputDmlTensorDesc = outputTensorDesc.GetDmlDesc();
-
-        TensorDesc transposedOutputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), outputShape);
-        const DML_TENSOR_DESC transposedOutputDmlTensorDesc = transposedOutputTensorDesc.GetDmlDesc();
-
-        // Transpose the input
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeDesc{};
-        transposeDesc.InputTensor = &inputDmlTensorDesc;
-        transposeDesc.OutputTensor = &transposedInputDmlTensorDesc;
-        DML_OPERATOR_DESC dmlTransposeDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposeDesc };
-
-        // Transpose the output
-        DML_ELEMENT_WISE_IDENTITY_OPERATOR_DESC transposeOutputDesc{};
-        transposeOutputDesc.InputTensor = &outputDmlTensorDesc;
-        transposeOutputDesc.OutputTensor = &transposedOutputDmlTensorDesc;
-        DML_OPERATOR_DESC dmlTransposeOutputDesc = { DML_OPERATOR_ELEMENT_WISE_IDENTITY, &transposeOutputDesc };
 
         // Cast Gamma and Beta if their datatype differ from the input's datatype
         const bool gammaBetaCastNeeded = m_inputTensorDescs[0].GetDmlDataType() != m_inputTensorDescs[1].GetDmlDataType();
@@ -96,18 +73,18 @@ public:
         if (gammaBetaCastNeeded)
         {
             castGammaBetaDesc.InputTensor = &gammaBetaDmlTensorDesc;
-            castGammaBetaDesc.OutputTensor = &groupedInputDmlTensorDesc;
+            castGammaBetaDesc.OutputTensor = &inputDmlTensorDesc;
         }
         DML_OPERATOR_DESC dmlCastGammaBetaDesc = { DML_OPERATOR_CAST, &castGammaBetaDesc };
 
-        const std::array<uint32_t, 3> axes = {2, 3, 4};
+        const std::array<uint32_t, 3> axes = {1, 2, 3};
 
         // Then, perform MVN
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc{};
-        mvnDesc.InputTensor = &groupedInputDmlTensorDesc;
-        mvnDesc.ScaleTensor = gammaBetaCastNeeded ? &groupedInputDmlTensorDesc : &gammaBetaDmlTensorDesc;
-        mvnDesc.BiasTensor = gammaBetaCastNeeded ? &groupedInputDmlTensorDesc : &gammaBetaDmlTensorDesc;
-        mvnDesc.OutputTensor = &groupedInputDmlTensorDesc;
+        mvnDesc.InputTensor = &inputDmlTensorDesc;
+        mvnDesc.ScaleTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
+        mvnDesc.BiasTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
+        mvnDesc.OutputTensor = &outputDmlTensorDesc;
         mvnDesc.NormalizeVariance = true;
         mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
         mvnDesc.Axes = axes.data();
@@ -119,12 +96,12 @@ public:
         DML_ELEMENT_WISE_MULTIPLY_OPERATOR_DESC swishMulDesc{};
         if (activation)
         {
-            swishSigmoidDesc.InputTensor = &groupedInputDmlTensorDesc;
-            swishSigmoidDesc.OutputTensor = &groupedInputDmlTensorDesc;
+            swishSigmoidDesc.InputTensor = &inputDmlTensorDesc;
+            swishSigmoidDesc.OutputTensor = &inputDmlTensorDesc;
 
-            swishMulDesc.ATensor = &groupedInputDmlTensorDesc;
-            swishMulDesc.BTensor = &groupedInputDmlTensorDesc;
-            swishMulDesc.OutputTensor = &groupedInputDmlTensorDesc;
+            swishMulDesc.ATensor = &inputDmlTensorDesc;
+            swishMulDesc.BTensor = &inputDmlTensorDesc;
+            swishMulDesc.OutputTensor = &inputDmlTensorDesc;
         }
         DML_OPERATOR_DESC dmlSwishSigmoidDesc = { DML_OPERATOR_ACTIVATION_SIGMOID, &swishSigmoidDesc };
         DML_OPERATOR_DESC dmlSwishMulDesc = { DML_OPERATOR_ELEMENT_WISE_MULTIPLY, &swishMulDesc };
@@ -140,24 +117,11 @@ public:
         const uint32_t mvnNodeIndex = currentNodeIndex++;
         opDescs.push_back(&dmlMvnDesc);
 
-        const uint32_t transposeIndex = currentNodeIndex++;
-        opDescs.push_back(&dmlTransposeDesc);
-
-        const uint32_t transposeOutputIndex = currentNodeIndex++;
-        opDescs.push_back(&dmlTransposeOutputDesc);
-
         DML_INPUT_GRAPH_EDGE_DESC inputEdge{};
         inputEdge.GraphInputIndex = 0;
-        inputEdge.ToNodeIndex = transposeIndex;
+        inputEdge.ToNodeIndex = mvnNodeIndex;
         inputEdge.ToNodeInputIndex = 0;
         inputEdges.push_back(inputEdge);
-
-        DML_INTERMEDIATE_GRAPH_EDGE_DESC transposeToMvnEdge = {};
-        transposeToMvnEdge.FromNodeIndex = transposeIndex;
-        transposeToMvnEdge.FromNodeOutputIndex = 0;
-        transposeToMvnEdge.ToNodeIndex = mvnNodeIndex;
-        transposeToMvnEdge.ToNodeInputIndex = 0;
-        intermediateEdges.push_back(transposeToMvnEdge);
 
         if (gammaBetaCastNeeded)
         {
@@ -237,28 +201,20 @@ public:
             swishSigmoidToSwishMulEdge.ToNodeInputIndex = 1;
             intermediateEdges.push_back(swishSigmoidToSwishMulEdge);
 
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC swishMulToOutputTransposeEdge = {};
-            swishMulToOutputTransposeEdge.FromNodeIndex = swishMulNodeIndex;
-            swishMulToOutputTransposeEdge.FromNodeOutputIndex = 0;
-            swishMulToOutputTransposeEdge.ToNodeIndex = transposeOutputIndex;
-            swishMulToOutputTransposeEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(swishMulToOutputTransposeEdge);
+            DML_OUTPUT_GRAPH_EDGE_DESC swishMulToOutputEdge{};
+            swishMulToOutputEdge.FromNodeIndex = swishMulNodeIndex;
+            swishMulToOutputEdge.FromNodeOutputIndex = 0;
+            swishMulToOutputEdge.GraphOutputIndex = 0;
+            outputEdges.push_back(swishMulToOutputEdge);
         }
         else
         {
-            DML_INTERMEDIATE_GRAPH_EDGE_DESC mvnToOutputTransposeEdge = {};
-            mvnToOutputTransposeEdge.FromNodeIndex = mvnNodeIndex;
-            mvnToOutputTransposeEdge.FromNodeOutputIndex = 0;
-            mvnToOutputTransposeEdge.ToNodeIndex = transposeOutputIndex;
-            mvnToOutputTransposeEdge.ToNodeInputIndex = 0;
-            intermediateEdges.push_back(mvnToOutputTransposeEdge);
+            DML_OUTPUT_GRAPH_EDGE_DESC mvnToOutputEdge{};
+            mvnToOutputEdge.FromNodeIndex = mvnNodeIndex;
+            mvnToOutputEdge.FromNodeOutputIndex = 0;
+            mvnToOutputEdge.GraphOutputIndex = 0;
+            outputEdges.push_back(mvnToOutputEdge);
         }
-
-        DML_OUTPUT_GRAPH_EDGE_DESC outputTransposeToOutputEdge{};
-        outputTransposeToOutputEdge.FromNodeIndex = transposeOutputIndex;
-        outputTransposeToOutputEdge.FromNodeOutputIndex = 0;
-        outputTransposeToOutputEdge.GraphOutputIndex = 0;
-        outputEdges.push_back(outputTransposeToOutputEdge);
 
         MLOperatorGraphDesc operatorGraphDesc = {};
         operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
