@@ -1637,6 +1637,7 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
                 adb_push("libonnxruntime.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_shared_lib_test", device_dir, cwd=cwd)
                 adb_push("libcustom_op_library.so", device_dir, cwd=cwd)
+                adb_push("libcustom_op_get_const_input_test_library.so", device_dir, cwd=cwd)
                 adb_push("onnxruntime_customopregistration_test", device_dir, cwd=cwd)
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_shared_lib_test")
                 adb_shell(f"chmod +x {device_dir}/onnxruntime_customopregistration_test")

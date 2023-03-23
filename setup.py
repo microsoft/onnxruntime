@@ -545,6 +545,7 @@ if enable_training or enable_training_apis:
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.torch_gpu_allocator",
                 "onnxruntime.training.ortmodule.torch_cpp_extensions.cuda.fused_ops",
                 "onnxruntime.training.utils.data",
+                "onnxruntime.training.utils.hooks",
             ]
         )
 
