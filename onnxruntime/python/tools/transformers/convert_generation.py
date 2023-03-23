@@ -1143,9 +1143,7 @@ def update_decoder_subgraph_use_decoder_masked_self_attention(
                     if len(nis) < 9:
                         nis.extend(["cache_indirection"])
 
-                node = onnx.helper.make_node(
-                    "DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs
-                )
+                node = onnx.helper.make_node("DecoderMaskedSelfAttention", nis, node.output, name=node.name, **kwargs)
             new_nodes.extend([node])
         subg.ClearField("node")
         subg.node.extend(new_nodes)
@@ -1519,9 +1517,7 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # when using `past_present_share_buffer`
     if args.use_decoder_masked_self_attention and not past_present_share_buffer:
-        raise ValueError(
-            "`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_self_attention`"
-        )
+        raise ValueError("`past_present_share_buffer` MUST be turned on to use `use_decoder_masked_self_attention`")
 
     # For any kind of sampling, using decoder masked multihead attention is only supported
     # on GPUs
@@ -1844,11 +1840,8 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
             update_decoder_subgraph_past_present_share_buffer(decoder_model.graph)
 
         # Update decoder subgraph in preparation to use DecoderMaskedSelfAttention
-        if (
-            args.use_decoder_masked_self_attention
-            and not update_decoder_subgraph_use_decoder_masked_self_attention(
-                decoder_model.graph, is_beamsearch, True
-            )
+        if args.use_decoder_masked_self_attention and not update_decoder_subgraph_use_decoder_masked_self_attention(
+            decoder_model.graph, is_beamsearch, True
         ):
             raise ValueError("Could not update the decoder subgraph to use DecoderMaskedSelfAttention")
 
