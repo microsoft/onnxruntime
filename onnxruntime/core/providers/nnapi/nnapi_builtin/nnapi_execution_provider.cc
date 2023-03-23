@@ -132,10 +132,7 @@ NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
   }
 
   // Get all the NodeUnits in the graph_viewer
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+  const auto [node_unit_holder, node_unit_map] = GetAllNodeUnits(graph_viewer);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit to be checked for multiple times

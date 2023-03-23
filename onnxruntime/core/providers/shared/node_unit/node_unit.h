@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include <string>
 #include <optional>
-#include <vector>
+#include <string>
 
+#include "core/common/gsl.h"
+#include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/graph.h"
 
@@ -53,8 +54,8 @@ class NodeUnit {
 
   Type UnitType() const noexcept { return type_; }
 
-  const std::vector<NodeUnitIODef>& Inputs() const noexcept { return inputs_; }
-  const std::vector<NodeUnitIODef>& Outputs() const noexcept { return outputs_; }
+  gsl::span<const NodeUnitIODef> Inputs() const noexcept { return inputs_; }
+  gsl::span<const NodeUnitIODef> Outputs() const noexcept { return outputs_; }
 
   const std::string& Domain() const noexcept;
   const std::string& OpType() const noexcept;
@@ -65,30 +66,31 @@ class NodeUnit {
   ProviderType GetExecutionProviderType() const noexcept;
 
   const Node& GetNode() const noexcept { return target_node_; }
-  const std::vector<const Node*>& GetDQNodes() const noexcept { return dq_nodes_; }
-  const std::vector<const Node*>& GetQNodes() const noexcept { return q_nodes_; }
-  std::vector<const Node*> GetAllNodesInGroup() const noexcept;
+  gsl::span<const gsl::not_null<const Node*>> GetDQNodes() const noexcept { return dq_nodes_; }
+  gsl::span<const gsl::not_null<const Node*>> GetQNodes() const noexcept { return q_nodes_; }
+  InlinedVector<gsl::not_null<const Node*>> GetAllNodesInGroup() const noexcept;
 
   Node::EdgeConstIterator OutputEdgesBegin(size_t index) const;
   Node::EdgeConstIterator OutputEdgesEnd(size_t index) const;
 
  private:
-  const std::vector<const Node*> q_nodes_;       // q-nodes for this NodeUnit
-  const std::vector<const Node*> dq_nodes_;   // dq nodes for this NodeUnit, not all inputs
+  InlinedVector<gsl::not_null<const Node*>> q_nodes_;   // q-nodes for this NodeUnit
+  InlinedVector<gsl::not_null<const Node*>> dq_nodes_;  // dq nodes for this NodeUnit, not all inputs
   const Node& target_node_;
   const Type type_;
 
-  std::vector<NodeUnitIODef> inputs_;
-  std::vector<NodeUnitIODef> outputs_;
+  InlinedVector<NodeUnitIODef> inputs_;
+  InlinedVector<NodeUnitIODef> outputs_;
 
   // Initializing for a single Node
   void InitForSingleNode();
 };
 
+using NodeUnitHolder = InlinedVector<std::unique_ptr<NodeUnit>>;
+using NodeToNodeUnitMap = InlinedHashMap<gsl::not_null<const Node*>, gsl::not_null<const NodeUnit*>>;
 // Get all the nodes in the given graph_viewer as NodeUnits (SingleNode or QDQGroup)
 // And return a map to quick query the NodeUnit which contains the given Node,
-// Note, the value of the map is owned by the vector of std::unique_ptr<NodeUnit>
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer);
+// Note, the values of the NodeToNodeUnitMap are owned by the NodeUnitHolder.
+std::pair<NodeUnitHolder, NodeToNodeUnitMap> GetAllNodeUnits(const GraphViewer& graph_viewer);
 
 }  // namespace onnxruntime

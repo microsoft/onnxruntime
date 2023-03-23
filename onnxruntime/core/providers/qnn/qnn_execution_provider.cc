@@ -84,7 +84,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
     // Q/DQ nodes -- supported
     // Transpose nodes -- supported
     if (is_npu_backend && NodeUnit::Type::SingleNode == node_unit.UnitType()) {
-      if (IsQdqNode(node_unit)) { // Qnn has Quantize & Dequantize Op 
+      if (IsQdqNode(node_unit)) { // Qnn has Quantize & Dequantize Op
         LOGS(logger, VERBOSE) << "Single Q/DQ node is supported for NPU backend. Node name: " << node_unit.Name();
         return true;
       }
@@ -126,7 +126,7 @@ bool QNNExecutionProvider::IsNodeSupported(qnn::QnnModelWrapper& qnn_model_wrapp
 
 std::unordered_set<const Node*>
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
-                                        const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                        const NodeToNodeUnitMap& node_unit_map,
                                         const size_t node_unit_size,
                                         const logging::Logger& logger) const {
   std::unordered_set<const Node*> supported_nodes{};
@@ -192,10 +192,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   // Get all the NodeUnits in the graph_viewer
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+  const auto [node_unit_holder, node_unit_map] = GetAllNodeUnits(graph_viewer);
 
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map, node_unit_holder.size(), logger);
   if (supported_nodes.empty()) {

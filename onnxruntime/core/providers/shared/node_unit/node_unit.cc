@@ -78,9 +78,9 @@ bool IsVariadicQLinearOp(QLinearOpType type) {
   return type == QLinearOpType::QLinearConcat;
 }
 
-const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
-                                             const QDQ::NodeGroup& node_group, bool is_input) {
-  std::vector<const Node*> io_nodes;
+InlinedVector<gsl::not_null<const Node*>> GetQDQIONodes(const GraphViewer& graph_viewer,
+                                                        const QDQ::NodeGroup& node_group, bool is_input) {
+  InlinedVector<gsl::not_null<const Node*>> io_nodes;
   const auto& src_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   io_nodes.reserve(src_nodes.size());
   for (const auto& node_idx : src_nodes) {
@@ -90,8 +90,8 @@ const std::vector<const Node*> GetQDQIONodes(const GraphViewer& graph_viewer,
 }
 
 // Get the input or output NodeUnitIODef(s) for the given QDQ NodeGroup
-std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
-                                        bool is_input) {
+InlinedVector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::NodeGroup& node_group,
+                                          bool is_input) {
   const auto& dq_or_q_nodes = is_input ? node_group.dq_nodes : node_group.q_nodes;
   const auto target_node_io_defs = is_input ? target_node.InputDefs() : target_node.OutputDefs();
   const size_t target_node_io_defs_size = target_node_io_defs.size();
@@ -128,7 +128,7 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
   }
 
   // Construct the IODefs for this QDQ NodeGroup
-  std::vector<NodeUnitIODef> io_defs;
+  InlinedVector<NodeUnitIODef> io_defs;
   io_defs.reserve(target_node_io_defs_size);
   for (size_t i = 0; i < target_node_io_defs_size; i++) {
     // If we can find the NodeUnitIODef for this index, this is a quantized input
@@ -146,13 +146,13 @@ std::vector<NodeUnitIODef> GetQDQIODefs(const Node& target_node, const QDQ::Node
 }  // namespace
 
 NodeUnit::NodeUnit(const Node& node)
-      :target_node_(node),
+    : target_node_(node),
       type_(Type::SingleNode) {
   InitForSingleNode();
 }
 
 NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_group)
-      :q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
+    : q_nodes_{GetQDQIONodes(graph_viewer, node_group, false /* is_input */)},
       dq_nodes_{GetQDQIONodes(graph_viewer, node_group, true /* is_input */)},
       target_node_(*graph_viewer.GetNode(node_group.target_node)),
       type_(Type::QDQGroup),
@@ -175,7 +175,7 @@ void NodeUnit::InitForSingleNode() {
   if (qlinear_type == QLinearOpType::Unknown ||
       IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
     // Not a Qlinear op, add all inputs / outputs
-    auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
+    auto add_all_io = [](InlinedVector<NodeUnitIODef>& defs,
                          const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
       defs.reserve(node_defs.size());
 
@@ -264,17 +264,16 @@ Node::EdgeConstIterator NodeUnit::OutputEdgesEnd(size_t index) const {
   }
 }
 
-std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
-  std::vector<const Node*> all_nodes = dq_nodes_;
+InlinedVector<gsl::not_null<const Node*>> NodeUnit::GetAllNodesInGroup() const noexcept {
+  auto all_nodes = dq_nodes_;
   all_nodes.push_back(&target_node_);
   all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
   return all_nodes;
 }
 
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer) {
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+std::pair<NodeUnitHolder, NodeToNodeUnitMap> GetAllNodeUnits(const GraphViewer& graph_viewer) {
+  NodeUnitHolder node_unit_holder;
+  NodeToNodeUnitMap node_unit_map;
 
   const auto add_node_unit_to_map = [&](const std::vector<NodeIndex>& node_indices, const NodeUnit* node_unit) {
     for (const auto& node_idx : node_indices) {
@@ -308,7 +307,7 @@ GetAllNodeUnits(const GraphViewer& graph_viewer) {
       continue;
 
     auto node_unit = std::make_unique<NodeUnit>(*node);
-    node_unit_map[node] = node_unit.get();
+    node_unit_map.emplace(node, node_unit.get());
     node_unit_holder.push_back(std::move(node_unit));
   }
 

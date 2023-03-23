@@ -11,6 +11,7 @@
 #include "core/providers/nnapi/nnapi_builtin/model.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_lib/NeuralNetworksWrapper.h"
 #include "core/providers/nnapi/nnapi_builtin/nnapi_api_helper.h"
+#include "core/providers/shared/node_unit/node_unit.h"
 #include "shaper.h"
 
 struct NnApi;
@@ -18,7 +19,6 @@ namespace onnxruntime {
 
 class GraphViewer;
 enum class DataLayout;
-class NodeUnit;
 class Node;
 class NodeArg;
 
@@ -151,8 +151,8 @@ class ModelBuilder {
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder_;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map_;
+  NodeUnitHolder node_unit_holder_;
+  NodeToNodeUnitMap node_unit_map_;
 
   std::unordered_set<std::string> unique_names_;
 

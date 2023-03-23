@@ -81,7 +81,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
 }
 
 const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
-                                      const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const {
+                                      NodeToNodeUnitMap& node_unit_map) const {
   const auto node_unit_it = node_unit_map.find(node);
   ORT_ENFORCE(node_unit_it != node_unit_map.end(), "Node does not have corresponding NodeUnit.");
   return *node_unit_it->second;
@@ -94,9 +94,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph_viewer);
+  const auto [node_unit_holder, node_unit_map] = GetAllNodeUnits(graph_viewer);
 
   const auto& graph_name = graph_viewer.Name();
   ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node));

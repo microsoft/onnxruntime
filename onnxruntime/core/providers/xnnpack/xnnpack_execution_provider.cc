@@ -214,7 +214,7 @@ static void AddComputeCapabilityForNodeUnit(const NodeUnit& node_unit,
   };
 
   if (node_unit.UnitType() == NodeUnit::Type::QDQGroup) {
-    for (const auto* node_i : node_unit.GetAllNodesInGroup()) {
+    for (const auto node_i : node_unit.GetAllNodesInGroup()) {
       process_node(*node_i);
     }
     sub_graph->SetMetaDef(FuseQDQGroup(node_unit));
@@ -241,7 +241,7 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
     adder(std::move(sub_graph));
     supported_map.emplace(&node, &node_unit);
   };
-  for (const auto* node_i : node_unit.GetAllNodesInGroup()) {
+  for (const auto node_i : node_unit.GetAllNodesInGroup()) {
     process_node(*node_i);
   }
 }
@@ -257,9 +257,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   std::unordered_map<const NodeUnit*, ComputeCapability*> node_to_compute_capability;
 
   // Get all the NodeUnits in the GraphViewer so we can check if something is in a QDQ node group
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(graph);
+  const auto [node_unit_holder, node_unit_map] = GetAllNodeUnits(graph);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit being checked for multiple times
@@ -272,7 +270,9 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
     }
     // if node is part of a QDQ group,
     // we will mark it compatible in the first call as long as we support the target node.
-    const NodeUnit& node_unit = *node_unit_map[n];
+    auto node_unit_it = node_unit_map.find(n);
+    ORT_ENFORCE(node_unit_it != node_unit_map.end(), "Failed to find node unit.");
+    const NodeUnit& node_unit = *node_unit_it->second;
 
     bool request_node = false;
     // any node in NodeUnit will trigger IsNodeSupported, so we just check once.

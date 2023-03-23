@@ -2538,14 +2538,9 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
   }
 
-// The function GetAllNodeUnits is enabled for NNAPI EP only for now
-#ifdef USE_NNAPI
   {
     // Get all the NodeUnits in the graph_viewer
-    std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-    std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-
-    std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(whole_graph_viewer);
+    const auto [node_unit_holder, node_unit_map] = GetAllNodeUnits(whole_graph_viewer);
 
     // We should get a single QDQ Node unit in the result
     ASSERT_EQ(1, node_unit_holder.size());
@@ -2583,7 +2578,6 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     verify_io_def(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
     verify_io_def(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
   }
-#endif  // #ifdef USE_NNAPI
 
   // Create a graph viewer covers part of the graph
   // Make sure the qdq conv selector will fail for the partial graph
