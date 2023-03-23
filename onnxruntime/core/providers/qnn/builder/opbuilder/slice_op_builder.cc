@@ -101,7 +101,7 @@ Status SliceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   auto inputs = node_unit.Inputs();
   auto input_count = inputs.size();
-  // Opset 1, only 1 input, starts, ends, axes in attribute
+  // Opset 9, only 1 input, starts, ends, axes are in attribute
   if (1 == input_count) {
     GetDataFromAttribute(node_unit, raw_starts, raw_ends, raw_axes);
   }
