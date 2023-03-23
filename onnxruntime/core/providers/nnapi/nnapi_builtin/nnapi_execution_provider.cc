@@ -76,7 +76,9 @@ NnapiExecutionProvider::NnapiExecutionProvider(uint32_t nnapi_flags,
   bool cpu_disabled_soft = nnapi_flags_ & NNAPI_FLAG_CPU_DISABLED_SOFT;
   bool cpu_only = nnapi_flags_ & NNAPI_FLAG_CPU_ONLY;
 
-  ORT_ENFORCE((cpu_disabled && cpu_only) == false, "Both NNAPI_FLAG_CPU_DISABLED and NNAPI_FLAG_CPU_ONLY are set");
+  ORT_ENFORCE((nnapi_flags_ & (NNAPI_FLAG_CPU_DISABLED | NNAPI_FLAG_CPU_DISABLED_SOFT | NNAPI_FLAG_CPU_ONLY)) == false,
+              "flag NNAPI_FLAG_CPU_DISABLED, NNAPI_FLAG_CPU_ONLY "
+              "and cpu_disabled_soft are exclusive");
 
   target_device_option_ = nnapi::TargetDeviceOption::ALL_DEVICES;
   if (cpu_disabled) {
