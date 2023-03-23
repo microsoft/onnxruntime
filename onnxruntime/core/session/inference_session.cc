@@ -51,6 +51,7 @@
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/GraphTransformer.h"
+#include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
@@ -1023,7 +1024,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
                 "The ORT format model version [", fbs_ort_model_version->string_view(),
                 "] is not supported in this build ", ORT_VERSION, ". ",
                 kOrtFormatVersion5BreakingChangeNote);
-#else  // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
+#else   // ^^ defined(ORT_MINIMAL_BUILD) ^^ / vv !defined(ORT_MINIMAL_BUILD) vv
   const auto has_saved_runtime_optimizations = [](const fbs::InferenceSession& fbs_session) -> bool {
     if (const auto* fbs_model = fbs_session.model()) {
       if (const auto* fbs_graph = fbs_model->graph()) {
@@ -1384,8 +1385,13 @@ common::Status InferenceSession::Initialize() {
 
 #ifdef USE_DML
       if (execution_providers_.Get(kDmlExecutionProvider)) {
+        auto dmlProviderImpl = static_cast<const Dml::ExecutionProvider*>(execution_providers_.Get(kDmlExecutionProvider))->GetImpl();
+
+        // DML graph fusion ignores the ONNX graph optimization level: it's an important runtime optimization that cannot be done
+        // ahead of time. To support users that want to preoptimize their models offline (and later run with optimizations disabled),
+        // this transformer is influenced by a separate DML EP API that is independent of other optimizaters.
         bool dml_graph_fusion_enabled = session_options_.optimized_model_filepath.empty() &&
-                                        session_options_.graph_optimization_level >= TransformerLevel::Level3;
+                                        dmlProviderImpl->GraphFusionEnabled();
         if (dml_graph_fusion_enabled) {
           std::unique_ptr<onnxruntime::GraphTransformer> dmlGraphFusionTransformer = std::make_unique<Dml::DmlGraphFusionTransformer>("DmlGraphFusionTransformer",
                                                                                                                                       execution_providers_.Get(kDmlExecutionProvider));

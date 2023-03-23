@@ -1029,6 +1029,11 @@ namespace Dml
         return m_areMetacommandsEnabled;
     }
 
+    bool __stdcall ExecutionProviderImpl::GraphFusionEnabled() const noexcept
+    {
+        return m_graphFusionEnabled;
+    }
+
     std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap>
     ExecutionProviderImpl::GetInternalRegistrationInfoMap() const
     {
