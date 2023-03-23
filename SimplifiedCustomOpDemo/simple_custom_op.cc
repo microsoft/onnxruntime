@@ -1,7 +1,7 @@
 #include "simple_custom_op.h"
 
 #define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
+#include "custom_op_lite.h"
 #undef ORT_API_MANUAL_INIT
 
 /////////////////////////////////// Fuse ////////////////////////////////////////
@@ -94,9 +94,9 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
   Ort::Global<void>::api_ = api->GetApi(ORT_API_VERSION);
 
   static Ort::CustomOpDomain v2_domain{"v2"};
-  static std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom::CreateCustomOpT("Fuse", "CPUExecutionProvider", InitFuse, Fuse, ExitFuse)};
-  static std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom::CreateCustomOpT("Select", "CPUExecutionProvider", Select)};
-  static std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom::CreateCustomOpT("Filter", "CPUExecutionProvider", Filter)};
+  static std::unique_ptr<OrtCustomOp> fus_op_ptr{Ort::Custom2::CreateCustomOpT2("Fuse", "CPUExecutionProvider", InitFuse, Fuse, ExitFuse)};
+  static std::unique_ptr<OrtCustomOp> sel_op_ptr{Ort::Custom2::CreateCustomOpT2("Select", "CPUExecutionProvider", Select)};
+  static std::unique_ptr<OrtCustomOp> fil_op_ptr{Ort::Custom2::CreateCustomOpT2("Filter", "CPUExecutionProvider", Filter)};
 
   v2_domain.Add(fus_op_ptr.get());
   v2_domain.Add(sel_op_ptr.get());
