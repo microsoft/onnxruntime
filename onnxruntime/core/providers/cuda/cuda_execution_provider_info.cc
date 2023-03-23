@@ -25,6 +25,7 @@ constexpr const char* kCudnnConvUseMaxWorkspace = "cudnn_conv_use_max_workspace"
 constexpr const char* kEnableCudaGraph = "enable_cuda_graph";
 constexpr const char* kCudnnConv1dPadToNc1d = "cudnn_conv1d_pad_to_nc1d";
 constexpr const char* kTunableOpEnabled = "tunable_op_enabled";
+constexpr const char* kTunableOpTuning = "tunable_op_tuning";
 }  // namespace provider_option_names
 }  // namespace cuda
 
@@ -99,6 +100,12 @@ CUDAExecutionProviderInfo CUDAExecutionProviderInfo::FromProviderOptions(const P
                 ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.enabled));
                 return Status::OK();
               })
+          .AddValueParser(
+              cuda::provider_option_names::kTunableOpTuning,
+              [&info](const std::string& value_str) -> Status {
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, info.tunable_op.tuning));
+                return Status::OK();
+              })
           .Parse(options));
 
   CUDAExecutionProviderExternalAllocatorInfo alloc_info{alloc, free, empty_cache};
@@ -122,6 +129,7 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const CUDAExecution
       {cuda::provider_option_names::kEnableCudaGraph, MakeStringWithClassicLocale(info.enable_cuda_graph)},
       {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
       {cuda::provider_option_names::kTunableOpEnabled, MakeStringWithClassicLocale(info.tunable_op.enabled)},
+      {cuda::provider_option_names::kTunableOpTuning, MakeStringWithClassicLocale(info.tunable_op.tuning)},
   };
 
   return options;
@@ -135,7 +143,9 @@ ProviderOptions CUDAExecutionProviderInfo::ToProviderOptions(const OrtCUDAProvid
       {cuda::provider_option_names::kCudnnConvAlgoSearch, EnumToName(ort_cudnn_conv_algo_search_mapping, info.cudnn_conv_algo_search)},
       {cuda::provider_option_names::kDoCopyInDefaultStream, MakeStringWithClassicLocale(info.do_copy_in_default_stream)},
       {cuda::provider_option_names::kCudnnConvUseMaxWorkspace, MakeStringWithClassicLocale(info.cudnn_conv_use_max_workspace)},
-      {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)}
+      {cuda::provider_option_names::kCudnnConv1dPadToNc1d, MakeStringWithClassicLocale(info.cudnn_conv1d_pad_to_nc1d)},
+      {cuda::provider_option_names::kTunableOpEnabled, MakeStringWithClassicLocale(info.tunable_op_enabled)},
+      {cuda::provider_option_names::kTunableOpTuning, MakeStringWithClassicLocale(info.tunable_op_tuning)},
   };
 
   return options;

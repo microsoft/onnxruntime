@@ -387,7 +387,8 @@ typedef struct OrtCUDAProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enabled{false},
+        tunable_op_tuning{false} {}
 #endif
 
   /** \brief CUDA device Id
@@ -438,11 +439,18 @@ typedef struct OrtCUDAProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
    *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_ENABLED.
    */
   int tunable_op_enabled;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be superseded by environment variable ORT_CUDA_TUNABLE_OP_TUNING.
+   */
+  int tunable_op_tuning;
+
 
 } OrtCUDAProviderOptions;
 
@@ -461,7 +469,8 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
-        tunable_op_enabled{false} {}
+        tunable_op_enabled{false},
+        tunable_op_tuning{false} {}
 #endif
 
   /** \brief ROCM device Id
@@ -511,11 +520,17 @@ typedef struct OrtROCMProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
-  /** \brief Enable TunableOp.
-   *   Set it to 1 to enable TunableOp. Otherwise, it is disabled by default.
+  /** \brief Enable TunableOp for using.
+   *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
    *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_ENABLED.
    */
   int tunable_op_enabled;
+
+  /** \brief Enable TunableOp for tuning.
+   *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
+   *   This option can be superseded by environment variable ORT_ROCM_TUNABLE_OP_TUNING.
+   */
+  int tunable_op_tuning;
 
 } OrtROCMProviderOptions;
 

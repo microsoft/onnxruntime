@@ -180,6 +180,7 @@ std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunab
   OrtROCMProviderOptions provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.tunable_op_enabled = test_tunable_op ? 1 : 0;
+  provider_options.tunable_op_tuning = test_tunable_op ? 1 : 0;
   if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
     return factory->CreateProvider();
 #endif
