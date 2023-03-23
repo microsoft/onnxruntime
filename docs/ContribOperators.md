@@ -20,7 +20,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.ConvTransposeWithDynamicPads">com.microsoft.ConvTransposeWithDynamicPads</a>
   * <a href="#com.microsoft.CropAndResize">com.microsoft.CropAndResize</a>
   * <a href="#com.microsoft.DecoderAttention">com.microsoft.DecoderAttention</a>
-  * <a href="#com.microsoft.DecoderMaskedMultiheadAttention">com.microsoft.DecoderMaskedMultiheadAttention</a>
+  * <a href="#com.microsoft.DecoderMaskedSelfAttention">com.microsoft.DecoderMaskedSelfAttention</a>
   * <a href="#com.microsoft.DequantizeBFP">com.microsoft.DequantizeBFP</a>
   * <a href="#com.microsoft.DequantizeLinear">com.microsoft.DequantizeLinear</a>
   * <a href="#com.microsoft.DequantizeWithOrder">com.microsoft.DequantizeWithOrder</a>
@@ -1102,9 +1102,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 </dl>
 
 
-### <a name="com.microsoft.DecoderMaskedMultiheadAttention"></a><a name="com.microsoft.decodermaskedmultiheadattention">**com.microsoft.DecoderMaskedMultiheadAttention**</a>
+### <a name="com.microsoft.DecoderMaskedSelfAttention"></a><a name="com.microsoft.decodermaskedselfattention">**com.microsoft.DecoderMaskedSelfAttention**</a>
 
-  Uni-directional attention that supports input sequence length of 1.
+  Self attention that supports input sequence length of 1.
   
   The weights for input projection of Q, K and V are merged. The data is stacked on the second dimension. Its shape
   is (input_hidden_size, hidden_size + hidden_size + v_hidden_size). Here hidden_size is the hidden dimension of Q and K,

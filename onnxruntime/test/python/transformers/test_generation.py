@@ -137,17 +137,17 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.run_beam_search("--past_present_share_buffer --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
-    def test_greedy_search_use_decoder_masked_multihead_attention(self):
+    def test_greedy_search_use_decoder_masked_self_attention(self):
         if self.enable_cuda:
             self.run_beam_search(
-                "--past_present_share_buffer --use_decoder_masked_multihead_attention --use_gpu", is_greedy=True
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu", is_greedy=True
             )
 
     @pytest.mark.slow
-    def test_greedy_search_use_decoder_masked_multihead_attention_fp16(self):
+    def test_greedy_search_use_decoder_masked_self_attention_fp16(self):
         if self.enable_cuda:
             self.run_beam_search(
-                "--past_present_share_buffer --use_decoder_masked_multihead_attention --use_gpu -p fp16", is_greedy=True
+                "--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16", is_greedy=True
             )
 
     @pytest.mark.slow
@@ -157,16 +157,14 @@ class TestBeamSearchGpt(unittest.TestCase):
             self.run_beam_search("--repetition_penalty 1.0 --use_gpu -p fp16", is_greedy=True)
 
     @pytest.mark.slow
-    def test_beam_search_use_decoder_masked_multihead_attention(self):
+    def test_beam_search_use_decoder_masked_self_attention(self):
         if self.enable_cuda:
-            self.run_beam_search(f"--past_present_share_buffer --use_decoder_masked_multihead_attention --use_gpu")
+            self.run_beam_search(f"--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu")
 
     @pytest.mark.slow
-    def test_beam_search_use_decoder_masked_multihead_attention_fp16(self):
+    def test_beam_search_use_decoder_masked_self_attention_fp16(self):
         if self.enable_cuda:
-            self.run_beam_search(
-                f"--past_present_share_buffer --use_decoder_masked_multihead_attention --use_gpu -p fp16"
-            )
+            self.run_beam_search(f"--past_present_share_buffer --use_decoder_masked_self_attention --use_gpu -p fp16")
 
     @pytest.mark.slow
     def test_external_data(self):
