@@ -22,10 +22,10 @@ steps:
 
   - task: Cache@2
     inputs:
-      key:  ' "${{parameters.TODAY}}" | "${{parameters.AdditionalKey}}" | "$(Build.SourceVersion)" '
+      key:  ' "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}} | "$(Build.SourceVersion)" '
       path: "${{parameters.CCACHE_DIR}}"
       restoreKeys: |
-        "${{parameters.TODAY}}" | "${{parameters.AdditionalKey}}"
+        "${{parameters.TODAY}}" | ${{parameters.AdditionalKey}}
     displayName: ccache task
 
   - ${{ parameters.BuildStep }}
