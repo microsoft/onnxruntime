@@ -53,6 +53,8 @@ std::unique_ptr<IExecutionProvider> CUDAProviderFactory::CreateProvider() {
 }
 
 struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
+  virtual ~ProviderInfo_CUDA_Impl() = default;
+
   OrtStatus* SetCurrentGpuDeviceId(_In_ int device_id) override {
     int num_devices;
     auto cuda_err = ::cudaGetDeviceCount(&num_devices);
@@ -211,10 +213,6 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return true;
   }
 #endif
-
-protected:
-  ~ProviderInfo_CUDA_Impl() = default;
-
 } g_info;
 
 struct CUDA_Provider : Provider {
