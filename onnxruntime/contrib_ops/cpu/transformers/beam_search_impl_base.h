@@ -22,7 +22,7 @@ struct BeamSearchState : public IBeamSearchState<T> {
             int max_length,
             int num_heads,
             int head_size,
-            int has_decoder_masked_multihead_attention,
+            int has_decoder_masked_self_attention,
             bool output_scores,
             bool use_position) {
     size_t batch_beam_size = SafeInt<size_t>(batch_size) * num_beams;
@@ -53,9 +53,9 @@ struct BeamSearchState : public IBeamSearchState<T> {
       this->remaining_scores = this->scores;
     }
 
-    if (has_decoder_masked_multihead_attention) {
+    if (has_decoder_masked_self_attention) {
       // We need a temp staging buffer to do the past 'K' state re-ordering that is needed
-      // when using DecoderMaskedMultiheadAttention
+      // when using DecoderMaskedSelfAttention
       TensorShape staging_for_past_state_reorder_buffer_shape = {static_cast<int64_t>(batch_beam_size), num_heads, max_length, head_size};
 
       Tensor temp(DataTypeImpl::GetType<T>(), staging_for_past_state_reorder_buffer_shape, allocator);

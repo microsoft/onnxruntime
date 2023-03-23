@@ -136,7 +136,7 @@ using UpdateGptFeedsFunc = std::function<Status(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention)>;
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention)>;
 
 // Create encoder inputs (for encoder-decoder model like T5).
 using CreateEncoderInputsFunc = std::function<Status(
@@ -273,7 +273,7 @@ Status UpdateGptFeeds(
     bool past_present_share_buffer,
     int past_sequence_len,
     int input_sequence_len,
-    bool has_beam_search_specific_inputs_for_decoder_masked_multihead_attention);
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5
