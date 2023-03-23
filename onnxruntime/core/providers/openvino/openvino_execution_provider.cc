@@ -40,8 +40,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
           info.device_type_.find("MULTI") != std::string::npos ||
           info.device_type_.find("AUTO") != std::string::npos) {
         device_found = true;
-      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos ||
-                 info.device_type_ == "MYRIAD") {
+      } else if (info.device_type_ == "CPU" || info.device_type_.find("GPU") != std::string::npos) {
         for (auto device : available_devices) {
           if (device.rfind(info.device_type_, 0) == 0) {
             if (info.device_type_.find("GPU") != std::string::npos && (info.precision_ == "FP32" ||
@@ -50,10 +49,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
               break;
             }
             if (info.device_type_ == "CPU" && (info.precision_ == "FP32" || info.precision_ == "FP16")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type_ == "MYRIAD" && info.precision_ == "FP16") {
               device_found = true;
               break;
             }
@@ -75,7 +70,7 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
     if (info.device_id_ != "") {
       for (auto device : available_devices) {
         if (device.rfind(info.device_id_, 0) == 0) {
-          if (info.device_id_ == "MYRIAD" || info.device_id_ == "CPU" || info.device_id_ == "GPU") {
+          if (info.device_id_ == "CPU" || info.device_id_ == "GPU") {
             LOGS_DEFAULT(INFO) << "[OpenVINO-EP]"
                                << "Switching to Device ID: " << info.device_id_;
             device_id_found = true;

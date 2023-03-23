@@ -41,9 +41,8 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     return;
 
   // OV Config
-  OVConfig config;
   ov::AnyMap device_config;
-  PopulateConfigValue(config, device_config);
+  PopulateConfigValue(device_config);
 
   // Enable caching
   EnableCaching();
@@ -56,17 +55,23 @@ BasicBackend::BasicBackend(const ONNX_NAMESPACE::ModelProto& model_proto,
     if ((global_context.device_type.find("GPU") != std::string::npos) &&
         (global_context_.context != nullptr) &&
         (openvino_ep::BackendManager::GetGlobalContext().is_wholly_supported_graph)) {
-      LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
-      cl_context ctx = static_cast<cl_context>(global_context_.context);
-#ifdef OV_API_20
-      remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
-#else
-      remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
-#endif
-      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
-    } else {
-      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, config, device_config, subgraph_context_.subgraph_name);
+        LOGS_DEFAULT(INFO) << log_tag << "IO Buffering Enabled";
+        cl_context ctx = static_cast<cl_context>(global_context_.context);
+        #ifdef OV_API_20
+          remote_context_ = new ov::intel_gpu::ocl::ClContext(global_context_.ie_core.Get(), ctx);
+        #else
+          remote_context_ = InferenceEngine::gpu::make_shared_context(global_context_.ie_core.Get(), hw_target, ctx);
+        #endif
+        exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, remote_context_, subgraph_context_.subgraph_name);
+      } else {
+          exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+      }
+    }catch (const char* msg) {
+        throw(msg);
     }
+  #else
+  try{
+      exe_network_ = global_context_.ie_core.LoadNetwork(ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
   } catch (const char* msg) {
     throw(msg);
   }
@@ -101,7 +106,7 @@ bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ngraph
   return false;
 }
 
-void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_config) {
+void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
   // Set inference precision if device_type != AUTO
   // if (global_context_.device_type.find("GPU_FP16")!= std::string::npos){
   //   device_config.emplace(ov::hint::inference_precision(global_context_.precision_str));
@@ -117,19 +122,7 @@ void BasicBackend::PopulateConfigValue(OVConfig& config, ov::AnyMap& device_conf
     if (openvino_ep::backend_utils::IsDebugEnabled()) {
       config["PERF_COUNT"] = CONFIG_VALUE(YES);
     }
-#endif
-    if (subgraph_context_.set_vpu_config) {
-      config["MYRIAD_DETECT_NETWORK_BATCH"] = CONFIG_VALUE(NO);
-    }
-    if (global_context_.enable_vpu_fast_compile) {
-      config["MYRIAD_HW_INJECT_STAGES"] = CONFIG_VALUE(NO);
-      config["MYRIAD_COPY_OPTIMIZATION"] = CONFIG_VALUE(NO);
-    }
-// to check preprocessing inside model
-#if defined(OPENVINO_2022_1) || (OPENVINO_2022_2) || (OPENVINO_2022_3)
-    config["MYRIAD_CHECK_PREPROCESSING_INSIDE_MODEL"] = CONFIG_VALUE(NO);
-#endif
-  }
+  #endif
 }
 
 void BasicBackend::EnableCaching() {

@@ -117,7 +117,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       } else {
         auto node = graph_viewer_.GetNode(node_idx);
         const auto& optype = node->OpType();
-        if (data_ops_->InsertNode(node, optype)) {
+        if (data_ops_->InsertNode(optype)) {
           modified_unsupported_nodes.push_back(node_idx);
         }
       }
@@ -127,21 +127,10 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
     auto connected_clusters = GetConnectedClusters(graph_viewer_, ng_clusters);
 
-    // Myriad plugin can only load 10 subgraphs
-    if (device_type_ == "MYRIAD" && connected_clusters.size() > 10) {
-      std::sort(connected_clusters.begin(), connected_clusters.end(),
-                [](const std::vector<NodeIndex>& v1, const std::vector<NodeIndex>& v2) -> bool {
-                  return v1.size() > v2.size();
-                });
-    }
     int no_of_clusters = 0;
 
     for (auto this_cluster : connected_clusters) {
-      if (device_type_ == "MYRIAD" && no_of_clusters == 10) {
-        break;
-      }
-
-      // If subgraph has less then three, graph is considered trivial
+      //If subgraph has less then three, graph is considered trivial
       if (this_cluster.size() < 3) {
         continue;
       } else {
@@ -188,14 +177,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         if (node->OpType() == "Slice") {
           auto input = node->InputDefs()[0];
           auto input_name = input->Name();
-          const bool is_data_int32 = input->Type()->find("int32") != std::string::npos;
-          const bool is_data_int64 = input->Type()->find("int64") != std::string::npos;
           auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
           if (it != cluster_graph_inputs.end()) {
-            if (device_type_.find("MYRIAD") != std::string::npos && (is_data_int32 || is_data_int64)) {
-              omit_subgraph = true;
-              break;
-            }
             if (slice_map.count(input_name) == 0) {
               slice_map[input_name] = 1;
             } else {

@@ -17,17 +17,30 @@ using WaitMode = InferenceEngine::IInferRequest::WaitMode;
 namespace onnxruntime {
 namespace openvino_ep {
 
-const std::string log_tag = "[OpenVINO-EP] ";
-std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
-  try {
-    OVTensor weights;
-    return oe.read_model(model, weights);
-  } catch (const Exception& e) {
-    throw std::string(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
-  } catch (...) {
-    throw std::string(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
-  }
-}
+    const std::string log_tag = "[OpenVINO-EP] ";
+    std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model) const {
+        try {
+            OVTensor weights;
+            return oe.read_model(model, weights);
+            } catch (const Exception& e) {
+                throw std::string(log_tag + "[OpenVINO-EP] Exception while Reading network: " + std::string(e.what()));
+            } catch (...) {
+                throw std::string(log_tag + "[OpenVINO-EP] Unknown exception while Reading network");
+            }
+    }
+
+    OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, ov::AnyMap& device_config, std::string name) {
+        ov::CompiledModel obj;
+        try {
+            obj = oe.compile_model(ie_cnn_network, hw_target, device_config);
+            OVExeNetwork exe(obj);
+            return exe;
+        } catch (const Exception& e) {
+            throw std::string(log_tag + " Exception while Loading Network for graph: " + name + e.what());
+        } catch (...) {
+            throw std::string(log_tag + " Exception while Loading Network for graph " + name);
+        }
+    }
 
 OVExeNetwork OVCore::LoadNetwork(std::shared_ptr<OVNetwork>& ie_cnn_network, std::string& hw_target, OVConfig& config, ov::AnyMap& device_config, std::string name) {
   ov::CompiledModel obj;
