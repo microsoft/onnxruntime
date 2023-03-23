@@ -73,7 +73,7 @@ void Select(const Ort::Custom2::Span<int32_t>& indices_in,
 void Filter(const Ort::Custom2::TensorT<float>& floats_in,
             Ort::Custom2::TensorT<float>& floats_out) {
   const float* in = floats_in.Data();
-  auto in_len = floats_in.NumerOfElement();
+  auto in_len = floats_in.NumberOfElement();
 
   std::vector<float> filter_floats;
   for (int64_t i = 0; i < in_len; ++i) {

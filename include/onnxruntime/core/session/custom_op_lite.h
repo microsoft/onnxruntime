@@ -41,7 +41,7 @@ class TensorT : public Tensor {
   std::vector<int64_t> Shape() const {
     return shape_;
   }
-  int64_t NumerOfElement() const {
+  int64_t NumberOfElement() const {
     if (shape_.empty()) {
       return 0;
     } else {
