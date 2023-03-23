@@ -90,6 +90,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLRNOpBuilder("LRN", op_registrations);
   }
 
+  {  // Pad
+    CreatePadOpBuilder("Pad", op_registrations);
+  }
+
   return op_registrations;
 }
 
