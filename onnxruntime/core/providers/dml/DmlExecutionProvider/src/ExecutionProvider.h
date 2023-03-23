@@ -152,8 +152,6 @@ namespace Dml
         STDMETHOD_(bool, IsMcdmDevice)() const noexcept final;
 
         STDMETHOD_(bool, MetacommandsEnabled)() const noexcept final;
-        STDMETHOD_(bool, GraphFusionEnabled)() const noexcept final;
-
         std::shared_ptr<onnxruntime::IAllocator> GetGpuAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuInputAllocator();
         std::shared_ptr<onnxruntime::IAllocator> GetCpuOutputAllocator();
@@ -186,7 +184,6 @@ namespace Dml
         ComPtr<IDMLDevice> m_dmlDevice;
         bool m_isMcdmDevice = false;
         bool m_areMetacommandsEnabled = true;
-        bool m_graphFusionEnabled = true;
         std::shared_ptr<ExecutionContext> m_context;
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
@@ -305,14 +302,9 @@ namespace Dml
             return m_impl.Get();
         }
 
-        bool MetacommandsEnabled()
+        void MetacommandsEnabled()
         {
-            return m_impl->MetacommandsEnabled();
-        }
-
-        bool GraphFusionEnabled()
-        {
-            return m_impl->GraphFusionEnabled();
+            m_impl->MetacommandsEnabled();
         }
 
     private:
