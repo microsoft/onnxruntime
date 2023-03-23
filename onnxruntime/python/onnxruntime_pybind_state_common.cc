@@ -43,6 +43,160 @@ onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+
+static at::Device ToTorchDevice(OrtDevice const& device) {
+  switch (device.Type()) {
+    case OrtDevice::CPU:
+      return at::Device(OrtDevice::CPU);
+    case OrtDevice::GPU:
+      return at::Device(OrtDevice::CUDA, device.Id());
+    case OrtDevice::FPGA:
+    case OrtDevice::NPU:
+      return at::Device(OrtDevice::ORT, device.Id());
+    default:
+      ORT_THROW("Undefined device type:" + device.ToString());
+  }
+}
+
+static OrtDevice::DeviceType ToOrtDeviceType(at::Device const& device) {
+    switch (device.type()) {
+    case c10::Device::Type::CPU:
+      return OrtDevice::CPU;
+    case c10::Device::Type::CUDA:
+      return OrtDevice::GPU;
+    case c10::Device::Type::ORT:
+      return OrtDevice::NPU;
+    default:
+      ORT_THROW("Undefined device type:" + device.str());
+  }
+}
+
+static OrtMemoryInfo ToOrtMemoryInfo(at::Device const& device) {
+  auto device_id = device.index();
+  OrtDevice::DeviceType device_type = ToOrtDeviceType(device);
+  OrtAllocatorType alloc_type = (device_type != OrtDevice::CPU)? OrtAllocatorType::OrtDeviceAllocator : OrtAllocatorType::OrtArenaAllocator;
+  OrtMemoryInfo info("torch",
+                      alloc_type,
+                      OrtDevice(device_type, OrtDevice::MemType::DEFAULT, device_id),
+                      device_id,
+                      OrtMemTypeDefault)
+  return info;
+
+}
+
+static at::ScalarType ToTorchDataType(int32_t elem_type) {
+  switch (elem_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return ScalarType::Double;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return ScalarType::Float;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      return ScalarType::Char;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      return ScalarType::Short;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return ScalarType::Int;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return ScalarType::Long;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return ScalarType::Half;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      return ScalarType::BFloat16;
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      return ScalarType::Bool;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      return ScalarType::Byte;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+    default:
+      ORT_THROW("Unexpected data type of ", elem_type);
+  }
+}
+
+static onnxruntime::MLDataType ToOrtDataType(at::ScalarType dtype) {
+  switch (dtype) {
+    case at::kFloat:
+      return onnxruntime::DataTypeImpl::GetType<float>();
+    case at::kDouble:
+      return onnxruntime::DataTypeImpl::GetType<double>();
+    case at::kHalf:
+      return onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>();
+    case at::kBFloat16:
+      return onnxruntime::DataTypeImpl::GetType<onnxruntime::BFloat16>();
+    case at::kInt:
+      return onnxruntime::DataTypeImpl::GetType<int>();
+    case at::kShort:
+      return onnxruntime::DataTypeImpl::GetType<int16_t>();
+    case at::kLong:
+      return onnxruntime::DataTypeImpl::GetType<int64_t>();
+    case at::kBool:
+      return onnxruntime::DataTypeImpl::GetType<bool>();
+    default:
+      ORT_THROW("Unsupport aten scalar type: ", dtype);
+  }
+}
+
+struct OrtManagedTensor : OrtValue {
+  using OrtValue::OrtValue;
+};
+
+at::Tensor ToTorch(OrtValue& ort_value) {
+  ORT_ENFORCE(ort_value.IsTensor(), "Only tensor type OrtValues are supported");
+  Tensor& tensor = *ort_value.GetMutable<Tensor>();
+  OrtManagedTensor* ort_managed_tensor(new OrtManagedTensor(ortvalue)); // increment ref count by 1
+  at::Device device = ToTorchDevice(tensor.Location().device);
+  at::ScalarType dtype = ToTorchType(tensor.GetElementType());
+  at::IntArrayRef shape(tensor.Shape().GetDims().begin(), tensor.Shape().NumDimensions());
+
+  auto deleter = [ort_managed_tensor](void* /*self*/) {
+    delete ort_managed_tensor;
+  };
+
+  if (tensor.IsContiguous()) {
+    return at::from_blob(tensor.MutableDataRaw(),
+        std::move(shape),
+        deleter,
+        at::device(device).dtype(dtype));
+  } else {
+    return at::from_blob(
+        tensor.MutableDataRaw(),
+        std::move(shape),
+        at::IntArrayRef(tensor.Strides().begin(), tensor.Shape().NumDimensions()),
+        deleter,
+        at::device(device).dtype(dtype),
+        { device });
+  }
+}
+
+OrtValue FromTorch(const at::Tensor& torch_tensor) {
+
+  if (torch_tensor.is_sparse()) {
+    throw std::runtime_error("FromTorch: sparse tensor is not supported");
+  }
+
+  if (torch_tensor.is_quantized()) {
+    throw std::runtime_error("FromTorch: quantized tensor is not supported");
+  }
+
+  OrtMemoryInfo info = ToOrtMemoryInfo(torch_tensor.device());
+  auto element_type = ToOrtDataType(torch_tensor.scalar_type());
+
+  OrtValue ort_tensor;
+
+  onnxruntime::Tensor::InitOrtValue(
+      element_type,
+      onnxruntime::TensorShape(torch_tensor.sizes().vec()),
+      torch_tensor.data_ptr(),
+      info,
+      ort_tensor,
+      0L,  // offset.
+      tensor.strides().vec());
+  return ort_tensor;
+
+}
+
+
 #ifdef ENABLE_TRAINING
 
 void DlpackCapsuleDestructor(PyObject* data) {

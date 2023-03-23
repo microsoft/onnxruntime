@@ -279,6 +279,12 @@ void addOrtValueMethods(pybind11::module& m) {
 #endif
         return obj;
       })
+      .def("to_torch", [](OrtValue& ort_value) {
+        return ToTorch(ort_value);
+      }, "Returns a pytorch tensor from ortvalue. The ownership is transferred to torch.")
+      .def("from_torch", [](at::Tensor data) {
+        return FromTorch(data);
+      }, "Returns a ortvalue representing a tensor. The tensor is owned by torch."),
 #ifdef ENABLE_TRAINING
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object {
         return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
