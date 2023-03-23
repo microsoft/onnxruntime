@@ -211,6 +211,10 @@ struct ProviderInfo_CUDA_Impl : ProviderInfo_CUDA {
     return true;
   }
 #endif
+
+protected:
+  ~ProviderInfo_CUDA_Impl() = default;
+
 } g_info;
 
 struct CUDA_Provider : Provider {
