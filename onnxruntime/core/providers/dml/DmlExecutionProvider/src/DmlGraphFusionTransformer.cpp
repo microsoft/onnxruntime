@@ -29,6 +29,11 @@ namespace Dml
         int graph_level,
         const onnxruntime::logging::Logger& logger) const
     {
+        if (!m_providerImpl->GraphFusionEnabled())
+        {
+            return onnxruntime::common::Status::OK();
+        }
+
         onnxruntime::ProviderType provider_type = onnxruntime::kDmlExecutionProvider;
         const gsl::not_null<const onnxruntime::KernelRegistry*> registry = m_providerImpl->GetKernelRegistry().get();
         const auto kernel_type_str_resolver = onnxruntime::OpSchemaKernelTypeStrResolver{};
