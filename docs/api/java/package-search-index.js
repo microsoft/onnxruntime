@@ -1,1 +1,0 @@
-packageSearchIndex = [{"l":"ai.onnxruntime"},{"l":"ai.onnxruntime.providers"},{"l":"All Packages","url":"allpackages-index.html"}]
