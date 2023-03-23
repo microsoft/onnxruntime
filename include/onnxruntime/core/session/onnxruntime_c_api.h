@@ -4093,7 +4093,6 @@ struct OrtApi {
   // prevents us from initializing it memberwise.
   // This m_no_copy implicitly deletes the copy constructor and assignment operator.
   struct NoCopy {
-    int dummy = 5;
     NoCopy() = default;
     NoCopy(const NoCopy&) = delete;
     NoCopy& operator=(const NoCopy&) = delete;
