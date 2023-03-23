@@ -7,7 +7,7 @@ import {TensorView} from './tensor';
 import {createGpuDataManager, GpuDataManager} from './webgpu/gpu-data-manager';
 import {RunFunction, WEBGPU_OP_RESOLVE_RULES} from './webgpu/op-resolve-rules';
 import {ProgramManager} from './webgpu/program-manager';
-import {ComputeContext, ComputeContextInputsOutputsMapping, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
+import {ComputeContext, GpuData, GpuDataType, ProgramInfo, ProgramInfoLoader} from './webgpu/types';
 
 /**
  * get a unique key representing the program from the program info,input shapes and types.
@@ -170,8 +170,8 @@ export class WebGpuBackend {
           validatedOutputIndices[i] >= programInfo.outputs.length) {
         throw new Error(`Invalid output index: ${validatedOutputIndices[i]}`);
       }
-      const isTemporary = validatedOutputIndices[i] === ComputeContextInputsOutputsMapping.TEMPORARY_OUTPUT;
-      const isPersistent = validatedOutputIndices[i] === ComputeContextInputsOutputsMapping.PERSISTENT_OUTPUT;
+      const isTemporary = validatedOutputIndices[i] === -1;
+      const isPersistent = validatedOutputIndices[i] === -2;
       const tensorView = (isTemporary || isPersistent) ?
           createTemporaryOutput(programInfo.outputs[i].dataType, programInfo.outputs[i].dims) :
           createKernelOutput(validatedOutputIndices[i], programInfo.outputs[i].dataType, programInfo.outputs[i].dims);
