@@ -1106,6 +1106,7 @@ def update_decoder_subgraph_use_decoder_masked_multihead_attention(
             "past_present_share_buffer",
             "num_heads",
             "scale",
+            "mask_filter_value",
             "domain",
         ]
 
