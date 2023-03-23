@@ -155,7 +155,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) for input projection</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
-<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size)</dd>
+<dd>Attention mask with shape (batch_size, 1, max_sequence_length, max_sequence_length), (batch_size, total_sequence_length) or (batch_size, sequence_length, total_sequence_length), or index with shape (batch_size) or (2 * batch_size) or (3 * batch_size + 2)</dd>
 <dt><tt>past</tt> (optional) : T</dt>
 <dd>past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size)When past_present_share_buffer is set, its shape is (2, batch_size, num_heads, max_sequence_length, head_size)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
@@ -2404,7 +2404,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>bias</tt> (optional) : T</dt>
 <dd>Bias tensor with shape (hidden_size + hidden_size + v_hidden_size) from input projection</dd>
 <dt><tt>key_padding_mask</tt> (optional) : M</dt>
-<dd>Key padding mask with shape (batch_size) or (batch_size, kv_sequence_length)</dd>
+<dd>Key padding mask with shape (batch_size) or (3 * batch_size + 2) or (batch_size, kv_sequence_length)</dd>
 <dt><tt>relative_position_bias</tt> (optional) : T</dt>
 <dd>relative position bias: addition to QxK' with shape (batch_size, num_heads, sequence_length, total_sequence_length) or (1, num_heads, sequence_length, total_sequence_length)</dd>
 <dt><tt>past_key</tt> (optional) : T</dt>
