@@ -6,7 +6,7 @@
 #include "optimizer_api.h"
 #include "core/graph/graph.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/graph_partitioner.h"  // DebugGraphFn is defined here
+#include "core/framework/transform_layout_functions.h"
 
 namespace onnxruntime {
 /// <summary>

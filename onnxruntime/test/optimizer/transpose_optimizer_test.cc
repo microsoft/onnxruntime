@@ -4452,5 +4452,54 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   }
 #endif
 }
+
+TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
+  // test uses internal testing EP with static kernels which requires a full build,
+  // and the NHWC Conv with requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
+
+  SessionOptions so;
+
+  // enable dumping graph so one test validates that infrastructure works. we don't want to do that in multiple
+  // tests as the filenames for the debug output are hardcoded.
+  // check the build output directory for files called `post_layout_transform_step_<step#>.onnx` to see how the graph
+  // changes during the layout transformation process.
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // if we merge the Transpose -> Reshape the resulting Transpose node can be pushed down and will cancel out
+  // all downstream Transpose nodes.
+  // if the merge fails those two nodes remain, and the Transpose is blocked from being pushed down.
+  // additionally, running the L1 transformers after the layout transform should constant fold the Transpose node that
+  // gets inserted on the weights used by the Add node.
+  // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
+  // avoided.
+  ASSERT_TRUE(op_to_count["Transpose"] == 1) << "All layout transform Transpose ops should have been handled "
+                                                "with the exception of the initial node prior to the Conv";
+
+  // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetExecutionProviderType() == expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                                << "' was not assigned to the internal testing EP.";
+  }
+#endif
+}
 }  // namespace test
 }  // namespace onnxruntime
