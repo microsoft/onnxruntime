@@ -1,5 +1,6 @@
 #pragma once
 #include "onnxruntime_cxx_api.h"
+#include <numeric>
 
 namespace Ort {
 namespace Custom2 {
@@ -40,11 +41,19 @@ class TensorT : public Tensor {
   std::vector<int64_t> Shape() const {
     return shape_;
   }
+  int64_t NumerOfElement() const {
+    if (shape_.empty()) {
+      return 0;
+    } else {
+      return std::accumulate(shape_.begin(), shape_.end(), 1UL, std::multiplies<int64_t>());
+    }
+  }
   const TT* Data() const {
     return reinterpret_cast<const TT*>(const_value_.GetTensorRawData());
   }
   TT* Allocate(const std::vector<int64_t>& shape) {
     if (!data_) {
+      shape_ = shape;
       data_ = ctx_.GetOutput(indice_, shape).GetTensorMutableData<TT>();
     }
     return data_;
