@@ -1,5 +1,7 @@
 jobs:
 - job: CoreML_CI
+  workspace:
+    clean: all
   pool:
     vmImage: 'macOS-12'
   variables:
