@@ -1589,7 +1589,7 @@ static bool FinalizeReshapeShape(const std::vector<int64_t>& input_shape,      /
 static bool HandleReshape(HandlerArgs& args) {
   // A Reshape can be logically equivalent to a Transpose if all dims with a value > 1 remain in the same order
   // and do not change size. If so, we can use HandleTransposeImpl to merge them.
-  //  e.g. Reshape(input {1, 512, 4, 1}, shape {1, 1, 512, 4}) is equivalent to Transpose with perms { 1, 3, 2, 1 }
+  //  e.g. Reshape(input {1, 512, 4, 1}, shape {1, 1, 512, 4}) is equivalent to Transpose with perms { 0, 3, 1, 2 }
   //       Reshape(input {1, 1, 512, 4}, shape {512, 4, 1, 1}) is equivalent to Transpose with perms { 2, 3, 0, 1 }
   //       Reshape(input {1, 512, 1, 4}, shape {1, 512, 4, 1}) is equivalent to Transpose with perms { 0, 1, 3, 2 }
   //

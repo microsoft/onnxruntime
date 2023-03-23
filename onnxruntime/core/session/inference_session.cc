@@ -922,8 +922,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     bool enable_debug = session_options_.config_options.GetConfigOrDefault(kDebugLayoutTransformation, "0") == "1";
 
     if (enable_debug) {
-      int counter = 0;
-      debug_graph_fn = [&counter, this](const Graph& graph) {
+      debug_graph_fn = [counter = 0, this](const Graph& graph) mutable {
         if (graph.GraphProtoSyncNeeded()) {
           ORT_THROW_IF_ERROR(
               Model::Save(*model_, "post_layout_transform_step_" + std::to_string(counter++) + ".onnx"));
