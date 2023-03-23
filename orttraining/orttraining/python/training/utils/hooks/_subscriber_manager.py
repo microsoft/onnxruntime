@@ -136,10 +136,12 @@ class _IncrementStep(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        if ctx.current_step >= 0:
-            print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
-        ctx.run_ctx.global_states.execution_step += 1
-        ctx.run_ctx.reset_step_states()
+        # In case there are multiple backward calls for multiple outputs of the outside-most module.
+        if ctx.current_step == ctx.run_ctx.global_states.execution_step:
+            if ctx.current_step >= 0:
+                print(f"{'='*6} Completed forward pass for STEP {ctx.current_step} {'='*6}")
+            ctx.run_ctx.global_states.execution_step += 1
+            ctx.run_ctx.reset_step_states()
 
         return None, grad_output.detach() if isinstance(grad_output, torch.Tensor) else grad_output
 
@@ -206,9 +208,7 @@ class SubscriberManager:
             def _apply_to_tensors_func(_, outputs):
                 return _IncrementStep.apply(self._run_ctx, outputs)
 
-            return self._apply_function_to_tensors(
-                module, module_outputs, _apply_to_tensors_func, first_differentiable_tensor_only=True
-            )
+            return self._apply_function_to_tensors(module, module_outputs, _apply_to_tensors_func)
 
         module.register_forward_hook(_post_forward_outmost_module_hook)
 
@@ -253,9 +253,7 @@ class SubscriberManager:
         # https://stackoverflow.com/a/17795199
         return obj.__class__.__module__ in ["__builtin__", "builtins"]
 
-    def _apply_function_to_tensors(
-        self, module: torch.nn.Module, data, func: Callable, first_differentiable_tensor_only: bool = False
-    ):
+    def _apply_function_to_tensors(self, module: torch.nn.Module, data, func: Callable):
         """
         Apply func to all tensors in the given object.
 
@@ -263,30 +261,19 @@ class SubscriberManager:
             module: the module that generates the tensors.
             data: the object that contains activation tensors.
             func: the function to apply to the tensors.
-            first_differentiable_tensor_only: only apply the `func` for the first differentiable tensor only.
         """
         tensor_output_idx: List[int] = [0]
-        first_differentiable_tensor_output: List[int] = [-1]
 
         def _apply_to_tensors_by_flatten(
             module: torch.nn.Module,
             index_for_tensor_output: List[int],
             outputs,
             func: Callable,
-            first_differentiable_tensor_output: List[int],
-            first_differentiable_tensor_only: bool = False,
         ):
             if isinstance(outputs, abc.Sequence):
                 touched_outputs = []
                 for output in outputs:
-                    touched_output = _apply_to_tensors_by_flatten(
-                        module,
-                        index_for_tensor_output,
-                        output,
-                        func,
-                        first_differentiable_tensor_output,
-                        first_differentiable_tensor_only,
-                    )
+                    touched_output = _apply_to_tensors_by_flatten(module, index_for_tensor_output, output, func)
                     touched_outputs.append(touched_output)
                 return outputs.__class__(touched_outputs)
 
@@ -298,24 +285,16 @@ class SubscriberManager:
                         index_for_tensor_output,
                         outputs[key],
                         func,
-                        first_differentiable_tensor_output,
-                        first_differentiable_tensor_only,
                     )
                 return outputs
 
             if isinstance(outputs, torch.Tensor):
                 cur_id = index_for_tensor_output[0]
                 index_for_tensor_output[0] += 1
-                if first_differentiable_tensor_only is True and first_differentiable_tensor_output[0] >= 0:
-                    return outputs
-                if outputs.requires_grad and first_differentiable_tensor_output[0] < 0:
-                    first_differentiable_tensor_output[0] = cur_id
                 return func(cur_id, outputs)
 
             if not self._is_builtin_type(outputs):
                 raise RuntimeError(f"Unknown type {type(outputs)}")
             return outputs
 
-        return _apply_to_tensors_by_flatten(
-            module, tensor_output_idx, data, func, first_differentiable_tensor_output, first_differentiable_tensor_only
-        )
+        return _apply_to_tensors_by_flatten(module, tensor_output_idx, data, func)
