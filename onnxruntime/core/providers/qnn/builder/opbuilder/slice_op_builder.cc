@@ -13,9 +13,6 @@
 namespace onnxruntime {
 namespace qnn {
 
-const int SLICE_MIN_INPUT = 3;
-const int SLICE_MAX_INPUT = 5;
-
 class SliceOpBuilder : public BaseOpBuilder {
  public:
   SliceOpBuilder() : BaseOpBuilder("SliceOpBuilder") {}
