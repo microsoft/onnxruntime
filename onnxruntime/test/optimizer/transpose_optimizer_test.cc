@@ -3979,6 +3979,12 @@ TEST(TransposeOptimizerTests, TestReshapeCanMerge) {
                        TransposeReshapeResult::kMerge,
                        {1, 2, 0});  // perms required to merge
 
+  // essentially the same test but with the 2 non-1 dims having the same value
+  TestTransposeReshape({4, 1, 4}, {2, 0, 1},  // transpose input shape and perms. output shape {3, 4, 1}
+                       {1, 4, 4},             // reshape 'shape'
+                       TransposeReshapeResult::kMerge,
+                       {1, 2, 0});  // perms required to merge
+
   // 4D - various combinations to exercise different paths in the perms calculation
   TestTransposeReshape({1, 6, 1, 5}, {3, 0, 1, 2},  // transpose input shape and perms. output shape {5, 1, 6, 1}
                        {1, 1, 5, 6},                // reshape 'shape'. equiv. transpose perms == 1,3,0,2

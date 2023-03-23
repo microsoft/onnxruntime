@@ -53,7 +53,7 @@ struct PartitionParams {
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
   std::reference_wrapper<int> fused_node_unique_id;
-  layout_transformer::TransformLayoutFunction transform_layout_function;
+  std::reference_wrapper<const layout_transformer::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
@@ -125,7 +125,7 @@ struct GetCapabilityForEPParams {
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   GraphPartitioner::Mode mode;
-  layout_transformer::TransformLayoutFunction transform_layout;
+  std::reference_wrapper<const layout_transformer::TransformLayoutFunction> transform_layout;
   std::reference_wrapper<const layout_transformer::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
@@ -136,7 +136,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params) {
   const auto& ep_type = current_ep.Type();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !params.transform_layout) {
+  if (current_ep.GetPreferredLayout() == DataLayout::NHWC && !params.transform_layout.get()) {
     LOGS_DEFAULT(WARNING) << ep_type << " cannot be used with this model due to its ONNX opset not being supported by "
                                         "the layout transformer.";
     return Status::OK();
@@ -334,7 +334,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            IExecutionProvider& current_ep,
                                            GraphPartitioner::Mode mode,
                                            int& fused_node_unique_id,
-                                           layout_transformer::TransformLayoutFunction transform_layout_function,
+                                           const layout_transformer::TransformLayoutFunction& transform_layout_function,
                                            const layout_transformer::DebugGraphFn& debug_graph_fn) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -371,7 +371,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(current_ep),
       std::ref(capabilities),
       mode,
-      transform_layout_function,
+      std::cref(transform_layout_function),
       std::cref(debug_graph_fn)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params));
@@ -596,8 +596,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       std::ref(capabilities),
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       GraphPartitioner::Mode::kOrtFormatLoad,
-      partition_params.transform_layout_function,
-      std::cref(partition_params.debug_graph_fn)
+      std::cref(partition_params.transform_layout_function),
+      std::cref(partition_params.debug_graph_fn),
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   };
   // clang-format on
@@ -692,7 +692,8 @@ static Status PartitionOrtFormatModel(const PartitionParams& partition_params,
 }
 
 Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
-                                   layout_transformer::TransformLayoutFunction transform_layout_function, Mode mode,
+                                   const layout_transformer::TransformLayoutFunction& transform_layout_function,
+                                   Mode mode,
                                    const layout_transformer::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -719,7 +720,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(func_mgr),
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
-      transform_layout_function,
+      std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
   };
 
