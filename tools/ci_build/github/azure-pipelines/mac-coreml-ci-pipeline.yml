@@ -19,7 +19,6 @@ jobs:
             python3 tools/ci_build/build.py \
             --build_dir build \
             --skip_submodule_sync \
-            --cmake_generator=Ninja \
             --parallel \
             --build_shared_lib \
             --config Debug \
