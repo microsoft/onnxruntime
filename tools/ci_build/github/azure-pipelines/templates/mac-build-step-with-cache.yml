@@ -1,7 +1,7 @@
 # It's used for complication in Mac Host, not including iOS compliation.
 
 parameters:
-- name: Today
+- name: TODAY
   type: string
 
 - name: CCACHE_DIR

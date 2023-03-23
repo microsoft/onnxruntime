@@ -4,7 +4,6 @@ jobs:
     vmImage: 'macOS-12'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
-    Today: '$[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)}]'
   timeoutInMinutes: 120
   steps:
   - script: brew install coreutils ninja
@@ -17,7 +16,7 @@ jobs:
 
   - template: templates/mac-build-step-with-cache.yml
     parameters:
-      Today: $(Today)
+      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       AddtionalKey: coreml
       BuildStep:
         - script: |
