@@ -66,6 +66,12 @@ RUN GRADLE_VERSION=6.8.3 && \
 # flatbuffers
 RUN python3 -m pip install flatbuffers==2.0
 
+# configure user
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid ${BUILD_UID} ${BUILD_USER}
+USER ${BUILD_USER}
+
 WORKDIR /workspace
 
 # get ORT repo
