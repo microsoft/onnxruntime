@@ -372,5 +372,23 @@ TEST(FunctionTest, OuterScopeName) {
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
 }
+
+// Test use of functions with unused inputs:
+TEST(FunctionTest, UnusedFunctionInputs) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[3] x) => (float[3] y) {
+      y = local.func (x, x, x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a, b, c) => (y) {
+      y = Mul (a, b)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
