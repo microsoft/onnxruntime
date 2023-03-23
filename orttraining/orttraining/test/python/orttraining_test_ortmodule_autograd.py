@@ -8,7 +8,7 @@
 import pytest
 import torch
 
-# Import ORT modules.
+# FIXME: Remove star imports
 from _test_helpers import *  # noqa: F403
 from packaging.version import Version
 from torch.nn.parameter import Parameter
@@ -365,7 +365,7 @@ def test_pointer_type():
     # generate a label that have same shape as forward output.
     label_input = torch.ones([output_size])
 
-    run_training_test_and_compare(model_builder, input_generator, label_input)
+    run_training_test_and_compare(model_builder, input_generator, label_input)  # noqa: F405
 
 
 @pytest.mark.skip(
