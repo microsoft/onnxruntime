@@ -118,6 +118,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         input_pointer_scalar_positions = []
 
         tensor_args = []
+        debug_comment = ""
         # Encode inputs to autograd.Function.
         for i, arg, call_type in zip(range(len(args)), args, cconv):
             if call_type == "d":
@@ -155,6 +156,11 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                             ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
                         )
                 else:
+                    if name == "_InspectActivation" and isinstance(arg, str):
+                        # _InspectActivation is a special case where the first argument is a string
+                        # that is used to determine the activation name to be inspected.
+                        debug_comment += arg
+
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
@@ -187,6 +193,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "output_tensor_types_i": output_tensor_types,
             "output_tensor_ranks_i": output_tensor_ranks,
             "training_mode_i": 1 if training_mode else 0,
+            "comment_s": debug_comment,
         }
 
         if len(input_int_scalars) > 0:

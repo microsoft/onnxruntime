@@ -331,7 +331,7 @@ class SymbolicShapeInference:
                     return unique_dims[int_dim]
                 else:
                     if self.verbose_ > 0:
-                        logger.debug("dim {} has been mergd with dim {}".format(unique_dims[1:], unique_dims[0]))
+                        logger.debug("dim {} has been merged with dim {}".format(unique_dims[1:], unique_dims[0]))
                     return dims[0]
             else:
                 return None
@@ -2199,7 +2199,7 @@ class SymbolicShapeInference:
         vi.CopyFrom(helper.make_tensor_value_info(node.output[1], onnx.TensorProto.INT32, mask_index_shape))
 
         if len(node.output) > 2:
-            # Optional output of add before layer nomalization is done
+            # Optional output of add before layer normalization is done
             # shape is same as the output
             vi = self.known_vi_[node.output[2]]
             vi.CopyFrom(helper.make_tensor_value_info(node.output[2], word_embedding_dtype, output_shape))
@@ -2234,20 +2234,35 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks
 
-        # set the context output seperately.
+        # set the context output separately.
         # The first output is autograd's context.
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], onnx.TensorProto.INT64, []))
-
-        # Outputs after autograd's context are tensors.
-        # We assume their ranks are fixed for different model inputs.
-        for i in range(len(node.output) - 1):
-            # Process the i-th tensor outputs.
-            vi = self.known_vi_[node.output[i + 1]]
-            sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
-            shape = get_shape_from_sympy_shape(sympy_shape)
-            value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
-            vi.CopyFrom(value_info)
+        if get_attribute(node, "name").decode() in ["_InspectActivation", "_IncrementStep"]:
+            # PythonOp with name being "_InspectActivation" or "_IncrementStep" will behave exactly same as a normal
+            # PythonOp when execution. The only difference is that
+            # 1). those ops having same number of tensor inputs and tensor outputs;
+            # 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
+            # Be noted, the count of custom autograd function might be bigger than output count, because there might
+            # be other non-tensor constant inputs (string, object, int, tuple, etc). But we did not make those constant
+            # inputs as ONNX op's input, instead they are stored in the attributes.
+            assert len(node.output) == len(node.input) + 1  # The output contains one extra context info.
+            for input_index in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[input_index + 1]]
+                shape = self._get_shape(node, input_index)
+                output_dtype = self.known_vi_[node.input[input_index]].type.tensor_type.elem_type
+                vi.CopyFrom(helper.make_tensor_value_info(node.output[input_index + 1], output_dtype, shape))
+        else:
+            # Outputs after autograd's context are tensors.
+            # We assume their ranks are fixed for different model inputs.
+            for i in range(len(node.output) - 1):
+                # Process the i-th tensor outputs.
+                vi = self.known_vi_[node.output[i + 1]]
+                sympy_shape = self._new_symbolic_shape(output_tensor_ranks[i], node)
+                shape = get_shape_from_sympy_shape(sympy_shape)
+                value_info = helper.make_tensor_value_info(node.output[i + 1], output_tensor_types[i], shape)
+                vi.CopyFrom(value_info)
 
     def _propagate_shape_and_type(self, node, input_index=0, output_index=0):
         shape = self._get_shape(node, input_index)
