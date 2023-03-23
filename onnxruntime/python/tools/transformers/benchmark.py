@@ -340,7 +340,7 @@ def run_pytorch(
         )
 
         if config.model_type == "vit":
-            max_input_size = 1024 # What to use for ViT?
+            max_input_size = 1024 # Just needs to be greater than sequence_length
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
@@ -370,7 +370,7 @@ def run_pytorch(
 
                 if config.model_type == "vit":
                     logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, 3, 224, 224]))
-                    input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float, device=device)
+                    input_ids = torch.randn(size=(batch_size, 3, 224, 224),dtype=torch.float16 if precision == Precision.FLOAT16 else torch.float32, device=device)
                 else:
                     logger.info("Run PyTorch on {} with input shape {}".format(model_name, [batch_size, sequence_length]))
                     input_ids = torch.randint(

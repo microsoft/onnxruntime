@@ -481,7 +481,7 @@ def export_onnx_model_from_pt(
     model.cpu()
 
     if config.model_type == "vit":
-        max_input_size = 1024 # What to use for ViT?
+        max_input_size = 1024 # Just needs to be greater than sequence_length
 
         example_inputs = inputs = { 'pixel_values' : torch.rand(2,3,224,224) }
         example_outputs = model(**example_inputs)
