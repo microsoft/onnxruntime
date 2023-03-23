@@ -4,19 +4,15 @@ jobs:
     vmImage: 'macOS-12'
   variables:
     MACOSX_DEPLOYMENT_TARGET: '10.14'
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
   timeoutInMinutes: 120
   steps:
   - script: brew install coreutils ninja
     displayName: Install coreutils and ninja
 
-  - script: |
-      brew install ccache
-      echo "##vso[task.prependpath]/usr/local/opt/ccache/libexec"
-    displayName: Install ccache and update PATH to use linked versions of gcc, cc, etc
-
   - template: templates/mac-build-step-with-cache.yml
     parameters:
-      TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+      TODAY: $(TODAY)
       AdditionalKey: coreml
       BuildStep:
         - script: |
