@@ -83,13 +83,17 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   using HipT = typename ToHipType<T>::MappedType;
   using QkvProjectGeneric = GemmPermuteGenericPipeline<HipT>;
   using AttentionGeneric = GemmSoftmaxGemmPermuteGenericPipeline<HipT>;
+  using AttentionTunableOp = GemmSoftmaxGemmPermuteTunableOp<HipT>;
 
   size_t qkv_project_output_bytes = QkvProjectGeneric::GetOutputNumBytes(&attn);
-  size_t attention_workspace_bytes = AttentionGeneric::GetWorkspaceNumBytes(&attn);
-  ORT_ENFORCE(QkvProjectGeneric::GetWorkspaceNumBytes(&attn) <= attention_workspace_bytes); // workspace reuse
+  size_t shared_workspace_bytes = std::max(QkvProjectGeneric::GetWorkspaceNumBytes(&attn),
+                                           AttentionGeneric::GetWorkspaceNumBytes(&attn));
+  if (GetTuningContext()->IsTunableOpEnabled()) {
+    shared_workspace_bytes = std::max(shared_workspace_bytes, AttentionTunableOp::GetWorkspaceNumBytes(&attn));
+  }
 
   auto qkv_project_output = GetScratchBuffer<void>(qkv_project_output_bytes, context->GetComputeStream());
-  auto workspace = GetScratchBuffer<void>(attention_workspace_bytes, context->GetComputeStream());
+  auto workspace = GetScratchBuffer<void>(shared_workspace_bytes, context->GetComputeStream());
 
   GemmPermuteParams<HipT> gemm_permute_params;
   {
@@ -105,7 +109,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     params.bias_buffer = reinterpret_cast<const HipT*>(bias->DataRaw());
     params.out_buffer = reinterpret_cast<HipT*>(qkv_project_output.get());
     params.ones = GetConstOnes<HipT>(attn.batch_size * attn.sequence_length, stream);
-    params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get()); // workspace reuse
+    params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   }
 
   ORT_RETURN_IF_ERROR(QkvProjectGeneric::Run(&gemm_permute_params));
@@ -118,16 +122,16 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     const int batches = attn.batch_size * attn.num_heads;
     const int present_size_per_batch = attn.total_sequence_length * attn.head_size;
     ORT_RETURN_IF_ERROR(
-      LaunchConcatPastToPresent(Stream(context),
-                                attn.total_sequence_length,
-                                attn.sequence_length,
-                                attn.batch_size,
-                                attn.head_size,
-                                attn.num_heads,
-                                device_prop.maxThreadsPerBlock,
-                                nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
-                                k_buffer,
-                                reinterpret_cast<HipT*>(present->MutableDataRaw())));
+        LaunchConcatPastToPresent(Stream(context),
+                                  attn.total_sequence_length,
+                                  attn.sequence_length,
+                                  attn.batch_size,
+                                  attn.head_size,
+                                  attn.num_heads,
+                                  device_prop.maxThreadsPerBlock,
+                                  nullptr == past ? nullptr : reinterpret_cast<const HipT*>(past->DataRaw()),
+                                  k_buffer,
+                                  reinterpret_cast<HipT*>(present->MutableDataRaw())));
 
     // update pointers to present_k and present_v.
     k_buffer = reinterpret_cast<HipT*>(present->MutableDataRaw());
@@ -159,13 +163,18 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
     if (mask_index != nullptr) {
       params.mask_index_buffer = mask_index->Data<int>();
-      params.mask_index_dims = mask_index->Shape().GetDims();
+      params.mask_index_dims = mask_index->Shape().AsShapeVector();
     }
 
     params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());
   }
 
-  return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
+  if (this->GetTuningContext()->IsTunableOpEnabled() &&
+      !use_persistent_softmax) {
+    return AttentionTunableOp{}(&gemm_softmax_gemm_permute_params);
+  } else {
+    return AttentionGeneric::Run(&gemm_softmax_gemm_permute_params, use_persistent_softmax);
+  }
 }
 
 }  // namespace rocm

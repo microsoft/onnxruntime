@@ -11,7 +11,7 @@ import torch.utils.checkpoint
 from packaging import version
 from torch.onnx import symbolic_helper
 
-from onnxruntime.capi._pybind_state import register_torch_autograd_function
+from onnxruntime.capi._pybind_state import register_torch_autograd_function, register_miscellaneous_const_input
 from onnxruntime.training import ortmodule
 
 from . import _logger
@@ -56,15 +56,6 @@ def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
         return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
     except AttributeError:
         return _CAST_PYTORCH_TO_ONNX[scalar_type]
-
-
-# For pointer needed for PythonOp execution, we firstly append it into a global store to hold a
-# reference (in case it is released after module exported).
-NONTENSOR_OBJECT_POINTER_STORE = {}
-
-
-def _clear_nontensor_object_references():
-    NONTENSOR_OBJECT_POINTER_STORE.clear()
 
 
 def _export_pt_1_10(g, n, *args, **kwargs):
@@ -127,6 +118,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
         input_pointer_scalar_positions = []
 
         tensor_args = []
+        debug_comment = ""
         # Encode inputs to autograd.Function.
         for i, arg, call_type in zip(range(len(args)), args, cconv):
             if call_type == "d":
@@ -164,11 +156,18 @@ def _export_pt_1_10(g, n, *args, **kwargs):
                             ORTModuleONNXModelException, Exception(f"Unknown argument type found: {type(arg)}.")
                         )
                 else:
+                    if name == "_InspectActivation" and isinstance(arg, str):
+                        # _InspectActivation is a special case where the first argument is a string
+                        # that is used to determine the activation name to be inspected.
+                        debug_comment += arg
+
                     # All other inputs are accessed via "pointers".
                     input_pointer_scalar_positions.append(i)
                     input_pointer_scalars.append(id(arg))
 
-                    NONTENSOR_OBJECT_POINTER_STORE[id(arg)] = arg
+                    # For pointer (for example, ProcessGroup passed to PythonOp) needed for PythonOp execution,
+                    # we append it into a global store to hold a reference (in case it is released after module exported).
+                    register_miscellaneous_const_input(arg)
             else:
                 raise wrap_exception(
                     ORTModuleONNXModelException,
@@ -194,6 +193,7 @@ def _export_pt_1_10(g, n, *args, **kwargs):
             "output_tensor_types_i": output_tensor_types,
             "output_tensor_ranks_i": output_tensor_ranks,
             "training_mode_i": 1 if training_mode else 0,
+            "comment_s": debug_comment,
         }
 
         if len(input_int_scalars) > 0:
