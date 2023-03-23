@@ -3,7 +3,6 @@
 parameters:
 - name: Today
   type: string
-  default: '$[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]'
 
 - name: CCACHE_DIR
   type: string
