@@ -1096,6 +1096,8 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
       kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(
           kernel_type_str_resolver));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // register schema per node in graph
   kernel_registry_manager_.SetKernelTypeStrResolver(std::move(kernel_type_str_resolver));
 
   is_model_loaded_ = true;

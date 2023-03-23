@@ -626,3 +626,28 @@ void StandaloneCustomKernel::Compute(OrtKernelContext* context) {
 
 StandaloneCustomKernel::~StandaloneCustomKernel() {
 }
+
+template<typename T>
+T MulTopCompute(const T& input_0, const T& input_1) {
+  return input_0 * input_1;
+}
+
+void MulTopKernelFloat::Compute(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+  auto tensor_in = ctx.GetInput(0);
+  const float* float_in = tensor_in.GetTensorData<float>();
+  int64_t output_shape = 1;
+  auto tensor_out = ctx.GetOutput(0, &output_shape, 1);
+  auto float_out = tensor_out.GetTensorMutableData<float>();
+  *float_out = MulTopCompute(float_in[0], float_in[1]);
+}
+
+void MulTopKernelInt32::Compute(OrtKernelContext* context) {
+  Ort::KernelContext ctx(context);
+  auto tensor_in = ctx.GetInput(0);
+  const int32_t* int_in = tensor_in.GetTensorData<int32_t>();
+  int64_t output_shape = 1;
+  auto tensor_out = ctx.GetOutput(0, &output_shape, 1);
+  auto int_out = tensor_out.GetTensorMutableData<int32_t>();
+  *int_out = MulTopCompute(int_in[0], int_in[1]);
+}

@@ -187,6 +187,7 @@ static constexpr PATH_TYPE VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR("tes
 static constexpr PATH_TYPE VARIADIC_UNDEF_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI = TSTR(
     "testdata/custom_op_variadic_undef_io.onnx");
 static constexpr PATH_TYPE CUSTOM_OP_MODEL_WITH_ATTRIBUTES_URI = TSTR("testdata/foo_bar_3.onnx");
+static constexpr PATH_TYPE CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL = TSTR("testdata/custom_op_single_schema_multi_kernel.onnx");
 #if !defined(DISABLE_SPARSE_TENSORS)
 static constexpr PATH_TYPE SPARSE_OUTPUT_MODEL_URI = TSTR("testdata/sparse_initializer_as_output.onnx");
 #ifndef DISABLE_CONTRIB_OPS
@@ -2784,5 +2785,40 @@ TEST(CApiTest, TestMultiStreamInferenceSimpleSSD) {
   std::vector<int64_t> output_dims = type_shape_info.GetShape();
   std::vector<int64_t> expected_output_dims = {3, 256, 150, 150};
   ASSERT_TRUE(output_dims == expected_output_dims);
+}
+#endif
+
+#ifndef USE_CUDA
+TEST(CApiTest, single_schema_multi_kernel_custom_op_handler) {
+
+  Ort::CustomOpDomain v2_domain("v2");
+  MulTopOpFloat mul_top_f32;
+  MulTopOpInt32 mul_top_i32;
+
+  v2_domain.Add(&mul_top_f32);
+  v2_domain.Add(&mul_top_i32);
+
+  Ort::SessionOptions session_options;
+  session_options.SetIntraOpNumThreads(1);
+  session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
+  session_options.SetLogSeverityLevel(0);
+  session_options.Add(v2_domain);
+
+  const wchar_t* model_path = CUSTOM_OP_SINGLE_SCHEMA_MULTI_KERNEL;
+  Ort::Session session(*ort_env, model_path, session_options);
+
+  const char* input_names[] = {"X"};
+  const char* output_names[] = {"Y", "Z"};
+  float x_value[] = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f};
+  int64_t x_dim[] = {10};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+
+  Ort::Value input_tensors[1] = {
+      Ort::Value::CreateTensor<float>(memory_info, x_value, 10, x_dim, 1),
+  };
+
+  Ort::RunOptions run_optoins;
+  auto output_tensors = session.Run(run_optoins, input_names, input_tensors, 1, output_names, 2);
+  ASSERT_TRUE(*output_tensors[1].GetTensorData<int32_t>() == 72);
 }
 #endif
