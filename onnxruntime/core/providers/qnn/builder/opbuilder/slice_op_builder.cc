@@ -50,8 +50,8 @@ class SliceOpBuilder : public BaseOpBuilder {
 
 Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const {
   size_t input_count = node_unit.Inputs().size();
-  // Op set 1 only has 1 input with starts, ends, axes attribute
-  // Op set >1, starts, ends, exes set as input
+  // Op set 9 only has 1 input with starts, ends, axes attribute
+  // Op set > 9, starts, ends, axes are from node input
   if (input_count > 1) {
     // Skip the first input. All other input need to be initializer
     for (size_t i = 1; i < input_count; i++) {
