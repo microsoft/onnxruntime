@@ -308,8 +308,8 @@ class SubscriberManager:
                 index_for_tensor_output[0] += 1
                 if first_differentiable_tensor_only is True and first_differentiable_tensor_output[0] >= 0:
                     return outputs
-
-                first_differentiable_tensor_output[0] = cur_id
+                if outputs.requires_grad and first_differentiable_tensor_output[0] < 0:
+                    first_differentiable_tensor_output[0] = cur_id
                 return func(cur_id, outputs)
 
             if not self._is_builtin_type(outputs):
