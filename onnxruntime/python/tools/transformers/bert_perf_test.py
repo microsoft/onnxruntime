@@ -54,7 +54,7 @@ class ModelSetting:
     input_mask_name: str
     opt_level: int
     input_tuning_results: Optional[str]
-    write_tuning_results: bool
+    output_tuning_results: Optional[str]
 
 
 def create_session(
@@ -292,16 +292,17 @@ def run_one_test(model_setting, test_setting, perf_results, all_inputs, intra_op
         "Average latency = {} ms, Throughput = {} QPS".format(format(average_latency, ".2f"), format(throughput, ".2f"))
     )
 
-    if model_setting.write_tuning_results:
-        output_path = model_setting.model_path + f"tuning_results_{os.getpid()}.json"
+    if model_setting.output_tuning_results:
+        output_path = os.path.abspath(model_setting.output_tuning_results)
         if os.path.exists(output_path):
-            print(output_path, "exists, skip tuning results writing.")
-            return
+            old_output_path = output_path
+            output_path = f"""{output_path.rsplit(".json", 1)[0]}.{datetime.now().timestamp()}.json"""
+            print("WARNING:", old_output_path, "exists, will write to", output_path, "instead.")
 
         trs = session.get_tuning_results()
-        print("Tuning results is saved to", output_path)
         with open(output_path, "w") as f:
             json.dump(trs, f)
+        print("Tuning results is saved to", output_path)
 
 
 def launch_test(model_setting, test_setting, perf_results, all_inputs, intra_op_num_threads):
@@ -491,12 +492,13 @@ def parse_arguments():
         "--input_tuning_results",
         default=None,
         type=str,
-        help="tuning results database to be loaded",
+        help="tuning results (json) to be loaded before benchmark",
     )
     parser.add_argument(
-        "--write_tuning_results",
-        action="store_true",
-        help="write the tuning results database after benchmark",
+        "--output_tuning_results",
+        default=None,
+        type=str,
+        help="tuning results (json) to be saved after benchmark",
     )
 
     args = parser.parse_args()
@@ -523,7 +525,7 @@ def main():
         args.input_mask_name,
         args.opt_level,
         args.input_tuning_results,
-        args.write_tuning_results,
+        args.output_tuning_results,
     )
 
     for batch_size in batch_size_set:
