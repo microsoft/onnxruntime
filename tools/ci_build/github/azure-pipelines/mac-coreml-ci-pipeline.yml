@@ -17,7 +17,7 @@ jobs:
   - template: templates/mac-build-step-with-cache.yml
     parameters:
       TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-      AddtionalKey: coreml
+      AdditionalKey: coreml
       BuildStep:
         - script: |
             python3 tools/ci_build/build.py \
