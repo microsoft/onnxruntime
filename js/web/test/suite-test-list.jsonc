@@ -516,7 +516,7 @@
       "test_elu",
       // "test_equal_bcast",
       // "test_equal",
-      // "test_erf",
+      "test_erf",
       // "test_exp_example",
       // "test_exp",
       // "test_expand_dim_changed",

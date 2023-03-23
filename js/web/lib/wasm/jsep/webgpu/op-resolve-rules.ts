@@ -36,7 +36,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   // ['Dropout', '', '7+', unaryOps.identity],
   // ['DepthToSpace', '', '1+', depthToSpace, parseDepthToSpaceAttributes],
   // ['Equal', '', '7+', binaryOps.equal],
-  ['Elu', [unaryOps.elu, unaryOps.parseEluAttributes]],  //['Exp', [unaryOps.exp]],
+  ['Elu', [unaryOps.elu, unaryOps.parseEluAttributes]], ['Erf', [unaryOps.erf]],  //['Exp', [unaryOps.exp]],
   // ['Flatten', '', '1+', flatten, parseFlattenAttributes],
   ['Floor', [unaryOps.floor]],
   // ['FusedConv', 'com.microsoft', '1+', conv, parseConvAttributes],
