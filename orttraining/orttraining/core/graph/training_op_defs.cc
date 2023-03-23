@@ -3928,9 +3928,10 @@ Return true if all elements are true and false otherwise.
           // inputs as ONNX op's input, instead they are stored in the attributes.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() + 1);  // The output contains one extra context info.
           // Set inferred output types.
-          for (auto i = 1; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-            propagateElemTypeFromInputToOutput(ctx, i - 1, i);
-            propagateShapeFromInputToOutput(ctx, i - 1, i);
+          for (size_t i = 1; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
+            size_t input_idx = i - static_cast<size_t>(1);
+            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            propagateShapeFromInputToOutput(ctx, input_idx, i);
           }
         } else {
           size_t rank_count = 0;
@@ -4068,9 +4069,10 @@ Return true if all elements are true and false otherwise.
           // 1). those ops having the same number of tensor inputs and tensor outputs;
           // 2). and the i-th output tensor's shape is same as i-th input tensor's shape.
           ORT_ENFORCE(ctx.getNumOutputs() == ctx.getNumInputs() - 1);  // inputs contains one extra context input
-          for (auto i = 0; i < static_cast<int64_t>(ctx.getNumOutputs()); ++i) {
-            propagateElemTypeFromInputToOutput(ctx, i + 1, i);
-            propagateShapeFromInputToOutput(ctx, i + 1, i);
+          for (size_t i = 0; i < static_cast<size_t>(ctx.getNumOutputs()); ++i) {
+            size_t input_idx = i + static_cast<size_t>(1);
+            propagateElemTypeFromInputToOutput(ctx, input_idx, i);
+            propagateShapeFromInputToOutput(ctx, input_idx, i);
           }
         } else {
           // Set inferred output types.
