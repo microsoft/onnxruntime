@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-# __init__.py
 
-"""Offline tooling for generating files needed for ort training apis."""
+"""Offline tooling for generating files needed by ort training apis."""
 
-from . import loss, optim  # noqa: F401
-from .building_blocks import Block  # noqa: F401
-from .checkpoint_utils import load_checkpoint_to_model, save_checkpoint  # noqa: F401
-from .model import Model, TrainingModel  # noqa: F401
-from .model_accessor import onnx_model  # noqa: F401
+import onnxruntime.training.onnxblock.blocks as blocks  # noqa: F401
+import onnxruntime.training.onnxblock.loss as loss  # noqa: F401
+import onnxruntime.training.onnxblock.optim as optim  # noqa: F401
+from onnxruntime.training.onnxblock.blocks import Block  # noqa: F401
+from onnxruntime.training.onnxblock.checkpoint_utils import load_checkpoint_to_model, save_checkpoint  # noqa: F401
+from onnxruntime.training.onnxblock.model_accessor import base, empty_base  # noqa: F401
+from onnxruntime.training.onnxblock.onnxblock import ForwardBlock, TrainingBlock  # noqa: F401

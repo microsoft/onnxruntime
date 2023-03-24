@@ -535,8 +535,8 @@ Status OrtLoadInternal(const PathString& checkpoint_path,
   for (auto& init : *(model_proto.mutable_graph()->mutable_initializer())) {
     ORT_ENFORCE(init.has_name(), "An initializer should have a name.");
     auto it = param_tensor_protos.find(init.name());
-    ORT_ENFORCE(it != param_tensor_protos.end(),
-                "The initializer name was not found in the checkpoint file loaded.");
+    if (it == param_tensor_protos.end())
+      continue;
     init = it->second;
   }
 
