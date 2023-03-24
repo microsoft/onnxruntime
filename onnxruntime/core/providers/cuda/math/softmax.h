@@ -9,12 +9,12 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, bool is_log_softmax>
+template <typename T, typename TOut, bool is_log_softmax>
 Status SoftMaxComputeHelper(
     cudaStream_t stream,
     const T* input,
     const TensorShape& shape,
-    T* Y,
+    TOut* Y,
     int64_t axis);
 
 template <typename input_t, typename output_t, typename acc_t, bool is_log_softmax>

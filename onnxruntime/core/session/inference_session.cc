@@ -593,6 +593,8 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   flatbuffers::Offset<fbs::KernelTypeStrResolver> fbs_kernel_type_str_resolver;
   KernelTypeStrResolver kernel_type_str_resolver{};
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
+  ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
+
   for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
@@ -1520,12 +1522,16 @@ common::Status InferenceSession::Initialize() {
       std::vector<uint8_t>().swap(ort_format_model_bytes_data_holder_);
     }
 
+    // once the model is saved, we may remove unnecessary attributes for inference
+    session_state_->PruneRemovableAttributes();
+
     // and log telemetry
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
         model_->MainGraph().DomainToVersionMap(), model_->MainGraph().Name(), model_->MetaData(),
         telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs);
+
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
   ORT_CATCH(const NotImplementedException& ex) {

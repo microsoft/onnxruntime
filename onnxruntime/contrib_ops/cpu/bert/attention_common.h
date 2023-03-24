@@ -7,13 +7,16 @@ namespace onnxruntime {
 namespace contrib {
 
 enum AttentionMaskType {
-  MASK_NONE,            // No mask
-  MASK_1D_KEY_SEQ_LEN,  // [batch_size], key sequence length
-  MASK_1D_END_START,    // [2 * batch_size] with end positions and start positions
-  MASK_2D_DUMMY,        // dummy mask with shape [1, 1] or [batch_size, 1]. It has same effect as no mask.
-  MASK_2D_KEY_PADDING,  // [batch_size, total_sequence_length]
-  MASK_3D_ATTENTION,    // [batch_size, sequence_length, total_sequence_length]
-  MASK_4D_MEGATRON,     // Megatron causal mask with shape [batch_size, 1, max_sequence_length, max_sequence_length]
+  MASK_NONE,                  // No mask
+  MASK_1D_KEY_SEQ_LEN,        // [batch_size], key sequence length
+  MASK_1D_END_START,          // [2 * batch_size] with end positions and start positions
+  MASK_1D_KEY_SEQ_LEN_START,  // [3 * batch_size + 2] with [key_len[0], ..., key_len[batch_size - 1], query_start[0],
+                              // ..., query_start[batch_size - 1], query_end[batch_size - 1], key_start[0], ...,
+                              // key_start[batch_size - 1], key_end[batch_size - 1]]
+  MASK_2D_DUMMY,              // dummy mask with shape [1, 1] or [batch_size, 1]. It has same effect as no mask.
+  MASK_2D_KEY_PADDING,        // [batch_size, total_sequence_length]
+  MASK_3D_ATTENTION,          // [batch_size, sequence_length, total_sequence_length]
+  MASK_4D_MEGATRON,           // Megatron causal mask with shape [batch_size, 1, max_sequence_length, max_sequence_length]
   MASK_UNKNOWN
 };
 
@@ -38,21 +41,41 @@ enum AttentionKernelType {
 struct AttentionParameters {
   int batch_size;
   int sequence_length;
-  int kv_sequence_length;     // input sequence length of K or V
-  int past_sequence_length;   // sequence length in past state of K or V
-  int total_sequence_length;  // total sequence length of K or V
-  int max_sequence_length;    // max sequence length from 4D mask
-  int input_hidden_size;      // first dimension of weights for input projection
-  int hidden_size;            // hidden size of Q or K
-  int head_size;              // hidden size per head of Q or K
-  int v_hidden_size;          // hidden size of V
-  int v_head_size;            // hidden size per head of V
+  int kv_sequence_length;            // input sequence length of K or V
+  int past_sequence_length;          // sequence length in past state of K or V
+  int original_past_sequence_length; // original sequence length in past state of K or V
+  int total_sequence_length;         // total sequence length of K or V
+  int max_sequence_length;           // max sequence length from 4D mask
+  int input_hidden_size;             // first dimension of weights for input projection
+  int hidden_size;                   // hidden size of Q or K
+  int head_size;                     // hidden size per head of Q or K
+  int v_hidden_size;                 // hidden size of V
+  int v_head_size;                   // hidden size per head of V
   int num_heads;
   bool is_unidirectional;
   bool past_present_share_buffer;
+  bool do_rotary;
+  bool broadcast_res_pos_bias;
+  bool pass_past_in_kv;
   float mask_filter_value;
   float scale;
   AttentionMaskType mask_type;
+};
+
+// Parameters deduced from node attributes and inputs/outputs.
+struct PackedAttentionParameters {
+  int batch_size;
+  int sequence_length;
+  int input_hidden_size;  // hidden size of input
+  int hidden_size;        // hidden size of Q or K
+  int head_size;          // hidden size per head of Q or K
+  int v_hidden_size;      // hidden size of V
+  int v_head_size;        // hidden size per head of V
+  int num_heads;
+  float scale;
+  int token_count;
+  bool has_relative_position_bias;
+  bool broadcast_res_pos_bias;
 };
 
 namespace attention {

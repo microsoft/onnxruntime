@@ -370,11 +370,6 @@ class TunableVecAddSelectFast : public TunableOp<VecAddParamsRecordLastRun> {
     this->RegisterOp(FastFull);
   }
 
-  // Re export for testing purpose
-  std::string Signature() {
-    return onnxruntime::test::TunableOp<VecAddParamsRecordLastRun>::Signature();
-  }
-
   constexpr static int kSlowFullId = 0;
   constexpr static int kFastFullId = 1;
 };
@@ -576,6 +571,43 @@ TEST(TunableOp, HandleInplaceUpdate) {
     ASSERT_EQ(c, 7504242);
     ASSERT_EQ(op.is_proxy_params_used, true);
   }
+#endif
+}
+
+TEST(TunableOp, OpSignatureMustNotChange) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::vector<std::string> signatures1;
+  std::vector<std::string> signatures2;
+  signatures1.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures1.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures1.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  signatures2.emplace_back(TunableVecAddSelectFast{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures2.emplace_back(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures2.emplace_back(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_EQ(signatures1, signatures2);
+#endif
+}
+
+TEST(TunableOp, OpSignatureMustNotCollide) {
+#ifdef ORT_NO_RTTI
+  GTEST_SKIP() << "TunableOp needs RTTI to work correctly";
+#else
+  std::unordered_set<std::string> signatures;
+  signatures.insert(TunableVecAddSelectFast{}.Signature());
+  signatures.insert(TunableVecAddSelectSupported{}.Signature());
+  signatures.insert(TunableVecAddSelectFastestIfSupported{}.Signature());
+  signatures.insert(TunableVecAddNotHandleInplaceUpdate{}.Signature());
+  signatures.insert(TunableVecAddHandleInplaceUpdate{}.Signature());
+
+  ASSERT_THAT(signatures, ::testing::SizeIs(5));
 #endif
 }
 

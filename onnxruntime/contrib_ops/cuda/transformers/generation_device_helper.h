@@ -22,6 +22,12 @@ namespace contrib {
 // These are CUDA specific device helper implementations
 namespace GenerationCudaDeviceHelper {
 
+Status ReorderPastState(
+    const void* cuda_device_prop,
+    Tensor& past_state,
+    Tensor& past_state_staging,
+    Stream* stream);
+
 Status TopK(const Tensor* input, const int axis, const unsigned k, bool largest, bool sorted,
             AllocatorPtr allocator,
             Stream* stream,
@@ -64,7 +70,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
                                  transformers::IGreedySearchState<T>* greedy_state,      // state
-                                 transformers::ISamplingState<T>* sampling_state,// sampling buffers
+                                 transformers::ISamplingState<T>* sampling_state,        // sampling buffers
                                  transformers::ISequences* sequences,                    // sequences
                                  AllocatorPtr& allocator,                                // default allocator
                                  onnxruntime::concurrency::ThreadPool* thread_pool,      // thread pool (for CPU only)
@@ -91,12 +97,15 @@ Status UpdateGptFeeds(
     OrtValue& position_ids,
     bool increase_position,
     gsl::span<const int32_t> beam_next_tokens,
-    gsl::span<const int32_t> beam_indices,
+    gsl::span<const int32_t> beam_indices_cpu,
+    gsl::span<const int32_t> beam_indices_gpu,
     int num_beams,
     int gpt_subgraph_first_past_input_idx,
     int gpt_subgraph_first_present_output_idx,
     bool past_present_share_buffer,
-    int past_sequence_len);
+    int past_sequence_len,
+    int input_sequence_len,
+    bool has_beam_search_specific_inputs_for_decoder_masked_self_attention);
 
 // ---------------------------------------------------------------
 // Functions for encoder-decoder model like T5

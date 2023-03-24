@@ -299,6 +299,8 @@ struct IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const = 0;
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept = 0;
     virtual MLOperatorAttributes const& GetAttributes() const noexcept = 0;
+    virtual MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const = 0;
+
     virtual ~IKernelInformationAdapter() {}
 };
 
@@ -306,6 +308,9 @@ struct IShapeInformationAdapter
 {
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const = 0;
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const = 0;
+    virtual uint32_t GetSequenceInputCount(uint32_t inputIndex) const = 0;
+    virtual uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const = 0;
+    virtual std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const = 0;
     virtual ~IShapeInformationAdapter() {}
 };
 
@@ -325,6 +330,7 @@ struct KernelInformationAdapter : IKernelInformationAdapter
     virtual MLOperatorTensor GetConstantInputTensor(uint32_t inputIndex) const { return m_informationSource.GetConstantInputTensor(inputIndex); }
     virtual bool HasAttribute(_In_z_ MLConstStringParam name, MLOperatorAttributeType type) const noexcept { return m_informationSource.HasAttribute(name, type); }
     virtual MLOperatorAttributes const& GetAttributes() const noexcept { return m_informationSource; }
+    virtual MLOperatorEdgeDescription GetInputEdgeDescription(uint32_t inputIndex) const { return m_informationSource.GetInputEdgeDescription(inputIndex); }
     virtual ~KernelInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
@@ -341,6 +347,9 @@ struct ShapeInformationAdapter : IShapeInformationAdapter
 
     virtual uint32_t GetInputTensorDimensionCount(uint32_t inputIndex) const { return m_informationSource.GetInputTensorDimensionCount(inputIndex); }
     virtual std::vector<uint32_t> GetInputTensorShape(uint32_t inputIndex) const { return m_informationSource.GetInputTensorShape(inputIndex); }
+    virtual uint32_t GetSequenceInputCount(uint32_t inputIndex) const { return m_informationSource.GetSequenceInputCount(inputIndex); }
+    virtual uint32_t GetSequenceInputTensorDimensionCount(uint32_t inputIndex, uint32_t sequenceIndex) const { return m_informationSource.GetSequenceInputTensorDimensionCount(inputIndex, sequenceIndex); }
+    virtual std::vector<uint32_t> GetSequenceInputTensorShape(uint32_t inputIndex, uint32_t sequenceIndex) const { return m_informationSource.GetSequenceInputTensorShape(inputIndex, sequenceIndex); }
     virtual ~ShapeInformationAdapter() {}
 
     InformationSourceType& m_informationSource;
@@ -1396,6 +1405,14 @@ public:
     std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
 };
 
+class SkipLayerNormHelper
+{
+public:
+    template <typename Info_t, typename Shape_t>
+    SkipLayerNormHelper(const Info_t& info, const Shape_t& shapeInfo) {}
+    std::vector<EdgeShapes> GetOutputShapes(const MLShapeInferenceContext& shapeInfo) const;
+};
+
 using ShapeInferenceHelper_Conv = ConvHelper;
 using ShapeInferenceHelper_ConvTranspose = ConvTransposeHelper;
 using ShapeInferenceHelper_ConvTransposeWithDynamicPads = ConvTransposeWithDynamicPadsHelper;
@@ -1418,7 +1435,7 @@ using ShapeInferenceHelper_LRN = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_MeanVarianceNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_LayerNormalization17 = GetOutputShapeAsInputShapeHelper;
-using ShapeInferenceHelper_SkipLayerNormalization = GetOutputShapeAsInputShapeHelper;
+using ShapeInferenceHelper_SkipLayerNormalization = SkipLayerNormHelper;
 using ShapeInferenceHelper_EmbedLayerNormalization = EmbedLayerNormalizationHelper;
 using ShapeInferenceHelper_LpNormalization = GetOutputShapeAsInputShapeHelper;
 using ShapeInferenceHelper_RNN = RecurrentHelper;

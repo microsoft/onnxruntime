@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument("--android-sdk-root", required=True, help="Path to the Android SDK root.")
     parser.add_argument(
         "--system-image",
-        default="system-images;android-29;google_apis;x86_64",
+        default="system-images;android-31;default;x86_64",
         help="The Android system image package name.",
     )
     parser.add_argument("--avd-name", default="ort_android", help="The Android virtual device name.")

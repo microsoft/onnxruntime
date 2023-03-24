@@ -352,5 +352,43 @@ TEST(FunctionTest, Variadics) {
   ASSERT_STATUS_OK(session_object.Load(model_uri));
   ASSERT_STATUS_OK(session_object.Initialize());
 }
+
+// Test use of outer-scope names inside sub-graphs in functions that are inlined.
+TEST(FunctionTest, OuterScopeName) {
+  const char* code = R"(
+        <ir_version: 8, opset_import: [ "" : 17 ]>
+        agraph (float[N] x) => (float[N] y)
+        {
+            xseq = SequenceConstruct (x)
+            zeros = Constant <value = float[3] {0.0, 0.0, 0.0}> ()
+            yseq = SequenceMap (xseq) <body =
+              zeropad (float[3] lx) => (float[6] ly) {
+                ly = Concat <axis = 0> (lx, zeros)
+              }>
+            zero = Constant <value = int64{0}> ()
+            y = SequenceAt (yseq, zero)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 2.0, 3.0, 0.0, 0.0, 0.0});
+}
+
+// Test use of functions with unused inputs:
+TEST(FunctionTest, UnusedFunctionInputs) {
+  const char* code = R"(
+    <ir_version: 8, opset_import: ["" : 17, "local" : 1]>
+    mymodel (float[3] x) => (float[3] y) {
+      y = local.func (x, x, x)
+    }
+
+    <opset_import: ["" : 17 ],  domain: "local">
+    func (a, b, c) => (y) {
+      y = Mul (a, b)
+    }
+  )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {1.0, 4.0, 9.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

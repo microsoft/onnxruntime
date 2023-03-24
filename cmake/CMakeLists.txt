@@ -22,6 +22,7 @@ include(CheckCXXCompilerFlag)
 include(CheckLanguage)
 include(CMakeDependentOption)
 include(FetchContent)
+include(CheckFunctionExists)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -54,6 +55,7 @@ option(onnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO "When building with CUDA support
 option(onnxruntime_USE_OPENVINO "Build with OpenVINO support" OFF)
 option(onnxruntime_USE_COREML "Build with CoreML support" OFF)
 option(onnxruntime_USE_NNAPI_BUILTIN "Build with builtin NNAPI lib for Android NNAPI support" OFF)
+option(onnxruntime_USE_QNN "Build with QNN support" OFF)
 option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
@@ -158,8 +160,10 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_THREADS "Enable this option to create WebA
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_CATCHING "Enable this option to turn on exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_API_EXCEPTION_CATCHING "Enable this option to turn on api exception catching" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_EXCEPTION_THROWING "Enable this option to turn on exception throwing even if the build disabled exceptions support" OFF)
+option(onnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER "Enable this option to run tests in browser instead of Node.js" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on DWARF format debug info" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option to allow WebAssembly to output optimized model" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -175,6 +179,9 @@ option(onnxruntime_BUILD_OPSCHEMA_LIB "Build op schema library" ON)
 
 # option to enable custom operators in onnxruntime-extensions
 option(onnxruntime_USE_EXTENSIONS "Build with onnxruntime-extensions for more features" OFF)
+
+# option to enable custom operators in onnxruntime-extensions with a custom path
+option(onnxruntime_EXTENSIONS_OVERRIDDEN, "Enable onnxruntime-extensions overridden" OFF)
 
 # Enable registering custom op schemas from shared libraries in python environment.
 option(onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS "Enable registering user defined custom op schemas dynamically" OFF)
@@ -197,6 +204,7 @@ option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 # composable kernel is managed automatically, unless user want to explicitly disable it, it should not be manually set
 option(onnxruntime_USE_COMPOSABLE_KERNEL "Enable composable kernel for ROCm EP" ON)
+option(onnxruntime_USE_ROCBLAS_EXTENSION_API "Enable rocblas tuning for ROCm EP" OFF)
 option(onnxruntime_BUILD_KERNEL_EXPLORER "Build Kernel Explorer for testing and profiling GPU kernels" OFF)
 
 option(onnxruntime_BUILD_CACHE "onnxruntime build with cache" OFF)
@@ -535,6 +543,7 @@ else()
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wenum-constexpr-conversion HAS_ENUM_CONSTEXPR_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
+  check_function_exists(reallocarray HAS_REALLOCARRAY)
 
   if (HAS_TAUTOLOGICAL_POINTER_COMPARE)
     #we may have extra null pointer checkings in debug build, it's not an issue
@@ -635,6 +644,11 @@ if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_NNAPI=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
+endif()
+if (onnxruntime_USE_QNN)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
 endif()
 if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
@@ -1258,16 +1272,20 @@ if (onnxruntime_USE_CUDA)
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_30,code=sm_30") # K series
       endif()
-      # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
+	# 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
+	set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
+      endif()
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
       set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11)
         set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
+      endif()
+      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
+        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
       endif()
     endif()
   endif()
@@ -1543,6 +1561,10 @@ endif()
 if (onnxruntime_BUILD_WEBASSEMBLY)
   message(STATUS "WebAssembly Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_webassembly)
+
+  if (onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+    add_compile_definitions(ORT_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL)
+  endif()
 endif()
 
 if(onnxruntime_BUILD_KERNEL_EXPLORER)

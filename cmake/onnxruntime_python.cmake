@@ -212,6 +212,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
+    ${PROVIDERS_QNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -414,6 +415,9 @@ if (onnxruntime_ENABLE_TRAINING)
   )
   file(GLOB onnxruntime_python_utils_data_srcs CONFIGURE_DEPENDS
   "${ORTTRAINING_SOURCE_DIR}/python/training/utils/data/*"
+  )
+  file(GLOB onnxruntime_python_utils_hooks_srcs CONFIGURE_DEPENDS
+  "${ORTTRAINING_SOURCE_DIR}/python/training/utils/hooks/*"
   )
   if (onnxruntime_ENABLE_TRAINING_APIS)
     file(GLOB onnxruntime_python_onnxblock_srcs CONFIGURE_DEPENDS
@@ -719,6 +723,7 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/torch_gpu_allocator
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/ortmodule/torch_cpp_extensions/cuda/fused_ops
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_capi_training_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/training/
@@ -770,6 +775,9 @@ if (onnxruntime_ENABLE_TRAINING)
     COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_utils_data_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/data/
+    COMMAND ${CMAKE_COMMAND} -E copy
+        ${onnxruntime_python_utils_hooks_srcs}
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/training/utils/hooks/
   )
   if (onnxruntime_ENABLE_TRAINING_APIS)
     add_custom_command(

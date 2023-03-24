@@ -52,6 +52,7 @@ Status dispatch_warpwise_softmax_forward(hipStream_t stream, OutputT* dst, const
 
 SPECIALIZED_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_SOFTMAX_IMPL(BFloat16, BFloat16, float)
 
@@ -79,12 +80,8 @@ Status dispatch_blockwise_softmax_forward(hipStream_t stream, OutputT* output,
 
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(float, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, half, float)
+SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(double, double, double)
 SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(BFloat16, BFloat16, float)
-
-#ifndef DISABLE_CONTRIB_OPS
-SPECIALIZED_BLOCKWISE_SOFTMAX_IMPL(half, float, float)  // used by BeamSearch op
-#endif
-
 }  // namespace rocm
 }  // namespace onnxruntime
