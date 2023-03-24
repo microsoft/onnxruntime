@@ -97,7 +97,7 @@ void RunEnsureUniqueDQForNodeUnitTest(std::function<void(ModelTestBuilder&)> gra
   }
 
   {
-    SCOPED_TRACE("test with other basic transformers");
+    SCOPED_TRACE("test with basic transformers");
 
     auto post_transform_check_fn = [expected_dq_count](const InferenceSessionWrapper& session) {
       const auto& graph = session.GetGraph();

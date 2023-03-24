@@ -3711,7 +3711,10 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
                     /*opset_version*/ 10);
 }
 
-TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
+// TODO do we need this test and the associated transpose optimizer behavior of only swapping DQ/transpose when the
+// transpose is the only consumer now? see https://github.com/microsoft/onnxruntime/pull/12099.
+// the test doesn't work with the required EnsureUniqueDQForNodeUnit transformer.
+TEST(TransposeOptimizerTests, DISABLED_TestDequantizeLinearTransposePropagation) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<uint8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, 0, 5);
     auto* input1_arg = MakeInput<float>(builder, {std::vector<int64_t>{}}, std::vector<int64_t>{}, {2.3f});
@@ -3739,21 +3742,11 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearTransposePropagation) {
     EXPECT_EQ(op_types_in_order, expected_op_types_in_order);
   };
 
-  // disable DQ duplication transformer which interferes with the test setup
-  // TODO do we need this test and the associated transpose optimizer behavior of only swapping DQ/transpose when the
-  // transpose is the only consumer now? see https://github.com/microsoft/onnxruntime/pull/12099
-  const InlinedHashSet<std::string> disabled_optimizers{"EnsureUniqueDQForNodeUnit"};
-
   TransformerTester(build_test_case_1,
                     check_graph,
                     TransformerLevel::Default,
                     TransformerLevel::Level1,
-                    /*opset_version*/ 10,
-                    /*per_sample_tolerance*/ 0.0,
-                    /*relative_per_sample_tolerance*/ 0.0,
-                    /*transformer*/ {},
-                    /*add_session_options*/ {},
-                    disabled_optimizers);
+                    /*opset_version*/ 10);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {

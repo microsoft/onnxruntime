@@ -2902,9 +2902,7 @@ TEST(QDQTransformerTests, QDQFinalCleanupTransformer_GraphInputToOutput) {
 }
 
 TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
-  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis, bool enable_dq_duplication) {
-    SCOPED_TRACE(MakeString("enable DQ duplication: ", enable_dq_duplication));
-
+  auto test_case = [&](const std::vector<int64_t>& input_shape, int64_t axis) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       auto* input_arg = builder.MakeInput<float>(input_shape, -5.f, 5.f);
       auto* dq_output_arg = builder.MakeOutput();
@@ -2939,25 +2937,13 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
 
     auto check_graph = [&](InferenceSessionWrapper& session) {
       auto op_to_count = CountOpsInGraph(session.GetGraph());
-      if (!enable_dq_duplication) {
-        // expect no fusion because DQ has multiple consumers
-        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 0);
-        EXPECT_EQ(op_to_count["Softmax"], 1);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 2);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);
-      } else {
-        // expect fusion because DQ duplication ensures that the node unit has unique DQ nodes
-        EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
-        EXPECT_EQ(op_to_count["Softmax"], 0);
-        EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
-        EXPECT_EQ(op_to_count["DequantizeLinear"], 2);  // duplicate of first DQ and original second DQ
-      }
-    };
 
-    InlinedHashSet<std::string> disabled_optimizers{};
-    if (!enable_dq_duplication) {
-      disabled_optimizers.emplace("EnsureUniqueDQForNodeUnit");
-    }
+      // expect fusion because DQ duplication ensures that the node unit has unique DQ nodes
+      EXPECT_EQ(op_to_count["com.microsoft.QLinearSoftmax"], 1);
+      EXPECT_EQ(op_to_count["Softmax"], 0);
+      EXPECT_EQ(op_to_count["QuantizeLinear"], 1);
+      EXPECT_EQ(op_to_count["DequantizeLinear"], 2);  // duplicate of first DQ and original second DQ
+    };
 
     TransformerTester(build_test_case,
                       check_graph,
@@ -2965,14 +2951,10 @@ TEST(QDQTransformerTests, QDQSoftmaxWithDQProducingGraphOutput) {
                       TransformerLevel::Level2,
                       12 /*opset_version*/,
                       0.01 /*per_sample_tolerance*/,
-                      0.01 /*relative_per_sample_tolerance*/,
-                      {} /*transformer*/,
-                      {} /*add_session_options*/,
-                      disabled_optimizers);
+                      0.01 /*relative_per_sample_tolerance*/);
   };
 
-  test_case({1, 12, 37}, -1, true);
-  test_case({1, 12, 37}, -1, false);
+  test_case({1, 12, 37}, -1);
 }
 
 }  // namespace test

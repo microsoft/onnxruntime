@@ -56,7 +56,6 @@
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
-#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
@@ -212,7 +211,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           session_options.free_dimension_overrides));
 
       if (!disable_quant_qdq) {
-        transformers.emplace_back(std::make_unique<EnsureUniqueDQForNodeUnit>());
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
       }
 

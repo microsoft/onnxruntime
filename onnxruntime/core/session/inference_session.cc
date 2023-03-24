@@ -39,6 +39,7 @@
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/optimizer/transformer_memcpy.h"
@@ -366,7 +367,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
@@ -381,7 +381,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
 #endif
       logging_manager_(session_env.GetLoggingManager()),
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
@@ -396,7 +395,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const PathString& model_uri)
     : model_location_(model_uri),
       graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
@@ -418,7 +416,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
@@ -431,7 +428,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformation_mgr_(session_options.max_num_graph_transformation_steps),
-      insert_cast_transformer_("CastFloat16Transformer"),
       logging_manager_(session_env.GetLoggingManager()),
       environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
@@ -595,7 +591,7 @@ common::Status InferenceSession::SaveToOrtFormat(const PathString& filepath) con
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
   ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
 
-  for (const auto* op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+  for (const auto op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 
@@ -869,19 +865,31 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
                                                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr,
                                                 const ExecutionProviders& providers,
                                                 KernelRegistryManager& kernel_registry_manager,
-                                                const InsertCastTransformer& insert_cast_transformer,
                                                 SessionState& session_state,
                                                 bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. run level 1 optimizations. these only use ONNX operators.
-  // 2. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
-  // 3. run all optimizations. level 2 and 3 optimizations use contrib ops.
-  // 4. insert cast nodes
-  // 5. insert copy nodes
+  // 2. ensure potential QDQ node units have unique DQ nodes (required transformer).
+  // 3. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
+  // 4. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
+  // 5. insert cast nodes (required transformer).
+  // 6. insert copy nodes (required transformer).
+
+  auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
+                                   Graph& graph) {
+    bool modified = false;
+    return transformer.Apply(graph, modified, logger);
+  };
 
   // first apply execution provider independent level 1 graph optimizations.
-  ORT_RETURN_IF_ERROR_SESSIONID_(
-      graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+  ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *session_logger_));
+
+  // ensure potential QDQ node units have unique DQ nodes
+  {
+    // TODO should it only run if session option session.disable_quant_qdq == 0?
+    EnsureUniqueDQForNodeUnit ensure_unique_dq_for_node_unit{};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(ensure_unique_dq_for_node_unit, *session_logger_, graph));
+  }
 
   // if saving model to ORT format we only assign nodes a custom EP can handle and don't compile them.
   // we do this to preserve the original nodes in the model but prevent optimizers from changing them.
@@ -907,20 +915,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph,
         graph_transformer_mgr.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
   }
 
-  bool modified = false;
   // Insert cast node/s.
-  ORT_RETURN_IF_ERROR_SESSIONID_(insert_cast_transformer.Apply(graph, modified, *session_logger_));
-
-  std::vector<std::string> provider_types;
-  for (auto& provider_ptr : providers) {
-    provider_types.push_back(provider_ptr->Type());
+  {
+    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer"};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
   }
 
   // Insert copy node/s.
-  MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
-  ORT_RETURN_IF_ERROR_SESSIONID_(copy_transformer.Apply(graph, modified, *session_logger_));
+  {
+    std::vector<std::string> provider_types;
+    for (auto& provider_ptr : providers) {
+      provider_types.push_back(provider_ptr->Type());
+    }
 
-  return common::Status::OK();
+    MemcpyTransformer copy_transformer{provider_types, kernel_registry_manager};
+    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(copy_transformer, *session_logger_, graph));
+  }
+
+  return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -1410,7 +1422,6 @@ common::Status InferenceSession::Initialize() {
       // apply any transformations to the main graph and any subgraphs
       ORT_RETURN_IF_ERROR_SESSIONID_(TransformGraph(graph, graph_transformation_mgr_,
                                                     execution_providers_, kernel_registry_manager_,
-                                                    insert_cast_transformer_,
                                                     *session_state_,
                                                     saving_ort_format));
 
