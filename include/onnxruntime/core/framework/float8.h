@@ -36,7 +36,9 @@ struct Float8E4M3FN {
 
   inline ORT_HOST_DEVICE Float8E4M3FN(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    std::cout << "CUDA v=" << v << "\n";
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
+    std::cout << "CUDA val=" << val << "\n";
 #else
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
@@ -50,6 +52,7 @@ struct Float8E4M3FN {
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
+      std::cout << "---v=" << v << " m=" << m << " e=" << e << "\n";
       if (e != 0) {
         if (e < 117) { // 0b1110101
         } else if (e < 118) { // 0b1110110
@@ -87,6 +90,7 @@ struct Float8E4M3FN {
         }
       }
     }
+    std::cout << "val=" << val << "\n";
 #endif
   }
 
