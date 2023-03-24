@@ -587,22 +587,21 @@ class GraphImpl implements Graph, Graph.Transformer {
     // delete all nodes that are not being executed
     // The graph is represented using these two arrays
     // this._nodes - Array holding the kernels to execute - each entry is a kernel pointing to this._allData
-    // this._allData - hold 2 fields - to [] & from [] - these arrays hold the graph map for inputs and outputs per node
-    // reducedMap - remapping the graph after reading the flag 'executeNode' 
-    const reducedGraph = new Array (this._nodes.length,0);
+    // this._allData - hold 2 fields - to [] & from - these feileds hold the graph map for inputs and outputs per node
+    // newIndices - remapping the graph after reading the flag 'executeNode'
+    const newIndices = new Array<number>(this._nodes.length, 0);
     let nodePossition = 0;
 
     for (let i = 0; i < this._nodes.length; i++) {
       // giving new indexes to the nodes based on execution flag
-      reducedGraph[i] = nodePossition;
-      if (this._nodes[i].executeNode) { 
-        
-        if(nodePossition!=i){
+      newIndices[i] = nodePossition;
+      if (this._nodes[i].executeNode) {
+        if (nodePossition !== i) {
           this._nodes[nodePossition] = this._nodes[i];
         }
-
         nodePossition++;
-      }else{
+
+      } else {
         // delete all output values
         this._nodes[i].outputs.forEach(ind => {
           this._allData[ind]._from = -2;
@@ -611,20 +610,19 @@ class GraphImpl implements Graph, Graph.Transformer {
     }
 
     // removing the unused nodes
-    this._nodes.splice(nodePossition,this._nodes.length - nodePossition);
+    this._nodes.splice(nodePossition, this._nodes.length - nodePossition);
 
     // Updating this._allData according to the new this._nodes
     for (let i = 0; i < this._allData.length; i++) {
-
-      if(this._allData[i]._from !== undefined){
-        this._allData[i]._from = reducedGraph[this._allData[i]._from as number];
+      const currentData = this._allData[i];
+      if (currentData._from !== undefined) {
+        currentData._from = newIndices[currentData._from];
       }
 
-      for(let j=0;j<this._allData[i]._to.length;j++){
-        // need to see if this._allData[i]._to[i] has special value (-1,-2) 
-        this._allData[i]._to[j] = reducedGraph[this._allData[i]._to[j]];
-      }      
-
+      for (let j = 0; j < currentData._to.length; j++) {
+        // need to see if this._allData[i]._to[i] has special value (-1,-2)
+        currentData._to[j] = newIndices[currentData._to[j]];
+      }
     }
 
     offset = 0;
