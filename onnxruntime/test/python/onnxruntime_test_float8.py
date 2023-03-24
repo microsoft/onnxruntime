@@ -165,6 +165,7 @@ class TestInferenceSession(unittest.TestCase):
             if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
                 # only those types are available on CUDA.
                 continue
+            onnx_model = self.model_cast_cast(to)
             sess = onnxruntime.InferenceSession(onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"])
             y = sess.run(None, {"X": x})[0]
             assert_allclose(expect, y)
