@@ -447,7 +447,8 @@ namespace Dml
                     /*out*/ &isDmlGraphNode
                 );
             }
-
+        // for testing
+         isDmlGraphNode = false;
             // Add a unique partition if graph node usage is not supported.
             //
             // Partitioning is disabled in models with subgraphs to work around issues with implicit inputs.
