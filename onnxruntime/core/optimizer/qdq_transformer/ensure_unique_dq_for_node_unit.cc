@@ -82,8 +82,9 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
 
   auto dq_output_edges = graph_utils::GraphEdge::GetNodeOutputEdges(dq_node, 0);
 
-  // We will only duplicate DQ's for edges to explicit inputs.
-  // Remove edges to implicit inputs from consideration.
+  // QDQ node units are only formed by nodes in the current graph, and not between nodes in the current graph and a
+  // subgraph. Consequently, we only duplicate DQ's for edges to explicit inputs and skip edges to implicit (subgraph)
+  // inputs. Remove edges to implicit inputs from consideration.
   const auto dq_output_edges_to_explicit_inputs_end = std::remove_if(
       dq_output_edges.begin(), dq_output_edges.end(),
       [&const_graph = std::as_const(graph)](const graph_utils::GraphEdge& dq_output_edge) {
@@ -94,24 +95,27 @@ Status EnsureUniqueDQForEachExplicitOutputEdge(const Node& node, Graph& graph, b
         return narrow<size_t>(dq_output_edge.dst_arg_index) >= consumer_explicit_input_defs_count;
       });
 
-  const bool has_output_edge_to_implicit_input = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
-  if (has_output_edge_to_implicit_input) {
+  const bool has_subgraph_consumer = dq_output_edges_to_explicit_inputs_end != dq_output_edges.end();
+  if (has_subgraph_consumer) {
     dq_output_edges.erase(dq_output_edges_to_explicit_inputs_end, dq_output_edges.end());
   }
 
   const bool produces_graph_output = graph.NodeProducesGraphOutput(node);
 
-  // We can reuse the original DQ as the unique DQ for the first edge to explicit input if the DQ doesn't have a graph
-  // output or a consumer in a subgraph (edge to implicit input).
-  const bool can_use_original_dq = !has_output_edge_to_implicit_input && !produces_graph_output;
+  // If the original DQ produces a graph output or has a subgraph consumer node, we preserve any of those output
+  // relationships and duplicate new unique DQ's for each of the same-graph consumer nodes.
+  // Otherwise, where the original DQ has only same-graph consumer nodes, we can reuse the original DQ as the unique
+  // DQ for the first same-graph consumer node and duplicate new unique DQ's for the rest of them.
+  const bool can_reuse_original_dq = !has_subgraph_consumer && !produces_graph_output;
 
-  auto next_edge_to_process = dq_output_edges.begin();
-  if (can_use_original_dq && next_edge_to_process != dq_output_edges.end()) {
-    ++next_edge_to_process;
+  auto edge_to_process = dq_output_edges.begin();
+  if (can_reuse_original_dq && edge_to_process != dq_output_edges.end()) {
+    // start duplicating from the next edge
+    ++edge_to_process;
   }
 
-  for (; next_edge_to_process != dq_output_edges.end(); ++next_edge_to_process) {
-    ORT_RETURN_IF_ERROR(DuplicateDQForOutputEdge(*next_edge_to_process, graph));
+  for (; edge_to_process != dq_output_edges.end(); ++edge_to_process) {
+    ORT_RETURN_IF_ERROR(DuplicateDQForOutputEdge(*edge_to_process, graph));
     modified = true;
   }
 
