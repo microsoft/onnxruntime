@@ -158,6 +158,7 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(expect.dtype, y.dtype)
 
     @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
     def test_model_cast_cast_cuda(self):
         so = onnxruntime.SessionOptions()
         so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -179,8 +180,31 @@ class TestInferenceSession(unittest.TestCase):
                 self.assertEqual(expect.shape, y.shape)
                 self.assertEqual(expect.dtype, y.dtype)
 
+    @unittest.skipIf(not hasattr(TensorProto, "FLOAT8E4M3FN"), reason="needs onnx>=1.14.0")
+    @unittest.skipIf("CUDAExecutionProvider" not in available_providers, reason="Not running on CUDA.")
+    def test_model_cast_cast_cuda_ortvalue(self):
+        so = onnxruntime.SessionOptions()
+        so.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+
+        expected = TestInferenceSession.expected
+        x = TestInferenceSession.x
+
+        for to, expect in expected.items():
+            with self.subTest(to=to):
+                if to not in {TensorProto.FLOAT8E4M3FN, TensorProto.FLOAT8E5M2}:
+                    # only those types are available on CUDA.
+                    continue
+                onnx_model = self.model_cast_cast(to)
+                sess = onnxruntime.InferenceSession(
+                    onnx_model.SerializeToString(), so, providers=["CUDAExecutionProvider"]
+                )
+                ortv = OrtValue.ortvalue_from_numpy(x, device="CUDA")
+                y = sess.run_with_ort_values({"X": ortv})[0].numpy()
+                assert_allclose(expect, y)
+                self.assertEqual(expect.shape, y.shape)
+                self.assertEqual(expect.dtype, y.dtype)
+
 
 if __name__ == "__main__":
-    TestInferenceSession().test_model_cast_cast_reference()
-    TestInferenceSession().test_model_cast_cast_cuda()
+    # TestInferenceSession().test_model_cast_cast_cuda()
     unittest.main()
