@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 #pragma once
 
-#include <iostream>
-
 #include "endian.h"
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
 #include "cuda_fp8.h"
@@ -31,17 +29,35 @@ struct Float8E4M3FN {
 #else
   Float8E4M3FN() = default;
 #endif
-
   struct FromBitsT {};
   static constexpr ORT_HOST_DEVICE FromBitsT FromBits() { return FromBitsT(); }
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
   inline ORT_HOST_DEVICE Float8E4M3FN(float v) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    std::cout << "CUDA v=" << v << "\n";
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
-    std::cout << "CUDA val=" << val << "\n";
 #else
+
+    #if defined(CUDA_VERSION)
+
+    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+    #error CUDA Wrong PATH 900.
+    #endif
+
+    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
+    #error CUDA Wrong PATH 700.
+    #endif
+
+    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
+    #error CUDA Wrong PATH 600.
+    #endif
+
+    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 500
+    #error CUDA Wrong PATH 500.
+    #endif
+
+    #endif
+
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
     uint32_t b = *pv;
 
@@ -54,7 +70,7 @@ struct Float8E4M3FN {
     } else {
       uint8_t e = static_cast<uint8_t>((b & 0x7F800000) >> 23);  // exponent
       uint32_t m = static_cast<uint32_t>(b & 0x007FFFFF);        // mantissa
-      std::cout << "---v=" << v << " m=" << m << " e=" << e << "\n";
+      std::cout << "---v=" << v << "m=" << m << "e=" << e << "\n";
       if (e != 0) {
         if (e < 117) { // 0b1110101
         } else if (e < 118) { // 0b1110110
@@ -92,7 +108,6 @@ struct Float8E4M3FN {
         }
       }
     }
-    std::cout << "val=" << val << "\n";
 #endif
   }
 
