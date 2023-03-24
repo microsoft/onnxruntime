@@ -130,24 +130,18 @@ __device__ inline void LayerNormVec(
   __syncthreads();
 
   if (ILP * threadIdx.x < ld) {
-    V beta_v[ILP], gamma_v[ILP], output_v[ILP];
-    VecV* gamma_val = reinterpret_cast<VecV*>(&gamma_v);
-    VecV* output_val = reinterpret_cast<VecV*>(&output_v);
-
     for (int i = threadIdx.x * ILP; i < ld; i += TPB * ILP) {
       int idx = offset + i;
-      if (beta != nullptr) {
-        VecV* beta_val = reinterpret_cast<VecV*>(&beta_v);
-        *beta_val = *reinterpret_cast<const VecV*>(&beta[i]);
-      }
-      *gamma_val = *reinterpret_cast<const VecV*>(&gamma[i]);
-      *output_val = *reinterpret_cast<const VecV*>(&output[idx]);
+      const VecV beta_v = (beta != nullptr) ? *reinterpret_cast<const VecV*>(beta + i) : VecV();
+      const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + i);
+      VecV output_v = *reinterpret_cast<const VecV*>(output + idx);
+
       #pragma unroll
       for (int k = 0; k < ILP; k++) {
-        output_v[k] = (beta != nullptr) ? U(gamma_v[k]) * (U(output_v[k]) - mu) * rsigma + U(beta_v[k]) :
-                                          U(gamma_v[k]) * (U(output_v[k]) - mu) * rsigma;
+        output_v.val[k] = (beta != nullptr) ? U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma + U(beta_v.val[k]) :
+                                              U(gamma_v.val[k]) * (U(output_v.val[k]) - mu) * rsigma;
       }
-      *(reinterpret_cast<VecV*>(&output[idx])) = *reinterpret_cast<VecV*>(&output_v[0]);
+      *(reinterpret_cast<VecV*>(output + idx)) = output_v;
     }
   }
 }
@@ -164,7 +158,6 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
   __shared__ typename BlockReduce::TempStorage temp_storage;
   __shared__ U mu;      // mean
   __shared__ U rsigma;  // 1 / std.dev.
-  V beta_v[ILP], gamma_v[ILP], output_v[ILP];
 
   KeyValuePairSum pair_sum;
   const hipcub::KeyValuePair<U, U> sum_kv = BlockReduce(temp_storage).Reduce(thread_data, pair_sum);
@@ -176,20 +169,16 @@ __device__ inline void LayerNormSmall(const T* input_v, const hipcub::KeyValuePa
   __syncthreads();
 
   if (ILP * threadIdx.x < ld) {
-    if (beta != nullptr) {
-      VecV* beta_val = reinterpret_cast<VecV*>(&beta_v);
-      *beta_val = *reinterpret_cast<const VecV*>(&beta[threadIdx.x * ILP]);
-    }
-
-    VecV* gamma_val = reinterpret_cast<VecV*>(&gamma_v);
-    *gamma_val = *reinterpret_cast<const VecV*>(&gamma[threadIdx.x * ILP]);
+    const VecV beta_v = (beta != nullptr) ? *reinterpret_cast<const VecV*>(beta + threadIdx.x * ILP) : VecV();
+    const VecV gamma_v = *reinterpret_cast<const VecV*>(gamma + threadIdx.x * ILP);
+    VecV output_v;
 
     #pragma unroll
     for (int i = 0; i < ILP; i++) {
-      output_v[i] = (beta != nullptr) ? U(gamma_v[i]) * (U(input_v[i]) - mu) * rsigma + U(beta_v[i]) :
-                                        U(gamma_v[i]) * (U(input_v[i]) - mu) * rsigma;
+      output_v.val[i] = (beta != nullptr) ? U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma + U(beta_v.val[i]) :
+                                            U(gamma_v.val[i]) * (U(input_v[i]) - mu) * rsigma;
     }
-    *(reinterpret_cast<VecV*>(&output[idx])) = *reinterpret_cast<VecV*>(&output_v[0]);
+    *(reinterpret_cast<VecV*>(output + idx)) = output_v;
   }
 }
 
