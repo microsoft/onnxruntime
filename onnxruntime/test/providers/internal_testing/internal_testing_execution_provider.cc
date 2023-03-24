@@ -155,6 +155,8 @@ InternalTestingExecutionProvider::GetCapability(const onnxruntime::GraphViewer& 
                       if (kernel_lookup.LookUpKernel(*node) == nullptr) {
                         RegisterDummyStaticKernel(*kernel_registry_, *node);
                       }
+#else
+            ORT_UNUSED_PARAMETER(kernel_lookup);
 #endif
                     } else {
                       supported_compiled_nodes.insert(node);
