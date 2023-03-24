@@ -34,30 +34,14 @@ struct Float8E4M3FN {
   constexpr ORT_HOST_DEVICE Float8E4M3FN(unsigned char bits, FromBitsT) : val(bits) {}
 
   inline ORT_HOST_DEVICE Float8E4M3FN(float v) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080 && defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     val = __nv_cvt_float_to_fp8(v, __NV_NOSAT, __NV_E4M3);
 #else
 
     #if defined(CUDA_VERSION)
-
-    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    #error "CUDA Wrong PATH 800."
-    #endif
-
-    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
+    //#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 750
     #error "CUDA Wrong PATH 750."
-    #endif
-
-    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 725
-    #error "CUDA Wrong PATH 725."
-    #endif
-
-    #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 700
-    #error "CUDA Wrong PATH 700."
-    #endif
-
-    #error "CUDA Wrong PATH."
-
+    //#endif
     #endif
 
     uint32_t* pv = reinterpret_cast<uint32_t*>(&v);
