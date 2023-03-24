@@ -47,23 +47,23 @@ public:
         // DML doesn't support grouped MVN, so split the data and perform MVN separately on each one of them
         const uint32_t channelsPerGroup = channels / groups;
 
-        // 1. Reshape the input from [batch, height, width, channels] to [batch, height, width, groups, channelsPerGroup]
-        // 2. Stride the reshaped input from [batch, height, width, groups, channelsPerGroup] to [batch, channelsPerGroup, height, width, groups]
-        const std::array<uint32_t, 5> inputShape = {batch, channelsPerGroup, height, width, groups};
-        const std::array<uint32_t, 5> inputStrides = {channelsPerGroup * height * width * groups, 1, width * channelsPerGroup * groups, groups * channelsPerGroup, channelsPerGroup};
+        // 1. Reshape the input from [batch, height, width, channels] to [batch, height * width, groups, channelsPerGroup]
+        // 2. Stride the reshaped input from [batch, height * width, groups, channelsPerGroup] to [batch, channelsPerGroup, height * width, groups]
+        const std::array<uint32_t, 4> inputShape = {batch, channelsPerGroup, height * width, groups};
+        const std::array<uint32_t, 4> inputStrides = {channelsPerGroup * height * width * groups, 1, channelsPerGroup * groups, channelsPerGroup};
         TensorDesc inputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), inputShape, inputStrides);
         const DML_TENSOR_DESC inputDmlTensorDesc = inputTensorDesc.GetDmlDesc();
 
         // 1. Reshape the gamma and beta from [channels] to [groups, channelsPerGroup]
-        // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, height, width, groups, channelsPerGroup]
-        // 3. Stride the brodcasted gamma and beta from [batch, height, width, groups, channelsPerGroup] to [batch, channelsPerGroup, height, width, groups]
-        const std::array<uint32_t, 5> gammaBetaStrides = {0, 1, 0, 0, channelsPerGroup};
+        // 2. Broadcast the gamma and beta from [groups, channelsPerGroup] to [batch, height * width, groups, channelsPerGroup]
+        // 3. Stride the brodcasted gamma and beta from [batch, height * width, groups, channelsPerGroup] to [batch, channelsPerGroup, height * width, groups]
+        const std::array<uint32_t, 4> gammaBetaStrides = {0, 1, 0, channelsPerGroup};
         TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), inputShape, gammaBetaStrides);
         const DML_TENSOR_DESC gammaBetaDmlTensorDesc = gammaBetaTensorDesc.GetDmlDesc();
 
         // Transpose the output to the format expected by ORT
-        const std::array<uint32_t, 5> outputShape = {batch, channelsPerGroup, height, width, groups};
-        const std::array<uint32_t, 5> outputStrides = {channelsPerGroup * height * width * groups, 1, width * channelsPerGroup * groups, groups * channelsPerGroup, channelsPerGroup};
+        const std::array<uint32_t, 4> outputShape = {batch, channelsPerGroup, height * width, groups};
+        const std::array<uint32_t, 4> outputStrides = {channelsPerGroup * height * width * groups, 1, channelsPerGroup * groups, channelsPerGroup};
         TensorDesc outputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), outputShape, outputStrides);
         const DML_TENSOR_DESC outputDmlTensorDesc = outputTensorDesc.GetDmlDesc();
 
@@ -77,7 +77,7 @@ public:
         }
         DML_OPERATOR_DESC dmlCastGammaBetaDesc = { DML_OPERATOR_CAST, &castGammaBetaDesc };
 
-        const std::array<uint32_t, 3> axes = {1, 2, 3};
+        const std::array<uint32_t, 2> axes = {1, 2};
 
         // Then, perform MVN
         DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC mvnDesc{};
