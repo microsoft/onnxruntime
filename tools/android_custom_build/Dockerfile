@@ -71,7 +71,7 @@ WORKDIR /workspace
 # configure user
 ARG BUILD_UID=1001
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --disabled-password --uid ${BUILD_UID} ${BUILD_USER}
+RUN adduser --gecos "onnxruntime Build User" --disabled-password --uid ${BUILD_UID} ${BUILD_USER}
 USER ${BUILD_USER}
 
 # get ORT repo
