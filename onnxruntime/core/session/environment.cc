@@ -355,4 +355,27 @@ Status Environment::CreateAndRegisterExecutionProvider(bool use_arena, std::stri
   return Status::OK();
 }
 
+Status Environment::CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index) {
+  *provider_global_index = -1;
+  std::unique_ptr<IExecutionProvider> ep = onnxruntime::CPUProviderFactoryCreator::Create(use_arena)->CreateProvider();
+  if (ep) {
+    ORT_THROW_IF_ERROR(execution_providers_.Add(kCpuExecutionProvider, std::move(ep)));
+    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
+  }
+
+  return Status::OK();
+}
+
+Status Environment::CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index) {
+  *provider_global_index = -1;
+  SessionOptions so{};
+  std::unique_ptr<IExecutionProvider> ep =  onnxruntime::XnnpackProviderFactoryCreator::Create(provider_options, &so)->CreateProvider();
+  if (ep) {
+    ORT_THROW_IF_ERROR(execution_providers_.Add(kXnnpackExecutionProvider, std::move(ep)));
+    *provider_global_index = static_cast<int>(execution_providers_.NumProviders()) - 1;
+  }
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

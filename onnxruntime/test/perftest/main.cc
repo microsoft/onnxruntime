@@ -26,9 +26,65 @@ int real_main(int argc, char* argv[]) {
   if (fs.is_open()) {
     Ort::Env env;
 
+    // Part 1, original API
+//    Ort::Session session{env, L"C:/share/models/Detection/model.onnx", Ort::SessionOptions{nullptr}};
+//    Ort::AllocatorWithDefaultOptions allocator;
+//    auto inputName = session.GetInputNameAllocated(0, allocator);
+//    std::vector<const char*> inputNames;
+//    inputNames.push_back(inputName.get());
+//    Ort::TypeInfo type0 = session.GetInputTypeInfo(0);
+//    Ort::ConstTensorTypeAndShapeInfo shapeInfo0 = type0.GetTensorTypeAndShapeInfo();
+//    std::vector<int64_t> shape0{1, 3, 256, 256};  // = shapeInfo0.GetShape();
+//
+//    int data_length = 3 * 256 * 256;
+//    float* data = new float[data_length];
+//    for (int i = 0; i < data_length; i++) data[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+//    Ort::Value tensor = Ort::Value::CreateTensor(Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemType::OrtMemTypeDefault), data, data_length * 4, shape0.data(), shape0.size());
+//    //vector<Ort::Value> input_tensors{std::move(tensor)};
+//
+//    Ort::AllocatorWithDefaultOptions allocatorOut;
+//    auto outName = session.GetOutputNameAllocated(0, allocatorOut);
+//    std::vector<const char*> outputNames;
+//    outputNames.push_back(outName.get());
+//
+//    auto ret = session.Run(Ort::RunOptions{nullptr}, inputNames.data(), &tensor, inputNames.size(), outputNames.data(), 1);
+//#ifdef USE_XNNPACK
+//    Ort::SessionOptions so;
+//    so.AppendExecutionProvider("XNNPACK", {});
+//    Ort::Session session2{env, L"C:/share/models/Detection/model.onnx", so};
+//    auto ret2 = session2.Run(Ort::RunOptions{nullptr}, inputNames.data(), &tensor, inputNames.size(), outputNames.data(), 1);
+//#endif  // USE_XNNPACK
+
+    // Part 2, new API, version 1
+//    int ep_global_index = -1;
+//    std::unordered_map<std::string, std::string> provider_options;
+//    env.CreateAndRegisterExecutionProvider(true, "CPUExecutionProvider", provider_options, &ep_global_index);
+//    Ort::Session session(env, L"C:/share/models/Detection/model.onnx", &ep_global_index, 1);
+//    Ort::AllocatorWithDefaultOptions allocator;
+//    auto input0 = session.GetInputNameAllocated(0, allocator);
+//    std::vector<const char*> inputNames{input0.get()};
+//    std::vector<int64_t> shape0{1, 3, 256, 256};
+//    int data_length = 3 * 256 * 256;
+//    float* inputData = new float[data_length];
+//    for (int i = 0; i < data_length; i++) inputData[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+//    Ort::Value tensor = Ort::Value::CreateTensor(Ort::MemoryInfo::CreateCpu(OrtAllocatorType::OrtDeviceAllocator, OrtMemType::OrtMemTypeDefault), inputData, data_length * 4, shape0.data(), shape0.size());
+//    Ort::AllocatorWithDefaultOptions allocatorOut;
+//    auto output0 = session.GetOutputNameAllocated(0, allocatorOut);
+//    std::vector<const char*> outputNames{output0.get()};
+//
+//    auto ret = session.Run(Ort::RunOptions{nullptr}, inputNames.data(), &tensor, inputNames.size(), outputNames.data(), 1);
+//
+//#ifdef USE_XNNPACK
+//    int xnnpack_global_index = -1;
+//    env.CreateAndRegisterExecutionProvider(true, "XnnpackExecutionProvider", provider_options, &xnnpack_global_index);
+//    int global_ep_index[2] = {xnnpack_global_index, ep_global_index};
+//    Ort::Session session2(env, L"C:/share/models/Detection/model.onnx", global_ep_index, 2);
+//    auto ret2 = session2.Run(Ort::RunOptions{nullptr}, inputNames.data(), &tensor, inputNames.size(), outputNames.data(), 1);
+//#endif  // USE_XNNPACK
+    
+    // Part 3, new API, version 2
     int ep_global_index = -1;
-    std::unordered_map<std::string, std::string> provider_options;
-    env.CreateAndRegisterExecutionProvider(true, "CPUExecutionProvider", provider_options, &ep_global_index);
+    env.CreateAndRegisterExecutionProvider_CPU(true, &ep_global_index);
     Ort::Session session(env, L"C:/share/models/Detection/model.onnx", &ep_global_index, 1);
     Ort::AllocatorWithDefaultOptions allocator;
     auto input0 = session.GetInputNameAllocated(0, allocator);
@@ -46,7 +102,8 @@ int real_main(int argc, char* argv[]) {
 
 #ifdef USE_XNNPACK
     int xnnpack_global_index = -1;
-    env.CreateAndRegisterExecutionProvider(true, "XnnpackExecutionProvider", provider_options, &xnnpack_global_index);
+    std::unordered_map<std::string, std::string> provider_options;
+    env.CreateAndRegisterExecutionProvider_XNNPACK(provider_options, &xnnpack_global_index);
     int global_ep_index[2] = {xnnpack_global_index, ep_global_index};
     Ort::Session session2(env, L"C:/share/models/Detection/model.onnx", global_ep_index, 2);
     auto ret2 = session2.Run(Ort::RunOptions{nullptr}, inputNames.data(), &tensor, inputNames.size(), outputNames.data(), 1);

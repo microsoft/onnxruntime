@@ -1708,6 +1708,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
   API_IMPL_END
 }
 
+//ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider_CUDA_V2, , _In_ const OrtCUDAProviderOptionsV2* cuda_options) {
+//  API_IMPL_BEGIN
+//  auto factory = onnxruntime::CudaProviderFactoryCreator::Create(cuda_options);
+//  if (!factory) {
+//    return OrtApis::CreateStatus(ORT_FAIL, "OrtSessionOptionsAppendExecutionProvider_Cuda: Failed to load shared library");
+//  }
+//
+//  options->provider_factories.push_back(factory);
+//  return nullptr;
+//  API_IMPL_END
+//}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
 #ifdef USE_CUDA

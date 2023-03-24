@@ -425,6 +425,12 @@ struct Env : detail::Base<OrtEnv> {
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
   Env& CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider
+
+  Env& CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_CPU
+
+  Env& CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);  ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_XNNPACK
+
+  //Env& CreateAndRegisterExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options, int* provider_global_index);          ///< Wraps OrtApi::CreateAndRegisterExecutionProvider_CUDA_V2
 };
 
 /** \brief Custom Op Domain

@@ -3967,6 +3967,13 @@ struct OrtApi {
 
   ORT_API2_STATUS(CreateSessionWithProviderGlobalIndex, _In_ const OrtEnv* env, _In_ const ORTCHAR_T* model_path, _In_ int* provider_global_index, size_t global_index_length, _Outptr_ OrtSession** out);
 
+  ORT_API2_STATUS(CreateAndRegisterExecutionProvider_CPU, _Inout_ OrtEnv* env, _In_ bool use_arena, _Out_ int* provider_global_index);
+
+  ORT_API2_STATUS(CreateAndRegisterExecutionProvider_XNNPACK, _Inout_ OrtEnv* env, _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _Out_ int* provider_global_index);
+
+  //ORT_API2_STATUS(CreateAndRegisterExecutionProvider_CUDA_V2, _Inout_ OrtEnv* env, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Out_ int* provider_global_index);
+
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
 #endif

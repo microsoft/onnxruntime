@@ -70,6 +70,10 @@ class Environment {
 
   Status CreateAndRegisterExecutionProvider(bool use_arena, std::string provider_type, ProviderOptions provider_options, int* provider_global_index);
 
+  Status CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index);
+
+  Status CreateAndRegisterExecutionProvider_XNNPACK(ProviderOptions provider_options, int* provider_global_index);
+
   /**
    * Returns the list of registered allocators in this env.
    */

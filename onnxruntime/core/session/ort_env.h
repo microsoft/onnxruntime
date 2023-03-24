@@ -72,6 +72,9 @@ struct OrtEnv {
   onnxruntime::common::Status CreateAndRegisterExecutionProvider(bool use_arena, const char* provider_type, std::unordered_map<std::string, std::string> provider_options,
                                                                  int* provider_global_index);
 
+  onnxruntime::common::Status CreateAndRegisterExecutionProvider_CPU(bool use_arena, int* provider_global_index);
+
+  onnxruntime::common::Status CreateAndRegisterExecutionProvider_XNNPACK(std::unordered_map<std::string, std::string> provider_options, int* provider_global_index);
   /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */

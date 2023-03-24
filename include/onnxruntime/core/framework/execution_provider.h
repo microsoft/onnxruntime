@@ -305,7 +305,7 @@ class IExecutionProvider {
 
   virtual std::vector<AllocatorPtr> CreatePreferredAllocators() { return std::vector<AllocatorPtr>(); };
 
-  OrtMutex mutex_;
+  OrtMutex mutex_;  // static?
 
  protected:
   // convenience list of the allocators so GetAllocatorList doesn't have to build a new vector each time

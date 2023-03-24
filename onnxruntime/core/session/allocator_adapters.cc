@@ -109,6 +109,39 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider, _Inout_ OrtEnv*
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider_CPU, _Inout_ OrtEnv* env, _In_ bool use_arena,  _Out_ int* provider_global_index) {
+  auto st = env->CreateAndRegisterExecutionProvider_CPU(use_arena, provider_global_index);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterExecutionProvider_XNNPACK, _Inout_ OrtEnv* env, _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys, _Out_ int* provider_global_index) {
+  using namespace onnxruntime;
+  std::unordered_map<std::string, std::string> provider_options;
+  // similar logic as ParseProviderOptions() in provider_registration.cc
+  for (size_t i = 0; i != num_keys; i++) {
+    if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
+        provider_options_values[i] == nullptr || provider_options_values[i][0] == '\0') {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
+    }
+
+    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Maximum string length for a provider options key/value is 1024.");
+    }
+
+    provider_options[provider_options_keys[i]] = provider_options_values[i];
+  }
+
+  auto st = env->CreateAndRegisterExecutionProvider_XNNPACK(provider_options, provider_global_index);
+  if (!st.IsOK()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
+  }
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
                     _In_ OrtAllocator* allocator) {
   using namespace onnxruntime;
