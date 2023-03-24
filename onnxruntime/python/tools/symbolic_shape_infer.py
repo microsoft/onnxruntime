@@ -583,12 +583,11 @@ class SymbolicShapeInference:
     def _compute_on_sympy_data(self, node, op_func):
         assert len(node.output) == 1
         
-        # Before binary operations
+        # Before mul & div operations
         # cast inputs into interger might lose decimal part and reduce precision
         # keep them as float, finish the operation, then cast the result into integer
-        if node.op_type in ['Add', 'Sub', 'Mul', 'Div']:
+        if node.op_type in ['Mul', 'Div']:
             values = self._get_int_values(node, broadcast=True, loose_int_with_decimal_part=True)
-            print("node type {} detected with values {}".format(node.op_type, values))
         else:
             values = self._get_int_values(node, broadcast=True)
         
@@ -789,15 +788,10 @@ class SymbolicShapeInference:
         )
 
     def _infer_symbolic_compute_ops(self, node):
-        def check_value_types(l):
-            value_types = [float, int]
-            print(node.name, type(l[0]), type(l[1]))
-            return type(l[0]) in value_types and type(l[1]) in value_types
-            
         funcs = {
-            "Add": lambda l: int(l[0] + l[1]) if check_value_types(l) else l[0] + l[1],
+            "Add": lambda l: l[0] + l[1],
             # integer div in sympy
-            "Div": lambda l: int(l[0] // l[1]) if check_value_types(l) else l[0] // l[1],
+            "Div": lambda l: l[0] // l[1] if isinstance(l[0] // l[1], int) else int(l[0] // l[1]),
             "Equal": lambda l: l[0] == l[1],
             "Floor": lambda l: sympy.floor(l[0]),
             "Max": lambda l: l[1]
@@ -806,8 +800,8 @@ class SymbolicShapeInference:
             "Min": lambda l: l[1]
             if is_literal(l[0]) and int(l[0]) > self.int_max_
             else (l[0] if is_literal(l[1]) and int(l[1]) > self.int_max_ else sympy.Min(l[0], l[1])),
-            "Mul": lambda l: int(l[0] * l[1]) if check_value_types(l) else l[0] * l[1],
-            "Sub": lambda l: int(l[0] - l[1]) if check_value_types(l) else l[0] - l[1],
+            "Mul": lambda l: l[0] * l[1] if isinstance(l[0] * l[1], int) else int(l[0] * l[1]),
+            "Sub": lambda l: l[0] - l[1],
             "Where": lambda l: l[1] if l[0] else l[2],
             "Neg": lambda l: -l[0],
         }
