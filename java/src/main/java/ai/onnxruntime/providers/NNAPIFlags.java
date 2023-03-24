@@ -10,7 +10,6 @@ public enum NNAPIFlags implements OrtFlags {
   USE_NCHW(2), // NNAPI_FLAG_USE_NCHW(0x002)
   CPU_DISABLED(4), // NNAPI_FLAG_CPU_DISABLED(0x004)
   CPU_ONLY(8), // NNAPI_FLAG_CPU_ONLY(0x008)
-  CPU_DISABLED_SOFT(16); // NNAPI_FLAG_CPU_DISABLED_SOFT(0x010)
 
   public final int value;
 
