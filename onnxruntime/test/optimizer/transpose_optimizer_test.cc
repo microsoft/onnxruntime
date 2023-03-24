@@ -3858,9 +3858,9 @@ TEST(TransposeOptimizerTests, TestSimpleReshapeAsTranspose) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3889,9 +3889,9 @@ TEST(TransposeOptimizerTests, TestReshapeAsTransposeGraphOutput) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -3941,11 +3941,11 @@ static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // 
     std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
 
     if (expected_result == TransposeReshapeResult::kCancel) {
-      ASSERT_TRUE(op_to_count["Transpose"] == 0);
-      ASSERT_TRUE(op_to_count["Reshape"] == 0);
+      ASSERT_EQ(op_to_count["Transpose"], 0);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
     } else if (expected_result == TransposeReshapeResult::kMerge) {
-      ASSERT_TRUE(op_to_count["Transpose"] == 1);
-      ASSERT_TRUE(op_to_count["Reshape"] == 0);
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 0);
 
       // find Transpose node and check perms
       const auto& nodes = graph.Nodes();
@@ -3958,8 +3958,8 @@ static void TestTransposeReshape(const std::vector<int64_t>& input_shape,    // 
       ASSERT_STATUS_OK(proto_helper.GetAttrs<int64_t>("perm", actual_perms));
       ASSERT_THAT(actual_perms, testing::ContainerEq(merged_perms));
     } else {
-      ASSERT_TRUE(op_to_count["Transpose"] == 1);
-      ASSERT_TRUE(op_to_count["Reshape"] == 1);
+      ASSERT_EQ(op_to_count["Transpose"], 1);
+      ASSERT_EQ(op_to_count["Reshape"], 1);
     }
   };
 
@@ -3980,7 +3980,7 @@ TEST(TransposeOptimizerTests, TestReshapeCanMerge) {
                        {1, 2, 0});  // perms required to merge
 
   // essentially the same test but with the 2 non-1 dims having the same value
-  TestTransposeReshape({4, 1, 4}, {2, 0, 1},  // transpose input shape and perms. output shape {3, 4, 1}
+  TestTransposeReshape({4, 1, 4}, {2, 0, 1},  // transpose input shape and perms. output shape {4, 4, 1}
                        {1, 4, 4},             // reshape 'shape'
                        TransposeReshapeResult::kMerge,
                        {1, 2, 0});  // perms required to merge
@@ -4109,9 +4109,9 @@ TEST(TransposeOptimizerTests, TestCancelingNodesGraphOutputs) {
     // Transpose cancels with the following reshape node so both the nodes
     // should be removed
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 0);
-    ASSERT_TRUE(op_to_count["Reshape"] == 0);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 0);
+    ASSERT_EQ(op_to_count["Reshape"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -4142,9 +4142,9 @@ TEST(TransposeOptimizerTests, TestNonCancelingReshapeDueToNonConstShape) {
     // Transpose on mul output cannot be removed since reshape's shape input
     // is not const
     std::map<std::string, int> op_to_count = CountOpsInGraph(session.GetGraph());
-    ASSERT_TRUE(op_to_count["Mul"] == 1);
-    ASSERT_TRUE(op_to_count["Transpose"] == 1);
-    ASSERT_TRUE(op_to_count["Reshape"] == 1);
+    ASSERT_EQ(op_to_count["Mul"], 1);
+    ASSERT_EQ(op_to_count["Transpose"], 1);
+    ASSERT_EQ(op_to_count["Reshape"], 1);
 
     int transpose_cost = EstimateTransposeCost(session.GetGraph());
     EXPECT_EQ(transpose_cost, 1);
@@ -4441,8 +4441,8 @@ TEST(TransposeOptimizerTests, QnnTransposeReshape) {
   // gets inserted on the weights used by the Add node.
   // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
   // avoided.
-  ASSERT_TRUE(op_to_count["Transpose"] == 1) << "All layout transform Transpose ops should have been handled "
-                                                "with the exception of the initial node prior to the Conv";
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
 
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
   std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
@@ -4490,8 +4490,8 @@ TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
   // gets inserted on the weights used by the Add node.
   // end result of everything working as expected is a single Transpose of the input data to NHWC as that can't be
   // avoided.
-  ASSERT_TRUE(op_to_count["Transpose"] == 1) << "All layout transform Transpose ops should have been handled "
-                                                "with the exception of the initial node prior to the Conv";
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "All layout transform Transpose ops should have been handled "
+                                            "with the exception of the initial node prior to the Conv";
 
   // all nodes should be assigned to the internal testing EP, which also means they should be in NHWC layout
   std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);

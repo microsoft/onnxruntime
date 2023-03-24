@@ -24,7 +24,8 @@
 namespace onnxruntime {
 namespace internal_testing_ep {
 
-#if !defined(ORT_MINIMAL_BUILD)
+// NHWC Conv requires contrib ops
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 // the 'utils::' breaks the kernel registration macros
 constexpr const char* internal_testing_ep = utils::kInternalTestingExecutionProvider;
 
@@ -71,10 +72,13 @@ void RegisterDummyStaticKernel(KernelRegistry& registry, const Node& node) {
 
   ORT_THROW_IF_ERROR(registry.Register(builder, DummyCreateKernel));
 }
-
 }  // namespace
 
-#endif  // !defined(ORT_MINIMAL_BUILD)
+#else
+static std::unique_ptr<KernelRegistry> RegisterKernels() {
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 constexpr const char* INTERNAL_TESTING_EP = "InternalTestingEP";
 
