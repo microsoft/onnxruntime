@@ -43,8 +43,6 @@ public:
         ML_CHECK_VALID_ARGUMENT(betaTensorShape[0] == channels);
         ML_CHECK_VALID_ARGUMENT(channels % groups == 0);
         ML_CHECK_VALID_ARGUMENT(m_inputTensorDescs[1].GetDmlDataType() == m_inputTensorDescs[2].GetDmlDataType());
-
-        // DML doesn't support grouped MVN, so split the data and perform MVN separately on each one of them
         const uint32_t channelsPerGroup = channels / groups;
 
         // 1. Reshape the input from [batch, height, width, channels] to [batch, height * width, groups, channelsPerGroup]
@@ -60,11 +58,6 @@ public:
         const std::array<uint32_t, 4> gammaBetaStrides = {0, 1, 0, channelsPerGroup};
         TensorDesc gammaBetaTensorDesc = TensorDesc(m_inputTensorDescs[1].GetDmlDataType(), inputShape, gammaBetaStrides);
         const DML_TENSOR_DESC gammaBetaDmlTensorDesc = gammaBetaTensorDesc.GetDmlDesc();
-
-        const std::array<uint32_t, 4> outputShape = {batch, channelsPerGroup, height * width, groups};
-        const std::array<uint32_t, 4> outputStrides = {channelsPerGroup * height * width * groups, 1, channelsPerGroup * groups, channelsPerGroup};
-        TensorDesc outputTensorDesc = TensorDesc(m_inputTensorDescs[0].GetDmlDataType(), outputShape, outputStrides);
-        const DML_TENSOR_DESC outputDmlTensorDesc = outputTensorDesc.GetDmlDesc();
 
         // Cast Gamma and Beta if their datatype differ from the input's datatype
         const bool gammaBetaCastNeeded = m_inputTensorDescs[0].GetDmlDataType() != m_inputTensorDescs[1].GetDmlDataType();
@@ -83,7 +76,7 @@ public:
         mvnDesc.InputTensor = &inputDmlTensorDesc;
         mvnDesc.ScaleTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
         mvnDesc.BiasTensor = gammaBetaCastNeeded ? &inputDmlTensorDesc : &gammaBetaDmlTensorDesc;
-        mvnDesc.OutputTensor = &outputDmlTensorDesc;
+        mvnDesc.OutputTensor = &inputDmlTensorDesc;
         mvnDesc.NormalizeVariance = true;
         mvnDesc.AxisCount = gsl::narrow_cast<uint32_t>(axes.size());
         mvnDesc.Axes = axes.data();
