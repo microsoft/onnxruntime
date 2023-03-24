@@ -286,6 +286,8 @@ typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 typedef OrtStatus* OrtStatusPtr;
 #endif
 
+/// @}
+
 /** \brief Memory allocation interface
  *
  * Structure of function pointers that defines a memory allocator. This can be created and filled in by the user for custom allocators.
@@ -4079,13 +4081,13 @@ struct OrtApi {
    * \param[in] info ::OrtKernelInfo instance.
    * \param[in] index The node index.
    * \param[out] is_constant Is it a constant node input or not.
-   * \param[out] out The OrtValue tensor value. 
+   * \param[out] out The OrtValue tensor value.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.15.
    */
-  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out); 
+  ORT_API2_STATUS(KernelInfoGetConstantInput_tensor, _In_ const OrtKernelInfo* info, size_t index, _Out_ int* is_constant, _Outptr_ const OrtValue** out);
 
 #ifdef __cplusplus
   OrtApi(const OrtApi&) = delete;  // Prevent users from accidentally copying the API structure, it should always be passed as a pointer
